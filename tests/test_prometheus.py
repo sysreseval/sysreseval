@@ -573,7 +573,11 @@ class TestRenderers:
         debian = yaml.safe_load(fixture('debian_blackbox.yml'))["modules"]
         assert yaml.safe_load(text)["modules"] == {**debian, "http_shop": yaml.safe_load(text)["modules"]["http_shop"]}
         snmp = yaml.safe_load(pm.render_snmp_yml("sre4f2a9c"))
-        assert snmp["if_mib"]["auth"] == {"community": "sre4f2a9c"} and snmp["if_mib"]["version"] == 2
+        # snmp_exporter >= 0.23: the authentication apart from the module
+        assert snmp["auths"] == {"public_v2": {"version": 2, "community": "sre4f2a9c"}}
+        module = snmp["modules"]["if_mib"]
+        assert set(module) == {"walk", "get", "metrics", "max_repetitions", "retries", "timeout"}
+        assert [metric["name"] for metric in module["metrics"]] == ["sysUpTime", "ifOperStatus", "ifHCInOctets", "ifHCOutOctets"]
 
     def test_debian_blackbox_has_no_final_newline(self):
         assert not fixture('debian_blackbox.yml').endswith("\n")

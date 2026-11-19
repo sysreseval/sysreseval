@@ -213,7 +213,7 @@ L'option `-M` de `ping` (cf `man ping`) choisit le bit DF des échos émis :
 ```
 ping -c 1 -s 1472 DEST               # défaut (-M want) : DF si le paquet tient dans le PMTU connu
 ping -c 1 -M do -s 1472 DEST         # DF toujours : "Frag needed and DF set (mtu = N)" venant du
-                                     #   routeur, puis "local error: message too long, mtu=N"
+                                     #   routeur, puis "sendmsg: Message too long"
                                      #   quand le PMTU est connu (le paquet n'est plus émis)
 ping -c 1 -M dont -s 1472 DEST       # jamais DF : les routeurs fragmentent, la réponse arrive
 tracepath -n DEST                    # MTU du chemin saut par saut ("pmtu N")
@@ -318,7 +318,7 @@ qui a émis le paquet intérieur) ou, si ces erreurs sont filtrées, disparition
             + tr("""
 | symptôme | cause probable |
 |----------|----------------|
-| `local error: message too long, mtu=N` dès le premier `ping -M do` | un PMTU est déjà mémorisé (`ip route get`, `ip route flush cache`) |
+| `sendmsg: Message too long` dès le premier `ping -M do` | un PMTU est déjà mémorisé (`ip route get`, `ip route flush cache`) |
 | `ping -M do -s 1472` n'obtient ni réponse ni erreur | erreurs ICMP filtrées sur le chemin : le paquet est jeté en silence |
 | `ping` passe mais `iperf3` reste à 0 bit/s | trou noir PMTUD : section @@ref:blackhole@@ |
 | `iperf3` passe toujours alors que les erreurs ICMP sont filtrées | PMTU encore en cache sur la machine (10 min) ou MSS déjà réduit |
@@ -472,7 +472,7 @@ class Grade(Grade0):
         gre_out, _ = self.test('r1', gre_probe, step=2, timeout=20, allow_error=True)
         tunnel_pings = pmtu.ping_received(tc.section_text(gre_out, 'T'))
         fit_ok = pmtu.ping_received(tc.section_text(gre_out, 'FIT')) >= 1
-        over_ok = pmtu.parse_ping_errors(tc.section_text(gre_out, 'OVER'))['too_long_mtu'] == tun_mtu
+        over_ok = pmtu.refused_locally(tc.section_text(gre_out, 'OVER'), tun_mtu)
 
         # ---------------- configuration of the students' routers -------------------------
         mtus = {r: pmtu.iface_mtus(links[r]) for r in ('r1', 'r2')}
@@ -594,13 +594,17 @@ tunnel GRE : {tun_mtu}).
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Découverte du MTU de l'opérateur"),
+            # The identity this question had before its text followed the `ping` of Debian 13 (the
+            # hint `local error` became `Message too long`): the answers stored by the projects and
+            # the archives of that time stay attached to it.
+            hash="45ad0f3beb94abaca480e1d18ae38a974efb74e5b5c48367e3be35eb5bc0086c",
             description=tr("""
 1. Sur `m1`, relevez le MTU de `eth0` (`ip link`), puis vérifiez que `ping -c 1 -M do -s 1472 r1_lan1`
    passe : 1472 octets de charge utile font un paquet de 1500 octets.
 2. Lancez `tcpdump -n -v -i eth0 icmp` dans un second terminal de `m1`, puis
    `ping -c 3 -M do -s 1472 m2`. Observez le message d'erreur de `ping`, l'adresse qui l'émet
    et le MTU qu'il annonce ; retrouvez-le dans la capture (`need to frag`). Pourquoi le deuxième
-   `ping` échoue-t-il différemment du premier (`local error`) ? Consultez `ip route get` vers
+   `ping` échoue-t-il différemment du premier (`Message too long`) ? Consultez `ip route get` vers
    `m2`, puis `ip route flush cache`.
 3. Par dichotomie avec `ping -M do -s TAILLE m2`, trouvez la plus grande charge utile qui traverse
    l'opérateur sans erreur, et comparez avec `tracepath -n m2`.
@@ -616,7 +620,7 @@ tunnel GRE : {tun_mtu}).
 ```
 ping -c 1 -M do -s 1472 r1_lan1  # passe : 1472 + 28 = 1500
 ping -c 3 -M do -s 1472 m2  # From wan_wan1 ({wan1}) icmp_seq=1 Frag needed and DF set (mtu = {n})
-# puis, deux fois : ping: local error: message too long, mtu={n}
+# puis, deux fois : ping: sendmsg: Message too long
 ip route get {m2}  # ... cache expires ...sec mtu {n}
 ip route flush cache
 ping -c 1 -M do -s {payload} m2  # passe : {payload} + 28 = {n}
@@ -628,7 +632,7 @@ ping -c 1 -M dont -s 1472 m2  # passe : wan fragmente
 - L'erreur est un ICMP type 3 code 4 émis par `wan` (son adresse côté `wan1`, `{wan1}`). `tcpdump`
   affiche `{wan1} > {m1}: ICMP {m2} unreachable - need to frag (mtu {n})`.
 - Le premier `ping` reçoit l'erreur du routeur ; `m1` mémorise alors le PMTU vers `m2` (10 min) et
-  refuse lui-même les suivants (`local error`), sans rien émettre.
+  refuse lui-même les suivants (`Message too long`), sans rien émettre.
 - Sans DF, `wan` fragmente le paquet aller : un fragment de {first} octets marqué `flags [+]`, puis le
   reste à l'`offset {offset}`. La réponse de `m2`, de 1500 octets elle aussi, est fragmentée par `wan`
   dans l'autre sens.
@@ -839,7 +843,7 @@ ip addr add {r2_tun} dev gre1
 - MTU du tunnel : {n} − 24 (20 d'IPv4 + 4 de GRE) = **{tun_mtu}**. Sans réglage, `gre1` reste à 1476.
 - Vérification depuis `r1` : `ping {r2_tun_ip}` passe ; `ping -M do -s {fit} {r2_tun_ip}` passe
   ({fit} + 28 = {tun_mtu}) ; `ping -M do -s {over} {r2_tun_ip}` répond
-  `local error: message too long, mtu={tun_mtu}`. `tcpdump -n -v -i eth1 proto gre` montre des paquets
+  `ping: sendmsg: Message too long`. `tcpdump -n -v -i eth1 proto gre` montre des paquets
   extérieurs d'au plus {n} octets, avec DF (`pmtudisc`).
 - Évaluation : `gre_r1` et `gre_r2` (type `gre`, `local` / `remote` égaux aux adresses `wan1` / `wan2`,
   MTU {tun_mtu} : 1 point chacun), `gre_reachable`, `gre_pmtu` (les deux `ping -M do` ci-dessus, cache de
@@ -1185,7 +1189,7 @@ ip link set dev eth0 mtu {n}  # on r2
 ```
 ping -c 1 -M do -s 1472 r1_lan1  # passe : 1472 + 28 = 1500
 ping -c 3 -M do -s 1472 m2  # From wan_wan1 ({wan1}) icmp_seq=1 Frag needed and DF set (mtu = {n})
-# puis, deux fois : ping: local error: message too long, mtu={n}
+# puis, deux fois : ping: sendmsg: Message too long
 ip route get {m2}  # ... cache expires ...sec mtu {n}
 ip route flush cache
 ping -c 1 -M do -s {payload} m2  # passe : {payload} + 28 = {n}
@@ -1197,7 +1201,7 @@ ping -c 1 -M dont -s 1472 m2  # passe : wan fragmente
 - L'erreur est un ICMP type 3 code 4 émis par `wan` (son adresse côté `wan1`, `{wan1}`). `tcpdump`
   affiche `{wan1} > {m1}: ICMP {m2} unreachable - need to frag (mtu {n})`.
 - Le premier `ping` reçoit l'erreur du routeur ; `m1` mémorise alors le PMTU vers `m2` (10 min) et
-  refuse lui-même les suivants (`local error`), sans rien émettre.
+  refuse lui-même les suivants (`Message too long`), sans rien émettre.
 - Sans DF, `wan` fragmente le paquet aller : un fragment de {first} octets marqué `flags [+]`, puis le
   reste à l'`offset {offset}`. La réponse de `m2`, de 1500 octets elle aussi, est fragmentée par `wan`
   dans l'autre sens.
@@ -1208,7 +1212,7 @@ ping -c 1 -M dont -s 1472 m2  # passe : wan fragmente
 ```
 ping -c 1 -M do -s 1472 r1_lan1  # passes: 1472 + 28 = 1500
 ping -c 3 -M do -s 1472 m2  # From wan_wan1 ({wan1}) icmp_seq=1 Frag needed and DF set (mtu = {n})
-# then, twice: ping: local error: message too long, mtu={n}
+# then, twice: ping: sendmsg: Message too long
 ip route get {m2}  # ... cache expires ...sec mtu {n}
 ip route flush cache
 ping -c 1 -M do -s {payload} m2  # passes: {payload} + 28 = {n}
@@ -1220,7 +1224,7 @@ ping -c 1 -M dont -s 1472 m2  # passes: wan fragments
 - The error is an ICMP type 3 code 4 sent by `wan` (its address on the `wan1` side, `{wan1}`).
   `tcpdump` prints `{wan1} > {m1}: ICMP {m2} unreachable - need to frag (mtu {n})`.
 - The first `ping` receives the error of the router; `m1` then remembers the PMTU towards `m2`
-  (10 min) and refuses the following ones itself (`local error`), without sending anything.
+  (10 min) and refuses the following ones itself (`Message too long`), without sending anything.
 - Without DF, `wan` fragments the outgoing packet: a fragment of {first} bytes marked `flags [+]`,
   then the rest at `offset {offset}`. The reply of `m2`, also 1500 bytes long, is fragmented by `wan`
   in the other direction.
@@ -1246,7 +1250,7 @@ ip addr add {r2_tun} dev gre1
 - MTU du tunnel : {n} − 24 (20 d'IPv4 + 4 de GRE) = **{tun_mtu}**. Sans réglage, `gre1` reste à 1476.
 - Vérification depuis `r1` : `ping {r2_tun_ip}` passe ; `ping -M do -s {fit} {r2_tun_ip}` passe
   ({fit} + 28 = {tun_mtu}) ; `ping -M do -s {over} {r2_tun_ip}` répond
-  `local error: message too long, mtu={tun_mtu}`. `tcpdump -n -v -i eth1 proto gre` montre des paquets
+  `ping: sendmsg: Message too long`. `tcpdump -n -v -i eth1 proto gre` montre des paquets
   extérieurs d'au plus {n} octets, avec DF (`pmtudisc`).
 - Évaluation : `gre_r1` et `gre_r2` (type `gre`, `local` / `remote` égaux aux adresses `wan1` / `wan2`,
   MTU {tun_mtu} : 1 point chacun), `gre_reachable`, `gre_pmtu` (les deux `ping -M do` ci-dessus, cache de
@@ -1273,7 +1277,7 @@ ip addr add {r2_tun} dev gre1
   stays at 1476.
 - Check from `r1`: `ping {r2_tun_ip}` passes; `ping -M do -s {fit} {r2_tun_ip}` passes
   ({fit} + 28 = {tun_mtu}); `ping -M do -s {over} {r2_tun_ip}` answers
-  `local error: message too long, mtu={tun_mtu}`. `tcpdump -n -v -i eth1 proto gre` shows outer
+  `ping: sendmsg: Message too long`. `tcpdump -n -v -i eth1 proto gre` shows outer
   packets of at most {n} bytes, with DF (`pmtudisc`).
 - Evaluation: `gre_r1` and `gre_r2` (type `gre`, `local` / `remote` equal to the `wan1` / `wan2`
   addresses, MTU {tun_mtu}: 1 point each), `gre_reachable`, `gre_pmtu` (the two `ping -M do` above,
@@ -1350,7 +1354,7 @@ ip addr add {r2_tun} dev gre1
 2. Lancez `tcpdump -n -v -i eth0 icmp` dans un second terminal de `m1`, puis
    `ping -c 3 -M do -s 1472 m2`. Observez le message d'erreur de `ping`, l'adresse qui l'émet
    et le MTU qu'il annonce ; retrouvez-le dans la capture (`need to frag`). Pourquoi le deuxième
-   `ping` échoue-t-il différemment du premier (`local error`) ? Consultez `ip route get` vers
+   `ping` échoue-t-il différemment du premier (`Message too long`) ? Consultez `ip route get` vers
    `m2`, puis `ip route flush cache`.
 3. Par dichotomie avec `ping -M do -s TAILLE m2`, trouvez la plus grande charge utile qui traverse
    l'opérateur sans erreur, et comparez avec `tracepath -n m2`.
@@ -1365,7 +1369,7 @@ ip addr add {r2_tun} dev gre1
 2. Run `tcpdump -n -v -i eth0 icmp` in a second terminal of `m1`, then
    `ping -c 3 -M do -s 1472 m2`. Look at the error message of `ping`, the address that sends it and
    the MTU it announces; find it again in the capture (`need to frag`). Why does the second `ping`
-   fail differently from the first one (`local error`)? Look at `ip route get` towards `m2`, then
+   fail differently from the first one (`Message too long`)? Look at `ip route get` towards `m2`, then
    run `ip route flush cache`.
 3. By bisection with `ping -M do -s SIZE m2`, find the largest payload that crosses the operator
    without error, and compare with `tracepath -n m2`.
@@ -1546,7 +1550,7 @@ L'option `-M` de `ping` (cf `man ping`) choisit le bit DF des échos émis :
 ```
 ping -c 1 -s 1472 DEST               # défaut (-M want) : DF si le paquet tient dans le PMTU connu
 ping -c 1 -M do -s 1472 DEST         # DF toujours : "Frag needed and DF set (mtu = N)" venant du
-                                     #   routeur, puis "local error: message too long, mtu=N"
+                                     #   routeur, puis "sendmsg: Message too long"
                                      #   quand le PMTU est connu (le paquet n'est plus émis)
 ping -c 1 -M dont -s 1472 DEST       # jamais DF : les routeurs fragmentent, la réponse arrive
 tracepath -n DEST                    # MTU du chemin saut par saut ("pmtu N")
@@ -1624,7 +1628,7 @@ The `-M` option of `ping` (see `man ping`) chooses the DF bit of the echoes it s
 ```
 ping -c 1 -s 1472 DEST               # default (-M want): DF if the packet fits in the known PMTU
 ping -c 1 -M do -s 1472 DEST         # DF always: "Frag needed and DF set (mtu = N)" from the
-                                     #   router, then "local error: message too long, mtu=N"
+                                     #   router, then "sendmsg: Message too long"
                                      #   once the PMTU is known (the packet is no longer sent)
 ping -c 1 -M dont -s 1472 DEST       # DF never: the routers fragment, the reply arrives
 tracepath -n DEST                    # path MTU hop by hop ("pmtu N")
@@ -1729,7 +1733,7 @@ that sent the inner packet) or, if these errors are filtered, a silent disappear
         """
 | symptôme | cause probable |
 |----------|----------------|
-| `local error: message too long, mtu=N` dès le premier `ping -M do` | un PMTU est déjà mémorisé (`ip route get`, `ip route flush cache`) |
+| `sendmsg: Message too long` dès le premier `ping -M do` | un PMTU est déjà mémorisé (`ip route get`, `ip route flush cache`) |
 | `ping -M do -s 1472` n'obtient ni réponse ni erreur | erreurs ICMP filtrées sur le chemin : le paquet est jeté en silence |
 | `ping` passe mais `iperf3` reste à 0 bit/s | trou noir PMTUD : section @@ref:blackhole@@ |
 | `iperf3` passe toujours alors que les erreurs ICMP sont filtrées | PMTU encore en cache sur la machine (10 min) ou MSS déjà réduit |
@@ -1739,7 +1743,7 @@ that sent the inner packet) or, if these errors are filtered, a silent disappear
 """: """
 | symptom | probable cause |
 |----------|----------------|
-| `local error: message too long, mtu=N` from the very first `ping -M do` | a PMTU is already remembered (`ip route get`, `ip route flush cache`) |
+| `sendmsg: Message too long` from the very first `ping -M do` | a PMTU is already remembered (`ip route get`, `ip route flush cache`) |
 | `ping -M do -s 1472` gets neither a reply nor an error | ICMP errors filtered on the path: the packet is silently dropped |
 | `ping` works but `iperf3` stays at 0 bit/s | PMTUD black hole: section @@ref:blackhole@@ |
 | `iperf3` still works although the ICMP errors are filtered | PMTU still cached on the machine (10 min) or MSS already reduced |

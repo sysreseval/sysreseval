@@ -96,9 +96,12 @@ def _ping_ok(dest, count=2):
     return "\n".join(lines)
 
 
-def _ping_too_long(dest, mtu):
+def _ping_too_long(dest, mtu, debian=13):
+    """The packet refused by the local stack: iputils 20240905 of Debian 13 prints the errno of
+    the send, iputils 20221126 of Debian 12 the local error with its MTU."""
+    message = "ping: sendmsg: Message too long" if debian == 13 else f"ping: local error: message too long, mtu={mtu}"
     return (f"PING {dest} ({dest}) {mtu - 27}({mtu + 1}) bytes of data.\n"
-            f"ping: local error: message too long, mtu={mtu}\n\n--- {dest} ping statistics ---\n"
+            f"{message}\n\n--- {dest} ping statistics ---\n"
             f"1 packets transmitted, 0 received, +1 errors, 100% packet loss, time 0ms\n")
 
 
@@ -145,14 +148,22 @@ def _synthetic(lab, ns, machine, command, scenario):
         if not scenario['tunnel']:
             return "===T\nping: connect: Network is unreachable\n===FIT\n===OVER\n", 2
         dest = str(d.ips.r2_tun.ip)
-        return f"===T\n{_ping_ok(dest)}\n===FIT\n{_ping_ok(dest)}\n===OVER\n{_ping_too_long(dest, tun_mtu)}", 0
+        if scenario['tunnel'] == 'default_mtu':     # gre1 left at 1476: the oversized ping leaves, unanswered
+            over = (f"PING {dest} ({dest}) {tun_mtu - 27}({tun_mtu + 1}) bytes of data.\n\n--- {dest} ping "
+                    f"statistics ---\n1 packets transmitted, 0 received, 100% packet loss, time 0ms\n")
+        else:
+            over = _ping_too_long(dest, scenario['tunnel_mtu_quoted'] or tun_mtu, debian=scenario['debian'])
+        return f"===T\n{_ping_ok(dest)}\n===FIT\n{_ping_ok(dest)}\n===OVER\n{over}", 0
     if 'echo flushed' in command:
         return 'flushed\nserver\n' if machine == 'h2' else 'flushed\n', 0
     return '', 0
 
 
-_EVERYTHING = {'started': True, 'clamp': True, 'wan_mtu_fix': False, 'tunnel': True, 'answers': True}
-_NOTHING = {'started': True, 'clamp': False, 'wan_mtu_fix': False, 'tunnel': False, 'answers': False}
+# debian: the release whose ping answers (the message of a packet refused locally differs);
+# tunnel_mtu_quoted: the MTU that message quotes on Debian 12 when it is not the tunnel's
+_EVERYTHING = {'started': True, 'clamp': True, 'wan_mtu_fix': False, 'tunnel': True, 'answers': True,
+               'debian': 13, 'tunnel_mtu_quoted': None}
+_NOTHING = dict(_EVERYTHING, clamp=False, tunnel=False, answers=False)
 
 
 def _simulate(lab, data, tmp_pub_dir, instructor_mode=False, **changes):
@@ -299,6 +310,19 @@ class TestGrade:
         assert _totals(grade) == (40, 40), {t: (e.grade, e.max_grade) for t, e in _by_title(grade).items()}
         assert [str(p.title) for p in grade.get_grade_parts()] == ['part1', 'part2', 'part3']
 
+    def test_everything_done_on_debian_12(self, lab, data, tmp_pub_dir):
+        """An archive of the Debian 12 images: ping quotes the MTU of the tunnel."""
+        grade, _ = _simulate(lab, data, tmp_pub_dir, debian=12)
+        assert _totals(grade) == (40, 40)
+
+    def test_oversized_tunnel_ping_must_be_refused_locally(self, lab, data, tmp_pub_dir):
+        # Debian 12, the refusal quotes another MTU than the tunnel's (a cached path MTU)
+        grade, _ = _simulate(lab, data, tmp_pub_dir, debian=12, tunnel_mtu_quoted=data.wan_mtu)
+        assert _by_title(grade)['gre_pmtu'].grade == 0
+        # the oversized packet leaves (no MTU set on the tunnel) and is lost on the way
+        grade, _ = _simulate(lab, data, tmp_pub_dir, tunnel='default_mtu')
+        assert _by_title(grade)['gre_pmtu'].grade == 0
+
     def test_wan_mtu_fix_instead_of_clamping(self, lab, data, tmp_pub_dir):
         grade, _ = _simulate(lab, data, tmp_pub_dir, clamp=False, wan_mtu_fix=True)
         assert _totals(grade) == (40, 40)
@@ -368,6 +392,19 @@ class TestTexts:
         for lang in ('fr', 'en'):
             assert not any(has_instructor(t) for _, t in _all_texts(g0, ns0, lang))
             assert len([w for w, t in _all_texts(g1, ns1, lang) if has_instructor(t)]) == 4
+
+    def test_forms_keep_the_identity_they_had_on_debian_12(self, lab, data, tmp_pub_dir):
+        """The text of the first form changed with the `ping` of Debian 13 (`local error` became
+        `Message too long`); its hash is pinned, so that the answers stored by the projects and
+        the archives of the Debian 12 images stay attached.  The two others did not change."""
+        grade, _ = _simulate(lab, data, tmp_pub_dir)
+        forms = [q for q in grade.get_questions_ordered() if getattr(q, 'fields', None)]
+        assert [q.question_hash for q in forms] == [
+            "45ad0f3beb94abaca480e1d18ae38a974efb74e5b5c48367e3be35eb5bc0086c",
+            "f4ad6087a885eee893a5bc0f0036badd5b800981c114671a9dcbff529b7897a9",
+            "1071fbc2cf2c08381cdf69cc684760c2c0e48f9e3536da895fc5c738bddb6cd0",
+        ]
+        assert "Message too long" in _text(forms[0].description) and "local error" not in _text(forms[0].description)
 
     def test_operator_mtu_never_shown_to_students(self, lab, data, tmp_pub_dir):
         """Outside instructor mode the texts are the same whatever the operator's MTU."""

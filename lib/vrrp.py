@@ -2,7 +2,9 @@
 
 Everything here was written from outputs captured live on 2026-11-11 (keepalived 2.2.7, tcpdump
 4.99, radvd 2.19 on the Debian 12 images, Linux 6.12 host): fixtures in ``tests/mock_data/vrrp/``,
-tests in ``tests/test_vrrp.py``.
+tests in ``tests/test_vrrp.py``.  The lab runs on the Debian 13 image since 2026-11-19 (keepalived
+2.3.3, which does not start without the ``keepalived.config-opts`` file of its package:
+:func:`clear_keepalived_dir_cmd`).
 
 * **Configuration**: :func:`parse_keepalived_conf` reads a ``keepalived.conf`` into
   ``{'global_defs', 'scripts', 'groups', 'instances', 'errors'}`` (typed fields: VRID, priority,
@@ -74,6 +76,9 @@ from SRE.lib_sre import Grade0, NetScheme0
 #: directory is replayed on the hidden mirror)
 KEEPALIVED_DIR = "/etc/keepalived"
 KEEPALIVED_CONF = f"{KEEPALIVED_DIR}/keepalived.conf"
+#: the files the keepalived package puts there.  keepalived 2.3 (Debian 13) refuses to start
+#: without the first one ("Unable to read build config options file"); Debian 12 only has the sample
+KEEPALIVED_PACKAGE_FILES = ("keepalived.config-opts", "keepalived.conf.sample")
 KEEPALIVED_UNIT = "keepalived"
 RADVD_CONF = "/etc/radvd.conf"
 RADVD_UNIT = "radvd"
@@ -567,6 +572,13 @@ def apply_archive_cmd(encoded: str) -> str:
     return (f"rm -rf {KEEPALIVED_DIR} {RADVD_CONF}; "
             f"echo {encoded.strip()} | base64 -d | tar -xzf - -C / --no-same-owner 2>&1; "
             f"systemctl restart --no-block {KEEPALIVED_UNIT} {RADVD_UNIT} 2>&1; true")
+
+
+def clear_keepalived_dir_cmd() -> str:
+    """Shell command emptying ``/etc/keepalived`` of everything but the files of the package
+    (:data:`KEEPALIVED_PACKAGE_FILES`): the directory as the image has it."""
+    spared = ' '.join(f"! -name {name}" for name in KEEPALIVED_PACKAGE_FILES)
+    return f"find {KEEPALIVED_DIR} -mindepth 1 -maxdepth 1 {spared} -exec rm -rf {{}} + 2>/dev/null"
 
 
 def stop_cmd() -> str:

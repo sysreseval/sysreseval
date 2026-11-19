@@ -255,8 +255,8 @@ bonnes pratiques et les commandes.
             + tr("""
 Sous Linux, la traduction d'adresses est faite **dans le noyau** par Netfilter, comme le
 filtrage, et se configure avec la même commande, **`nft`** (nftables). Cette section résume ce
-qu'il faut savoir de nftables pour ce TP. Les machines du TP ont nftables 1.0.6
-(`nft --version`), la version de Debian 12.
+qu'il faut savoir de nftables pour ce TP. Les machines du TP ont nftables 1.1.3
+(`nft --version`), la version de Debian 13.
 
 ### @@sec:hooks@@ Le trajet d'un paquet : les hooks
 
@@ -664,9 +664,9 @@ nft 'add chain ip nat output { type nat hook output priority -100; policy accept
 nft 'add rule ip nat output ip daddr 203.0.113.1 tcp dport 8080 dnat to 192.168.1.10:80'
 ```
 
-La priorité s'écrit ici `-100` : nftables 1.0.6 n'accepte le nom `dstnat` qu'au hook
-`prerouting`. Le critère est l'adresse visée (`ip daddr`) : un paquet émis par la machine n'a pas
-d'interface d'entrée.
+La priorité `-100` est la valeur du nom `dstnat`, que `nft list ruleset` affiche à sa place (on
+peut aussi écrire `priority dstnat`). Le critère est l'adresse visée (`ip daddr`) : un paquet émis
+par la machine n'a pas d'interface d'entrée.
 
 ### @@sec:hairpin@@ Le client et le serveur sur le même réseau (hairpin)
 
@@ -1795,9 +1795,7 @@ Vérification : sur `r3`, `curl -s -m 5 http://{wan}:{fwd}/` renvoie `SERVER=web
 lui-même), le paquet est ensuite routé vers `web3`, dont la réponse revient à `r3`. Aucune règle
 `postrouting` n'est nécessaire.
 
-Pièges : la priorité écrite `dstnat`, que nftables 1.0.6 n'accepte pas au hook `output` (`Error:
-invalid priority expression value in this context` : écrire `-100`) ; `iifname` dans la règle ;
-croire que la chaîne `prerouting` suffit.
+Pièges : `iifname` dans la règle ; croire que la chaîne `prerouting` suffit.
 
 - L'évaluation : `router_itself` (4 points : sur la copie de `r3`, `curl` vers
   `http://{wan}:{fwd}/` doit renvoyer `SERVER=web3`).

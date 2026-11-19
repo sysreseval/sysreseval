@@ -1,0 +1,106 @@
+Nov 19 00:02:48 ns1 systemd[1]: Starting named.service - BIND Domain Name Server...
+Nov 19 00:02:48 ns1 named[460]: starting BIND 9.20.30-1~deb13u1-Debian (Stable Release) <id:>
+Nov 19 00:02:48 ns1 named[460]: running on Linux x86_64 6.12.116+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.116-1 (2026-11-07) (Debian GNU/Linux 13 (trixie))
+Nov 19 00:02:48 ns1 named[460]: built with  '--build=x86_64-linux-gnu' '--prefix=/usr' '--includedir=${prefix}/include' '--mandir=${prefix}/share/man' '--infodir=${prefix}/share/info' '--sysconfdir=/etc' '--localstatedir=/var' '--disable-option-checking' '--disable-silent-rules' '--libdir=${prefix}/lib/x86_64-linux-gnu' '--runstatedir=/run' '--disable-maintainer-mode' '--disable-dependency-tracking' '--libdir=/usr/lib/x86_64-linux-gnu' '--sysconfdir=/etc/bind' '--with-python=python3' '--localstatedir=/' '--enable-threads' '--enable-largefile' '--with-libtool' '--enable-shared' '--disable-static' '--with-gost=no' '--with-openssl=/usr' '--with-gssapi=yes' '--with-libidn2' '--with-json-c' '--with-lmdb=/usr' '--with-gnu-ld' '--with-maxminddb' '--with-atf=no' '--enable-ipv6' '--enable-rrl' '--enable-filter-aaaa' '--disable-native-pkcs11' '--enable-dnstap' 'build_alias=x86_64-linux-gnu' 'CFLAGS=-g -O2 -Werror=implicit-function-declaration -ffile-prefix-map=/build/reproducible-path/bind9-9.20.30=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fno-strict-aliasing -fno-delete-null-pointer-checks -DNO_VERSION_DATE -DDIG_SIGCHASE' 'LDFLAGS=-Wl,-z,relro -Wl,-z,now' 'CPPFLAGS=-Wdate-time -D_FORTIFY_SOURCE=2'
+Nov 19 00:02:48 ns1 named[460]: running as: named -f -u bind
+Nov 19 00:02:48 ns1 named[460]: compiled by GCC 14.2.0
+Nov 19 00:02:48 ns1 named[460]: compiled with OpenSSL version: OpenSSL 3.5.7 9 Jun 2026
+Nov 19 00:02:48 ns1 named[460]: linked to OpenSSL version: OpenSSL 3.5.7 9 Jun 2026
+Nov 19 00:02:48 ns1 named[460]: compiled with libuv version: 1.50.0
+Nov 19 00:02:48 ns1 named[460]: linked to libuv version: 1.50.0
+Nov 19 00:02:48 ns1 named[460]: compiled with liburcu version: 0.15.2
+Nov 19 00:02:48 ns1 named[460]: compiled with jemalloc version: 5.3.0
+Nov 19 00:02:48 ns1 named[460]: compiled with libnghttp2 version: 1.64.0
+Nov 19 00:02:48 ns1 named[460]: linked to libnghttp2 version: 1.64.0
+Nov 19 00:02:48 ns1 named[460]: compiled with libxml2 version: 2.9.14
+Nov 19 00:02:48 ns1 named[460]: linked to libxml2 version: 20914
+Nov 19 00:02:48 ns1 named[460]: compiled with json-c version: 0.18
+Nov 19 00:02:48 ns1 named[460]: linked to json-c version: 0.18
+Nov 19 00:02:48 ns1 named[460]: compiled with zlib version: 1.3.1
+Nov 19 00:02:48 ns1 named[460]: linked to zlib version: 1.3.1
+Nov 19 00:02:48 ns1 named[460]: linked to maxminddb version: 1.12.2
+Nov 19 00:02:48 ns1 named[460]: compiled with protobuf-c version: 1.5.1
+Nov 19 00:02:48 ns1 named[460]: linked to protobuf-c version: 1.5.1
+Nov 19 00:02:48 ns1 named[460]: ----------------------------------------------------
+Nov 19 00:02:48 ns1 named[460]: BIND 9 is maintained by Internet Systems Consortium,
+Nov 19 00:02:48 ns1 named[460]: Inc. (ISC), a non-profit 501(c)(3) public-benefit
+Nov 19 00:02:48 ns1 named[460]: corporation.  Support and training for BIND 9 are
+Nov 19 00:02:48 ns1 named[460]: available at https://www.isc.org/support
+Nov 19 00:02:48 ns1 named[460]: ----------------------------------------------------
+Nov 19 00:02:48 ns1 named[460]: adjusted limit on open files from 1024 to 524288
+Nov 19 00:02:48 ns1 named[460]: found 12 CPUs, using 12 worker threads
+Nov 19 00:02:48 ns1 named[460]: DNSSEC algorithms: RSASHA1 NSEC3RSASHA1 RSASHA256 RSASHA512 ECDSAP256SHA256 ECDSAP384SHA384 ED25519 ED448
+Nov 19 00:02:48 ns1 named[460]: DS algorithms: SHA-1 SHA-256 SHA-384
+Nov 19 00:02:48 ns1 named[460]: HMAC algorithms: HMAC-MD5 HMAC-SHA1 HMAC-SHA224 HMAC-SHA256 HMAC-SHA384 HMAC-SHA512
+Nov 19 00:02:48 ns1 named[460]: TKEY mode 2 support (Diffie-Hellman): no
+Nov 19 00:02:48 ns1 named[460]: TKEY mode 3 support (GSS-API): yes
+Nov 19 00:02:48 ns1 named[460]: the initial working directory is '/'
+Nov 19 00:02:48 ns1 named[460]: loading configuration from '/etc/bind/named.conf'
+Nov 19 00:02:48 ns1 named[460]: the working directory is now '/var/cache/bind'
+Nov 19 00:02:48 ns1 named[460]: looking for GeoIP2 databases in '/usr/share/GeoIP'
+Nov 19 00:02:48 ns1 named[460]: using default UDP/IPv4 port range: [32768, 60999]
+Nov 19 00:02:48 ns1 named[460]: using default UDP/IPv6 port range: [32768, 60999]
+Nov 19 00:02:48 ns1 named[460]: listening on IPv4 interface lo, 127.0.0.1#53
+Nov 19 00:02:48 ns1 named[460]: listening on IPv4 interface eth0, 192.168.154.26#53
+Nov 19 00:02:48 ns1 named[460]: Disabling periodic interface re-scans timer
+Nov 19 00:02:48 ns1 named[460]: generating session key for dynamic DNS
+Nov 19 00:02:48 ns1 named[460]: configuring command channel from '/etc/bind/rndc.key'
+Nov 19 00:02:48 ns1 named[460]: command channel listening on 127.0.0.1#953
+Nov 19 00:02:48 ns1 named[460]: configuring command channel from '/etc/bind/rndc.key'
+Nov 19 00:02:48 ns1 named[460]: command channel listening on ::1#953
+Nov 19 00:02:48 ns1 named[460]: zone 154.168.192.in-addr.arpa/IN/external: loaded serial 2026111901
+Nov 19 00:02:48 ns1 named[460]: zone 154.168.192.in-addr.arpa/IN/internal: loaded serial 2026111901
+Nov 19 00:02:48 ns1 named[460]: zone 154.168.192.in-addr.arpa/IN/internal: sending notifies (serial 2026111901)
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/internal (unsigned): loaded serial 2026111901
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/external (unsigned): loaded serial 2026111901
+Nov 19 00:02:48 ns1 named[460]: zone 154.168.192.in-addr.arpa/IN/external: sending notifies (serial 2026111901)
+Nov 19 00:02:48 ns1 named[460]: all zones loaded
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/internal (signed): loaded serial 2026111901
+Nov 19 00:02:48 ns1 named[460]: FIPS mode is disabled
+Nov 19 00:02:48 ns1 named[460]: running
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/external (signed): loaded serial 2026111901
+Nov 19 00:02:48 ns1 systemd[1]: Started named.service - BIND Domain Name Server.
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/internal (signed): receive_secure_serial: unchanged
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/external (signed): sending notifies (serial 2026111901)
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/external (signed): reconfiguring zone keys
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/internal (signed): sending notifies (serial 2026111901)
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/internal (signed): reconfiguring zone keys
+Nov 19 00:02:48 ns1 named[460]: keymgr: DNSKEY example.tp/ECDSAP256SHA256/33186 (CSK) created for policy default
+Nov 19 00:02:48 ns1 named[460]: Fetching example.tp/ECDSAP256SHA256/33186 (CSK) from key repository.
+Nov 19 00:02:48 ns1 named[460]: DNSKEY example.tp/ECDSAP256SHA256/33186 (CSK) is now published
+Nov 19 00:02:48 ns1 named[460]: DNSKEY example.tp/ECDSAP256SHA256/33186 (CSK) is now active
+Nov 19 00:02:48 ns1 named[460]: Fetching example.tp/ECDSAP256SHA256/33186 (CSK) from key repository.
+Nov 19 00:02:48 ns1 named[460]: DNSKEY example.tp/ECDSAP256SHA256/33186 (CSK) is now published
+Nov 19 00:02:48 ns1 named[460]: DNSKEY example.tp/ECDSAP256SHA256/33186 (CSK) is now active
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/external (signed): next key event: 19-Nov-2026 02:07:48.276
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/external (signed): receive_secure_serial: unchanged
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/external (signed): sending notify to 172.29.18.234#53
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/internal (signed): next key event: 19-Nov-2026 02:07:48.276
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/internal (signed): sending notify to 172.29.18.234#53
+Nov 19 00:02:48 ns1 named[460]: client @0x7f73306b3000 172.29.18.234#50599/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': AXFR started: TSIG transfer-example-tp (serial 2026111903)
+Nov 19 00:02:48 ns1 named[460]: client @0x7f73306b3000 172.29.18.234#50599/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': AXFR ended: 1 messages, 28 records, 1866 bytes, 0.001 secs (1866000 bytes/sec) (serial 2026111903)
+Nov 19 00:02:48 ns1 named[460]: client @0x7f7326c1d000 192.168.154.82#47120/key ddns-example-tp: view internal: updating zone 'example.tp/IN': deleting rrset at 'printer72.example.tp' A
+Nov 19 00:02:48 ns1 named[460]: client @0x7f7326c1d000 192.168.154.82#47120/key ddns-example-tp: view internal: updating zone 'example.tp/IN': adding an RR at 'printer72.example.tp' A 192.168.154.165
+Nov 19 00:02:48 ns1 named[460]: client @0x7f731b61b000 172.29.18.170#53073/key ddns-example-tp: view external: updating zone 'example.tp/IN': deleting rrset at 'printer72.example.tp' A
+Nov 19 00:02:48 ns1 named[460]: client @0x7f731b61b000 172.29.18.170#53073/key ddns-example-tp: view external: updating zone 'example.tp/IN': adding an RR at 'printer72.example.tp' A 192.168.154.165
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/external (signed): serial 2026111905 (unsigned 2026111902)
+Nov 19 00:02:48 ns1 named[460]: zone example.tp/IN/internal (signed): serial 2026111905 (unsigned 2026111902)
+Nov 19 00:02:50 ns1 named[460]: received control channel command 'dnssec -checkds published example.tp IN internal'
+Nov 19 00:02:50 ns1 named[460]: keymgr: checkds DS for key example.tp/ECDSAP256SHA256/33186 seen published at Thu Nov 19 00:02:50 2026
+Nov 19 00:02:50 ns1 named[460]: zone example.tp/IN/internal (signed): reconfiguring zone keys
+Nov 19 00:02:50 ns1 named[460]: CDS (SHA-256) for key example.tp/ECDSAP256SHA256/33186 is now published
+Nov 19 00:02:50 ns1 named[460]: CDNSKEY for key example.tp/ECDSAP256SHA256/33186 is now published
+Nov 19 00:02:50 ns1 named[460]: zone example.tp/IN/internal (signed): next key event: 19-Nov-2026 02:07:48.928
+Nov 19 00:02:50 ns1 named[460]: received control channel command 'dnssec -checkds published example.tp IN external'
+Nov 19 00:02:50 ns1 named[460]: keymgr: checkds DS for key example.tp/ECDSAP256SHA256/33186 seen published at Thu Nov 19 00:02:50 2026
+Nov 19 00:02:50 ns1 named[460]: zone example.tp/IN/external (signed): reconfiguring zone keys
+Nov 19 00:02:50 ns1 named[460]: CDS (SHA-256) for key example.tp/ECDSAP256SHA256/33186 is now published
+Nov 19 00:02:50 ns1 named[460]: CDNSKEY for key example.tp/ECDSAP256SHA256/33186 is now published
+Nov 19 00:02:50 ns1 named[460]: zone example.tp/IN/external (signed): next key event: 19-Nov-2026 02:07:48.936
+Nov 19 00:02:53 ns1 named[460]: zone example.tp/IN/internal (signed): sending notifies (serial 2026111906)
+Nov 19 00:02:53 ns1 named[460]: zone example.tp/IN/internal (signed): sending notify to 172.29.18.234#53
+Nov 19 00:02:53 ns1 named[460]: zone example.tp/IN/external (signed): sending notifies (serial 2026111906)
+Nov 19 00:02:53 ns1 named[460]: zone example.tp/IN/external (signed): sending notify to 172.29.18.234#53
+Nov 19 00:02:53 ns1 named[460]: client @0x7f7321476000 172.29.18.234#33691/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': IXFR delta size (3938 bytes) exceeds the maximum ratio to database size (3494 bytes), falling back to AXFR
+Nov 19 00:02:53 ns1 named[460]: client @0x7f7321476000 172.29.18.234#33691/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': AXFR-style IXFR started: TSIG transfer-example-tp (serial 2026111906)
+Nov 19 00:02:53 ns1 named[460]: client @0x7f7321476000 172.29.18.234#33691/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': AXFR-style IXFR ended: 1 messages, 44 records, 3138 bytes, 0.001 secs (3138000 bytes/sec) (serial 2026111906)

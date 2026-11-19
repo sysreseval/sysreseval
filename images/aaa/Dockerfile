@@ -1,5 +1,6 @@
 ARG VERSION=latest
-FROM sysreseval/init12:${VERSION}
+ARG NAMESPACE=sysreseval
+FROM ${NAMESPACE}/init13:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
@@ -8,8 +9,8 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # FreeRADIUS (+ its LDAP module and radclient / radtest), hostapd (its "wired" driver is the
 # 802.1X authenticator of a Linux switch), wpa_supplicant (wired supplicant) and eapol_test, the MIT
 # Kerberos KDC, kadmind and clients, pam_krb5, pam_radius_auth, Apache's mod_auth_gssapi (SPNEGO),
-# oathtool (TOTP codes) and the LDAP clients, on top of the init12 image so that the servers run
-# under a genuine systemd.  slapd, sshd and Apache come from the base12 image.  Declare the machines
+# oathtool (TOTP codes) and the LDAP clients, on top of the init13 image so that the servers run
+# under a genuine systemd.  slapd, sshd and Apache come from the base13 image.  Declare the machines
 # like the init ones:
 #
 #   _machine_specs = {
@@ -76,7 +77,7 @@ RUN for u in hostapd@ wpa_supplicant-wired@ wpa_supplicant@ wpa_supplicant-nl802
             /lib/systemd/system/$u.service > /etc/systemd/system/$u.service; \
     done
 
-# Like the init12 image: no service starts by itself when the entrypoint is /sbin/init.
+# Like the init13 image: no service starts by itself when the entrypoint is /sbin/init.
 RUN rm -f /etc/systemd/system/multi-user.target.wants/freeradius.service \
     /etc/systemd/system/multi-user.target.wants/hostapd.service \
     /etc/systemd/system/multi-user.target.wants/krb5-kdc.service \

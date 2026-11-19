@@ -1,14 +1,15 @@
 ARG VERSION=latest
-FROM sysreseval/init12:${VERSION}
+ARG NAMESPACE=sysreseval
+FROM ${NAMESPACE}/init13:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
 #
 # Electronic mail and LDAP image (the SMTP labs and the LDAP lab): Postfix, Dovecot (IMAP, LMTP,
 # Sieve + ManageSieve), OpenDKIM, policyd-spf and the clients swaks and mutt, plus the LDAP client side, nss-pam-ldapd
-# (nslcd, libnss-ldapd, libpam-ldapd; slapd and ldap-utils come from the base12 image), on top of
-# the init12 image so that the servers run under a genuine systemd (systemctl, journalctl; the
-# systemctl replacement of the base12 image cannot stop an init.d-started slapd).  Declare the
+# (nslcd, libnss-ldapd, libpam-ldapd; slapd and ldap-utils come from the base13 image), on top of
+# the init13 image so that the servers run under a genuine systemd (systemctl, journalctl; the
+# systemctl replacement of the base13 image cannot stop an init.d-started slapd).  Declare the
 # machines like the init ones:
 #
 #   _machine_specs = {
@@ -60,6 +61,12 @@ RUN apt clean && \
 # Kathara containers.
 RUN postconf -X myhostname && postconf -e 'inet_protocols = ipv4'
 
+# The queue directories.  Debian 13's postfix creates them at its first start (`postfix check`,
+# the ExecStartPre of its unit), Debian 12's did at installation.  Dovecot puts its LMTP and SASL
+# sockets in /var/spool/postfix/private: without that directory it does not start, so a
+# `systemctl restart dovecot postfix` would fail on a server where Postfix never ran.
+RUN postfix check >/dev/null 2>&1 && test -d /var/spool/postfix/private
+
 # The LDAP client left unconfigured: libnss-ldapd and libpam-ldapd enable themselves at
 # installation (ldap in nsswitch.conf, pam_ldap in the common-* files); the LDAP lab's students
 # do that configuration.
@@ -67,10 +74,12 @@ RUN pam-auth-update --package --remove ldap \
  && sed -i -E 's/^((passwd|group|shadow|netgroup|aliases|ethers|hosts|networks|protocols|rpc|services):.*[[:space:]])ldap[[:space:]]*$/\1/' /etc/nsswitch.conf \
  && sed -i -E 's/[[:space:]]+$//' /etc/nsswitch.conf
 
-# Like the init12 image: no service starts by itself when the entrypoint is /sbin/init.
+# Like the init13 image: no service starts by itself when the entrypoint is /sbin/init (nslcd
+# has a native unit on Debian 13, a SysV script on Debian 12: the /etc/rc* links below).
 RUN rm -f /etc/systemd/system/multi-user.target.wants/postfix.service \
     /etc/systemd/system/multi-user.target.wants/dovecot.service \
     /etc/systemd/system/multi-user.target.wants/opendkim.service \
+    /etc/systemd/system/multi-user.target.wants/nslcd.service \
     /etc/systemd/system/sockets.target.wants/dovecot.socket
 
 RUN rm -f /etc/rc*/S*postfix* /etc/rc*/S*dovecot* /etc/rc*/S*opendkim* /etc/rc*/S*nslcd* /etc/rc*/S*slapd*

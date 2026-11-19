@@ -13,7 +13,8 @@ reposent sur le comportement observé et non sur le texte de ``/etc/exports``.  
 ``final`` applique la solution de référence.
 
 Particularités techniques (conteneurs Kathara non privilégiés ; vérifié sur un hôte Debian 13,
-Linux 6.12, image sysreseval/base12 = Debian 12, nfs-utils 2.6.2) :
+Linux 6.12, image sysreseval/base12 = Debian 12, nfs-utils 2.6.2 ; le TP donne les mêmes résultats sur
+l'image sysreseval/base13 = Debian 13, nfs-utils 2.8.3, celle qu'il utilise) :
 
 - la racine ``/`` d'un conteneur est un overlayfs, non exportable par NFS : ``initial()`` monte
   un tmpfs sur ``/srv/nfs`` et un tmpfs par partage.  Un système de fichiers par partage est

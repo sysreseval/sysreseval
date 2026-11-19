@@ -36,7 +36,7 @@ from server_echo_helpers import get_http_echo, install_echo_server
 from utils import random_password
 from vrrp import (
     KEEPALIVED_CONF, KEEPALIVED_DIR, KEEPALIVED_UNIT, RADVD_CONF, RADVD_UNIT, VMAC_PREFIX, VRRP_GROUP6, adverts,
-    advert_interval, apply_archive_cmd, archive_mode, archive_text, config_archive_cmd, drop_echo_from_cmd,
+    advert_interval, apply_archive_cmd, archive_mode, archive_text, clear_keepalived_dir_cmd, config_archive_cmd, drop_echo_from_cmd,
     echo_server_is, fault_clear_cmd, find_instance, forged_adverts, holds_address, install_vrrp_probe,
     instance_addresses, instance_group, is_multicast_advert, master_down_interval, notify_paths, notify_states,
     parse_keepalived_conf, parse_notify_log, parse_tcpdump_vrrp, read_archive, stop_cmd, tracked_interfaces,
@@ -63,7 +63,7 @@ DOMAIN = "lab"
 MIRROR = "_h"                       # suffix of the hidden clones (hidden_mirror.expand_topology)
 ROUTERS = ('r1', 'r2')
 CLIENTS = ('pc1', 'pc2')
-INIT_MACHINE = {'image': sre_docker_image("init12"), 'privileged': True, 'entrypoint': "/sbin/init"}
+INIT_MACHINE = {'image': sre_docker_image("init13"), 'privileged': True, 'entrypoint': "/sbin/init"}
 #: the provider's network: one of the documentation ranges (TEST-NET-1/2/3)
 WAN_NETWORKS = [IPv4Network("192.0.2.0/24"), IPv4Network("198.51.100.0/24"), IPv4Network("203.0.113.0/24")]
 MAC_PREFIX = "02:53:52"             # locally administered addresses
@@ -732,7 +732,8 @@ n'apparaît pas dans les annonces, mais elle est posée et retirée avec les aut
         """
         for r in ROUTERS:
             self.cmd(r, f"systemctl stop {KEEPALIVED_UNIT} radvd >/dev/null 2>&1; "
-                        f"rm -rf {KEEPALIVED_DIR}/* {RADVD_CONF} {NOTIFY_LOG}; mkdir -p {KEEPALIVED_DIR}; true")
+                        f"mkdir -p {KEEPALIVED_DIR}; {clear_keepalived_dir_cmd()}; "
+                        f"rm -rf {RADVD_CONF} {NOTIFY_LOG}; true")
             self.file(r, KEEPALIVED_CONF, self.keepalived_conf(r), step=2)
             self.file(r, CHECK_SCRIPT, self.check_script(), permissions=0o755, step=2)
             self.file(r, NOTIFY_SCRIPT, self.notify_script(), permissions=0o755, step=2)
@@ -826,7 +827,7 @@ def router_reset_cmd(data, router: str) -> str:
     for side, device in (('lan', 'eth0'), ('wan', 'eth1')):
         for container in (data.ips, data.ips6):
             commands.append(f"ip addr replace {getattr(container, f'{router}_{side}')} dev {device}")
-    commands += [f"rm -rf {KEEPALIVED_DIR}/* {RADVD_CONF} {NOTIFY_LOG}", "ip neigh flush all", "true"]
+    commands += [clear_keepalived_dir_cmd(), f"rm -rf {RADVD_CONF} {NOTIFY_LOG}", "ip neigh flush all", "true"]
     return "; ".join(commands)
 
 

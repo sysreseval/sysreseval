@@ -17,7 +17,7 @@ that the students read over IMAPS to answer a question.  The state ``final`` app
 reference solution; every question ends with its solution in an ``instructor()`` block.
 
 Image: ``sysreseval/ldap-mail`` (``images/ldap-mail/Dockerfile``: Postfix, Dovecot, policyd-spf, swaks,
-mutt on the init12 image) for ``mail`` and ``peermx`` (systemd), ``pc`` and ``laptop`` (no init).
+mutt on the init13 image) for ``mail`` and ``peermx`` (systemd), ``pc`` and ``laptop`` (no init).
 """
 
 import random
@@ -39,6 +39,10 @@ from smtp import (
     ProbeResult,
     doveconf_listener,
     doveconf_value,
+    dovecot_cleartext_auth_refused,
+    dovecot_mail_location,
+    dovecot_mail_plugins,
+    dovecot_tls_files,
     find_messages,
     get_doveconf,
     get_maildir_messages,
@@ -93,14 +97,14 @@ FQDN = {
     "peermx": PEER_MX,
     "laptop": f"laptop.{HOME_DOMAIN}",
 }
-# The ldap-mail image (images/ldap-mail: init12 + postfix, dovecot, policyd-spf, swaks, mutt, nslcd), written in
+# The ldap-mail image (images/ldap-mail: init13 + postfix, dovecot, policyd-spf, swaks, mutt, nslcd), written in
 # full so that `sre preload-images` finds it.
 MAIL_MACHINE = {
     "image": sre_docker_image("ldap-mail"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
-SYSTEMD_MACHINES = ["mail", "peermx"]  # real systemd (init12 image): systemctl, journalctl
+SYSTEMD_MACHINES = ["mail", "peermx"]  # real systemd (init13 image): systemctl, journalctl
 PROBES = ["probe1", "probe2"]
 SINK_USER = "sink"  # hidden mailbox of peermx receiving the grader's relayed messages
 USERS = ["alice", "carol"]
@@ -131,8 +135,10 @@ MAIL_PARAMS = (
     "smtpd_sasl_type", "smtpd_sasl_path", "smtpd_sasl_auth_enable", "smtpd_sender_login_maps",
     "mailbox_transport", "local_transport", "virtual_transport",
 )
-DOVECOT_SETTINGS = ("mail_location", "ssl", "ssl_cert", "ssl_key", "disable_plaintext_auth",
-                    "auth_mechanisms", "protocols", "listen")
+# Effective values asked to `doveconf` (Dovecot 2.4 names; the files of the certificate are read in
+# `doveconf -n`, where they are a `ssl_server` block: `doveconf ssl_server_cert_file` prints nothing)
+DOVECOT_SETTINGS = ("mail_driver", "mail_path", "ssl", "auth_allow_cleartext", "auth_mechanisms",
+                    "protocols", "listen")
 SPECIAL_MAILBOXES = ("Drafts", "Sent", "Trash", "Junk")
 LMTP_SOCKET = "/var/spool/postfix/private/dovecot-lmtp"  # Dovecot's LMTP listener for Postfix (part 6)
 LMTP_TRANSPORT = "lmtp:unix:private/dovecot-lmtp"  # the same socket, relative to Postfix's queue directory
@@ -277,7 +283,7 @@ SMTP est un protocole **texte** sur TCP : le client envoie des commandes, le ser
 `nc mx.other.tp 25` :
 
 ```
-S: 220 mx.other.tp ESMTP Postfix (Debian/GNU)
+S: 220 mx.other.tp ESMTP Postfix (Debian)
 C: EHLO pc.firm.tp
 S: 250-mx.other.tp
 S: 250-SIZE 10240000
@@ -530,8 +536,8 @@ mode 600, propriété de `root`.
 
 | | Postfix | Dovecot |
 |-|---------|---------|
-| certificat | `smtpd_tls_cert_file = /etc/ssl/certs/mail.crt` | `ssl_cert = </etc/ssl/certs/mail.crt` |
-| clé | `smtpd_tls_key_file = /etc/ssl/private/mail.key` | `ssl_key = </etc/ssl/private/mail.key` |
+| certificat | `smtpd_tls_cert_file = /etc/ssl/certs/mail.crt` | `ssl_server_cert_file = /etc/ssl/certs/mail.crt` |
+| clé | `smtpd_tls_key_file = /etc/ssl/private/mail.key` | `ssl_server_key_file = /etc/ssl/private/mail.key` |
 | politique | `smtpd_tls_security_level = may` (25) / `encrypt` (587), `smtpd_tls_wrappermode = yes` (465) | `ssl = required` |
 | côté client | `smtp_tls_security_level = may` : TLS vers les serveurs qui l'offrent | |
 """)
@@ -547,7 +553,8 @@ commande commence par une **étiquette** choisie par le client, reprise dans la 
 ```
 * OK [CAPABILITY IMAP4rev1 ... STARTTLS LOGINDISABLED] Dovecot ready.      <- sur le port 143 sans TLS
 a LOGIN alice secret
-a NO [PRIVACYREQUIRED] Plaintext authentication disallowed on non-secure (SSL/TLS) connections.
+* BAD [ALERT] cleartext authentication not allowed without SSL/TLS, but your client did it anyway. ...
+a NO [PRIVACYREQUIRED] Cleartext authentication disallowed on non-secure (SSL/TLS) connections.
 ```
 
 ```
@@ -566,8 +573,8 @@ e LOGOUT
 **Formats de boîte.** *mbox* : tous les messages dans un seul fichier (`/var/mail/alice`), fragile en
 écriture concurrente. **Maildir** : un répertoire par boîte avec `tmp/`, `new/` (non lus) et `cur/`,
 un fichier par message, sans verrou ; c'est le format à utiliser avec IMAP (`home_mailbox =
-Maildir/` côté Postfix, `mail_location = maildir:~/Maildir` côté Dovecot : les deux doivent
-désigner le même endroit). Les dossiers IMAP sont des sous-répertoires `.Sent`, `.Trash`...
+Maildir/` côté Postfix, `mail_driver = maildir` et `mail_path = ~/Maildir` côté Dovecot : les deux
+doivent désigner le même endroit). Les dossiers IMAP sont des sous-répertoires `.Sent`, `.Trash`...
 
 **Dovecot** est le serveur IMAP compagnon habituel de Postfix. Sa configuration est répartie dans
 `/etc/dovecot/conf.d/`, et le fichier `local.conf`, inclus en dernier par `dovecot.conf`
@@ -575,17 +582,23 @@ désigner le même endroit). Les dossiers IMAP sont des sous-répertoires `.Sent
 
 | paramètre | rôle |
 |-----------|------|
-| `protocols`, `listen = *` | protocoles servis (`imap lmtp sieve`, ajoutés par les paquets installés : `doveconf protocols`), adresses d'écoute |
-| `mail_location = maildir:~/Maildir` | où sont les boîtes |
-| `ssl = required`, `ssl_cert = <fichier`, `ssl_key = <fichier` | TLS obligatoire (le `<` lit le fichier) : le port 143 n'accepte plus que `STARTTLS`, le 993 est servi |
-| `disable_plaintext_auth = yes` | aucun mot de passe en clair hors TLS (`LOGINDISABLED`) |
-| `auth_mechanisms = plain login` | mécanismes SASL ; les comptes Unix passent par PAM (`passdb { driver = pam }`, configuration Debian) |
+| `protocols`, `listen = *` | protocoles servis (`imap`, `lmtp`, `sieve`, ajoutés par les paquets installés : `doveconf protocols`), adresses d'écoute |
+| `mail_driver = maildir`, `mail_path = ~/Maildir`, `mail_inbox_path = ~/Maildir` | où sont les boîtes : leur format, le répertoire des dossiers et celui de la boîte de réception. La configuration Debian (`conf.d/10-mail.conf`) est celle du format mbox, avec `mail_inbox_path = /var/mail/%{user}` : il faut donc dire aussi que `INBOX` est le Maildir où Postfix dépose (laissé vide, ce réglage la placerait dans `~/Maildir/.INBOX`) |
+| `ssl = required`, `ssl_server_cert_file = fichier`, `ssl_server_key_file = fichier` | TLS obligatoire : le port 143 n'accepte plus que `STARTTLS`, le 993 est servi |
+| `auth_allow_cleartext = no` | aucun mot de passe en clair hors TLS (`LOGINDISABLED`) ; c'est la valeur par défaut |
+| `auth_mechanisms = plain login` | mécanismes SASL ; les comptes Unix passent par PAM (`passdb pam { }`, configuration Debian) |
 | `namespace inbox { mailbox Sent { auto = subscribe  special_use = \Sent } }` | dossiers **spéciaux** (RFC 6154) créés et abonnés d'office : le client sait où ranger les envois (`\Sent`), brouillons (`\Drafts`), corbeille (`\Trash`), indésirables (`\Junk`) |
 | `service auth { unix_listener /var/spool/postfix/private/auth { ... } }` | le socket par lequel Postfix fait vérifier les mots de passe (section @@ref:submission@@) |
 
 `doveconf -n` affiche la configuration qui diffère des valeurs par défaut, `doveconf ssl` une
 valeur effective, `doveadm auth test alice` vérifie un mot de passe, `doveadm user alice` ce que
-Dovecot sait d'un compte, `journalctl -u dovecot` le journal.
+Dovecot sait d'un compte, `doveadm mailbox path -u alice INBOX` le répertoire d'une boîte,
+`journalctl -u dovecot` le journal.
+
+Ces noms sont ceux de **Dovecot 2.4** (Debian 13). La version 2.3, que décrivent encore beaucoup de
+documentations, écrivait `mail_location = maildir:~/Maildir`, `ssl_cert = <fichier`, `ssl_key =
+<fichier` et `disable_plaintext_auth = yes` : Dovecot 2.4 refuse ces anciens noms (`Unknown setting`)
+et ne démarre pas.
 
 Clients : `mutt` lit une boîte distante avec `set folder = imaps://alice@imap.firm.tp/` et `set
 spoolfile = +INBOX` dans `~/.muttrc` (`set imap_user`, `set imap_pass`, `set ssl_force_tls = yes`,
@@ -620,10 +633,10 @@ pour un serveur distant). `mailbox_transport` ne concerne que la remise dans les
 (`/etc/aliases`, `virtual`) et `recipient_delimiter` restent traités par Postfix avant, et l'adresse
 complète (`alice+promo@firm.tp`) est transmise à Dovecot, qui sait lui aussi séparer l'extension
 (`recipient_delimiter = +`, sa valeur par défaut). Le paquet `dovecot-lmtpd` ajoute `lmtp` à
-`protocols` (`doveconf protocols`). Un détail qui coince toujours la première fois : LMTP cherche
-l'utilisateur sous son adresse complète, `alice@firm.tp`, alors que le compte Unix s'appelle `alice`
-(`550 5.1.1 <alice@firm.tp> User doesn't exist`) ; `auth_username_format = %Ln` fait garder à Dovecot
-la seule partie locale, en minuscules, pour toute authentification et toute remise.
+`protocols` (`doveconf protocols`). LMTP reçoit l'adresse complète, `alice@firm.tp`, alors que le
+compte Unix s'appelle `alice` : la configuration Debian (`conf.d/20-lmtp.conf`) fait garder à LMTP la
+seule partie locale, en minuscules (`protocol lmtp { auth_username_format = %{user | username | lower} }`,
+visible dans `doveconf -n`).
 
 Dans le journal, la remise se lit sur deux lignes au lieu d'une :
 
@@ -666,15 +679,16 @@ if header :contains "subject" "[SPAM]" {
 | tests | `header :contains "subject" "x"`, `address :is "from" "bob@other.tp"`, `envelope :detail :is "to" "promo"`, `size :over 1M`, `anyof(...)`, `allof(...)`, `not` |
 | actions | `fileinto "Dossier"`, `redirect "autre@adresse"`, `discard`, `keep`, `stop`, `vacation "texte"`, `addflag "\\Seen"` |
 
-Côté Dovecot : le greffon est chargé pour LMTP (`protocol lmtp { mail_plugins = $mail_plugins sieve }`),
-et `plugin { sieve = file:~/sieve;active=~/.dovecot.sieve }` (réglage Debian) dit où sont les scripts de
-l'utilisateur : le répertoire `~/sieve/`, le script **actif** étant celui que désigne le lien
-`~/.dovecot.sieve`. On peut donc déposer `~/sieve/filters.sieve` et faire le lien à la main, ou passer
+Côté Dovecot : le greffon est chargé pour LMTP (`protocol lmtp { mail_plugins { sieve = yes } }`). Sans
+autre réglage, les scripts de l'utilisateur sont dans le répertoire `~/sieve/`, le script **actif** étant
+celui que désigne le lien `~/.dovecot.sieve` (un bloc `sieve_script personal { path = ...  active_path =
+... }` les placerait ailleurs). On peut donc déposer `~/sieve/filters.sieve` et faire le lien à la main, ou passer
 par **ManageSieve** (RFC 5804, port **4190**, paquet `dovecot-managesieved`), le protocole par lequel un
 client (Thunderbird avec son extension Sieve, `doveadm sieve`...) téléverse, liste et active les scripts
 d'un utilisateur après `STARTTLS` et une authentification (`"filters" ACTIVE` dans la réponse à
 `LISTSCRIPTS`). Outils : `sievec script.sieve` vérifie la syntaxe (et compile en `.svbin`), `sieve-test
-script.sieve message.eml` montre ce que le script ferait d'un message ; `journalctl -u dovecot` note
+script.sieve message.eml` montre ce que le script ferait d'un message, `doveadm sieve list -u alice`
+liste les scripts d'un compte et marque l'actif ; `journalctl -u dovecot` note
 chaque action (`sieve: ... stored mail into mailbox 'Promo'`).
 """)
             + info_subtitle(tr("Soumission : ports 587 et 465, SASL, propriété des adresses"), tag="submission")
@@ -808,8 +822,9 @@ après `STARTTLS`, ou sur 465 / 993, on ne voit plus que du TLS, ce qui est le b
 | `SASL authentication failed` | mot de passe faux, ou Dovecot (`service auth`) injoignable |
 | `Sender address rejected: not owned by user` | `reject_sender_login_mismatch` : l'adresse n'appartient pas au compte authentifié |
 | `Verify return code: 18` / `20` | certificat auto-signé / autorité inconnue du client |
-| `Plaintext authentication disallowed` | normal sur le port 143 sans TLS : utiliser 993 ou `STARTTLS` |
-| `550 5.1.1 User doesn't exist: alice@firm.tp` (LMTP) | Dovecot cherche le compte sous l'adresse complète : `auth_username_format = %Ln` |
+| `Cleartext authentication disallowed` | normal sur le port 143 sans TLS : utiliser 993 ou `STARTTLS` |
+| `Unknown setting: mail_location` (ou `ssl_cert`, `disable_plaintext_auth`...) au démarrage de Dovecot | un réglage de Dovecot 2.3 : voir les noms de la version 2.4, section @@ref:imap@@ |
+| Dovecot répond, mais la boîte de réception reste vide (ou `Permission denied` sur `/var/mail/...`) | `mail_inbox_path` ne désigne pas le Maildir où Postfix dépose : `doveadm mailbox path -u alice INBOX` |
 | `status=bounced (host ...[private/dovecot-lmtp] said: ...)` | Dovecot a refusé la remise LMTP : la raison est entre parenthèses, et dans `journalctl -u dovecot` |
 | `warning: ... is not a fully qualified name` | `myhostname` n'est pas réglé |
 | message accepté mais introuvable | `home_mailbox` non réglé : regarder `/var/mail/$user` |
@@ -956,11 +971,13 @@ après `STARTTLS`, ou sur 465 / 993, on ne voit plus que du TLS, ce qui est le b
         installed packages: imap, lmtp and sieve)."""
         text = (
             "listen = *\n"
-            "mail_location = maildir:~/Maildir\n"
+            "mail_driver = maildir\n"
+            "mail_path = ~/Maildir\n"
+            "mail_inbox_path = ~/Maildir\n"
             "ssl = required\n"
-            f"ssl_cert = <{CERT_FILE}\n"
-            f"ssl_key = <{KEY_FILE}\n"
-            "disable_plaintext_auth = yes\n"
+            f"ssl_server_cert_file = {CERT_FILE}\n"
+            f"ssl_server_key_file = {KEY_FILE}\n"
+            "auth_allow_cleartext = no\n"
             "auth_mechanisms = plain login\n"
             "namespace inbox {\n"
             "  inbox = yes\n"
@@ -970,8 +987,8 @@ après `STARTTLS`, ou sur 465 / 993, on ne voit plus que du TLS, ce qui est le b
         text += "}\n"
         if part >= 6:
             text += (
-                # LMTP receives alice@firm.tp: the system accounts are bare logins
-                "auth_username_format = %Ln\n"
+                # LMTP receives alice@firm.tp and the system accounts are bare logins: Debian's
+                # 20-lmtp.conf already keeps the local part (auth_username_format of protocol lmtp)
                 "service lmtp {\n"
                 f"  unix_listener {LMTP_SOCKET} {{\n"
                 "    mode = 0600\n"
@@ -982,11 +999,11 @@ après `STARTTLS`, ou sur 465 / 993, on ne voit plus que du TLS, ce qui est le b
             )
         if part >= 7:
             text += (
+                # the scripts are where Pigeonhole looks by default: ~/sieve, active one ~/.dovecot.sieve
                 "protocol lmtp {\n"
-                "  mail_plugins = $mail_plugins sieve\n"
-                "}\n"
-                "plugin {\n"
-                "  sieve = file:~/sieve;active=~/.dovecot.sieve\n"
+                "  mail_plugins {\n"
+                "    sieve = yes\n"
+                "  }\n"
                 "}\n"
             )
         if part >= 8:
@@ -1427,10 +1444,11 @@ class Grade(Grade0):
         key_protected = bool(key_mode and key_mode.group(1) in ("600", "400") and key_owner and key_owner.group(1) == "root")
         cert_san = [n.lower().rstrip(".") for n in parse_san(cert_out)]
         # Dovecot
-        mail_location = doveconf_value(dove_eff, "mail_location").lower()
+        mail_location = dovecot_mail_location(dove_eff).lower()
         ssl_mode = doveconf_value(dove_eff, "ssl").lower()
-        ssl_files_ok = CERT_FILE in doveconf_value(dove_eff, "ssl_cert") and KEY_FILE in doveconf_value(dove_eff, "ssl_key")
-        plaintext_disabled = doveconf_value(dove_eff, "disable_plaintext_auth").lower() == "yes" or ssl_mode == "required"
+        cert_file, key_file = dovecot_tls_files(dove)
+        ssl_files_ok = CERT_FILE in cert_file and KEY_FILE in key_file
+        plaintext_disabled = dovecot_cleartext_auth_refused(dove_eff) is True or ssl_mode == "required"
         inbox_ns = dove.get("namespace inbox") if isinstance(dove.get("namespace inbox"), dict) else {}
         auto_boxes = [
             key.split()[1] for key, value in inbox_ns.items()
@@ -1445,8 +1463,7 @@ class Grade(Grade0):
         lmtp_hop = any("LMTP" in h["with"].upper() for m in delivered(mail_msgs, "ext_in", "alice")
                        for h in received_hops(m.message))
         lmtp_proto = dove.get("protocol lmtp") if isinstance(dove.get("protocol lmtp"), dict) else {}
-        sieve_loaded = ("sieve" in lmtp_proto.get("mail_plugins", "").lower()
-                        or "sieve" in doveconf_value(dove, "mail_plugins").lower())
+        sieve_loaded = "sieve" in dovecot_mail_plugins(lmtp_proto) or "sieve" in dovecot_mail_plugins(dove)
         promo_ok = any(_folder_of(m.path).lower() == PROMO_FOLDER.lower() for m in delivered(mail_msgs, "ext_plus", "alice"))
         junk_ok = any(_folder_of(m.path).lower() == "junk" for m in delivered(mail_msgs, "ext_spam", "alice"))
 
@@ -1911,7 +1928,7 @@ que le `CN`, et les clients modernes refusent un certificat sans SAN.
         part5 = self.add_grade_part(no_tr("part5"), tr("Partie 5 — Dovecot : lire sa boîte en IMAPS"))
         q5_answers = {
             "imaps_port": "993",
-            "plaintext_result": "NO [PRIVACYREQUIRED] Plaintext authentication disallowed",
+            "plaintext_result": "NO [PRIVACYREQUIRED] Cleartext authentication disallowed",
             "secret": d.secret,
         }
         q5 = self.question_form(
@@ -1922,10 +1939,11 @@ Dovecot est installé sur `mail` mais arrêté (section @@ref:imap@@ de l'onglet
 boîte depuis `pc` comme depuis `laptop`, **toujours chiffré** :
 
 1. configurez Dovecot (`/etc/dovecot/local.conf`, ou les fichiers de `conf.d/`) : écoute sur le réseau
-   (`listen = *` ; les protocoles servis restent ceux des paquets installés, `doveconf protocols` donne
-   `imap lmtp sieve`), boîtes au format **Maildir** dans le répertoire personnel (le même que Postfix), TLS
-   **obligatoire** avec le certificat de la partie 4 (`ssl = required`, `ssl_cert`, `ssl_key`), aucun mot
-   de passe en clair hors TLS (`disable_plaintext_auth = yes`), mécanismes `plain login` ; déclarez les
+   (`listen = *` ; les protocoles servis restent ceux des paquets installés, `doveconf protocols` liste
+   `imap`, `lmtp` et `sieve`), boîtes au format **Maildir** dans le répertoire personnel, le même que
+   Postfix (`mail_driver`, `mail_path` et `mail_inbox_path`), TLS **obligatoire** avec le certificat de
+   la partie 4 (`ssl = required`, `ssl_server_cert_file`, `ssl_server_key_file`), aucun mot de passe en
+   clair hors TLS (`auth_allow_cleartext = no`), mécanismes `plain login` ; déclarez les
    dossiers spéciaux `Drafts`, `Sent`, `Trash` et `Junk` créés et abonnés automatiquement (`auto =
    subscribe`, `special_use`) ;
 2. lancez Dovecot (`systemctl restart dovecot`), vérifiez `doveconf -n`, `ss -tlnp` (ports 143 et 993)
@@ -1946,8 +1964,9 @@ boîte depuis `pc` comme depuis `laptop`, **toujours chiffré** :
 {dovecot}
 ```
 
-puis `systemctl restart dovecot`. `mail_location = maildir:~/Maildir` correspond au `home_mailbox =
-Maildir/` de Postfix ; les comptes Unix passent par `passdb {{ driver = pam }}` (configuration Debian).
+puis `systemctl restart dovecot`. `mail_path` et `mail_inbox_path` désignent le `home_mailbox =
+Maildir/` de Postfix (sans `mail_inbox_path`, la configuration Debian place `INBOX` dans
+`/var/mail/alice`) ; les comptes Unix passent par `passdb pam {{ }}` (configuration Debian).
 `~/.muttrc` d'Alice sur `pc` :
 
 ```
@@ -1956,7 +1975,7 @@ Maildir/` de Postfix ; les comptes Unix passent par `passdb {{ driver = pam }}` 
 
 La phrase du message de Bob pour cette instance : **{secret}**.
 
-- Évaluation : `doveconf` (`mail_location`, `ssl`, `ssl_cert` / `ssl_key`, `disable_plaintext_auth`,
+- Évaluation : `doveconf` (`mail_driver`, `mail_path`, `ssl`, les fichiers de `ssl_server`, `auth_allow_cleartext`,
   `namespace inbox`), ports 143 et 993 en écoute ; `probe2` (wan) vérifie le certificat du port 993 avec
   `openssl s_client` puis se connecte en IMAPS avec le compte `alice` et cherche les messages de test ;
   `probe1` (lan) tente un `LOGIN` sur le port 143 sans TLS (doit échouer) puis après `STARTTLS` (doit
@@ -1969,7 +1988,7 @@ La phrase du message de Bob pour cette instance : **{secret}**.
 
 - le port d'IMAP en TLS implicite : @@{imaps_port:[0-9]+}@@
 - ce que répond Dovecot à `a LOGIN alice ...` sur le port 143 sans TLS :
-  @@{plaintext_result:>NO [PRIVACYREQUIRED] Plaintext authentication disallowed|OK Logged in|BAD Error in IMAP command|NO [AUTHENTICATIONFAILED] Authentication failed}@@
+  @@{plaintext_result:>NO [PRIVACYREQUIRED] Cleartext authentication disallowed|OK Logged in|BAD Error in IMAP command|NO [AUTHENTICATIONFAILED] Authentication failed}@@
 - la phrase du message de Bob pour Alice : @@{secret:[A-Za-z ]+}@@
 """)
             + instructor(
@@ -2045,9 +2064,9 @@ Postfix écrit encore lui-même les messages dans les Maildir ; faites-les remet
 1. côté Dovecot, déclarez le socket LMTP que Postfix joindra : `service lmtp { unix_listener
    /var/spool/postfix/private/dovecot-lmtp { ... } }` (mode `0600`, utilisateur et groupe `postfix`) ;
    `lmtp` figure déjà dans `doveconf protocols` (paquet `dovecot-lmtpd`). LMTP recevra des adresses
-   complètes (`alice@firm.tp`) alors que les comptes sont `alice` : `auth_username_format = %Ln` ne garde
-   que la partie locale (sinon `550 5.1.1 User doesn't exist: alice@firm.tp`). Relancez Dovecot et
-   vérifiez `ls -l /var/spool/postfix/private/dovecot-lmtp` ;
+   complètes (`alice@firm.tp`) alors que les comptes sont `alice` : vérifiez dans `doveconf -n` que
+   `protocol lmtp` ne garde que la partie locale (`auth_username_format`, réglage Debian). Relancez
+   Dovecot et vérifiez `ls -l /var/spool/postfix/private/dovecot-lmtp` ;
 2. côté Postfix, `mailbox_transport = lmtp:unix:private/dovecot-lmtp`, puis `systemctl reload postfix` ;
 3. depuis `laptop`, envoyez un message à `alice@firm.tp` par `mx.other.tp` et suivez-le dans le journal de
    `mail` : la ligne `postfix/lmtp` (`relay=...`, `status=sent (250 2.0.0 ... Saved)`), la ligne
@@ -2137,9 +2156,8 @@ Journal : `postfix/lmtp[...]: ...: to=<alice@firm.tp>, relay={relay}, ... status
 Alice veut que son courrier soit trié **sur le serveur**, avant même d'ouvrir un client (section
 @@ref:sieve@@ de l'onglet Informations) :
 
-1. chargez le greffon Sieve pour LMTP (`protocol lmtp { mail_plugins = $mail_plugins sieve }`) ; vérifiez
-   dans `doveconf -n` que `plugin { sieve = file:~/sieve;active=~/.dovecot.sieve }` est en place (réglage
-   Debian) et que `doveconf protocols` liste `sieve` (le port 4190 de ManageSieve) ; relancez Dovecot ;
+1. chargez le greffon Sieve pour LMTP (`protocol lmtp { mail_plugins { sieve = yes } }`) ; vérifiez
+   que `doveconf protocols` liste `sieve` (le port 4190 de ManageSieve) ; relancez Dovecot ;
 2. écrivez le script d'Alice dans `/home/alice/sieve/filters.sieve` (propriétaire `alice`) : les messages
    adressés à **`alice+promo@firm.tp`** vont dans le dossier **`Promo`** (créé au besoin), ceux dont le
    sujet contient **`[SPAM]`** vont dans **`Junk`**, le reste dans `INBOX` ; vérifiez la syntaxe avec
@@ -2644,8 +2662,9 @@ only carries the `CN`, and modern clients refuse a certificate without a SAN.
 {dovecot}
 ```
 
-puis `systemctl restart dovecot`. `mail_location = maildir:~/Maildir` correspond au `home_mailbox =
-Maildir/` de Postfix ; les comptes Unix passent par `passdb {{ driver = pam }}` (configuration Debian).
+puis `systemctl restart dovecot`. `mail_path` et `mail_inbox_path` désignent le `home_mailbox =
+Maildir/` de Postfix (sans `mail_inbox_path`, la configuration Debian place `INBOX` dans
+`/var/mail/alice`) ; les comptes Unix passent par `passdb pam {{ }}` (configuration Debian).
 `~/.muttrc` d'Alice sur `pc` :
 
 ```
@@ -2654,7 +2673,7 @@ Maildir/` de Postfix ; les comptes Unix passent par `passdb {{ driver = pam }}` 
 
 La phrase du message de Bob pour cette instance : **{secret}**.
 
-- Évaluation : `doveconf` (`mail_location`, `ssl`, `ssl_cert` / `ssl_key`, `disable_plaintext_auth`,
+- Évaluation : `doveconf` (`mail_driver`, `mail_path`, `ssl`, les fichiers de `ssl_server`, `auth_allow_cleartext`,
   `namespace inbox`), ports 143 et 993 en écoute ; `probe2` (wan) vérifie le certificat du port 993 avec
   `openssl s_client` puis se connecte en IMAPS avec le compte `alice` et cherche les messages de test ;
   `probe1` (lan) tente un `LOGIN` sur le port 143 sans TLS (doit échouer) puis après `STARTTLS` (doit
@@ -2666,8 +2685,9 @@ La phrase du message de Bob pour cette instance : **{secret}**.
 {dovecot}
 ```
 
-then `systemctl restart dovecot`. `mail_location = maildir:~/Maildir` matches Postfix's `home_mailbox =
-Maildir/`; the Unix accounts go through `passdb {{ driver = pam }}` (Debian's configuration). Alice's
+then `systemctl restart dovecot`. `mail_path` and `mail_inbox_path` name Postfix's `home_mailbox =
+Maildir/` (without `mail_inbox_path`, Debian's configuration puts `INBOX` in `/var/mail/alice`); the Unix
+accounts go through `passdb pam {{ }}` (Debian's configuration). Alice's
 `~/.muttrc` on `pc`:
 
 ```
@@ -2676,7 +2696,7 @@ Maildir/`; the Unix accounts go through `passdb {{ driver = pam }}` (Debian's co
 
 The sentence of Bob's message for this instance: **{secret}**.
 
-- Evaluation: `doveconf` (`mail_location`, `ssl`, `ssl_cert` / `ssl_key`, `disable_plaintext_auth`,
+- Evaluation: `doveconf` (`mail_driver`, `mail_path`, `ssl`, the files of `ssl_server`, `auth_allow_cleartext`,
   `namespace inbox`), ports 143 and 993 listening; `probe2` (wan) checks the certificate of port 993 with
   `openssl s_client`, then connects over IMAPS as `alice` and looks for the test messages; `probe1` (lan)
   tries a `LOGIN` on port 143 without TLS (must fail) then after `STARTTLS` (must succeed).

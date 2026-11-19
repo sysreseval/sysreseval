@@ -1,4 +1,5 @@
 ARG VERSION=latest
+ARG NAMESPACE=sysreseval
 
 # ---------------------------------------------------------------------------
 # Stage 1: Asterisk compiled from the upstream tarball.  Debian 12 and 13 have no asterisk
@@ -15,7 +16,7 @@ ARG VERSION=latest
 #   cache/pjproject-2.17.tar.bz2
 #   cache/asterisk-core-sounds-{en,fr}-alaw-1.6.1.tar.gz  and their  .tar.gz.sha1
 # ---------------------------------------------------------------------------
-FROM debian:12 AS build
+FROM debian:13 AS build
 
 ARG ASTERISK_VERSION=22.12.0
 ARG ASTERISK_SHA256=f8b2ba98aac6c4ff3376bc0a2868bea6ed577ca684efb7ec739ae6e8ce6e35e2
@@ -70,7 +71,7 @@ RUN find /out -type f \( -name '*.so' -o -name '*.so.*' -o -path '*/sbin/asteris
 # ---------------------------------------------------------------------------
 # Stage 2: the image of the labs
 # ---------------------------------------------------------------------------
-FROM sysreseval/init12:${VERSION}
+FROM ${NAMESPACE}/init13:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
@@ -78,7 +79,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # VoIP image (the SIP / RTP lab): Asterisk 22 (chan_pjsip, voicemail, SRTP, TLS; stage 1) and the
 # SIP tools baresip (a console softphone: with the sine source and the sndfile recorder it needs
 # no sound card), sngrep (SIP call flows on a terminal), sipsak (OPTIONS / REGISTER tests) and
-# sox (wav files), on top of the init12 image so that the PBX runs under a genuine systemd
+# sox (wav files), on top of the init13 image so that the PBX runs under a genuine systemd
 # (systemctl restart asterisk, journalctl).  tcpdump, tshark and Wireshark come from the base
 # image.  Declare the PBX like the init machines:
 #
@@ -109,7 +110,7 @@ RUN apt update && apt install -y \
     libsqlite3-0 \
     libuuid1 \
     libxml2 \
-    libssl3 \
+    libssl3t64 \
     libsrtp2-1 \
     libsystemd0 \
     baresip-core \
@@ -122,7 +123,7 @@ RUN apt clean && \
 
 COPY --from=build /out/ /
 COPY etc-asterisk/ /etc/asterisk/
-# Like the other services of the init12 image: installed, never started by itself.
+# Like the other services of the init13 image: installed, never started by itself.
 COPY asterisk.service /lib/systemd/system/asterisk.service
 # baresip needs $LOGNAME to find ~/.baresip: a wrapper ahead of /usr/bin in the PATH sets it.
 COPY baresip /usr/local/bin/baresip

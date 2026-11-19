@@ -43,6 +43,26 @@ class AttrDict(dict):
     __delattr__ = dict.__delitem__
 
 
+# /etc/bind/db.local, the zone file the question of part 3 gives as a template.  The bind9 package
+# of Debian 12 installed it; the one of Debian 13 does not (BIND's own `empty-zones` replaced the
+# default zones of the package): `initial` writes it on ns2, as Debian 12 had it.
+DB_LOCAL = """;
+; BIND data file for local loopback interface
+;
+$TTL\t604800
+@\tIN\tSOA\tlocalhost. root.localhost. (
+\t\t\t      2\t\t; Serial
+\t\t\t 604800\t\t; Refresh
+\t\t\t  86400\t\t; Retry
+\t\t\t2419200\t\t; Expire
+\t\t\t 604800 )\t; Negative Cache TTL
+;
+@\tIN\tNS\tlocalhost.
+@\tIN\tA\t127.0.0.1
+@\tIN\tAAAA\t::1
+"""
+
+
 @dataclass(slots=True)
 class Data(Data0):
     # part1: values served by unbound on gw (zone LAB_ZONE)
@@ -107,13 +127,13 @@ class NetScheme(NetScheme0):
         "ns1": {
             "privileged": True,
             "entrypoint": "/sbin/init",
-            "image": sre_docker_image("init12"),
+            "image": sre_docker_image("init13"),
             "color": "lightgreen",
         },
         "ns2": {
             "privileged": True,
             "entrypoint": "/sbin/init",
-            "image": sre_docker_image("init12"),
+            "image": sre_docker_image("init13"),
             "color": "lightgreen",
         },
         "r1": {},
@@ -699,6 +719,8 @@ server:
             self.cmd(m, "systemctl stop unbound 2>/dev/null || true")
             self.cmd(m, "systemctl stop named   2>/dev/null || true")
             self.cmd(m, "systemctl stop bind9   2>/dev/null || true")
+        # the template of the zone file of part 3 (not in the bind9 package of Debian 13)
+        self.file(machine="ns2", filename="/etc/bind/db.local", content=DB_LOCAL)
 
     @sre_state(user_allowed=False)
     def final(self):

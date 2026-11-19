@@ -1,3 +1,4 @@
+import re
 import shlex
 from typing import List, Tuple
 
@@ -14,6 +15,8 @@ import os, sys, time, glob, subprocess, re, pwd, datetime
 
 LOG = '/var/log/.ssh_monitor.log'
 AUTH_LOG = '/var/log/auth.log'
+# the process that logs a connection: sshd up to OpenSSH 9.7 (Debian 12), sshd-session since 9.8
+SSHD = r'sshd(?:-session)?\[(\d+)\]'
 
 
 def daemonize():
@@ -92,11 +95,11 @@ def main():
             buf += chunk
             while '\n' in buf:
                 line, buf = buf.split('\n', 1)
-                m = re.search(r'sshd\[(\d+)\]: Accepted \S+ for (\S+) from (\S+)', line)
+                m = re.search(SSHD + r': Accepted \S+ for (\S+) from (\S+)', line)
                 if m:
                     pid_to_ip[m.group(1)] = m.group(3)
                     continue
-                m = re.search(r'sshd\[(\d+)\].*session opened for user (\w+)', line)
+                m = re.search(SSHD + r'.*session opened for user (\w+)', line)
                 if m:
                     pid, username = m.group(1), m.group(2)
                     src = pid_to_ip.pop(pid, 'unknown')
@@ -108,6 +111,22 @@ def main():
 if __name__ == '__main__':
     main()
 '''
+
+
+# The syslog tag of the process that logs a connection in auth.log: `sshd[PID]` up to OpenSSH 9.7
+# (Debian 12), `sshd-session[PID]` since OpenSSH 9.8 split the server (Debian 13: OpenSSH 10.0).
+_SSHD_TAG_RE = re.compile(r'\bsshd(?:-session)?\[\d+\]')
+
+
+def _accepted_then_session_opened(log_output: str, method: str, username: str) -> bool:
+    """True when *log_output* (an auth.log) holds an sshd line `Accepted <method> for <username>`
+    directly followed by the opening of the PAM session of that user."""
+    lines = (log_output or '').splitlines()
+    for i, line in enumerate(lines[:-1]):
+        if (_SSHD_TAG_RE.search(line) and f"Accepted {method} for {username}" in line
+                and f"pam_unix(sshd:session): session opened for user {username}" in lines[i + 1]):
+            return True
+    return False
 
 
 def add_ssh_monitor_agent(net_scheme: NetScheme0, machine: str, step: int = 1) -> None:
@@ -585,18 +604,7 @@ def eval_ssh_connection_with_password(
     )
 
     log_output, _ = log
-    if not log_output:
-        return False
-    lines = log_output.splitlines()
-    for i, line in enumerate(lines):
-        if f"sshd[" in line and f"Accepted password for {username}" in line:
-            if (
-                i + 1 < len(lines)
-                and f"pam_unix(sshd:session): session opened for user {username}"
-                in lines[i + 1]
-            ):
-                return True
-    return False
+    return _accepted_then_session_opened(log_output, 'password', username)
 
 
 def eval_ssh_connection_with_ssh_agent(
@@ -738,15 +746,4 @@ def eval_ssh_connection_with_key(
     )
 
     log_output, _ = log
-    if not log_output:
-        return False
-    lines = log_output.splitlines()
-    for i, line in enumerate(lines):
-        if f"sshd[" in line and f"Accepted publickey for {username}" in line:
-            if (
-                i + 1 < len(lines)
-                and f"pam_unix(sshd:session): session opened for user {username}"
-                in lines[i + 1]
-            ):
-                return True
-    return False
+    return _accepted_then_session_opened(log_output, 'publickey', username)

@@ -138,7 +138,7 @@ entre `reject` et `drop`, la limitation de débit, les compteurs et la journalis
 | ensemble (*set*) | des valeurs d'un même type, que les règles consultent en une seule opération |
 | dictionnaire (*map*) | des associations clé : valeur ; la valeur peut être un verdict (*verdict map*) |
 
-Les machines du TP ont nftables 1.0.6 (`nft --version`), la version de Debian 12 : c'est elle que
+Les machines du TP ont nftables 1.1.3 (`nft --version`), la version de Debian 13 : c'est elle que
 ce cours décrit.
 
 **Comment lire ce cours.** Les sections @@ref:hooks@@ à @@ref:conntrack@@ rappellent les bases,
@@ -751,11 +751,12 @@ diagnostic de base : il dit si une règle sert, et laquelle a vu passer un paque
 un verdict : `tcp dport 80 counter accept` compte puis accepte ; une règle `counter` sans
 verdict compte et laisse continuer.
 
-Le compteur d'une règle ne se remet pas à zéro avec la version de `nft` des machines du TP : il
-repart de zéro quand on remplace la règle ou que l'on recharge le fichier (`nft reset rules`
-n'existe qu'à partir de nftables 1.0.7). On peut en revanche déclarer un **compteur nommé**,
-objet de la table que plusieurs règles alimentent et que l'on relit ou remet à zéro
-séparément :
+Les compteurs des règles se remettent à zéro avec `nft reset rules` (tout le jeu de règles),
+`nft reset rules inet filter` (une table) ou `nft reset rules inet filter input` (une chaîne) :
+la commande affiche les règles avec leurs compteurs, puis les remet à zéro ; ils repartent
+aussi de zéro quand on remplace la règle ou que l'on recharge le fichier. On peut aussi
+déclarer un **compteur nommé**, objet de la table que plusieurs règles alimentent et que l'on
+relit ou remet à zéro séparément :
 
 ```
 nft add counter inet filter web

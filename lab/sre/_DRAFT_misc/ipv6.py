@@ -2,7 +2,7 @@
 double pile, tunnel 6in4.
 
 Maquette double pile : ``m1 — lan1 — r1 — wan1 — wan — wan2 — r2 — lan2 — m2``, plus ``lan3`` sur la
-troisième interface de ``r2`` avec le serveur ``srv`` (image init12 : DHCPv6) et deux postes ``pc1``
+troisième interface de ``r2`` avec le serveur ``srv`` (image init13 : DHCPv6) et deux postes ``pc1``
 (SLAAC) et ``pc2`` (DHCPv6).  L'IPv4 est déjà configuré partout (le réseau « historique ») ; les
 étudiants déploient IPv6 par-dessus : adresses et routes statiques de ``m1``, ``r1``, ``r2``, ``m2``
 et ``srv`` (l'opérateur ``wan`` est pré-configuré et route un /48 par site), annonces de routeur sur
@@ -87,7 +87,7 @@ TUN_OVERHEAD = pmtu.SIT_OVERHEAD  # 20: IPv6 packet inside a plain IPv4 packet (
 MIN_BYTES = 100_000               # a transfer "works" above this (≈ 0 under the black hole, ~5 MB otherwise)
 WAN_IFACE = {'r1': 'eth1', 'r2': 'eth0'}   # interfaces of the students' routers toward the operator
 PROBE_WAIT = 5.0                  # seconds the probe collects RAs / DHCPv6 replies
-INIT_MACHINE = {"image": sre_docker_image("init12"), "privileged": True, "entrypoint": "/sbin/init"}
+INIT_MACHINE = {"image": sre_docker_image("init13"), "privileged": True, "entrypoint": "/sbin/init"}
 # the privileged machines: /proc/sys is already writable (remount_proc_sys would fail)
 PRIVILEGED = ('srv',)
 #: visible machines with a static configuration (IPv4 pre-configured, IPv6 configured by the students)
@@ -797,7 +797,7 @@ octets.
 
 ```
 ping -6 -c 3 -M do -s 1452 m2       # "Packet too big: mtu=N" venant du routeur, puis
-                                    #   "local error: message too long, mtu: N" (PMTU connu)
+                                    #   "sendmsg: Message too long" (PMTU connu)
 ping -6 -c 1 -s 3000 m2             # trop grand pour tout lien : la source fragmente (en-tête 44)
 tracepath -6 -n m2                  # PMTU saut par saut
 ip -6 route get ADRESSE             # "mtu N" quand un PMTU est mémorisé ; ip -6 route flush cache
@@ -928,7 +928,7 @@ l'inspection : un pare-feu peut rejeter les fragments autres que le premier (`ex
 | `dhclient -6` répète ses `XMT: Solicit` | pas de serveur à l'écoute sur le lien, ou mauvaise interface d'écoute | `ps -C dhcpd -o args`, journal du serveur |
 | `pc2` obtient une adresse dynamique malgré la réservation | DUID différent de celui déclaré (fichier de baux ancien, `-D LL` oublié) | journal du serveur (`duid …`), `/var/lib/dhcp/dhclient6.leases` |
 | le routeur IPv6 ne relaie pas | `net.ipv6.conf.all.forwarding=0` | `sysctl` |
-| `local error: message too long, mtu: N` dès le premier `ping -6 -M do` | un PMTU est déjà mémorisé (`ip -6 route get`, `ip -6 route flush cache`) | |
+| `sendmsg: Message too long` dès le premier `ping -6 -M do` | un PMTU est déjà mémorisé (`ip -6 route get`, `ip -6 route flush cache`) | |
 | `ping -6 -M do -s 1452` n'obtient ni réponse ni erreur | ICMPv6 filtré (`trou_noir`) : le paquet est jeté en silence | |
 | `ping` passe mais `iperf3` reste à 0 bit/s | trou noir PMTUD (section @@ref:mtu@@) | |
 | `iperf3 -4` passe mais `iperf3 -6` gèle | correction limitée à IPv4 (règle `meta nfproto ipv4`, ou table `ip` au lieu de `inet`) | |
@@ -1291,7 +1291,7 @@ class Grade(Grade0):
         tunnel_out, _ = self.test('r1', tunnel_probe, step=2, timeout=20, allow_error=True)
         tunnel_pings = pmtu.ping_received(tc.section_text(tunnel_out, 'T6'))
         fit_ok = pmtu.ping_received(tc.section_text(tunnel_out, 'FIT')) >= 1
-        over_ok = pmtu.parse_ping_errors(tc.section_text(tunnel_out, 'OVER'))['too_long_mtu'] == tun_mtu
+        over_ok = pmtu.refused_locally(tc.section_text(tunnel_out, 'OVER'), tun_mtu)
         mtus = {r: pmtu.iface_mtus(links[r]) for r in ROUTERS6}
         wan_mtu_reduced = {r: (mtus[r].get(WAN_IFACE[r]) or 1500) <= n for r in ROUTERS6}
         clamp6_ok = any(pmtu.mss_clamped(pmtu.mss_clamp_rules(rulesets[r]), 6, mss6, rt_mtu_ok=wan_mtu_reduced[r])
@@ -2105,7 +2105,7 @@ Les liens de l'opérateur (`wan`) ont un MTU inférieur à 1500. Dans cette part
 
 ```
 ping -6 -c 3 -M do -s 1452 m2  # From wan_wan1 ({wan1v6}) icmp_seq=1 Packet too big: mtu={n}
-# puis, deux fois : ping: local error: message too long, mtu: {n}
+# puis, deux fois : ping: sendmsg: Message too long
 ping -4 -c 3 -M do -s 1472 m2  # From wan_wan1 ({wan1v4}) icmp_seq=1 Frag needed and DF set (mtu = {n})
 ip -6 route get {m2v6}  # ... expires ...sec mtu {n}
 tracepath -6 -n m2  # Resume: pmtu {n} hops 4 back 4
@@ -2324,7 +2324,7 @@ ip -6 addr add {r2_tun} dev sit1
   MTU inférieur à 1280 est refusé (`Error: mtu less than device minimum.`).
 - Vérification depuis `r1` : `ping -6 {r2_tun_ip}` passe ; `ping -6 -M do -s {fit} {r2_tun_ip}` passe
   ({fit} + 48 = {tun_mtu}) ; `ping -6 -M do -s {over} {r2_tun_ip}` répond
-  `local error: message too long, mtu: {tun_mtu}`. `tcpdump -n -v -i eth1 'ip proto 41'` montre des paquets
+  `ping: sendmsg: Message too long`. `tcpdump -n -v -i eth1 'ip proto 41'` montre des paquets
   IPv4 d'au plus {n} octets.
 - Évaluation : `sit_r1` et `sit_r2` (type `sit` avec `local` / `remote` égaux aux adresses IPv4 `wan1` /
   `wan2`, puis MTU {tun_mtu} : 2 points chacun), `sit_joignable`, `sit_pmtu` (les deux `ping -6 -M do` ci-dessus,

@@ -1,0 +1,11 @@
+mail_driver = maildir
+mail_path = ~/Maildir
+ssl = required
+auth_allow_cleartext = no
+auth_mechanisms = plain login
+protocols {
+  imap = yes
+  lmtp = yes
+  sieve = yes
+}
+listen = *

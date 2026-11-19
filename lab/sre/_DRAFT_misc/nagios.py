@@ -92,7 +92,7 @@ eval_before_exit = True
 record_sessions = False
 
 DOMAIN = "corp.lab"
-# The monitoring image (images/monitoring: init12 + Nagios 4, the plugins, NRPE, Net-SNMP...), written
+# The monitoring image (images/monitoring: init13 + Nagios 4, the plugins, NRPE, Net-SNMP...), written
 # in full so that `sre preload-images` finds it.
 SYSTEMD_MACHINE = {
     "image": sre_docker_image("monitoring"),

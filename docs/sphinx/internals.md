@@ -210,9 +210,9 @@ The course of a lab and its question texts may hold the plain-text markers of `S
 `sre start` emits JSON lines to **stderr** so the GUI can render progress:
 
 ```json
-{"phase": "pull",   "status": "start",    "image": "sysreseval/base12:1.33"}
-{"phase": "pull",   "status": "progress", "image": "sysreseval/base12:1.33", "percent": 42}
-{"phase": "pull",   "status": "end",      "image": "sysreseval/base12:1.33"}
+{"phase": "pull",   "status": "start",    "image": "sysreseval/base13:1.34"}
+{"phase": "pull",   "status": "progress", "image": "sysreseval/base13:1.34", "percent": 42}
+{"phase": "pull",   "status": "end",      "image": "sysreseval/base13:1.34"}
 {"phase": "deploy", "status": "start",    "total": 3}
 {"phase": "deploy", "status": "progress", "current": 1, "total": 3}
 {"phase": "deploy", "status": "end",      "total": 3}

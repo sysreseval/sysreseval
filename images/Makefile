@@ -3,66 +3,51 @@ SHELL := /bin/bash
 VERSION   ?= 1.34
 NAMESPACE ?= sysreseval
 
-IMAGES := base12 init12 routing-frr ldap-mail proxy monitoring voip aaa base13 init13
+IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa base12 init12
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
 
 all: $(IMAGES)
 
-# Debian 12 (bookworm) images: base12 on kathara/base, init12 = base12 + a genuine systemd.
-base12:
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/base12:$(VERSION) \
-		base12
+# NAMESPACE names the image built and the one it is built FROM (a test build under another
+# namespace never takes a parent from, nor replaces an image of, the published one).
+BUILD = docker build --build-arg VERSION=$(VERSION) --build-arg NAMESPACE=$(NAMESPACE)
 
-init12: base12
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/init12:$(VERSION) \
-		init12
+# Debian 13 (trixie) images, those of the labs: base13 on debian:13 (kathara/base is still
+# Debian 12), init13 = base13 + a genuine systemd.
+base13:
+	$(BUILD) -t $(NAMESPACE)/base13:$(VERSION) base13
 
-routing-frr: base12
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/routing-frr:$(VERSION) \
-		routing-frr
+init13: base13
+	$(BUILD) -t $(NAMESPACE)/init13:$(VERSION) init13
 
-ldap-mail: init12
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/ldap-mail:$(VERSION) \
-		ldap-mail
+routing-frr: base13
+	$(BUILD) -t $(NAMESPACE)/routing-frr:$(VERSION) routing-frr
 
-proxy: init12
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/proxy:$(VERSION) \
-		proxy
+ldap-mail: init13
+	$(BUILD) -t $(NAMESPACE)/ldap-mail:$(VERSION) ldap-mail
 
-monitoring: init12
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/monitoring:$(VERSION) \
-		monitoring
+proxy: init13
+	$(BUILD) -t $(NAMESPACE)/proxy:$(VERSION) proxy
+
+monitoring: init13
+	$(BUILD) -t $(NAMESPACE)/monitoring:$(VERSION) monitoring
 
 # Asterisk is compiled from its sources (see voip/Dockerfile: a few minutes, and what to put in
 # voip/cache/ on a build host without access to downloads.asterisk.org and GitHub).
-voip: init12
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/voip:$(VERSION) \
-		voip
+voip: init13
+	$(BUILD) -t $(NAMESPACE)/voip:$(VERSION) voip
 
-aaa: init12
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/aaa:$(VERSION) \
-		aaa
+aaa: init13
+	$(BUILD) -t $(NAMESPACE)/aaa:$(VERSION) aaa
 
-# Debian 13 (trixie) twins of base12 and init12, built on debian:13 (kathara/base is still Debian 12):
-# the labs move to them one by one (sre_docker_image("base13") / ("init13")).
-base13:
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/base13:$(VERSION) \
-		base13
+# Debian 12 (bookworm) images, kept for the labs that still name them: base12 on kathara/base,
+# init12 = base12 + a genuine systemd.  No other image is built from them any more.
+base12:
+	$(BUILD) -t $(NAMESPACE)/base12:$(VERSION) base12
 
-init13: base13
-	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/init13:$(VERSION) \
-		init13
+init12: base12
+	$(BUILD) -t $(NAMESPACE)/init12:$(VERSION) init12
 
 PUSH_TARGETS := $(addprefix push-,$(IMAGES))
 
@@ -73,8 +58,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base12 + init12 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + base13 + init13"
-	@echo "  base12 | init12 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | base13 | init13  build one image (deps included)"
+	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + base12 + init12"
+	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | base12 | init12  build one image (deps included)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

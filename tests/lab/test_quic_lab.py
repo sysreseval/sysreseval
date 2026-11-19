@@ -204,7 +204,7 @@ class TestTopology:
     def test_machines(self, lab):
         specs = lab.NetScheme._machine_specs
         assert set(specs) == {'client', 'ref', 'web', 'edge', 'ns', 'fw', 'pc', 'probe'}
-        # every machine names its Debian 13 image: the default image is still Debian 12
+        # every machine names its Debian 13 image (the lab was written when the default image was Debian 12)
         assert all(spec['image'].split(':')[0] in ('sysreseval/base13', 'sysreseval/init13') for spec in specs.values())
         for m in ('ref', 'web', 'edge', 'ns'):
             assert specs[m]['image'].startswith('sysreseval/init13:') and specs[m]['privileged']

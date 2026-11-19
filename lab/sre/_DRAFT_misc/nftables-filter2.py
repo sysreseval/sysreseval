@@ -188,8 +188,8 @@ Un **pare-feu** applique une politique aux paquets : les accepter, les détruire
 Sous Linux il s'écrit avec **nftables** (commande **`nft`**) : des règles accrochées aux points
 de passage des paquets dans le noyau, que fournit **Netfilter**. Ce cours rappelle d'abord
 l'essentiel de nftables, puis traite ce qui fait l'objet de ce TP : filtrer ce qui **sort**
-d'une machine et, surtout, ce qui **traverse un routeur**. Les machines du TP ont nftables 1.0.6
-(`nft --version`), la version de Debian 12.
+d'une machine et, surtout, ce qui **traverse un routeur**. Les machines du TP ont nftables 1.1.3
+(`nft --version`), la version de Debian 13.
 
 **Comment lire ce cours.** Les questions 2 et 3 (le pare-feu d'un poste, puis d'un serveur)
 s'appuient sur les sections @@ref:hooks@@ à @@ref:conntrack@@ ; la question 4 (la chaîne
@@ -600,10 +600,9 @@ attend comme avec `drop`.
 **`counter`** compte les paquets et les octets qui atteignent cet endroit de la règle :
 `tcp dport 25 counter reject`. `nft list ruleset` affiche alors `counter packets 3 bytes 180` sur
 la règle : c'est le moyen le plus simple de savoir **quelle règle** a vu un paquet. Pour compter
-ce que la politique d'une chaîne détruit, on termine la chaîne par une règle `counter drop`. Avec
-la version de `nft` des machines du TP, le compteur d'une règle ne se remet pas à zéro (`nft
-reset counters` ne concerne que les compteurs nommés, déclarés par `nft add counter`) : on
-remplace la règle.
+ce que la politique d'une chaîne détruit, on termine la chaîne par une règle `counter drop`. Les
+compteurs des règles se remettent à zéro avec `nft reset rules` (`nft reset counters` ne
+concerne que les compteurs nommés, déclarés par `nft add counter`).
 
 ### @@sec:log@@ Journaliser
 
@@ -2039,10 +2038,9 @@ _TRANSLATIONS = {
 **`counter`** compte les paquets et les octets qui atteignent cet endroit de la règle :
 `tcp dport 25 counter reject`. `nft list ruleset` affiche alors `counter packets 3 bytes 180` sur
 la règle : c'est le moyen le plus simple de savoir **quelle règle** a vu un paquet. Pour compter
-ce que la politique d'une chaîne détruit, on termine la chaîne par une règle `counter drop`. Avec
-la version de `nft` des machines du TP, le compteur d'une règle ne se remet pas à zéro (`nft
-reset counters` ne concerne que les compteurs nommés, déclarés par `nft add counter`) : on
-remplace la règle.
+ce que la politique d'une chaîne détruit, on termine la chaîne par une règle `counter drop`. Les
+compteurs des règles se remettent à zéro avec `nft reset rules` (`nft reset counters` ne
+concerne que les compteurs nommés, déclarés par `nft add counter`).
 
 ### @@sec:log@@ Journaliser
 
@@ -2078,9 +2076,8 @@ apostrophes.
 **`counter`** counts the packets and the bytes reaching this place of the rule: `tcp dport 25
 counter reject`. `nft list ruleset` then prints `counter packets 3 bytes 180` on the rule: it is
 the simplest way to know **which rule** saw a packet. To count what the policy of a chain drops,
-end the chain with a `counter drop` rule. With the version of `nft` of the lab machines, the
-counter of a rule cannot be reset (`nft reset counters` only concerns named counters, declared
-with `nft add counter`): replace the rule.
+end the chain with a `counter drop` rule. The counters of the rules are reset with `nft reset
+rules` (`nft reset counters` only concerns named counters, declared with `nft add counter`).
 
 ### @@sec:log@@ Logging
 
@@ -3180,8 +3177,8 @@ Un **pare-feu** applique une politique aux paquets : les accepter, les détruire
 Sous Linux il s'écrit avec **nftables** (commande **`nft`**) : des règles accrochées aux points
 de passage des paquets dans le noyau, que fournit **Netfilter**. Ce cours rappelle d'abord
 l'essentiel de nftables, puis traite ce qui fait l'objet de ce TP : filtrer ce qui **sort**
-d'une machine et, surtout, ce qui **traverse un routeur**. Les machines du TP ont nftables 1.0.6
-(`nft --version`), la version de Debian 12.
+d'une machine et, surtout, ce qui **traverse un routeur**. Les machines du TP ont nftables 1.1.3
+(`nft --version`), la version de Debian 13.
 
 **Comment lire ce cours.** Les questions 2 et 3 (le pare-feu d'un poste, puis d'un serveur)
 s'appuient sur les sections @@ref:hooks@@ à @@ref:conntrack@@ ; la question 4 (la chaîne
@@ -3233,8 +3230,8 @@ A **firewall** applies a policy to packets: accept them, drop them or reject the
 it is written with **nftables** (the **`nft`** command): rules hooked to the places packets go
 through in the kernel, provided by **Netfilter**. This course first recalls the essentials of
 nftables, then deals with the subject of this lab: filtering what **leaves** a machine and,
-above all, what **crosses a router**. The machines of the lab have nftables 1.0.6
-(`nft --version`), the version of Debian 12.
+above all, what **crosses a router**. The machines of the lab have nftables 1.1.3
+(`nft --version`), the version of Debian 13.
 
 **How to read this course.** Questions 2 and 3 (the firewall of a workstation, then of a server)
 rely on sections @@ref:hooks@@ to @@ref:conntrack@@; question 4 (the `output` chain) on

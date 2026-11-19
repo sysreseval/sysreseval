@@ -1,0 +1,117 @@
+# 2.4.1-4 (7d8c0e5759): /etc/dovecot/dovecot.conf
+# Pigeonhole version 2.4.1-4 (0a86619f)
+# OS: Linux 6.12.116+deb13-amd64 x86_64 Debian 13.7 
+# Hostname: mail
+# 4 default setting changes since version 2.4.0
+dovecot_config_version = 2.4.0
+auth_mechanisms = plain login
+dovecot_storage_version = 2.4.0
+fts_autoindex = yes
+fts_autoindex_max_recent_msgs = 999
+fts_search_add_missing = yes
+listen = *
+mail_driver = maildir
+mail_home = /home/%{user | username}
+mail_inbox_path = ~/Maildir
+mail_path = ~/Maildir
+mail_privileged_group = mail
+protocols {
+  imap = yes
+  lmtp = yes
+  sieve = yes
+}
+ssl = required
+passdb pam {
+}
+userdb passwd {
+}
+namespace inbox {
+  inbox = yes
+  mailbox Drafts {
+    auto = subscribe
+    special_use = "\\Drafts"
+  }
+  mailbox Junk {
+    auto = subscribe
+    special_use = "\\Junk"
+  }
+  mailbox Trash {
+    auto = subscribe
+    special_use = "\\Trash"
+  }
+  mailbox Sent {
+    auto = subscribe
+    special_use = "\\Sent"
+  }
+  mailbox "Sent Messages" {
+    special_use = "\\Sent"
+  }
+}
+service imap-login {
+  inet_listener imap {
+  }
+  inet_listener imaps {
+  }
+}
+service pop3-login {
+  inet_listener pop3 {
+  }
+  inet_listener pop3s {
+  }
+}
+service submission-login {
+  inet_listener submission {
+  }
+  inet_listener submissions {
+  }
+}
+service lmtp {
+  unix_listener lmtp {
+  }
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    group = postfix
+    mode = 0600
+    user = postfix
+  }
+}
+service imap {
+}
+service pop3 {
+}
+service submission {
+}
+service auth {
+  unix_listener auth-userdb {
+  }
+  unix_listener /var/spool/postfix/private/auth {
+    group = postfix
+    mode = 0660
+    user = postfix
+  }
+}
+service auth-worker {
+}
+service dict {
+  unix_listener dict {
+  }
+}
+ssl_server {
+  cert_file = /etc/ssl/certs/mail.crt
+  key_file = /etc/ssl/private/mail.key
+}
+protocol lmtp {
+  auth_username_format = %{user | username | lower}
+  mail_plugins {
+    sieve = yes
+  }
+}
+service managesieve-login {
+  inet_listener sieve {
+    port = 4190
+  }
+  inet_listener sieve_deprecated {
+    port = 2000
+  }
+}
+service managesieve {
+}

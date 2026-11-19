@@ -67,7 +67,7 @@ PROBE_CERT = "/tmp/.sre_probe.crt"    # grader's client certificate, issued on c
 PROBE_KEY = "/tmp/.sre_probe.key"
 PROBE_SERIAL = "0x53524550524F4245"   # "SREPROBE": never issued by the student's CA
 
-INIT_MACHINE = {'image': sre_docker_image("init12"), 'privileged': True, 'entrypoint': "/sbin/init"}
+INIT_MACHINE = {'image': sre_docker_image("init13"), 'privileged': True, 'entrypoint': "/sbin/init"}
 SYSTEMD_MACHINES = ('ca',)
 
 _TOPOLOGY = {'lan': {'m1': 0, 'ca': 0, 'serveur1': 0, 'serveur2': 0, 'serveur3': 0, 'h1': 0}}

@@ -234,7 +234,7 @@ Le vocabulaire, détaillé dans les sections suivantes :
 | verdict | ce que devient le paquet : `accept`, `drop`, `jump`… |
 | ensemble, dictionnaire | des valeurs (*set*) ou des associations clé : valeur (*map*) que les règles consultent |
 
-Les machines du TP ont nftables 1.0.6 (`nft --version`), la version de Debian 12 : c'est elle que
+Les machines du TP ont nftables 1.1.3 (`nft --version`), la version de Debian 13 : c'est elle que
 ce cours décrit.
 
 **Comment lire ce cours.** Le TP en utilise l'essentiel : les hooks `input` et `output`
@@ -886,10 +886,11 @@ atteinte.
 nft add rule inet filter input tcp dport 8080 counter accept
 ```
 
-Le compteur d'une règle ne se remet pas à zéro avec la version de `nft` des machines du TP (il
-faut remplacer la règle ; `nft reset rules` n'existe qu'à partir de nftables 1.0.7). On peut en
-revanche déclarer un **compteur nommé**, que plusieurs règles alimentent et que l'on relit ou
-remet à zéro séparément :
+Les compteurs des règles se remettent à zéro avec `nft reset rules` (tout le jeu de règles),
+`nft reset rules inet filter` (une table) ou `nft reset rules inet filter input` (une chaîne) :
+la commande affiche les règles avec leurs compteurs, puis les remet à zéro. On peut aussi
+déclarer un **compteur nommé**, que plusieurs règles alimentent et que l'on relit ou remet à
+zéro séparément :
 
 ```
 nft add counter inet filter web
@@ -1442,7 +1443,7 @@ C'est un point de départ, que l'on réécrit en vrai fichier nftables. Pour con
 ### @@sec:ipt-coexist@@ iptables sur une machine nftables
 
 Sur une Debian récente, la commande `iptables` est **`iptables-nft`** : `iptables -V` affiche
-`iptables v1.8.9 (nf_tables)`. Elle garde la syntaxe d'iptables, mais écrit des règles nftables,
+`iptables v1.8.11 (nf_tables)`. Elle garde la syntaxe d'iptables, mais écrit des règles nftables,
 dans des tables `ip filter`, `ip nat`, `ip6 filter`… aux chaînes `INPUT`, `FORWARD`, `OUTPUT`…,
 que `nft list ruleset` affiche à côté des vôtres. C'est ainsi que Docker, par exemple, installe
 ses règles. Quelques conséquences :

@@ -29,11 +29,14 @@ networks of the handout; the host parts are those of the handout in both cases. 
 state applies the reference solution.  Every question ends with its solution in an
 instructor-only block.  Texts are French (``tr()``), identifiers English.
 
-The brouter uses nftables (the image's ebtables 1.8.9 is the nft flavour without the ``broute``
-table, and its nftables 1.0.6 has no ``meta broute``): a *bridge* family rule in the prerouting
-hook rewriting the destination MAC to the bridge's own one and the packet type to ``host``, so
-that the bridge delivers the frame to its IP stack where it is routed (what ``ebtables -j
-redirect`` did).  Verified live on 2026-10-09 (Linux 6.12).
+The brouter uses nftables: a *bridge* family rule in the prerouting hook rewriting the
+destination MAC to the bridge's own one and the packet type to ``host``, so that the bridge
+delivers the frame to its IP stack where it is routed (what ``ebtables -j redirect`` did).
+Verified live on 2026-10-09 on the Debian 12 image (ebtables 1.8.9, the nft flavour, without the
+``broute`` table; nftables 1.0.6, without ``meta broute``) and on 2026-11-19 on the Debian 13 one
+(Linux 6.12; ebtables 1.8.11 has a ``broute`` table but refuses the ``redirect`` target, and the
+``meta broute set 1`` of nftables 1.1.3 hands the frame to the stack on the port, not on the
+bridge: with it in place of the rule above the reference solution loses points).
 """
 from dataclasses import dataclass
 from ipaddress import IPv4Interface, IPv4Network
@@ -411,9 +414,11 @@ qui a fait le NAT connaît le VLAN de la machine) : le pont les commute sans les
 la couche IP.
 
 Historiquement c'est le rôle de la table `broute` d'`ebtables` (chaîne `BROUTING`, cible `redirect
---redirect-target DROP`, où « DROP » signifie « router ») ; l'`ebtables` de Debian 12 est une
-réimplémentation sur nftables sans cette table, et `meta broute set 1` n'existe que dans les
-nftables récents (≥ 1.0.7). Le mécanisme ci-dessus est l'équivalent de la cible `redirect`.
+--redirect-target DROP`, où « DROP » signifie « router ») ; l'`ebtables` de Debian 13 est une
+réimplémentation sur nftables : elle a bien une table `broute`, mais refuse la cible `redirect`
+(`RULE_APPEND failed`). nftables a de son côté l'action `meta broute set 1` (depuis la version
+1.0.7), qui fait remonter la trame par le port d'entrée lui-même et non par le pont : ce n'est pas
+le même mécanisme. Celui décrit ci-dessus est l'équivalent de la cible `redirect`.
 """)
             + info_subtitle(tr("Le TTL"), tag="ttl")
             + tr("""
@@ -762,7 +767,7 @@ L'évaluation lit `ip -d link` / `ip addr` (sous-interfaces, ponts et leurs port
 `curl` vers les pages de `ext1` / `ext2` depuis `m1`... `m7` et `b2` : `CLIENT_IP` dit par quel
 routeur la requête est sortie, `TTL` combien de routeurs elle a traversés. Une évaluation dure
 une dizaine de secondes. Le brouter est en nftables (famille `bridge`), voir la section @@ref:brouter@@ des
-Informations : l'`ebtables` de l'image (1.8.9, nft) n'a pas de table `broute`.
+Informations : l'`ebtables` de l'image (1.8.11, nft) refuse la cible `redirect` de la table `broute`.
 """).format(vlan_odd=VLAN_ODD)),
         )
 

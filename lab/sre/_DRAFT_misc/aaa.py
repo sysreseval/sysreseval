@@ -10,7 +10,7 @@ no terminal), the KDC ``kdc`` (realm ``CORP.LAN`` created by ``initial``), the b
 network device ``router`` (pam_radius), the switch ``sw`` (``br0`` over eth0-eth3) and the hidden
 probe ``probe``; three access ports ``port1``-``port3`` between ``sw`` and ``pc1`` (PEAP),
 ``pc2`` (EAP-TLS) and ``pc3`` (no 802.1X: must stay locked out).  Every machine runs the
-``aaa`` image (``init12`` + FreeRADIUS, hostapd, wpa_supplicant, eapol_test, MIT Kerberos,
+``aaa`` image (``init13`` + FreeRADIUS, hostapd, wpa_supplicant, eapol_test, MIT Kerberos,
 pam_krb5, pam_radius_auth, mod_auth_gssapi, oathtool).
 
 Parts (each one independent: its own machine or its own accounts; the parts on ``radius`` are

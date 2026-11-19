@@ -4,7 +4,8 @@ Pure functions only: header-size arithmetic, ``ping -M do`` command builder and 
 the iputils error strings, ``ip -j -d link`` parsers (tunnel devices), nftables rule texts
 (black hole on ICMP errors, TCP MSS clamping) and a parser of the clamping rules of a
 ``nft list ruleset`` output.  Fixtures in ``tests/mock_data/pmtu/`` (iputils 20221126,
-iproute2 6.19, nftables 1.0.6 in ``sysreseval/base:1.28``).
+iproute2 6.19, nftables 1.0.6 in ``sysreseval/base:1.28``, Debian 12; the ``*_deb13`` ones:
+iputils 20240905 of the Debian 13 image ``base13``).
 """
 import json
 import re
@@ -53,8 +54,11 @@ def pmtu_ping_cmd(dest, size: int, ipv6: bool = False, count: int = 1, deadline:
 _PING_STATS_RE = re.compile(r'(\d+) packets transmitted, (\d+) (?:packets )?received')
 # "From 10.0.0.1 icmp_seq=1 Frag needed and DF set (mtu = 1400)"
 _FRAG_NEEDED_RE = re.compile(r'Frag needed and DF set \(mtu\s*=\s*(\d+)\)')
-# "ping: local error: message too long, mtu=1400" (IPv4) / "..., mtu: 1400" (IPv6)
+# iputils 20221126 (Debian 12): "ping: local error: message too long, mtu=1400" (IPv4) /
+# "..., mtu: 1400" (IPv6).  iputils 20240905 (Debian 13) no longer reads the error queue there
+# and prints the errno of the send, without the MTU: "ping: sendmsg: Message too long".
 _TOO_LONG_RE = re.compile(r'message too long, mtu[=:]\s*(\d+)')
+_TOO_LONG_ANY_RE = re.compile(r'(?:local error: message too long|sendmsg: Message too long)')
 # "From fd00::1 icmp_seq=1 Packet too big: mtu=1400"
 _PACKET_TOO_BIG_RE = re.compile(r'Packet too big: mtu[=:]\s*(\d+)')
 
@@ -62,14 +66,17 @@ _PACKET_TOO_BIG_RE = re.compile(r'Packet too big: mtu[=:]\s*(\d+)')
 def parse_ping_errors(output: str) -> Dict[str, Any]:
     """Summary and PMTU-related errors of a ``ping`` output.
 
-    ``{'sent', 'received', 'frag_needed_mtu', 'too_long_mtu', 'packet_too_big_mtu'}``:
-    the counters are ``None`` without a statistics block; each ``*_mtu`` is the MTU quoted
-    by the first error of that kind, ``None`` when the error did not occur
-    (``frag_needed_mtu``: ICMP "fragmentation needed" from a router; ``too_long_mtu``: the
-    local stack refused the packet, i.e. the interface MTU or a cached path MTU is smaller;
-    ``packet_too_big_mtu``: ICMPv6 Packet Too Big from a router)."""
+    ``{'sent', 'received', 'frag_needed_mtu', 'too_long', 'too_long_mtu',
+    'packet_too_big_mtu'}``: the counters are ``None`` without a statistics block; each
+    ``*_mtu`` is the MTU quoted by the first error of that kind, ``None`` when the error did
+    not occur or quotes no MTU (``frag_needed_mtu``: ICMP "fragmentation needed" from a router;
+    ``too_long``: the local stack refused the packet, i.e. the interface MTU or a cached path
+    MTU is smaller, and ``too_long_mtu`` the MTU the message quotes, which only the iputils of
+    Debian 12 prints: see :func:`refused_locally`; ``packet_too_big_mtu``: ICMPv6 Packet Too
+    Big from a router)."""
     text = output or ''
     result: Dict[str, Any] = {'sent': None, 'received': None, 'frag_needed_mtu': None,
+                              'too_long': bool(_TOO_LONG_ANY_RE.search(text)),
                               'too_long_mtu': None, 'packet_too_big_mtu': None}
     m = _PING_STATS_RE.search(text)
     if m:
@@ -80,6 +87,17 @@ def parse_ping_errors(output: str) -> Dict[str, Any]:
         if m:
             result[key] = int(m.group(1))
     return result
+
+
+def refused_locally(output: str, mtu: int) -> bool:
+    """True when the local stack refused the packet of a ``ping -M do`` (nothing was sent)
+    because of an MTU of *mtu* bytes.  The iputils of Debian 12 quotes that MTU, which must
+    then be *mtu*; the one of Debian 13 does not (``sendmsg: Message too long``): the caller
+    pairs this test with a ping one byte smaller that passes, which pins the MTU as well."""
+    errors = parse_ping_errors(output)
+    if errors['too_long_mtu'] is not None:
+        return errors['too_long_mtu'] == int(mtu)
+    return errors['too_long']
 
 
 def ping_received(output: str) -> int:

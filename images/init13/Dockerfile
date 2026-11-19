@@ -1,5 +1,6 @@
 ARG VERSION=latest
-FROM sysreseval/base13:${VERSION}
+ARG NAMESPACE=sysreseval
+FROM ${NAMESPACE}/base13:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
@@ -76,6 +77,11 @@ RUN rm -f /etc/systemd/system/multi-user.target.wants/slapd.service \
     /etc/systemd/system/multi-user.target.wants/exim4.service \
     /etc/systemd/system/multi-user.target.wants/ipvsadm.service \
     /etc/systemd/system/timers.target.wants/exim4-base.timer
+
+# Debian 13 mounts a tmpfs on /tmp (tmp.mount, a plain directory on Debian 12).  The files a lab
+# state copies into /tmp of a machine are written by Docker to the container's own filesystem,
+# under that mount, where no process of the machine sees them: /tmp stays a plain directory.
+RUN ln -sf /dev/null /etc/systemd/system/tmp.mount
 
 RUN rm -f /usr/local/bin/systemctl
 

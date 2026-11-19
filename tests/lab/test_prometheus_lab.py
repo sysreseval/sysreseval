@@ -314,7 +314,7 @@ class TestStates:
         blackbox = yaml.safe_load(prom[pm.BLACKBOX_YML])["modules"]
         assert set(pm.DEBIAN_BLACKBOX_MODULES) < set(blackbox)
         assert blackbox["http_shop"]["http"]["fail_if_body_not_matches_regexp"] == ["^OK"]
-        assert yaml.safe_load(prom[pm.SNMP_YML])["if_mib"]["auth"]["community"] == data.snmp_community
+        assert yaml.safe_load(prom[pm.SNMP_YML])["auths"]["public_v2"]["community"] == data.snmp_community
         am = yaml.safe_load(prom[pm.ALERTMANAGER_YML])
         assert am == lab.NetScheme.solution_alertmanager()
         assert _files(ops, 1, 'db1')[lab.BACKUP_FILE] == ns.backup_metric()

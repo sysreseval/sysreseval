@@ -7,7 +7,7 @@ test de l'évaluation (sonde ``lib/smtp_probe.py``) ; leurs messages sont effac�
 L'état ``final`` applique la solution de référence.
 Chaque question se termine par sa solution dans un bloc ``instructor()`` (mode enseignant).
 
-Image : ``sysreseval/ldap-mail`` (``images/ldap-mail/Dockerfile``, construite sur l'image ``init12`` : Postfix,
+Image : ``sysreseval/ldap-mail`` (``images/ldap-mail/Dockerfile``, construite sur l'image ``init13`` : Postfix,
 Dovecot, OpenDKIM, policyd-spf, swaks, mutt) pour ``mx1``, ``pc1``, ``mx2`` (systemd) et ``pc2``.
 """
 
@@ -34,6 +34,8 @@ from smtp import (
     dkim_txt_record,
     doveconf_listener,
     doveconf_value,
+    dovecot_cleartext_auth_refused,
+    dovecot_mail_location,
     find_messages,
     generate_dkim_keypair,
     get_doveconf,
@@ -82,14 +84,14 @@ record_sessions = False
 DOMAIN_A = "alpha.tp"  # lan1: mx1, pc1, dns1 (to configure)
 DOMAIN_B = "beta.tp"  # lan2: mx2, pc2 (pre-configured)
 DOMAIN_DOWN = "delta.tp"  # its MX refuses every connection: deferred mail (part 3)
-# The ldap-mail image (images/ldap-mail: init12 + postfix, dovecot, opendkim, policyd-spf, swaks, mutt, nslcd),
+# The ldap-mail image (images/ldap-mail: init13 + postfix, dovecot, opendkim, policyd-spf, swaks, mutt, nslcd),
 # written in full so that `sre preload-images` finds it.
 MAIL_MACHINE = {
     "image": sre_docker_image("ldap-mail"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
-SYSTEMD_MACHINES = ["mx1", "pc1", "mx2"]  # real systemd (init12 image): systemctl, journalctl
+SYSTEMD_MACHINES = ["mx1", "pc1", "mx2"]  # real systemd (init13 image): systemctl, journalctl
 PROBES = ["h1", "h2"]
 PROBE_USER = "sonde"  # mailbox of mx2 receiving the grader's relayed messages
 MX1_USERS = ["alice", "carol"]
@@ -243,7 +245,7 @@ SMTP est un protocole **texte** sur TCP : le client envoie des commandes, le ser
 `nc mx2.beta.tp 25` (ou `telnet`) :
 
 ```
-S: 220 mx2.beta.tp ESMTP Postfix (Debian/GNU)
+S: 220 mx2.beta.tp ESMTP Postfix (Debian)
 C: EHLO pc1.alpha.tp
 S: 250-mx2.beta.tp
 S: 250-SIZE 10240000
@@ -537,22 +539,29 @@ des deux protocoles d'accès :
 (`/var/mail/alice`), séparés par des lignes `From `, simple mais fragile en écriture concurrente.
 **Maildir** : un répertoire par boîte avec `tmp/`, `new/` (messages non lus) et `cur/`, un fichier
 par message, sans verrou ; c'est le format recommandé avec IMAP (`home_mailbox = Maildir/` côté
-Postfix, `mail_location = maildir:~/Maildir` côté Dovecot).
+Postfix ; `mail_driver = maildir`, `mail_path = ~/Maildir` et `mail_inbox_path = ~/Maildir` côté
+Dovecot : le format, le répertoire des dossiers et celui de la boîte de réception, qui doit être le
+Maildir où Postfix dépose).
 
 **Dovecot** est le serveur IMAP/POP3 compagnon habituel de Postfix. Sa configuration est répartie
 dans `/etc/dovecot/conf.d/` :
 
 | fichier | paramètres |
 |---------|------------|
-| `10-mail.conf` | `mail_location` (où sont les boîtes) |
-| `10-auth.conf` | `disable_plaintext_auth`, `auth_mechanisms = plain login`, `!include auth-system.conf.ext` (comptes Unix via PAM) |
+| `10-mail.conf` | `mail_driver`, `mail_path`, `mail_inbox_path` (où sont les boîtes ; Debian y règle le format mbox, avec `mail_inbox_path = /var/mail/%{user}`) |
+| `10-auth.conf` | `auth_allow_cleartext`, `auth_mechanisms = plain login`, `!include auth-system.conf.ext` (comptes Unix via PAM) |
 | `10-master.conf` | les services et leurs sockets (dont celui que Postfix utilise pour SASL) |
-| `10-ssl.conf` | `ssl`, `ssl_cert`, `ssl_key` |
+| `10-ssl.conf` | `ssl`, `ssl_server_cert_file`, `ssl_server_key_file` |
 | `dovecot.conf` | `protocols`, `listen`, et à la fin `!include_try local.conf` : un fichier local qui **surcharge tout** (pratique pour regrouper ses réglages) |
 
 `doveconf -n` affiche la configuration effective, `doveadm auth test alice` vérifie un mot de
 passe, `doveadm user alice` ce que Dovecot sait d'un compte, `journalctl -u dovecot` le journal.
-Par défaut Dovecot refuse les mots de passe en clair hors TLS (`disable_plaintext_auth = yes`).
+Par défaut Dovecot refuse les mots de passe en clair hors TLS (`auth_allow_cleartext = no`).
+
+Ces noms sont ceux de **Dovecot 2.4** (Debian 13). La version 2.3, que décrivent encore beaucoup de
+documentations, écrivait `mail_location = maildir:~/Maildir`, `disable_plaintext_auth`, `ssl_cert =
+<fichier` et `ssl_key = <fichier` : Dovecot 2.4 refuse ces anciens noms (`Unknown setting`) et ne
+démarre pas.
 
 Clients : `mutt -f imap://alice@mx1.alpha.tp/` (ou `mutt -f ~/Maildir` sur le serveur),
 `curl --url imap://mx1.alpha.tp/INBOX -u alice -X 'SEARCH ALL'`, et pour voir le protocole lui-même
@@ -831,8 +840,10 @@ qmgr[892]: 40F661880F0: removed
         text = (
             "listen = *\n"
             "protocols = imap\n"
-            "mail_location = maildir:~/Maildir\n"
-            "disable_plaintext_auth = no\n"
+            "mail_driver = maildir\n"
+            "mail_path = ~/Maildir\n"
+            "mail_inbox_path = ~/Maildir\n"
+            "auth_allow_cleartext = yes\n"
             "auth_mechanisms = plain login\n"
         )
         if part >= 5:
@@ -845,8 +856,8 @@ qmgr[892]: 40F661880F0: removed
                 "  }\n"
                 "}\n"
                 "ssl = yes\n"
-                f"ssl_cert = <{MX1_CERT}\n"
-                f"ssl_key = <{MX1_KEY}\n"
+                f"ssl_server_cert_file = {MX1_CERT}\n"
+                f"ssl_server_key_file = {MX1_KEY}\n"
             )
         return text
 
@@ -927,8 +938,10 @@ qmgr[892]: 40F661880F0: removed
         return (
             "listen = *\n"
             "protocols = imap\n"
-            "mail_location = maildir:~/Maildir\n"
-            "disable_plaintext_auth = no\n"
+            "mail_driver = maildir\n"
+            "mail_path = ~/Maildir\n"
+            "mail_inbox_path = ~/Maildir\n"
+            "auth_allow_cleartext = yes\n"
             "auth_mechanisms = plain login\n"
         )
 
@@ -1607,9 +1620,9 @@ unknown`) ; rapport envoyé par `{exp_rebond}`.
 Dovecot est installé sur `mx1` mais arrêté (section @@ref:imap@@ de l'onglet Informations) :
 
 1. configurez-le (`/etc/dovecot/local.conf` ou les fichiers de `conf.d/`) : protocole `imap`, écoute
-   sur le réseau, boîtes au format **Maildir** dans le répertoire personnel (le même que Postfix),
-   authentification par les comptes Unix, mots de passe en clair acceptés pour l'instant
-   (`disable_plaintext_auth = no`, mécanismes `plain login`) ;
+   sur le réseau, boîtes au format **Maildir** dans le répertoire personnel, le même que Postfix
+   (`mail_driver`, `mail_path` et `mail_inbox_path`), authentification par les comptes Unix, mots de
+   passe en clair acceptés pour l'instant (`auth_allow_cleartext = yes`, mécanismes `plain login`) ;
 2. lancez Dovecot (`systemctl enable --now dovecot`), vérifiez `doveconf -n`, `ss -tlnp` et
    `doveadm auth test alice` ;
 3. depuis `pc1`, lisez la boîte d'Alice : dialogue IMAP à la main avec `nc mx1.alpha.tp 143`
@@ -1626,11 +1639,12 @@ Dovecot est installé sur `mx1` mais arrêté (section @@ref:imap@@ de l'onglet 
 {dovecot}
 ```
 
-puis `systemctl enable --now dovecot`. `mail_location = maildir:~/Maildir` correspond au
-`home_mailbox = Maildir/` de Postfix ; les comptes Unix passent par `passdb {{ driver = pam }}`
-(configuration par défaut de Debian).
+puis `systemctl enable --now dovecot`. `mail_path` et `mail_inbox_path` désignent le
+`home_mailbox = Maildir/` de Postfix (sans `mail_inbox_path`, la configuration Debian place `INBOX`
+dans `/var/mail/alice`) ; les comptes Unix passent par `passdb pam {{ }}` (configuration par défaut
+de Debian).
 
-- Évaluation : `doveconf -n` (`mail_location`, `protocols`), port 143 en écoute, puis `h1` se
+- Évaluation : `doveconf -n` (`mail_driver`, `mail_path`, `auth_allow_cleartext`), port 143 en écoute, puis `h1` se
   connecte en IMAP avec le compte `alice` et cherche le message de test envoyé à la partie 2.
 """).format(dovecot=ns._solution_dovecot(part=4).strip())
             )
@@ -1650,7 +1664,7 @@ message dans `new/` puis `cur/`).
             ),
             cheat_answers={"final": q4_answers},
         )
-        mail_location = doveconf_value(dove, "mail_location").lower()
+        mail_location = dovecot_mail_location(dove).lower()
         # `protocols = imap` comes with the package: the second point is what the part asks for
         auth_mechanisms = doveconf_value(dove, "auth_mechanisms").lower().split()
         self.add_grade_element(
@@ -1660,7 +1674,7 @@ message dans `new/` puis `cur/`).
         self.add_grade_element(
             title=no_tr("dovecot_maildir"), max_grade=2, grade_part=part4,
             grade=int(mail_location.startswith("maildir:") and "maildir" in mail_location.split(":", 1)[1])
-            + int(doveconf_value(dove, "disable_plaintext_auth") == "no"
+            + int(dovecot_cleartext_auth_refused(dove) is False
                   and any(m in auth_mechanisms for m in ("plain", "login"))),
             description=tr("boîtes Maildir ; mots de passe en clair acceptés (mécanismes plain / login)"),
         )
@@ -1737,7 +1751,7 @@ puis `systemctl restart dovecot postfix`.
                     postconf=ns._postconf_e({k: v for k, v in ns._solution_main_cf(part=5).items()
                                             if k.startswith("smtpd_")}).replace("' '", "' \\\n    '"),
                     submission="\n".join(ns._solution_submission()).replace("' '", "' \\\n    '"),
-                    dovecot="\n".join(ns._solution_dovecot(part=5).splitlines()[5:]),
+                    dovecot=ns._solution_dovecot(part=5)[len(ns._solution_dovecot(part=4)):].strip(),
                 )
             ),
         )

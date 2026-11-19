@@ -104,7 +104,7 @@ DOH_URL = f"https://{RESOLVER_NAME}/dns-query"
 TLD_TTL = 300                               # short TTLs in tp.: faults and repairs show quickly
 VIEW_INT, VIEW_EXT = "internal", "external"
 
-INIT_MACHINE = {'image': sre_docker_image("init12"), 'privileged': True, 'entrypoint': "/sbin/init"}
+INIT_MACHINE = {'image': sre_docker_image("init13"), 'privileged': True, 'entrypoint': "/sbin/init"}
 SYSTEMD_MACHINES = ('resolver', 'ns1', 'ns2', 'root', 'tld')
 PROBES = ('h1', 'h2')
 _TOPOLOGY = {
@@ -126,9 +126,12 @@ DNSSEC_POLICY_LAB = """dnssec-policy "lab" {
 };
 """
 UNBOUND_DEFAULTS = "ROOT_TRUST_ANCHOR_UPDATE=false\n"   # /etc/default/unbound: no unbound-anchor at start
-#: /etc/bind/named.conf.default-zones of a server with views: the Debian default zones (localhost,
-#: 127.in-addr.arpa, the hint zone) are top-level statements, which named refuses next to views
-DEFAULT_ZONES_IN_VIEWS = "// The default zones (localhost, 127.in-addr.arpa) are declared inside the views of named.conf.local.\n"
+#: The one zone the bind9 package of Debian 13 declares outside named.conf.local: the hint zone "."
+#: (Debian 12 had named.conf.default-zones, with the localhost zones too; BIND 9.20 serves those
+#: by itself, `empty-zones`).  A top-level statement, which named refuses next to views, and which a
+#: server primary for "." cannot keep: the lab's authoritative servers leave it out.
+NAMED_ROOT_HINTS = "/etc/bind/named.conf.root-hints"
+NO_HINT_ZONE = "// No hint zone: this server is authoritative only, its zones are in named.conf.local.\n"
 
 
 def _ip(obj) -> str:
@@ -352,10 +355,11 @@ On vérifie ensuite la délégation telle que la voit un résolveur :
 pas de drapeau `aa`), puis `dig +trace www.example.org` depuis un poste. Un serveur de noms déclaré
 mais qui ne répond pas pour la zone est une **délégation boiteuse** (*lame delegation*).
 """)
-            + info_subtitle(tr("Zones bind9 (BIND 9.18)"), tag="bind")
+            + info_subtitle(tr("Zones bind9 (BIND 9.20)"), tag="bind")
             + tr("""
 Fichiers de configuration (Debian) : `/etc/bind/named.conf` inclut `named.conf.options` (bloc
-`options`), `named.conf.local` (vos clés et zones) et `named.conf.default-zones`. Un serveur
+`options`), `named.conf.local` (vos clés et zones) et `named.conf.root-hints` (la zone d'amorce
+`.` : les serveurs de la racine publique). Un serveur
 strictement **autoritatif** a dans son bloc `options` : `recursion no;`, `dnssec-validation no;`
 et l'écoute sur toutes les adresses (`listen-on { any; };`). Déclaration d'une zone primaire :
 
@@ -394,7 +398,8 @@ Un **secondaire** (`type secondary; primaries { ADRESSE key NOM; };`) récupère
 journal). Il la rafraîchit selon les temporisateurs du `SOA` (*refresh*, *retry*, *expire*) et
 surtout dès réception d'un **NOTIFY** envoyé par le primaire à chaque changement de serial
 (automatique vers les `NS` de la zone, `also-notify` pour d'autres). Le primaire **limite** qui peut
-transférer (`allow-transfer { … };`) : une zone transférable par n'importe qui livre tout
+transférer (`allow-transfer { … };` ; sans ce réglage BIND 9.20 refuse tout transfert, alors que les
+versions précédentes les acceptaient tous) : une zone transférable par n'importe qui livre tout
 l'annuaire d'un coup (`dig @ns1 example.org AXFR`) ; la bonne pratique est d'exiger une **clé TSIG**
 (`allow-transfer { key NOM; };`), partagée avec le secondaire. `tsig-keygen NOM` génère le bloc
 `key` à déclarer sur les deux serveurs :
@@ -439,13 +444,16 @@ l'**empreinte** de cette clé dans un **`DS`**, lui-même signé par la clé du 
 suite jusqu'à la racine, dont la clé est l'**ancre de confiance** configurée dans le résolveur. La
 non-existence d'un nom est prouvée par des **`NSEC`** (ou `NSEC3`) signés. Vocabulaire : **KSK**
 (signe les `DNSKEY`, référencée par le `DS`), **ZSK** (signe le reste) ou une seule **CSK** qui fait
-les deux — c'est ce que fait la politique `default` de BIND 9.18.
+les deux — c'est ce que fait la politique `default` de BIND 9.20.
 
-### @@sec:signing@@ Signer une zone avec BIND 9.18
+### @@sec:signing@@ Signer une zone avec BIND 9.20
 
-`dnssec-policy default;` dans la déclaration de la zone (dynamique, ou statique avec
-`inline-signing yes;`), puis `rndc reload`. BIND crée les clés dans son `key-directory`
-(`/var/cache/bind/Kexample.org.+013+NNNNN.*` sous Debian), signe et **ressigne tout seul**.
+`dnssec-policy default;` dans la déclaration de la zone, puis `rndc reload`. BIND crée les clés dans
+son `key-directory` (`/var/cache/bind/Kexample.org.+013+NNNNN.*` sous Debian), signe et **ressigne
+tout seul**. La signature se fait *inline* (`inline-signing yes;`, la valeur par défaut depuis BIND
+9.20) : le fichier de zone reste tel que vous l'avez écrit, et BIND tient à côté la version signée
+(`fichier.signed` et son journal), que la zone soit dynamique ou statique ; son journal la désigne
+alors par `zone example.org/IN (signed)`.
 `rndc dnssec -status example.org` montre la clé et ses états.
 
 ### @@sec:ds@@ Publier le DS chez le parent
@@ -522,8 +530,8 @@ view "external" {
 ```
 
 Les vues sont examinées **dans l'ordre**, et dès qu'une vue existe **toutes** les zones doivent
-être dans une vue (les blocs `key` peuvent rester au niveau global) — y compris les zones par
-défaut de Debian (`named.conf.default-zones`), sans quoi `named-checkconf` refuse la configuration
+être dans une vue (les blocs `key` peuvent rester au niveau global) — y compris la zone d'amorce
+que déclare le paquet Debian (`named.conf.root-hints`), sans quoi `named-checkconf` refuse la configuration
 (*all zones must be in views*). Chaque vue a sa propre instance de la zone, donc son propre fichier
 (et son propre journal) : `www.example.org` peut valoir une adresse privée pour le site et une
 adresse publique pour le reste du monde. Pièges :
@@ -668,8 +676,6 @@ domaine), zone gelée par `rndc freeze` (mises à jour `REFUSED`), restes de con
 
         return (render_tsig_key(KEY_TRANSFER, d.transfer_secret) + render_tsig_key(KEY_DDNS, d.ddns_secret)
                 + f'view "{VIEW_INT}" {{\n    match-clients {{ {net1}; localhost; }};\n'
-                + '    zone "localhost" { type primary; file "/etc/bind/db.local"; };\n'
-                + '    zone "127.in-addr.arpa" { type primary; file "/etc/bind/db.127"; };\n'
                 + zone_block(DOMAIN, ZONE_FILE, True, 'none')
                 + zone_block(self.reverse_zone, self.reverse_file, False, 'none') + '};\n'
                 + f'view "{VIEW_EXT}" {{\n    match-clients {{ any; }};\n'
@@ -701,10 +707,8 @@ domaine), zone gelée par `rndc freeze` (mises à jour `REFUSED`), restes de con
         # root and tld: the lab's authoritative servers (no recursion, keys from Data)
         for m in ('root', 'tld'):
             self.file(m, NAMED_OPTIONS, NAMED_OPTIONS_AUTH)
-            # Debian's default zones declare the hint zone "." : the root server is primary for it
-            self.file(m, "/etc/bind/named.conf.default-zones",
-                      'zone "localhost" { type primary; file "/etc/bind/db.local"; };\n'
-                      'zone "127.in-addr.arpa" { type primary; file "/etc/bind/db.127"; };\n')
+            # the package declares the hint zone "." : the root server is primary for it
+            self.file(m, NAMED_ROOT_HINTS, NO_HINT_ZONE)
         self.file('root', NAMED_LOCAL, self._root_zones())
         self.file('tld', NAMED_LOCAL, self._tld_zones())
         for m in ('root', 'tld'):
@@ -768,8 +772,8 @@ domaine), zone gelée par `rndc freeze` (mises à jour `REFUSED`), restes de con
 
         ns1_conf = self._ns1_conf()
         self.file('ns1', NAMED_LOCAL, ns1_conf)
-        # with views, every zone must be inside a view: Debian's default zones move into the internal view
-        self.file('ns1', "/etc/bind/named.conf.default-zones", DEFAULT_ZONES_IN_VIEWS)
+        # with views, every zone must be inside a view: the hint zone of the package goes
+        self.file('ns1', NAMED_ROOT_HINTS, NO_HINT_ZONE)
         self.cmd('ns1', "named-checkconf && systemctl restart named")
 
         # ---- ns2: secondary of both zones, transfers signed with the key ---------------------
@@ -1666,7 +1670,7 @@ rndc dnssec -checkds published {domain}
 - le drapeau `ad` signifie que @@{{ad_meaning:>le résolveur a validé la réponse (Authenticated Data)|le serveur fait autorité|la réponse vient du cache}}@@
 - `www.{bogus}` donne `SERVFAIL` parce que @@{{bogus_why:>le parent publie un DS mais la zone n'est pas signée avec la clé correspondante : chaîne cassée|le serveur de bogus.tp est éteint|le résolveur n'a pas d'ancre de confiance}}@@
 - avec `+cd`, @@{{cd_effect:>la réponse est rendue sans validation (checking disabled)|le résolveur valide deux fois|la requête est chiffrée}}@@
-- la politique `default` de BIND 9.18 crée @@{{csk:>une seule clé CSK qui joue les rôles KSK et ZSK|une KSK et une ZSK séparées|aucune clé : il faut dnssec-keygen}}@@
+- la politique `default` de BIND 9.20 crée @@{{csk:>une seule clé CSK qui joue les rôles KSK et ZSK|une KSK et une ZSK séparées|aucune clé : il faut dnssec-keygen}}@@
 - la non-existence d'un nom est prouvée par @@{{nxdomain_proof:>des enregistrements NSEC (ou NSEC3) signés|le SOA de la zone|l'absence de réponse}}@@
 """).format(bogus=BOGUS)
             + instructor(tr("**Réponses.** empreinte de la DNSKEY ; validé par le résolveur ; DS sans clé correspondante ; sans validation ; une CSK ; NSEC/NSEC3.")),
@@ -1813,9 +1817,9 @@ Le site veut que `www.{domain}` vaille **`{www_int}`** (adresse interne) pour le
    `{zone_file_ext}` (copie du fichier actuel), la vue interne `{zone_file}` avec `www` → `{www_int}` ;
    `update-policy` et `dnssec-policy default` dans les deux (même `key-directory` : la même clé
    signe les deux instances, un seul `DS`) ; `allow-transfer {{ key {key_transfer}; }}` dans la vue
-   externe seulement. Les zones par défaut de Debian (`/etc/bind/named.conf.default-zones`, incluses
-   par `named.conf`) sont hors de toute vue : `named-checkconf` refuse (*all zones must be in views*) ;
-   déplacez `localhost` et `127.in-addr.arpa` dans la vue interne et videz ce fichier. `rndc reload`,
+   externe seulement. La zone d'amorce du paquet Debian (`/etc/bind/named.conf.root-hints`, inclus
+   par `named.conf`) est hors de toute vue : `named-checkconf` refuse (*all zones must be in views*) ;
+   videz ce fichier (un serveur qui ne fait qu'autorité n'a pas besoin de zone d'amorce). `rndc reload`,
    puis `rndc dnssec -status {domain} IN {view_ext}`.
 2. Sur `resolver`, ajoutez une `stub-zone:` (`name: "{domain}"`, `stub-addr: {ns1_ip}`) pour que le
    résolveur du site interroge toujours `ns1` pour `{domain}` ; `unbound-control flush_zone {domain}`.

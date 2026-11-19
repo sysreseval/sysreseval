@@ -6,7 +6,7 @@ An "Internet" network `wan` links the site A gateway `gwa`, the site B gateway `
 hotel `box` (NAT in front of the roaming `laptop`), the ISP router `inet` (behind it, the web server
 `web` of "the rest of the Internet") and the hidden `probe`.  Behind `gwa`: `lana` with the
 internal server `m1`; behind `gwb`: `lanb` with `m2`.  `gwa`, `gwb`, `laptop` and `probe` run
-systemd (`init12` image, privileged) and strongSwan.
+systemd (`init13` image, privileged) and strongSwan.
 
 The probe watches the `wan` traffic during the evaluation (``tcpdump``), then connects to `gwa` as
 a road warrior with the EAP credentials of two users given to the students: `colleague` (must
@@ -15,9 +15,10 @@ the reference solution.  Every question ends with its solution in an ``instructo
 texts are French (``tr()``), the identifiers English.
 
 The Docker images must ship strongSwan (``strongswan-swanctl``, ``charon-systemd``,
-``strongswan-pki``, ``libcharon-extra-plugins``; images >= 1.32).  Debian's build has no
-eap-mschapv2 plugin: the road warriors authenticate with EAP-MD5 inside the encrypted IKE_AUTH
-exchange, after the gateway proved its identity with its certificate.
+``strongswan-pki``, ``libcharon-extra-plugins``; images >= 1.32).  The road warriors authenticate
+with EAP-MD5 inside the encrypted IKE_AUTH exchange, after the gateway proved its identity with its
+certificate (the lab was written on Debian 12, whose build has no eap-mschapv2 plugin; Debian 13's
+strongSwan 6.0 has it).
 """
 import random
 import re
@@ -60,7 +61,7 @@ record_sessions = False
 
 DOMAIN = "lab"
 IPSEC_MACHINES = ("gwa", "gwb", "laptop")
-INIT_MACHINE = {'image': sre_docker_image("init12"), 'privileged': True, 'entrypoint': "/sbin/init"}
+INIT_MACHINE = {'image': sre_docker_image("init13"), 'privileged': True, 'entrypoint': "/sbin/init"}
 #: the "Internet": one of the documentation ranges (TEST-NET-1/2/3)
 WAN_NETWORKS = [IPv4Network("192.0.2.0/24"), IPv4Network("198.51.100.0/24"), IPv4Network("203.0.113.0/24")]
 PCAP = "/tmp/sre_wan.pcap"

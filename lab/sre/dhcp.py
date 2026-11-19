@@ -72,7 +72,7 @@ SYSTEMD_MACHINES = [
     "srv1",
     "srv2",
     "r1",
-]  # real systemd (init12 image): systemctl, journalctl
+]  # real systemd (init13 image): systemctl, journalctl
 # Locally administered prefix of every MAC address chosen by the lab ("SR" in ASCII).
 MAC_PREFIX = "02:53:52"
 # TEST-NET-1 address, foreign to every lab network: an authoritative server answers
@@ -82,7 +82,7 @@ FOREIGN_ADDRESS = "192.0.2.77"
 LONG_LEASE = 4000000
 FAILOVER_NAME = "lan2"
 INIT_MACHINE = {
-    "image": sre_docker_image("init12"),
+    "image": sre_docker_image("init13"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }

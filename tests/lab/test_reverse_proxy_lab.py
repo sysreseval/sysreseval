@@ -349,7 +349,10 @@ class TestStates:
         assert app['web1:8080']['weight'] == 2 * app['web2:8080']['weight'] and app['web3:8080']['backup']
         assert lab.SICK_BACKEND not in ns._solution_nginx_http()
         assert 'proxy_http_version' not in ns._solution_nginx_snippet(3) and 'proxy_http_version 1.1;' in ns._solution_nginx_snippet(4)
-        assert "gzip on" not in ns._solution_nginx_http() + sites[7]      # already in Debian's nginx.conf
+        # commented out in the nginx.conf of the nginx.org package (Debian 13 image): written with
+        # gzip_types in the server of the shop (part 6), never at the http level
+        assert all(("gzip on;" in site) == (part >= 6) for part, site in sites.items())
+        assert "gzip on" not in ns._solution_nginx_http()
 
     def test_other_solutions(self, lab, data):
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())

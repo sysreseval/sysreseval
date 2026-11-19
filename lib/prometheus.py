@@ -50,8 +50,10 @@ Facts (verified live on 2026-11-11, images 1.32):
 - blackbox: ``cap_net_raw`` on the binary (preseeded), an ICMP probe works as ``prometheus``; the
   default modules fall back to IPv4 (``probe_ip_protocol 4``); an unknown module answers HTTP 400
   ``Unknown module "x"`` (the target is down with ``server returned HTTP status 400``);
-- the SNMP exporter 0.21 loads a hand-written ``if_mib`` module (``version`` and ``auth`` inside the
-  module) and returns ``ifHCInOctets{ifDescr,ifIndex}``; a wrong community answers HTTP 500 after
+- the SNMP exporter loads a hand-written ``if_mib`` module (0.28, Debian 13: ``version`` and
+  ``community`` in an ``auths`` entry, ``public_v2`` being the one a request without ``auth=`` takes;
+  0.21, Debian 12: inside the module) and returns ``ifHCInOctets{ifDescr,ifIndex}``; a wrong
+  community answers HTTP 500 after
   ``timeout`` × (``retries`` + 1) = 20 s;
 - ``promtool test rules`` takes a JSON file; ``ALERTS`` is queryable in ``promql_expr_test``; an
   empty ``exp_samples`` means "no sample"; a missing rule file is a ``WARNING`` then failures, rc 1;
@@ -110,64 +112,68 @@ RC_MARK = "===RC"
 RC_SUFFIX = ' 2>&1; echo "===RC $?"'
 NL_RC_SUFFIX = '; rc=$?; echo; echo "===RC $rc"'    # JSON bodies have no final newline
 
-# The SNMP module the package does not ship (its snmp.yml is a comment): written by hand in the
-# 0.21 format, verified live.  {community} is the only variable.
-SNMP_MODULE_TEMPLATE = """# Module ecrit a la main pour le TP (format de snmp_exporter 0.21).
-if_mib:
-  walk:
-  - 1.3.6.1.2.1.2.2.1.2        # ifDescr (pour les etiquettes)
-  - 1.3.6.1.2.1.2.2.1.8        # ifOperStatus
-  - 1.3.6.1.2.1.31.1.1.1.6     # ifHCInOctets
-  - 1.3.6.1.2.1.31.1.1.1.10    # ifHCOutOctets
-  get:
-  - 1.3.6.1.2.1.1.3.0          # sysUpTime.0
-  metrics:
-  - name: sysUpTime
-    oid: 1.3.6.1.2.1.1.3
-    type: gauge
-    help: Time since the SNMP agent started, in hundredths of a second - 1.3.6.1.2.1.1.3
-  - name: ifOperStatus
-    oid: 1.3.6.1.2.1.2.2.1.8
-    type: gauge
-    help: Operational state of the interface (1 up, 2 down) - 1.3.6.1.2.1.2.2.1.8
-    indexes:
-    - labelname: ifIndex
-      type: gauge
-    lookups:
-    - labels: [ifIndex]
-      labelname: ifDescr
-      oid: 1.3.6.1.2.1.2.2.1.2
-      type: DisplayString
-  - name: ifHCInOctets
-    oid: 1.3.6.1.2.1.31.1.1.1.6
-    type: counter
-    help: Octets received on the interface - 1.3.6.1.2.1.31.1.1.1.6
-    indexes:
-    - labelname: ifIndex
-      type: gauge
-    lookups:
-    - labels: [ifIndex]
-      labelname: ifDescr
-      oid: 1.3.6.1.2.1.2.2.1.2
-      type: DisplayString
-  - name: ifHCOutOctets
-    oid: 1.3.6.1.2.1.31.1.1.1.10
-    type: counter
-    help: Octets sent on the interface - 1.3.6.1.2.1.31.1.1.1.10
-    indexes:
-    - labelname: ifIndex
-      type: gauge
-    lookups:
-    - labels: [ifIndex]
-      labelname: ifDescr
-      oid: 1.3.6.1.2.1.2.2.1.2
-      type: DisplayString
-  version: 2
-  max_repetitions: 25
-  retries: 3
-  timeout: 5s
-  auth:
+# The SNMP module the package does not ship (its snmp.yml is a comment): written by hand,
+# verified live.  {community} is the only variable.  The format is the one of snmp_exporter 0.23
+# and later (0.28 on Debian 13: `auths` apart from `modules`); the 0.21 of Debian 12 had `version`
+# and `auth: {community}` inside the module and does not read this one, nor 0.28 the old one.
+SNMP_MODULE_TEMPLATE = """# Module ecrit a la main pour le TP (format de snmp_exporter 0.23 et suivants).
+auths:
+  public_v2:                     # l'entree prise quand la requete n'a pas de parametre auth
+    version: 2
     community: {community}
+modules:
+  if_mib:
+    walk:
+    - 1.3.6.1.2.1.2.2.1.2        # ifDescr (pour les etiquettes)
+    - 1.3.6.1.2.1.2.2.1.8        # ifOperStatus
+    - 1.3.6.1.2.1.31.1.1.1.6     # ifHCInOctets
+    - 1.3.6.1.2.1.31.1.1.1.10    # ifHCOutOctets
+    get:
+    - 1.3.6.1.2.1.1.3.0          # sysUpTime.0
+    metrics:
+    - name: sysUpTime
+      oid: 1.3.6.1.2.1.1.3
+      type: gauge
+      help: Time since the SNMP agent started, in hundredths of a second - 1.3.6.1.2.1.1.3
+    - name: ifOperStatus
+      oid: 1.3.6.1.2.1.2.2.1.8
+      type: gauge
+      help: Operational state of the interface (1 up, 2 down) - 1.3.6.1.2.1.2.2.1.8
+      indexes:
+      - labelname: ifIndex
+        type: gauge
+      lookups:
+      - labels: [ifIndex]
+        labelname: ifDescr
+        oid: 1.3.6.1.2.1.2.2.1.2
+        type: DisplayString
+    - name: ifHCInOctets
+      oid: 1.3.6.1.2.1.31.1.1.1.6
+      type: counter
+      help: Octets received on the interface - 1.3.6.1.2.1.31.1.1.1.6
+      indexes:
+      - labelname: ifIndex
+        type: gauge
+      lookups:
+      - labels: [ifIndex]
+        labelname: ifDescr
+        oid: 1.3.6.1.2.1.2.2.1.2
+        type: DisplayString
+    - name: ifHCOutOctets
+      oid: 1.3.6.1.2.1.31.1.1.1.10
+      type: counter
+      help: Octets sent on the interface - 1.3.6.1.2.1.31.1.1.1.10
+      indexes:
+      - labelname: ifIndex
+        type: gauge
+      lookups:
+      - labels: [ifIndex]
+        labelname: ifDescr
+        oid: 1.3.6.1.2.1.2.2.1.2
+        type: DisplayString
+    max_repetitions: 25
+    retries: 3
+    timeout: 5s
 """
 
 # Debian's /etc/prometheus/blackbox.yml, as a structure (the modules a complete file keeps).

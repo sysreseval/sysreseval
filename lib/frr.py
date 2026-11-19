@@ -4,7 +4,8 @@ Every ``get_*`` function registers one command through ``grade.test()`` -- so it
 follows the two-pass contract of ``Grade.grade()`` (placeholder result on the
 registration pass, real output afterwards) -- and hands the text to a pure
 ``parse_*`` function.  The parsers are unit-tested on captured FRR 9 output in
-``tests/test_frr.py``.  The OSPF and RIP helpers parse the text output of ``vtysh``
+``tests/test_frr.py``; the labs run on the FRR 10.3 of Debian 13 since 2026-11-19, whose output
+they read the same (the OSPF, BGP, RIP, multicast and OSPFv3 labs reach full marks on it).  The OSPF and RIP helpers parse the text output of ``vtysh``
 (``show ip rip`` and ``show ip rip status`` have no json form), the BGP helpers its
 ``json`` output (``show bgp ipv4 unicast ... json``).  On the placeholder output
 every parser returns its empty shape (``{}``/``[]``), never an exception.  What a

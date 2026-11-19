@@ -6,7 +6,7 @@ An "Internet" network `wan` links the site A gateway `srv` (the WireGuard concen
 gateway `gwb`, the box of a hotel `box` (NAT in front of the roaming `laptop`), the ISP router `inet`
 (behind it, the web server `web` of "the rest of the Internet") and the hidden `probe`.  Behind
 `srv`: `lana` with the internal server `m1`; behind `gwb`: `lanb` with `m2`.  `srv`, `gwb` and
-`laptop` run systemd (`init12` image, privileged: a wg-quick full tunnel writes in `/proc/sys`).
+`laptop` run systemd (`init13` image, privileged: a wg-quick full tunnel writes in `/proc/sys`).
 
 The probe watches the `wan` traffic during the evaluation (``tcpdump``), then connects to the
 concentrator with the keys of two laptops whose public key alone is given to the students:
@@ -62,7 +62,7 @@ PUBLIC_KEY_FILE = f"{WG_DIR}/public.key"
 UNIT = "wg-quick@wg0"
 KEEPALIVE = 25
 SYSTEMD_MACHINES = ("srv", "gwb", "laptop")
-INIT_MACHINE = {'image': sre_docker_image("init12"), 'privileged': True, 'entrypoint': "/sbin/init"}
+INIT_MACHINE = {'image': sre_docker_image("init13"), 'privileged': True, 'entrypoint': "/sbin/init"}
 #: the "Internet": one of the documentation ranges (TEST-NET-1/2/3)
 WAN_NETWORKS = [IPv4Network("192.0.2.0/24"), IPv4Network("198.51.100.0/24"), IPv4Network("203.0.113.0/24")]
 PCAP = "/tmp/sre_wan.pcap"

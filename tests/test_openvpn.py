@@ -1,5 +1,8 @@
 """Tests for lib/openvpn.py (fixtures captured on OpenVPN 2.6.14 / easy-rsa 3.1.0, Debian 12,
 in a sysreseval/base:1.29 container: tests/mock_data/openvpn/)."""
+import base64
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -277,6 +280,36 @@ def test_easyrsa_client_files_cmd_and_parse():
     assert parse_b64_files(out) == {'CERT': 'aGVsbG8=', 'KEY': 'd29ybGQ='}
     assert parse_b64_files('') == {'CERT': '', 'KEY': ''}
     assert parse_b64_files("CERT\nnot base64!!\nKEY\nd29ybGQ=\n") == {'CERT': '', 'KEY': 'd29ybGQ='}
+
+
+@pytest.mark.skipif(not sys.platform.startswith('linux') or shutil.which('openssl') is None,
+                    reason="needs GNU base64 -w0 and openssl")
+@pytest.mark.parametrize('layout', ['valid', 'revoked-3.1', 'revoked-3.2'])
+def test_easyrsa_client_files_cmd_on_a_pki(tmp_path, layout):
+    """The command run by sh on a PKI laid out as easy-rsa leaves it: a valid client, then a
+    revoked one as easy-rsa 3.1 (Debian 12: certificate and key moved to pki/revoked/*_by_serial)
+    and as easy-rsa 3.2 (Debian 13: the key stays in pki/private) leave it."""
+    pki = tmp_path / 'pki'
+    for d in ('issued', 'private', 'revoked/certs_by_serial', 'revoked/private_by_serial'):
+        (pki / d).mkdir(parents=True)
+    subprocess.run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes',
+                    '-subj', '/CN=ancien', '-keyout', str(tmp_path / 'key'), '-out', str(tmp_path / 'crt')],
+                   check=True, capture_output=True)
+    crt, key = (tmp_path / 'crt').read_bytes(), (tmp_path / 'key').read_bytes()
+    serial = '2EEA8F034A7645ACBAC15417075F7EE8'
+    if layout == 'valid':
+        (pki / 'issued/ancien.crt').write_bytes(crt)
+        (pki / 'private/ancien.key').write_bytes(key)
+    else:
+        (pki / f'revoked/certs_by_serial/{serial}.crt').write_bytes(crt)
+        where = f'revoked/private_by_serial/{serial}.key' if layout == 'revoked-3.1' else 'private/ancien.key'
+        (pki / where).write_bytes(key)
+    r = subprocess.run(['sh', '-c', easyrsa_client_files_cmd(str(pki), 'ancien')], capture_output=True, text=True)
+    files = parse_b64_files(r.stdout)
+    assert r.returncode == 0 and base64.b64decode(files['CERT']) == crt and base64.b64decode(files['KEY']) == key
+    # a name the PKI never issued
+    r = subprocess.run(['sh', '-c', easyrsa_client_files_cmd(str(pki), 'inconnu')], capture_output=True, text=True)
+    assert r.returncode == 1 and r.stdout == ''
 
 
 # ---------------------------------------------------------------------------

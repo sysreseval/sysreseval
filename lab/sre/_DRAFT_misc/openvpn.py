@@ -5,7 +5,7 @@ Un réseau « Internet » `wan` relie le serveur VPN `srv` (passerelle du site A
 site B `gwb`, le poste nomade `nomade`, le serveur `inet` (routeur du fournisseur d'accès et
 serveur web) et la sonde cachée `sonde`.  Derrière `srv` : `lana` avec l'autorité de certification
 `ca` et le serveur interne `m1` ; derrière `gwb` : `lanb` avec `m2`.  `srv`, `gwb` et `nomade`
-tournent avec systemd (image `init12`) pour les unités `openvpn-server@` / `openvpn-client@`.
+tournent avec systemd (image `init13`) pour les unités `openvpn-server@` / `openvpn-client@`.
 
 La sonde observe le trafic du `wan` pendant l'évaluation (``tcpdump``) et se connecte au serveur
 avec un certificat signé au vol par la CA de l'étudiant, puis avec le certificat révoqué.
@@ -70,7 +70,7 @@ CCD_DIR = f"{SRV_DIR}/ccd"
 CLIENTS = ("nomade", "siteb", "ancien")   # certificates issued by the student's CA
 REVOKED = "ancien"
 SYSTEMD_MACHINES = ("srv", "gwb", "nomade")
-INIT_MACHINE = {'image': sre_docker_image("init12"), 'privileged': True, 'entrypoint': "/sbin/init"}
+INIT_MACHINE = {'image': sre_docker_image("init13"), 'privileged': True, 'entrypoint': "/sbin/init"}
 #: the "Internet": one of the documentation ranges (TEST-NET-1/2/3)
 WAN_NETWORKS = [IPv4Network("192.0.2.0/24"), IPv4Network("198.51.100.0/24"), IPv4Network("203.0.113.0/24")]
 PROBE_DIR = "/tmp/sre_vpn"            # files of the evaluation on the probe
@@ -613,14 +613,17 @@ UDP 1194, routage asymétrique (chemin du retour oublié), MTU (grands paquets p
         file.  Forms are filled through cheat_answers.
         """
         d = self.data
-        # EASYRSA_REQ_CN is for build-ca only: exported for build-*-full, it makes them fail.
-        env = f"EASYRSA_BATCH=1 EASYRSA_PASSIN=pass:{d.ca_passphrase} EASYRSA_PASSOUT=pass:{d.ca_passphrase}"
+        # EASYRSA_REQ_CN and EASYRSA_PASSOUT are for build-ca only.  Exported for build-*-full, the
+        # first makes them fail, and the second makes easy-rsa 3.2 (Debian 13) encrypt the key of
+        # the server and of the clients in spite of `nopass` (easy-rsa 3.1 of Debian 12 did not).
+        env = f"EASYRSA_BATCH=1 EASYRSA_PASSIN=pass:{d.ca_passphrase}"
         easyrsa = f"cd {EASYRSA_DIR} && env {env} ./easyrsa"
 
         # ---- step 1, ca: parts 2 and 7 (PKI, revocation) ------------------------------------
         self.cmd('ca', f"rm -rf {EASYRSA_DIR} && make-cadir {EASYRSA_DIR}")
         self.cmd('ca', f"{easyrsa} init-pki >/dev/null 2>&1")
-        self.cmd('ca', f"cd {EASYRSA_DIR} && env {env} EASYRSA_REQ_CN={CA_CN} ./easyrsa build-ca >/dev/null 2>&1")
+        self.cmd('ca', f"cd {EASYRSA_DIR} && env {env} EASYRSA_PASSOUT=pass:{d.ca_passphrase} EASYRSA_REQ_CN={CA_CN} "
+                       "./easyrsa build-ca >/dev/null 2>&1")
         self.cmd('ca', f"{easyrsa} build-server-full srv nopass >/dev/null 2>&1")
         for name in CLIENTS:
             self.cmd('ca', f"{easyrsa} build-client-full {name} nopass >/dev/null 2>&1")
@@ -782,7 +785,8 @@ class Grade(Grade0):
                                      download_step=1, apply_step=2, workdir=PROBE_SRV_DIR)
         have_probe = all(ca_files[k].strip() for k in (f"{PKI}/ca.crt", PROBE_CERT, PROBE_KEY)) \
             and bool(srv_files[f"{SRV_DIR}/ta.key"].strip())
-        # The revoked client's files: easy-rsa moves them to pki/revoked/*_by_serial on `revoke`.
+        # The revoked client's files: `revoke` moves the certificate to pki/revoked/certs_by_serial
+        # (and, with easy-rsa 3.1, the key to pki/revoked/private_by_serial).
         revoked_out, _ = self.test('ca', easyrsa_client_files_cmd(PKI, REVOKED), allow_error=True)
         revoked_b64 = parse_b64_files(revoked_out)
         have_revoked = have_probe and bool(revoked_b64["CERT"]) and bool(revoked_b64["KEY"])

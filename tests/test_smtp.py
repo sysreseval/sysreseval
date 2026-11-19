@@ -34,7 +34,8 @@ sys.modules['Kathara.model.Lab'].Lab = MagicMock()
 import smtp_probe as probe_script  # noqa: E402
 from smtp import (  # noqa: E402
     PROBE_HEADER, PROBE_QUERY_HEADER, SMTP_PROBE_PATH, MailqEntry, ProbeResult, body_contains,
-    body_text, deferred_to, dkim_txt_record, doveconf_listener, doveconf_value, find_messages,
+    body_text, deferred_to, dkim_txt_record, doveconf_listener, doveconf_value, dovecot_cleartext_auth_refused,
+    dovecot_mail_location, dovecot_mail_plugins, dovecot_tls_files, find_messages,
     generate_dkim_keypair, get_doveconf, get_mailq, get_master_services, get_postconf,
     imap_query, install_smtp_probe, is_bounce, maildir_cleanup_command, maildir_dump_command,
     managesieve_query, mynetworks_covers, normalize_text, parse_authentication_results, parse_dkim_signature,
@@ -402,6 +403,45 @@ class TestDoveconf:
     def test_quotes_and_merging(self):
         conf = parse_doveconf('# comment\nprotocols = " imap"\nservice auth {\n  a = 1\n}\nservice auth {\n  b = 2\n}\n}\n')
         assert doveconf_value(conf, 'protocols') == 'imap' and conf['service auth'] == {'a': '1', 'b': '2'}
+
+    def test_readers_on_dovecot_2_3(self):
+        """`doveconf -n` of mx1 in the SMTP lab on the Debian 12 image (Dovecot 2.3.19)."""
+        conf = parse_doveconf(load('doveconf_mx1_final.txt'))
+        assert dovecot_mail_location(conf) == 'maildir:~/Maildir'
+        assert dovecot_tls_files(conf) == ('/etc/ssl/certs/mx1.crt', '')      # -n hides the key
+        assert dovecot_cleartext_auth_refused(conf) is False                  # disable_plaintext_auth = no
+        assert dovecot_mail_plugins(conf) == set()
+        # the settings as a student writes them, and as `doveconf ssl_cert ssl_key` prints them
+        conf = parse_doveconf("ssl_cert = </etc/ssl/certs/mail.crt\nssl_key = </etc/ssl/private/mail.key\n"
+                              "disable_plaintext_auth = yes\nmail_plugins = $mail_plugins quota\n"
+                              "protocol lmtp {\n  mail_plugins = $mail_plugins sieve\n}\n")
+        assert dovecot_tls_files(conf) == ('/etc/ssl/certs/mail.crt', '/etc/ssl/private/mail.key')
+        assert dovecot_cleartext_auth_refused(conf) is True
+        assert dovecot_mail_plugins(conf) == {'quota'} and dovecot_mail_plugins(conf['protocol lmtp']) == {'sieve'}
+
+    def test_readers_on_dovecot_2_4(self):
+        """`doveconf -n` and `doveconf <settings>` of the mail server of the mail lab on the Debian 13
+        image (Dovecot 2.4.1, final state, 2026-11-19): other setting names, blocks for the lists."""
+        conf = parse_doveconf(load('doveconf_mail_final_dovecot24.txt'))
+        assert 'mail_location' not in conf and conf['mail_inbox_path'] == '~/Maildir'
+        assert dovecot_mail_location(conf) == 'maildir:~/Maildir'
+        assert dovecot_tls_files(conf) == ('/etc/ssl/certs/mail.crt', '/etc/ssl/private/mail.key')
+        assert dovecot_cleartext_auth_refused(conf) is None                   # the default: not in -n
+        lmtp = conf['protocol lmtp']
+        assert dovecot_mail_plugins(lmtp) == {'sieve'} and dovecot_mail_plugins(conf) == set()
+        assert lmtp['auth_username_format'] == '%{user | username | lower}'
+        assert doveconf_listener(conf, '/var/spool/postfix/private/dovecot-lmtp') == {'group': 'postfix', 'mode': '0600', 'user': 'postfix'}
+        assert conf['namespace inbox']['mailbox Drafts'] == {'auto': 'subscribe', 'special_use': '"\\\\Drafts"'}
+        effective = parse_doveconf(load('doveconf_settings_mail_final_dovecot24.txt'))
+        assert dovecot_cleartext_auth_refused(effective) is True              # auth_allow_cleartext = no
+        assert dovecot_mail_location(effective) == 'maildir:~/Maildir' and doveconf_value(effective, 'ssl') == 'required'
+        assert effective['protocols'] == {'imap': 'yes', 'lmtp': 'yes', 'sieve': 'yes'}
+
+    def test_readers_without_configuration(self):
+        assert dovecot_mail_location({}) == '' and dovecot_tls_files({}) == ('', '')
+        assert dovecot_cleartext_auth_refused({}) is None and dovecot_mail_plugins({}) == set()
+        assert dovecot_cleartext_auth_refused(parse_doveconf('auth_allow_cleartext = yes\n')) is False
+        assert dovecot_mail_plugins(parse_doveconf('mail_plugins {\n  sieve = yes\n  quota = no\n}\n')) == {'sieve'}
 
     def test_get_doveconf(self):
         grade = make_grade({('mx1', 'doveconf -n'): (load('doveconf_mx1_final.txt'), 0), ('mx2', 'doveconf -n'): ('error', 89)})

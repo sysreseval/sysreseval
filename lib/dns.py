@@ -3,7 +3,8 @@
 Pure functions first (command builders, output parsers, DNSSEC maths, renderers of zone files
 and configurations), then the ``(grade, machine, ...)`` wrappers that register one command in
 the grade and parse its result.  Fixtures captured on BIND 9.18.49, unbound 1.17.1, kdig 3.2.6
-and stubby 0.3.0 (getdns 1.6) live in ``tests/mock_data/dns/``.
+and stubby 0.3.0 (getdns 1.6), the Debian 12 images, live in ``tests/mock_data/dns/``; the
+``*_bind920`` ones come from the Debian 13 image (BIND 9.20.30), on which the labs run.
 
 The module is named ``dns`` on purpose: ``dnspython`` is not a dependency of SRE, so nothing
 is shadowed.
@@ -1263,16 +1264,20 @@ def firefox_doh(policies: dict, prefs: dict) -> dict:
     return {'enabled': False, 'url': policies.get('doh_url') or uri, 'mode': mode, 'source': None}
 
 
+# BIND 9.20 (Debian 13) signs a `dnssec-policy` zone inline by default and names the version of
+# the zone a line is about: "zone example.tp/IN/internal (signed): sending notifies (serial N)"
+# ("(unsigned)" for the raw zone); BIND 9.18 (Debian 12) wrote "zone example.tp/IN/internal: ...".
+_ZONE_VERSION = r"(?: \((?:un)?signed\))?"
 _JOURNAL_RES = [
     ('transfer', re.compile(r"transfer of '([^/']+)/IN(?:/([^']+))?' from ([\d.]+)#\d+: Transfer (status|completed): (.*)")),
-    ('transferred', re.compile(r"zone ([^/\s]+)/IN(?:/(\S+))?: transferred serial (\d+)")),
-    ('notify_sent', re.compile(r"zone ([^/\s]+)/IN(?:/(\S+))?: sending notifies \(serial (\d+)\)")),
-    ('notify_received', re.compile(r"zone ([^/\s]+)/IN(?:/(\S+))?: notify from ([\d.]+)#\d+: (.*)")),
+    ('transferred', re.compile(r"zone ([^/\s]+)/IN(?:/(\S+))?" + _ZONE_VERSION + r": transferred serial (\d+)")),
+    ('notify_sent', re.compile(r"zone ([^/\s]+)/IN(?:/(\S+))?" + _ZONE_VERSION + r": sending notifies \(serial (\d+)\)")),
+    ('notify_received', re.compile(r"zone ([^/\s]+)/IN(?:/(\S+))?" + _ZONE_VERSION + r": notify from ([\d.]+)#\d+: (.*)")),
     ('update', re.compile(r"(?:view (\S+): )?updating zone '([^/']+)/IN': (adding an RR|deleting rrset|deleting an RR) at '([^']+)' (\S+)")),
     ('update_failed', re.compile(r"(?:updating zone '([^/']+)/IN': )?update failed: (.*)")),
     ('update_denied', re.compile(r"(?:view (\S+): )?update '([^/']+)/IN' denied")),
     ('xfer_denied', re.compile(r"(?:view (\S+): )?zone transfer '([^/']+)/AXFR/IN' denied")),
-    ('loaded', re.compile(r"zone ([^/\s]+)/IN(?:/(\S+))?: loaded serial (\d+)")),
+    ('loaded', re.compile(r"zone ([^/\s]+)/IN(?:/(\S+))?" + _ZONE_VERSION + r": loaded serial (\d+)")),
     ('frozen', re.compile(r"(freezing|thawing) zone '([^/']+)/IN'(?: (\S+))?: (\w+)")),
 ]
 

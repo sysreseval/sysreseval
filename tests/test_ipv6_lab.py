@@ -193,7 +193,7 @@ def _synthetic(lab, ns, machine, command):
     if '===T6' in command:
         return ("===T6\n2 packets transmitted, 2 received, 0% packet loss\n"
                 "===FIT\n2 packets transmitted, 2 received, 0% packet loss\n"
-                f"===OVER\nping: local error: message too long, mtu: {tun_mtu}\n1 packets transmitted, 0 received\n"), 0
+                f"===OVER\nping: sendmsg: Message too long\n1 packets transmitted, 0 received\n"), 0
     return '', 0
 
 

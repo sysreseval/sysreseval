@@ -1,6 +1,8 @@
 """State and grade helpers of the HTTP reverse proxy / load balancer lab
-(``lab/sre/_DRAFT_misc/reverse-proxy.py``: nginx 1.22, Varnish 7.1, HAProxy 2.6, keepalived 2.2
-on the ``proxy`` image, Debian 12).
+(``lab/sre/_DRAFT_misc/reverse-proxy.py``; written on nginx 1.22, Varnish 7.1, HAProxy 2.6 and
+keepalived 2.2, the ``proxy`` image on Debian 12, and run since 2026-11-19 on its Debian 13 build:
+nginx 1.30 of nginx.org, whose ``nginx.conf`` leaves ``gzip on;`` commented out, Varnish 7.7,
+HAProxy 3.0, keepalived 2.3).
 
 State side: :func:`install_backend` copies ``lib/http_backend.py`` (the application the proxies
 are put in front of) into a machine and starts it.  Its pages are ``KEY=value`` lines read with

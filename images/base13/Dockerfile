@@ -13,6 +13,8 @@
 #     installed (the QUIC lab);
 #   - suricata comes from Debian main (no backports);
 #   - scapy and tabulate are Debian's packages (kathara/core pip-installs them);
+#   - systemd-resolved is installed but disabled (see below: the dhclient hooks of its Debian 13
+#     package);
 #   - the recent iproute2 built from git is copied last, after every apt operation.
 #
 # A build host whose firewall lets deb.debian.org through but not git.kernel.org, nginx.org or
@@ -24,8 +26,8 @@
 #   cache/step-cli_<version>_amd64.deb  cache/step-ca_<version>_amd64.deb
 #   cache/systemctl3.py
 #
-# The labs moved to Debian 13 declare their machines with sre_docker_image("base13") (or
-# "init13" for a genuine systemd).
+# This is the default image of the labs (params.sre_docker_image()); a machine that needs a
+# genuine systemd names sre_docker_image("init13").
 #
 
 # --- iproute2, latest release (as kathara/core does) ----------------------------------------
@@ -158,16 +160,19 @@ RUN ln -sf /etc/init.d/named /etc/init.d/bind
 COPY apache2.service /usr/lib/systemd/system/apache2.service
 
 # nginx from nginx.org (stable): HTTP/3 with OpenSSL 3.5's QUIC API (0-RTT).  The signing key
-# must hold the fingerprint published on https://nginx.org/en/linux_packages.html.  Without
-# access to nginx.org, the package dropped in cache/.
+# must hold the fingerprint published on https://nginx.org/en/linux_packages.html (gpg is given
+# a throwaway home directory: with --dry-run it does not create /root/.gnupg and stops on
+# "directory does not exist" after the first line of the listing).  Without access to nginx.org,
+# the package dropped in cache/.
 RUN if ls /cache/nginx_*~trixie_$(dpkg --print-architecture).deb >/dev/null 2>&1; then \
         apt-get install -y "$(ls /cache/nginx_*~trixie_$(dpkg --print-architecture).deb | sort -V | tail -1)"; \
     else \
         curl -fsSL https://nginx.org/keys/nginx_signing.key -o /tmp/nginx_signing.key \
-        && gpg --dry-run --quiet --no-keyring --import --import-options import-show /tmp/nginx_signing.key \
+        && mkdir -m 700 /tmp/gnupg \
+        && gpg --homedir /tmp/gnupg --dry-run --quiet --no-keyring --import --import-options import-show /tmp/nginx_signing.key \
            | grep -q 573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62 \
-        && gpg --dearmor < /tmp/nginx_signing.key > /usr/share/keyrings/nginx-archive-keyring.gpg \
-        && rm /tmp/nginx_signing.key \
+        && gpg --homedir /tmp/gnupg --dearmor < /tmp/nginx_signing.key > /usr/share/keyrings/nginx-archive-keyring.gpg \
+        && rm -rf /tmp/gnupg /tmp/nginx_signing.key \
         && echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/debian trixie nginx" \
            > /etc/apt/sources.list.d/nginx.list \
         && printf 'Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n' \
@@ -326,6 +331,15 @@ RUN useradd -m -s /bin/bash "admin" \
 # allow root login
 RUN sed -i 's/.*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config \
     && sed -i 's/#X11UseLocalhost yes/X11UseLocalhost no/' /etc/ssh/sshd_config
+
+# Debian 13's systemd-resolved package ships dhclient hooks (/etc/dhcp/dhclient-*-hooks.d/resolved*)
+# that leave /etc/resolv.conf alone whenever the unit is enabled, which it is as installed: resolved
+# does not run in these containers, so a DHCP client would end up without any name server.  The
+# unit is disabled (its wants link and its D-Bus alias): dhclient writes resolv.conf itself, as on
+# Debian 12, whose package has no such hook.
+RUN rm -f /etc/systemd/system/sysinit.target.wants/systemd-resolved.service \
+          /etc/systemd/system/dbus-org.freedesktop.resolve1.service \
+    && ! systemctl is-enabled systemd-resolved >/dev/null 2>&1
 
 # The recent iproute2 last, so that no apt operation above puts Debian's back; marked installed
 # in the dpkg database (as kathara/core does) so that apt does not overwrite it.

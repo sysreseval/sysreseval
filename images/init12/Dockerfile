@@ -1,5 +1,6 @@
 ARG VERSION=latest
-FROM sysreseval/base12:${VERSION}
+ARG NAMESPACE=sysreseval
+FROM ${NAMESPACE}/base12:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 

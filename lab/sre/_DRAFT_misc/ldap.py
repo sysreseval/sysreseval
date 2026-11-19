@@ -4,7 +4,7 @@ machine authenticating against it, access control, TLS and (bonus) replication.
 Topology: one LAN (``lan``) with the directory server ``ldap1`` (slapd, the students' main
 machine), a second server ``ldap2`` (the replica of the bonus part), the workstation ``m1``
 (nslcd + PAM, sshd) and the hidden probe ``probe`` (ldap-utils, openssl, ssh: every network check
-of the evaluation).  The servers and the client run the ``ldap-mail`` image (``init12`` + the mail
+of the evaluation).  The servers and the client run the ``ldap-mail`` image (``init13`` + the mail
 servers + ``nslcd``, ``libnss-ldapd``, ``libpam-ldapd``, nothing configured), the probe the base one.
 
 ``initial`` gives each server a fresh ``cn=config`` built by ``slapadd`` from
@@ -77,11 +77,10 @@ REPLICATOR_DN = f"cn=replicator,{SUFFIX}"
 SERVERS = ('ldap1', 'ldap2')
 CLIENT = 'm1'
 PROBE = 'probe'
-# The `ldap-mail` image = init (a real systemd: `systemctl restart slapd` / `nslcd` as on Debian, the
-# systemctl replacement of the base12 image cannot stop an init.d-started slapd) + the mail servers + nslcd,
-# libnss-ldapd, libpam-ldapd left unconfigured; slapd and ldap-utils are in the base12 image, so the probe is
-# a plain base machine.
-BASE_IMAGE = sre_docker_image("base12")
+# The `ldap-mail` image = init13 (a real systemd: `systemctl restart slapd` / `nslcd` as on Debian) + the
+# mail servers + nslcd, libnss-ldapd, libpam-ldapd left unconfigured; slapd and ldap-utils are in the base13
+# image, so the probe is a plain base machine.
+BASE_IMAGE = sre_docker_image("base13")
 LDAP_MACHINE = {'image': sre_docker_image("ldap-mail"), 'privileged': True, 'entrypoint': "/sbin/init"}
 SYSTEMD_MACHINES = ('ldap1', 'ldap2', 'm1')
 CONFIG_LDIF = "/root/slapd-config.ldif"    # what initial loads with slapadd -n 0 (students may read it)

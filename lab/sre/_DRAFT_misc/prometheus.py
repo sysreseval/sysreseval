@@ -111,7 +111,7 @@ eval_before_exit = True
 record_sessions = False
 
 DOMAIN = "shop.lan"
-# The monitoring image (images/monitoring: init12 + Prometheus, Alertmanager, the exporters...),
+# The monitoring image (images/monitoring: init13 + Prometheus, Alertmanager, the exporters...),
 # written in full so that `sre preload-images` finds it.
 SYSTEMD_MACHINE = {
     "image": sre_docker_image("monitoring"),
@@ -537,9 +537,9 @@ l'**exporteur** devient l'adresse collectée. On l'écrit avec un *relabelling* 
 Le SNMP exporter interroge un équipement en SNMP et traduit les réponses en métriques, selon les
 **modules** de `/etc/prometheus/snmp.yml` : quels OID parcourir, quel nom et quel type donner à chaque
 valeur, quelles étiquettes (le nom d'interface `ifDescr`, par exemple). Ce fichier est normalement
-produit à partir des MIB par `prometheus-snmp-generator` ; le paquet Debian le livre vide. Dans la
-version 0.21, chaque module porte aussi la version de SNMP et la communauté (`auth:` →
-`community:`).
+produit à partir des MIB par `prometheus-snmp-generator` ; le paquet Debian le livre vide. La
+version de SNMP et la communauté sont décrites à part, sous `auths:` (depuis la version 0.23 de
+l'exporteur) : une requête désigne une entrée par le paramètre `auth`, et prend `public_v2` sans lui.
 
 `http://prom:9116/snmp?module=if_mib&target=router` répond par exemple
 `ifHCInOctets{ifDescr="eth0",ifIndex="2"} 5295`. La collecte se configure comme pour le blackbox

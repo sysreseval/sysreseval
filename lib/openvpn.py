@@ -4,7 +4,9 @@ Pure parsers of the artefacts an OpenVPN lab leaves behind (configuration files,
 client log, ``ip -j -4 addr``, ``ss -ulnp``, ``tcpdump -nr``, easy-rsa ``index.txt``,
 ``openssl x509`` outputs) and thin ``(grade, machine, step)`` wrappers around one command each,
 in the style of ``lib/frr.py``.  Fixtures captured on OpenVPN 2.6.14 / easy-rsa 3.1.0 (Debian 12)
-live in ``tests/mock_data/openvpn/``.
+live in ``tests/mock_data/openvpn/``.  The lab runs on the Debian 13 image (OpenVPN 2.6.14,
+easy-rsa 3.2.2, which keeps the key of a revoked certificate in ``pki/private`` and encrypts the
+keys of ``build-*-full ... nopass`` when ``EASYRSA_PASSOUT`` is exported).
 
 Every wrapper registers its command unconditionally (two-pass contract of ``Grade0.grade()``)
 and returns an empty value until the command has run.
@@ -435,15 +437,17 @@ def get_easyrsa_index(grade: Grade0, machine_name: str, pki_dir: str, step: int 
 def easyrsa_client_files_cmd(pki_dir: str, cn: str) -> str:
     """One-line command printing ``CERT``, the base64 of the certificate of *cn*, ``KEY`` and the
     base64 of its private key, wherever easy-rsa keeps them: ``pki/issued`` + ``pki/private`` for a
-    valid certificate, ``pki/revoked/certs_by_serial`` + ``pki/revoked/private_by_serial`` once
-    ``easyrsa revoke`` has moved them.  Exits 1 (nothing printed) when *cn* is unknown; read the
-    output with parse_b64_files()."""
+    valid certificate; once ``easyrsa revoke`` has moved the certificate to
+    ``pki/revoked/certs_by_serial``, the key is in ``pki/revoked/private_by_serial`` (easy-rsa 3.1,
+    Debian 12) or still in ``pki/private`` (easy-rsa 3.2, Debian 13).  Exits 1 (nothing printed)
+    when *cn* is unknown; read the output with parse_b64_files()."""
     q = shlex.quote(cn)
     return (f"cd {shlex.quote(pki_dir)} 2>/dev/null || exit 1; c=; k=; "
             f"if [ -f issued/{q}.crt ]; then c=issued/{q}.crt; k=private/{q}.key; "
             f"else for f in revoked/certs_by_serial/*.crt; do "
             f"openssl x509 -in \"$f\" -noout -subject 2>/dev/null | grep -q 'CN *= *'{q}'$' "
-            "&& { c=$f; k=revoked/private_by_serial/$(basename \"$f\" .crt).key; break; }; done; fi; "
+            "&& { c=$f; k=revoked/private_by_serial/$(basename \"$f\" .crt).key; break; }; done; "
+            f"[ -f \"$k\" ] || k=private/{q}.key; fi; "
             "[ -n \"$c\" ] && [ -f \"$k\" ] || exit 1; echo CERT; base64 -w0 \"$c\"; echo; echo KEY; base64 -w0 \"$k\"; echo")
 
 

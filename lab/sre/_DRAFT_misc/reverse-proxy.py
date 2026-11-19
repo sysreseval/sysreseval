@@ -19,8 +19,8 @@ keepalived tracks).  The state ``final`` applies the reference solution; every q
 with its solution in an instructor block.
 
 Image: ``sysreseval/proxy`` (``images/proxy/Dockerfile``: HAProxy, keepalived, Varnish, socat,
-hatop, apache2-utils on the init12 image) for ``proxy``, ``lb1``, ``lb2`` (systemd) and ``client``
-(no init); the base12 image for the backends and the probe.
+hatop, apache2-utils on the init13 image) for ``proxy``, ``lb1``, ``lb2`` (systemd) and ``client``
+(no init); the base13 image for the backends and the probe.
 """
 
 import random
@@ -96,14 +96,14 @@ APP_SITE = f"app.{DOMAIN}"  # the virtual address of the HAProxy pair
 INTRANET_SITE = f"intranet.{DOMAIN}"  # a virtual host of the backends, found by hand in part 1
 UNKNOWN_SITE = f"nothing.{DOMAIN}"  # a name the proxy must not serve
 CA_NAME = "Shop Internal CA"
-# The proxy image (images/proxy: init12 + haproxy, keepalived, varnish), written in full so that
+# The proxy image (images/proxy: init13 + haproxy, keepalived, varnish), written in full so that
 # `sre preload-images` finds it.
 PROXY_MACHINE = {
     "image": sre_docker_image("proxy"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
-SYSTEMD_MACHINES = ["proxy", "lb1", "lb2"]  # real systemd (init12 image): systemctl, journalctl
+SYSTEMD_MACHINES = ["proxy", "lb1", "lb2"]  # real systemd (init13 image): systemctl, journalctl
 LOAD_BALANCERS = ["lb1", "lb2"]
 BACKENDS = ["web1", "web2", "web3", "web4"]
 SICK_BACKEND = "web4"  # its /health page answers 503 from the start
@@ -400,7 +400,8 @@ application ne doit croire que ce qu'a écrit son propre mandataire : le **derni
 
 La configuration de nginx est faite de **directives** (`nom valeur;`) rangées dans des **contextes**
 emboîtés : `http { ... }` contient des `server { ... }` (un site), qui contiennent des
-`location { ... }` (une partie du site). Sous Debian :
+`location { ... }` (une partie du site). Sur les machines du TP (le paquet de nginx.org, rangé
+comme celui de Debian) :
 
 | fichier | rôle |
 |---------|------|
@@ -603,7 +604,8 @@ error_page 502 503 504 /maintenance.html;
 location = /maintenance.html { root /var/www/site; internal; }   # internal : pas accessible directement
 ```
 
-**Compression.** `gzip on;` (déjà dans le `nginx.conf` de Debian) ne compresse que `text/html` :
+**Compression.** `gzip on;` (en commentaire dans le `nginx.conf` du paquet : à écrire au niveau
+`http`, `server` ou `location`) ne compresse que `text/html` :
 `gzip_types text/plain application/json text/css;` étend la liste. Le client doit avoir envoyé
 `Accept-Encoding: gzip` ; la réponse porte alors `Content-Encoding: gzip`.
 """)
@@ -966,7 +968,8 @@ upstream shop_api {{
             www += f"    listen 80;\n    server_name {SITE};\n"
         www += include
         if part >= 6:
-            www += ("    gzip_types text/plain application/json;\n"
+            www += ("    gzip on;\n"
+                    "    gzip_types text/plain application/json;\n"
                     "    proxy_read_timeout 3s;\n"
                     f"    error_page 502 503 504 /{MAINTENANCE_PAGE};\n")
         www += f"\n    location / {{\n        proxy_pass {app};\n    }}\n"
@@ -2064,8 +2067,8 @@ et `/etc/nginx/sites-available/shop` devient :
 {site}
 ```
 
-- `gzip on;` est déjà dans le `nginx.conf` de Debian : l'écrire une seconde fois au niveau `http` est
-  une erreur (`directive is duplicate`) ; seul `gzip_types` manque.
+- `gzip on;` est en commentaire dans le `nginx.conf` du paquet : il faut l'écrire, avec `gzip_types`
+  (sans lui, seul `text/html` est compressé).
 - Point 6 : après 3 s sans réponse nginx essaie le serveur suivant de l'`upstream`, puis le serveur de
   secours : le `504` arrive au bout de 9 s environ. Chaque délai dépassé compte comme un échec
   (`max_fails=1 fail_timeout=10s` par défaut) : les trois serveurs sont écartés pendant 10 s et tout le
@@ -2753,8 +2756,8 @@ et `/etc/nginx/sites-available/shop` devient :
 {site}
 ```
 
-- `gzip on;` est déjà dans le `nginx.conf` de Debian : l'écrire une seconde fois au niveau `http` est
-  une erreur (`directive is duplicate`) ; seul `gzip_types` manque.
+- `gzip on;` est en commentaire dans le `nginx.conf` du paquet : il faut l'écrire, avec `gzip_types`
+  (sans lui, seul `text/html` est compressé).
 - Point 6 : après 3 s sans réponse nginx essaie le serveur suivant de l'`upstream`, puis le serveur de
   secours : le `504` arrive au bout de 9 s environ. Chaque délai dépassé compte comme un échec
   (`max_fails=1 fail_timeout=10s` par défaut) : les trois serveurs sont écartés pendant 10 s et tout le
@@ -2780,8 +2783,8 @@ and `/etc/nginx/sites-available/shop` becomes:
 {site}
 ```
 
-- `gzip on;` is already in Debian's `nginx.conf`: writing it a second time at the `http` level is
-  an error (`directive is duplicate`); only `gzip_types` is missing.
+- `gzip on;` is commented out in the `nginx.conf` of the package: it must be written, with
+  `gzip_types` (without it, only `text/html` is compressed).
 - Item 6: after 3 s without an answer nginx tries the next server of the `upstream`, then the backup
   server: the `504` comes after about 9 s. Each timeout counts as a failure
   (`max_fails=1 fail_timeout=10s` by default): the three servers are set aside for 10 s and the whole

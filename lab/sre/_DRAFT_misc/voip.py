@@ -28,9 +28,9 @@ Asterisk is only read for what cannot be observed (contacts, a few options).
 The state ``final`` applies the reference solution; every question ends with its solution in an
 ``instructor()`` block.
 
-Image: ``sysreseval/voip`` (``images/voip/Dockerfile``: init12 + Asterisk compiled from its sources
+Image: ``sysreseval/voip`` (``images/voip/Dockerfile``: init13 + Asterisk compiled from its sources
 + baresip, sngrep, sipsak, sox) for ``pbx`` (under systemd), ``pbx2``, the softphones and
-``monitor``; the routers and the hidden probes use the base12 image.
+``monitor``; the routers and the hidden probes use the base13 image.
 """
 
 import random
@@ -97,7 +97,7 @@ PBX = "pbx"
 PBX2 = "pbx2"
 PROBE_OFFICE = "probe_office"
 PROBE_HOME = "probe_home"
-# The voip image (images/voip: init12 + Asterisk, baresip, sngrep), written in full so that
+# The voip image (images/voip: init13 + Asterisk, baresip, sngrep), written in full so that
 # `sre preload-images` finds it.
 VOIP_MACHINE = {"image": sre_docker_image("voip"), "privileged": True, "entrypoint": "/sbin/init"}
 SOFTPHONES = {"phone1": "1001", "phone2": "1002", "laptop": "1005"}  # machine -> its number

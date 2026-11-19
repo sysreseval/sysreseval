@@ -7,6 +7,7 @@ around one command each, in the style of ``lib/wireguard.py``: the ``--raw`` vic
 of IKE / ESP / NAT-T traffic, plus the road-warrior probe a hidden machine plays against the
 student's gateway.  Fixtures captured in the containers of ``lab/sre/_DRAFT_misc/ipsec.py``
 (Debian 12 images, strongSwan 5.9.8-5+deb12u6, Linux 6.12) live in ``tests/mock_data/ipsec/``.
+The lab runs on the Debian 13 image (strongSwan 6.0.1) since 2026-11-19, with full marks.
 
 Every wrapper registers its command unconditionally (two-pass contract of ``Grade0.grade()``)
 and returns an empty value until the command has run.
@@ -16,8 +17,9 @@ Facts verified in Kathara containers (2026-11-05):
 - charon (``charon-systemd``, unit ``strongswan``, ``swanctl --load-all`` in its
   ExecStartPost) runs in a privileged ``init`` container; the XFRM SAs and policies are per
   network namespace and the host modules (``esp4``, ``xfrm_user``, GCM) autoload.
-- Debian's build has **no eap-mschapv2 plugin** (eap-md5, eap-gtc, eap-tls, eap-ttls,
-  eap-radius, eap-identity): a password road warrior between two strongSwans uses EAP-MD5.
+- Debian 12's build has **no eap-mschapv2 plugin** (eap-md5, eap-gtc, eap-tls, eap-ttls,
+  eap-radius, eap-identity): a password road warrior between two strongSwans uses EAP-MD5
+  (Debian 13's strongSwan 6.0.1 ships eap-mschapv2 as well; the lab keeps EAP-MD5).
 - With MOBIKE (default) both peers move to UDP 4500 after IKE_SA_INIT even without NAT:
   ``local 'gwa.lab' @ A[4500]``; the ESP of the site-to-site tunnel stays plain (``TUNNEL``,
   proto 50) while a peer behind a NAT gets ``TUNNEL-in-UDP`` (``encap=yes``, ``encap type

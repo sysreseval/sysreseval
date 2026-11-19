@@ -18,7 +18,10 @@ Pure parsers (unit-tested on the fixtures of ``tests/mock_data/smtp/``) and thin
   trace, :func:`parse_dsn` a bounce, :func:`parse_received_spf`,
   :func:`parse_authentication_results` and :func:`parse_dkim_signature` the authentication
   headers; :func:`maildir_cleanup_command` removes the probe's messages afterwards.
-- **Dovecot**: :func:`get_doveconf` (``doveconf -n`` as nested dicts), :func:`doveconf_listener`.
+- **Dovecot**: :func:`get_doveconf` (``doveconf -n`` as nested dicts), :func:`doveconf_listener`,
+  and the readers of what Dovecot 2.3 (Debian 12) and 2.4 (Debian 13) name differently:
+  :func:`dovecot_mail_location`, :func:`dovecot_tls_files`, :func:`dovecot_cleartext_auth_refused`,
+  :func:`dovecot_mail_plugins`.
 - **DNS**: :func:`render_unbound_records` (``local-data:`` lines), :func:`parse_txt_strings`
   (``dig +short TXT``), :func:`parse_spf` / :func:`spf_record_ok`, :func:`parse_dkim_txt`,
   :func:`dkim_txt_record` and :func:`generate_dkim_keypair` (``cryptography``).
@@ -679,6 +682,67 @@ def doveconf_value(conf: dict[str, Any], key: str) -> str:
     """Top-level value *key* of a parsed configuration, quotes stripped (``''`` when absent)."""
     v = conf.get(key)
     return v.strip().strip('"').strip() if isinstance(v, str) else ''
+
+
+# Dovecot 2.4 (Debian 13) renamed the settings of 2.3 (Debian 12) and refuses the old names
+# ("Unknown setting"); the readers below take a parsed configuration of either version.
+
+def dovecot_mail_location(conf: dict[str, Any]) -> str:
+    """Where the mailboxes are, as ``driver:path`` (``'maildir:~/Maildir'``): the
+    ``mail_location`` of Dovecot 2.3, or ``mail_driver`` and ``mail_path`` of Dovecot 2.4 put
+    together (``''`` when none is set)."""
+    location = doveconf_value(conf, 'mail_location')
+    if location:
+        return location
+    driver, path = doveconf_value(conf, 'mail_driver'), doveconf_value(conf, 'mail_path')
+    return f"{driver}:{path}" if driver or path else ''
+
+
+def dovecot_tls_files(conf: dict[str, Any]) -> tuple[str, str]:
+    """``(certificate file, key file)`` of the server: ``ssl_cert = <file`` / ``ssl_key = <file``
+    (Dovecot 2.3), ``ssl_server_cert_file`` / ``ssl_server_key_file`` (Dovecot 2.4, which
+    ``doveconf -n`` prints as a ``ssl_server { cert_file = ...  key_file = ... }`` block;
+    ``doveconf ssl_server_cert_file`` prints an empty value).  ``''`` for a file not set, and for
+    the key of a Dovecot 2.3 ``doveconf -n``, which hides it."""
+    block = conf.get('ssl_server') if isinstance(conf.get('ssl_server'), dict) else {}
+
+    def pick(*candidates: str) -> str:
+        for value in candidates:
+            value = value.strip().strip('"').strip()
+            if value and not value.startswith('#'):     # `doveconf -n` of 2.3: "# hidden, use -P to show it"
+                return value.lstrip('<').strip()
+        return ''
+
+    return (pick(doveconf_value(conf, 'ssl_cert'), block.get('cert_file', ''),
+                 doveconf_value(conf, 'ssl_server_cert_file')),
+            pick(doveconf_value(conf, 'ssl_key'), block.get('key_file', ''),
+                 doveconf_value(conf, 'ssl_server_key_file')))
+
+
+def dovecot_cleartext_auth_refused(conf: dict[str, Any]) -> bool | None:
+    """Whether a password in clear outside TLS is refused: ``disable_plaintext_auth = yes``
+    (Dovecot 2.3) or ``auth_allow_cleartext = no`` (Dovecot 2.4).  None when the configuration
+    holds neither (``doveconf -n`` leaves the default out, and the default of both is to
+    refuse)."""
+    old, new = doveconf_value(conf, 'disable_plaintext_auth').lower(), doveconf_value(conf, 'auth_allow_cleartext').lower()
+    if old:
+        return old == 'yes'
+    if new:
+        return new == 'no'
+    return None
+
+
+def dovecot_mail_plugins(block: dict[str, Any]) -> set[str]:
+    """The plugins a block of a parsed configuration loads (the configuration itself, or one of
+    its ``protocol <name>`` blocks): the list ``mail_plugins = $mail_plugins sieve`` of Dovecot
+    2.3, the block ``mail_plugins { sieve = yes }`` of Dovecot 2.4."""
+    value = block.get('mail_plugins') if isinstance(block, dict) else None
+    if isinstance(value, dict):
+        return {name.strip().lower() for name, on in value.items()
+                if isinstance(on, str) and on.strip().lower() == 'yes'}
+    if isinstance(value, str):
+        return {name.lower() for name in value.strip().strip('"').split() if not name.startswith('$')}
+    return set()
 
 
 # ---------------------------------------------------------------------------

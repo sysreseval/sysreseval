@@ -360,7 +360,7 @@ def test_initial_ops(lab, data):
     assert f"ns.nic.tp.\tIN\tA\t{_ip(d.ips.tld)}" in root_zone and "arpa.\tIN\tNS\tns.root." in root_zone
     assert f"{ns.reverse_zone}.\tIN\tNS\tns1.{lab.DOMAIN}." in root_files[f"{lab.ZONE_DIR}/db.in-addr.arpa"]
     assert any(name.startswith(f"{lab.KEY_DIR}/K.+013+") and name.endswith('.private') for name in root_files)
-    assert 'zone "."' not in root_files['/etc/bind/named.conf.default-zones']
+    assert 'zone "."' not in root_files[lab.NAMED_ROOT_HINTS]
     tld_files = _files(ops, 1, 'tld')
     conf = tld_files[lab.NAMED_LOCAL]
     assert f"grant {lab.KEY_REGISTRY} subdomain {lab.DOMAIN}. NS DS A;" in conf and f"grant {lab.KEY_TLD_ADMIN} zonesub ANY;" in conf

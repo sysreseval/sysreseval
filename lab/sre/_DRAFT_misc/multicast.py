@@ -152,7 +152,9 @@ _TOPOLOGY = {
 # group ranges of the lab
 RP_RANGE = IPv4Network('239.0.0.0/8')            # the range of the static RPs of the asm and fix sites
 # the RPs of the two msdp domains serve every group: FRR 9.1 puts in its periodic SAs the RP of
-# 224.0.0.0/4, and 0.0.0.0 without one, which the peer rejects (peer-RPF check; seen live)
+# 224.0.0.0/4, and 0.0.0.0 without one, which the peer rejects (peer-RPF check; seen live).  FRR
+# 10.3 behaves the same: with an RP for 239.0.0.0/8 only, the SA of a source that keeps sending
+# leaves the peer's cache when the first one expires (210 s; seen live on 2026-11-19)
 MSDP_RP_RANGE = IPv4Network('224.0.0.0/4')
 SSM_DEFAULT = IPv4Network('232.0.0.0/8')
 SSM_EXTRA = IPv4Network('239.232.0.0/16')        # part 5: added to the SSM range
@@ -873,10 +875,10 @@ Avec FRR :
 Le pair de plus petite adresse ouvre la connexion TCP : comptez jusqu'à une trentaine de
 secondes avant que la session soit établie.
 
-Une particularité de FRR 9 : un SA porte l'adresse du RP qui l'a émis. Pour le premier SA d'une
+Une particularité de FRR (versions 9 et 10) : un SA porte l'adresse du RP qui l'a émis. Pour le premier SA d'une
 nouvelle source, c'est le RP du groupe. Pour les SA répétés toutes les 60 s, c'est le RP de
 **224.0.0.0/4** tout entier, ou 0.0.0.0 si aucun RP ne couvre toute la plage, et le pair rejette
-alors ces SA. Un RP MSDP de FRR 9 doit donc servir `224.0.0.0/4` (`ip pim rp ADRESSE`, sans plage).
+alors ces SA. Un RP MSDP de FRR doit donc servir `224.0.0.0/4` (`ip pim rp ADRESSE`, sans plage).
 
 ### @@sec:scoping@@ Limiter la portée d'un groupe
 
@@ -892,8 +894,9 @@ Avec FRR, `ip multicast boundary oil LISTE` sur l'interface de bordure fait igno
 les rapports IGMP qui y arrivent pour les groupes **refusés** (`deny`) par la liste de préfixes
 (`ip prefix-list`) : l'interface n'entre jamais dans l'OIL de ces groupes. La frontière se pose
 sur le routeur qui **émettrait** le trafic vers l'extérieur, du côté où arrivent les *Join*.
-Les SA de ces groupes, eux, traversent encore la session MSDP. FRR 9 ne sait pas les filtrer,
-d'autres implémentations le font.
+Les SA de ces groupes, eux, traversent encore la session MSDP, à moins de les filtrer aussi
+(`msdp peer ADRESSE sa-filter LISTE in` ou `out`, dans le bloc `router pim`, où `LISTE` est une
+`access-list`).
 
 En IPv6, la portée est inscrite dans l'adresse (section @@ref:ipv6addr@@) : les routeurs ne
 transmettent pas un groupe au-delà de sa portée.
@@ -954,8 +957,18 @@ end
 write
 ```
 
-Avec FRR 9, les commandes globales de PIM s'écrivent `ip pim …` au premier niveau de la
-configuration. À partir de FRR 10, elles passent dans un bloc `router pim`.
+Depuis FRR 10, les réglages globaux de PIM (`rp`, `ssm`, `spt-switchover`, `msdp peer`…)
+appartiennent à un bloc `router pim`, et c'est là que `show running-config` les range :
+
+```
+router pim
+ rp 10.9.9.9 239.0.0.0/8
+ msdp peer 10.8.8.8 source 10.9.9.9
+exit
+```
+
+Les commandes `ip pim …` et `ip msdp …` du premier niveau, celles de FRR 9 et des documentations
+plus anciennes, restent acceptées : FRR les range lui-même dans ce bloc.
 
 | commande | affiche |
 |----------|---------|

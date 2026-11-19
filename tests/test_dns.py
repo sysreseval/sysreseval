@@ -548,6 +548,28 @@ def test_real_journals():
     assert hits and hits[0]['policy'] == 'lab-rpz' and hits[0]['action'] == 'rpz-nxdomain'
 
 
+def test_real_journals_of_bind_9_20():
+    """The journals of ns1 and ns2 in the DNS 2 lab on the Debian 13 image (BIND 9.20.30, final
+    state, 2026-11-19): the zones signed by `dnssec-policy` are signed inline, and their lines
+    name the version of the zone, "zone example.tp/IN/internal (signed): sending notifies"."""
+    text = fixture('journalctl_named_ns1_bind920.txt')
+    assert 'starting BIND 9.20' in text and 'example.tp/IN/internal (signed): sending notifies' in text
+    ns1 = dns.parse_named_journal(text)
+    notifies = dns.journal_events(ns1, 'notify_sent', 'example.tp')
+    assert notifies and {n['view'] for n in notifies} == {'internal', 'external'}
+    assert all(n['serial'] > 2026111900 for n in notifies)
+    # the raw zone and its signed version are both loaded
+    loaded = dns.journal_events(ns1, 'loaded', 'example.tp')
+    assert {e['view'] for e in loaded} == {'internal', 'external'} and len(loaded) == 4
+    updates = dns.journal_events(ns1, 'update', 'example.tp')
+    assert {u['view'] for u in updates} == {'internal', 'external'} and {u['status'] for u in updates} >= {'adding an RR'}
+    ns2 = dns.parse_named_journal(fixture('journalctl_named_ns2_bind920.txt'))
+    transfers = dns.journal_events(ns2, 'transfer', 'example.tp')
+    assert any(e['completed'] for e in transfers) and any(e['status'].startswith('success') for e in transfers)
+    assert dns.journal_events(ns2, 'transferred', 'example.tp')[-1]['serial'] > 2026111900
+    assert dns.journal_events(ns2, 'notify_received', 'example.tp')
+
+
 def test_real_kdig_and_axfr():
     doh = dns.parse_kdig(fixture('kdig_https_real.txt'))
     assert doh.session == 'HTTPS' and doh.http_status == 200 and doh.ok and 'ad' in doh.flags

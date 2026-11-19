@@ -1,7 +1,8 @@
 """Tests for lib/pmtu.py — path MTU discovery helpers of the MTU labs.
 
 Fixtures in tests/mock_data/pmtu were captured on 2026-10-02 in a sysreseval/base:1.28
-container (iputils 20221126, iproute2 6.19, nftables 1.0.6) on a Debian 13 / Linux 6.12 host.
+container (Debian 12: iputils 20221126, iproute2 6.19, nftables 1.0.6) on a Debian 13 / Linux
+6.12 host; the *_deb13 ones on 2026-11-18 in the Debian 13 image base13 (iputils 20240905).
 """
 import sys
 from ipaddress import IPv4Interface, IPv6Interface
@@ -55,17 +56,43 @@ def test_pmtu_ping_cmd():
 
 def test_parse_ping_too_long_v4():
     r = pmtu.parse_ping_errors(load('ping_too_long_v4.txt'))
-    assert r == {'sent': 1, 'received': 0, 'frag_needed_mtu': None, 'too_long_mtu': 1400, 'packet_too_big_mtu': None}
+    assert r == {'sent': 1, 'received': 0, 'frag_needed_mtu': None, 'too_long': True, 'too_long_mtu': 1400,
+                 'packet_too_big_mtu': None}
 
 
 def test_parse_ping_too_long_v6():
     r = pmtu.parse_ping_errors(load('ping_too_long_v6.txt'))
     assert r['too_long_mtu'] == 1400 and r['received'] == 0 and r['frag_needed_mtu'] is None
+    assert r['too_long'] is True
+
+
+@pytest.mark.parametrize('fixture', ['ping_too_long_v4_deb13.txt', 'ping_too_long_v6_deb13.txt'])
+def test_parse_ping_too_long_debian13(fixture):
+    """iputils 20240905 prints the errno of the send, without the MTU."""
+    r = pmtu.parse_ping_errors(load(fixture))
+    assert r == {'sent': 1, 'received': 0, 'frag_needed_mtu': None, 'too_long': True, 'too_long_mtu': None,
+                 'packet_too_big_mtu': None}
+
+
+def test_refused_locally():
+    # Debian 12: the message quotes the MTU, which must be the expected one
+    assert pmtu.refused_locally(load('ping_too_long_v4.txt'), 1400) is True
+    assert pmtu.refused_locally(load('ping_too_long_v4.txt'), 1476) is False
+    assert pmtu.refused_locally(load('ping_too_long_v6.txt'), 1400) is True
+    # Debian 13: no MTU in the message
+    assert pmtu.refused_locally(load('ping_too_long_v4_deb13.txt'), 1400) is True
+    assert pmtu.refused_locally(load('ping_too_long_v6_deb13.txt'), 1400) is True
+    # an error of a router, a reply, nothing: not refused locally
+    assert pmtu.refused_locally(load('ping_frag_needed_v4.txt'), 1460) is False
+    assert pmtu.refused_locally(load('ping_ptb_v6.txt'), 1420) is False
+    assert pmtu.refused_locally(load('ping_ok_v4.txt'), 1500) is False
+    assert pmtu.refused_locally('', 1400) is False and pmtu.refused_locally(None, 1400) is False
 
 
 def test_parse_ping_frag_needed():
     r = pmtu.parse_ping_errors(load('ping_frag_needed_v4.txt'))
     assert r["frag_needed_mtu"] == 1460 and r["too_long_mtu"] is None and r["received"] == 0
+    assert r["too_long"] is False
 
 
 def test_parse_ping_packet_too_big():
@@ -79,7 +106,7 @@ def test_parse_ping_ok_and_empty():
     assert all(r[k] is None for k in ('frag_needed_mtu', 'too_long_mtu', 'packet_too_big_mtu'))
     assert pmtu.ping_received(load('ping_ok_v4.txt')) == 1
     assert pmtu.parse_ping_errors('') == {'sent': None, 'received': None, 'frag_needed_mtu': None,
-                                          'too_long_mtu': None, 'packet_too_big_mtu': None}
+                                          'too_long': False, 'too_long_mtu': None, 'packet_too_big_mtu': None}
     assert pmtu.ping_received(None) == 0
 
 

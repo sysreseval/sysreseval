@@ -21,7 +21,8 @@ the others):
 Every interface has a fixed MAC (EUI-64 link-local addresses known at generation time: the typed
 link-local answers have static cheat answers).  Grading reads the json output of vtysh (lib/frr.py),
 ``ip -j -6 route`` and real pings.  The states ``solve_<part>`` apply the reference solution of one
-part, ``final`` all of them.  Facts verified on FRR 9.1.3: memory note frr-ospf6-bgp6-facts.
+part, ``final`` all of them.  Facts verified on FRR 9.1.3: memory note frr-ospf6-bgp6-facts; the lab
+reaches full marks on the FRR 10.3 of the Debian 13 ``routing-frr`` image too (2026-11-19).
 """
 import json
 import random

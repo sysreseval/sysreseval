@@ -393,7 +393,7 @@ class NetScheme(NetScheme0):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `image` | the lab's `default_image`, else `params.default_docker_image` | Docker image: `sre_docker_image(name)` gives `sysreseval/<name>:<version>`. The default is `base12` (Debian 12); `init12` adds a genuine systemd (with `privileged=True` and `entrypoint="/sbin/init"`); `base13` / `init13` are their Debian 13 twins |
+| `image` | the lab's `default_image`, else `params.default_docker_image` | Docker image: `sre_docker_image(name)` gives `sysreseval/<name>:<version>`. The default is `base13` (Debian 13); `init13` adds a genuine systemd (with `privileged=True` and `entrypoint="/sbin/init"`); `base12` / `init12` are their Debian 12 counterparts, kept for the labs that still name them |
 | `bridged` | `False` | Enable host-network bridging (required for `ports`) |
 | `x11_host` | `False` | Forward X11 to the host: inject `SRE_HOST_IP` (and the host's X magic cookie as `SRE_XAUTH_COOKIE`) so GUI apps launched in the container display on the host's X server (`DISPLAY` is set by the `.bashrc` of the images; needs `bridged=True` to reach the host). On the web site the apps show in the Display tab, a virtual desktop of the project (`SRE_DISPLAY`) |
 | `hidden` | `False` | Hidden from the Machines tab; left out of the project `sre export` writes |
@@ -1233,7 +1233,7 @@ from kerberos import (kinit_test, gssapi_ssh, negotiate_curl, kadmin_cmd, kadmin
                       get_policy, get_keytab, render_krb5_conf, render_kdc_conf, render_kadm5_acl, create_realm_cmds)
 ```
 
-Helpers of the AAA lab (`lab/sre/_DRAFT_misc/aaa.py`: FreeRADIUS with local users, an LDAP directory, TOTP and a per-NAS policy, EAP, 802.1X on a Linux switch, MIT Kerberos with kerberized ssh / HTTP, pam_krb5 and a cross-realm trust); image `sysreseval/aaa` (init12 + FreeRADIUS, hostapd, wpa_supplicant, eapol_test, the MIT KDC and clients, pam_krb5, pam_radius_auth, mod_auth_gssapi, oathtool; the configuration of FreeRADIUS as installed is kept in `/usr/local/share/sre/freeradius-pristine`, which `reset_cmd()` copies back). Every command is one shell line ending with a `===RC <status>` marker, so a registration-pass placeholder never reads as an answer.
+Helpers of the AAA lab (`lab/sre/_DRAFT_misc/aaa.py`: FreeRADIUS with local users, an LDAP directory, TOTP and a per-NAS policy, EAP, 802.1X on a Linux switch, MIT Kerberos with kerberized ssh / HTTP, pam_krb5 and a cross-realm trust); image `sysreseval/aaa` (init13 + FreeRADIUS, hostapd, wpa_supplicant, eapol_test, the MIT KDC and clients, pam_krb5, pam_radius_auth, mod_auth_gssapi, oathtool; the configuration of FreeRADIUS as installed is kept in `/usr/local/share/sre/freeradius-pristine`, which `reset_cmd()` copies back). Every command is one shell line ending with a `===RC <status>` marker, so a registration-pass placeholder never reads as an answer.
 
 **RADIUS**: `radius_request(grade, machine, server, secret, auth_attrs(user, password, chap=False, extra=[...]))` sends an Access-Request with `radclient` and returns a `RadiusResult` (`accepted`, `rejected`, `no_reply`, `attr(name)` without the tag of `Tunnel-*:0`); a password piece may be a shell expression, `(password, totp_shell(secret))` = the password followed by the current TOTP code computed in the container by `oathtool` (`totp_shell(secret, "now + 10 minutes")`: a wrong code that looks right). `get_detail_records()` parses the accounting `detail` files. The renderers write a complete `default` virtual server (`render_default_site(ldap=, ldap_policy=, totp=)`), the `eap` and `ldap` modules, `clients.conf` blocks and `users` entries. **802.1X**: `get_all_sta()` + `station_authorized()` (`hostapd_cli all_sta`), `get_wpa_status()` + `supplicant_authorized(status, 'peap'|'tls')` (`wpa_cli status`), `eapol_test(grade, machine, conf, server, secret)` → `success`, `failure`, the certificate subjects. **Kerberos**: `kinit_test(grade, machine, principal, password, ccache, then=[...])` runs `kinit` (password on stdin) into its own ccache, then each command of `then` with it (`gssapi_ssh('dev2@srv.corp.lan')`, `negotiate_curl(url)`, `kvno …`): `ok`, `error` (`revoked`, `password`, `unknown`, `unreachable`), `then` = `[(output, status)]`; `get_principal()` / `get_policy()` / `get_keytab()` read `kadmin.local getprinc|getpol` and `klist -k`.
 
@@ -1327,7 +1327,7 @@ from frr import (get_bgp_summary, get_bgp_neighbor, get_bgp_routes, get_bgp_pref
                  get_bgp_advertised_routes, bgp_best_path, bgp_paths, is_bgp_protocol)
 ```
 
-These helpers parse the `json` output of `vtysh` (FRR 9). Like the OSPF ones, each `get_*` registers one command through `grade.test()` (two-pass contract) and returns its empty shape (`{}`) on the registration pass, when BGP is not running or when the output cannot be decoded. Pass `allow_error=True` while BGP may not be configured yet.
+These helpers parse the `json` output of `vtysh` (written on FRR 9, the same on the FRR 10.3 of the Debian 13 image `routing-frr`). Like the OSPF ones, each `get_*` registers one command through `grade.test()` (two-pass contract) and returns its empty shape (`{}`) on the registration pass, when BGP is not running or when the output cannot be decoded. Pass `allow_error=True` while BGP may not be configured yet.
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -1342,7 +1342,7 @@ These helpers parse the `json` output of `vtysh` (FRR 9). Like the OSPF ones, ea
 
 `parse_frr_config` / `get_frr_running_config` also return the BGP configuration: `router_bgp` (`as`, `router_id`, `ebgp_requires_policy`, `network_import_check`, `bestpath`, `neighbors: {peer: {remote_as, description, update_source, timers, shutdown, password, next_hop_self, route_reflector_client, default_originate, route_map_in/out, prefix_list_in/out, ...}}`, `networks`, `aggregate_addresses`, `redistribute`), `prefix_lists`, `route_maps` (`{name: [{seq, action, match: [...], set: [...]}]}`), `as_path_lists`, `community_lists`; interface blocks expose their `ip address` lines in `addresses`.
 
-Verified FRR 9 defaults worth knowing when writing a BGP lab: `bgp ebgp-requires-policy` is on (an eBGP session without route-map/prefix-list exchanges no prefix), `bgp network import-check` is on (a `network` statement needs a matching route, e.g. `ip route X/22 blackhole`), and `interface lo` / `ip address A/32` in `frr.conf` configures the loopback address through zebra.
+Verified FRR 9 defaults worth knowing when writing a BGP lab (FRR 10.3 keeps them: the BGP lab reaches full marks on both): `bgp ebgp-requires-policy` is on (an eBGP session without route-map/prefix-list exchanges no prefix), `bgp network import-check` is on (a `network` statement needs a matching route, e.g. `ip route X/22 blackhole`), and `interface lo` / `ip address A/32` in `frr.conf` configures the loopback address through zebra.
 
 ### OSPFv3 and BGP over IPv6 helpers (from `/opt/sre/lib/frr.py`)
 
@@ -1352,7 +1352,7 @@ from frr import (get_ospf6_info, get_ospf6_neighbors, get_ospf6_interfaces, get_
                  bgp_neighbor_activated, neighbor_is_full)
 ```
 
-The OSPFv3 helpers parse the `json` output of `ospf6d` (FRR 9.1), with the same two-pass contract and `allow_error` flag; without `ospf6d` (or `router ospf6`) the commands print nothing and every helper returns its empty shape.
+The OSPFv3 helpers parse the `json` output of `ospf6d` (written on FRR 9.1; the lab using them passes unchanged on the FRR 10.3 of the Debian 13 image), with the same two-pass contract and `allow_error` flag; without `ospf6d` (or `router ospf6`) the commands print nothing and every helper returns its empty shape.
 
 | Function | Returns |
 |----------|---------|

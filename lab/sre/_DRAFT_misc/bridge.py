@@ -394,7 +394,7 @@ Une trame bloquée dans `forward` n'est pas commutée : la machine émettrice n'
 réponse. Bloquer un seul sens suffit à interdire une communication (ici les requêtes de `m2`,
 donc aucune réponse). Les adresses MAC des machines se lisent dans `ip link` sur la machine, dans
 `ip neigh` sur ses voisines ou dans `bridge fdb show` sur le pont. Historiquement ce filtrage
-était celui d'`ebtables` (chaîne `FORWARD`, syntaxe d'iptables) ; l'`ebtables` de Debian 12 est
+était celui d'`ebtables` (chaîne `FORWARD`, syntaxe d'iptables) ; l'`ebtables` de Debian 13 est
 une réimplémentation sur nftables, dont les règles apparaissent dans `nft list ruleset`.
 """)
             + info_subtitle(tr("Boucles, redondance et STP"), tag="stp")
