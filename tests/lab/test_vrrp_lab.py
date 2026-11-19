@@ -14,6 +14,7 @@ totals asserted here are the ones measured live on 2026-11-11 (z04, keepalived 2
 import ast
 import base64
 import datetime
+import gzip
 import importlib.util
 import io
 import json
@@ -89,14 +90,17 @@ def _files(ops, step, machine):
 
 
 def _tar_b64(files: dict) -> str:
+    """The base64 gzipped tar of *files*, the same string for the same files: the gzip header
+    time is fixed (``tarfile`` mode ``w:gz`` writes the current second, so an archive built again
+    one second later differed from the one the evaluation replayed)."""
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode='w:gz') as archive:
+    with tarfile.open(fileobj=buffer, mode='w') as archive:
         for name, (content, mode) in files.items():
             info = tarfile.TarInfo(name)
             raw = content.encode()
             info.size, info.mode = len(raw), mode
             archive.addfile(info, io.BytesIO(raw))
-    return base64.b64encode(buffer.getvalue()).decode()
+    return base64.b64encode(gzip.compress(buffer.getvalue(), mtime=0)).decode()
 
 
 # ---------------------------------------------------------------------------
