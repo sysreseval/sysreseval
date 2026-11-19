@@ -116,6 +116,37 @@ class TestAgentLine:
         assert status.agent_line(None, True) == 'sre-agent: unknown (no /proc)'
 
 
+class TestStatusDict:
+    ROWS = [('web', 'alice', ALICE), ('local', 'bob', BOB), ('?', 'carol', CAROL)]
+
+    @pytest.fixture(autouse=True)
+    def version(self, monkeypatch):
+        monkeypatch.setattr(params, 'sre_version', '0.17.0')
+        monkeypatch.setattr(params, 'agent_config_file', '/etc/sreweb/agent.toml')
+
+    def test_running_agent_and_projects(self):
+        assert status.status_dict([812], True, self.ROWS) == {
+            'sre_version': '0.17.0',
+            'agent': {'running': True, 'pids': [812], 'configured': True, 'config_file': '/etc/sreweb/agent.toml'},
+            'projects': [
+                {'running_lab_name': ALICE, 'lab_name': 'sre@dhcp.py', 'origin': 'web', 'user': 'alice'},
+                {'running_lab_name': BOB, 'lab_name': 'sre@nftables-filter1.py', 'origin': 'local', 'user': 'bob'},
+                {'running_lab_name': CAROL, 'lab_name': 'sre@static_routing.py', 'origin': None, 'user': 'carol'},
+            ]}
+
+    def test_agent_not_running(self):
+        agent = status.status_dict([], False, [])['agent']
+        assert agent == {'running': False, 'pids': [], 'configured': False, 'config_file': '/etc/sreweb/agent.toml'}
+        assert status.status_dict([], True, [])['agent']['configured'] is True
+
+    def test_unknown_without_proc(self):
+        agent = status.status_dict(None, True, [])['agent']
+        assert agent['running'] is None and agent['pids'] is None
+
+    def test_no_project(self):
+        assert status.status_dict([812], True, [])['projects'] == []
+
+
 class TestAction:
     @pytest.fixture
     def host(self, tmp_pub_dir, tmp_path, monkeypatch):
@@ -155,11 +186,35 @@ class TestAction:
                                            f"sre-agent: not running (no {host})\n"
                                            "running projects: none\n")
 
-    def test_privileged_only(self, host, capsys, mock_sre_args):
+    def test_json_output(self, host, capsys):
+        """One line of JSON: the table without its placeholders (``?`` becomes null)."""
+        make_project(ALICE, params.origin_web)
+        make_project(CAROL)
+        status.action_status(as_json=True)
+        out = capsys.readouterr().out
+        assert out.count('\n') == 1
+        assert json.loads(out) == {
+            'sre_version': '0.17.0',
+            'agent': {'running': True, 'pids': [812], 'configured': True, 'config_file': str(host)},
+            'projects': [
+                {'running_lab_name': ALICE, 'lab_name': 'sre@dhcp.py', 'origin': 'web', 'user': 'alice'},
+                {'running_lab_name': CAROL, 'lab_name': 'sre@static_routing.py', 'origin': None, 'user': 'carol'},
+            ]}
+
+    def test_json_no_project(self, host, capsys, monkeypatch):
+        host.unlink()
+        monkeypatch.setattr(status, 'agent_pids', lambda: [])
+        status.action_status(as_json=True)
+        document = json.loads(capsys.readouterr().out)
+        assert document['agent'] == {'running': False, 'pids': [], 'configured': False, 'config_file': str(host)}
+        assert document['projects'] == []
+
+    @pytest.mark.parametrize('as_json', [False, True])
+    def test_privileged_only(self, host, capsys, mock_sre_args, as_json):
         make_project(ALICE, params.origin_web)
         mock_sre_args.user = True
         with pytest.raises(SystemExit) as exit_info:
-            status.action_status()
+            status.action_status(as_json=as_json)
         captured = capsys.readouterr()
         assert exit_info.value.code == 1 and captured.out == ''
         assert "not allowed to run this command" in captured.err

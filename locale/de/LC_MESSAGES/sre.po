@@ -34,6 +34,9 @@ msgstr "Alle Dateien entfernen und Kathara stoppen (nur privilegierte Benutzer)"
 msgid "Show the version, the state of sre-agent and the running projects (privileged only)"
 msgstr "Version, Zustand von sre-agent und laufende Projekte anzeigen (nur privilegierte Benutzer)"
 
+msgid "output as a JSON dict (for scripts)"
+msgstr "Ausgabe als JSON-Dict (für Skripte)"
+
 msgid "List all available projects"
 msgstr "Alle verfügbaren Projekte auflisten"
 

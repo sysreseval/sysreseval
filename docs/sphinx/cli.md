@@ -133,6 +133,20 @@ local   root   20261118100111@@@sre@static_routing.py@@@root
 
 The origin and the user are read from `.private/origin.json`, which `sre start` (as well as `sre restore` and `sre pre-start-exam`) writes when it creates the project. A project created by an older version has no such file: its origin shows as `?` and its user is the one of its name. The web agent names itself with the environment variable `SRE_ORIGIN=web` in every `sre` it runs; `sre` ignores the variable when it was launched through `sre-wrapper` and `sudo`, so a student cannot have a local project listed as a web one. An agent started before the update keeps writing `local` until it is restarted (`sre-web-tool restart --all`).
 
+With `--json` the same information is printed as one line of JSON, easier to read from a script (`sre status --json | jq .`):
+
+```json
+{"sre_version": "0.17.0",
+ "agent": {"running": true, "pids": [812], "configured": true, "config_file": "/etc/sreweb/agent.toml"},
+ "projects": [
+   {"running_lab_name": "20261118091203@@@sre@dhcp.py@@@alice", "lab_name": "sre@dhcp.py", "origin": "web", "user": "alice"},
+   {"running_lab_name": "20261118100111@@@sre@static_routing.py@@@carol", "lab_name": "sre@static_routing.py", "origin": null, "user": "carol"}
+ ]}
+```
+
+- **`agent`**: `running` is `true` or `false` and `pids` the list of the agent's processes; both are `null` when the processes cannot be listed (no `/proc`). `configured` tells whether `config_file` exists (a pool host).
+- **`projects`**: in start order, an empty list when nothing runs. `origin` is `local`, `web`, or `null` for a project without an origin file (the `?` of the table); `lab_name` is the lab of the running lab name.
+
 ### `sre eval-all [--display-grades / --no-display-grades]`
 
 Evaluates every running lab instance concurrently. `--no-display-grades` suppresses the per-lab grade summary.

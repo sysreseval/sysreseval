@@ -512,6 +512,16 @@ origin_keyword = "origin"          # origin_local or origin_web
 origin_local = "local"             # the Qt GUI through sre-wrapper, or sre run by root
 origin_web = "web"                 # the web agent (sre-agent), for a browser user
 origin_user_keyword = "user"       # the user who created the project (SRE.username)
+# Keys of the document printed by `sre status --json` (the projects also use running_lab_name_keyword,
+# origin_keyword and origin_user_keyword)
+status_sre_version_keyword = "sre_version"
+status_agent_keyword = "agent"
+status_agent_running_keyword = "running"            # true / false, null without /proc
+status_agent_pids_keyword = "pids"                  # sorted list, null without /proc
+status_agent_configured_keyword = "configured"      # agent_config_file exists (a pool host)
+status_agent_config_file_keyword = "config_file"    # agent_config_file
+status_projects_keyword = "projects"                # one dict per running project, in start order
+status_lab_name_keyword = "lab_name"
 # Operations log (GUI "Log" tab): every `sre state` / `sre eval` of a debug project appends what it
 # executed, every `sre state` of an instructor-mode project too; lives in the public project dir,
 # never written for the other projects

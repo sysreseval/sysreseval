@@ -32,7 +32,8 @@ UPDATE = 'update'
 def sre_cli(monkeypatch):
     """``run(argv, uid=0, real=())`` executes src/sre.py and returns what happened: ``events`` (the
     privilege drops and the actions, in order), ``args`` (the parsed namespace seen by the
-    action) and ``code`` (exit status).  The actions named in *real* are not replaced."""
+    action), ``kwargs`` (the keyword arguments of the last action called) and ``code`` (exit
+    status).  The actions named in *real* are not replaced."""
     monkeypatch.setattr(params.SRE, 'username', None, raising=False)
     for name in ('SUDO_COMMAND', 'SUDO_USER', 'USER_USERNAME'):
         monkeypatch.delenv(name, raising=False)
@@ -43,7 +44,7 @@ def sre_cli(monkeypatch):
     monkeypatch.setitem(sys.modules, 'Kathara.auth.PrivilegeHandler', MagicMock())
 
     def run(argv, uid=0, real=()):
-        result = SimpleNamespace(events=[], args=None, code=0)
+        result = SimpleNamespace(events=[], args=None, kwargs=None, code=0)
         with monkeypatch.context() as patches:
             patches.setattr(utils_privileges, 'drop_privileges_temporarily',
                             lambda: result.events.append('temporary drop'))
@@ -58,6 +59,7 @@ def sre_cli(monkeypatch):
                     def recorder(*args, _name=name, **kwargs):
                         result.events.append(_name)
                         result.args = params.SRE.args
+                        result.kwargs = kwargs
                     patches.setattr(module, name, recorder)
             patches.setattr(os, 'geteuid', lambda: uid)
             patches.setattr(os, 'getegid', lambda: uid)
@@ -129,6 +131,14 @@ class TestParsing:
         result = sre_cli(['status', 'PROJECT'])
         assert result.code == 2 and result.events == []
         assert 'unrecognized arguments' in capsys.readouterr().err
+
+    def test_status_json_option(self, sre_cli):
+        """--json (one JSON document for scripts) is off unless asked, and reaches the action."""
+        result = sre_cli(['status'])
+        assert result.args.json is False and result.kwargs == {'as_json': False}
+        result = sre_cli(['status', '--json'])
+        assert result.code == 0 and result.events == ['permanent drop', 'action_status']
+        assert result.args.json is True and result.kwargs == {'as_json': True}
 
     def test_preload_images_progress_option(self, sre_cli):
         """--progress (the JSON steps on stderr the web agent reads) is off unless asked."""

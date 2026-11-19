@@ -35,6 +35,9 @@ msgstr "Supprimer tous les fichiers et arrêter kathara (privilégiés uniquemen
 msgid "Show the version, the state of sre-agent and the running projects (privileged only)"
 msgstr "Afficher la version, l'état de sre-agent et les projets en cours (privilégiés uniquement)"
 
+msgid "output as a JSON dict (for scripts)"
+msgstr "sortie sous forme de dict JSON (pour les scripts)"
+
 msgid "List all available projects"
 msgstr "Lister tous les projets disponibles"
 

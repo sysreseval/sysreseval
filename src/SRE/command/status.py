@@ -15,9 +15,20 @@ The origin and the user come from the origin file of each project (``origin.py``
 The projects are those of ``sre stop-all`` run by a privileged caller: the directories holding an
 ``info.json``, in start order.
 
+With ``--json`` the same information is printed as one JSON document (:func:`status_dict`), for
+scripts::
+
+    {"sre_version": "0.17.0",
+     "agent": {"running": true, "pids": [812], "configured": true, "config_file": "/etc/sreweb/agent.toml"},
+     "projects": [{"running_lab_name": "20261118091203@@@sre@dhcp.py@@@alice", "lab_name": "sre@dhcp.py",
+                   "origin": "web", "user": "alice"}]}
+
+``running`` and ``pids`` are ``null`` without ``/proc``; ``origin`` is ``null`` where the table shows ``?``.
+
 The agent has neither a pid file nor a local socket, and its unit name depends on the layout:
 it is looked for in ``/proc`` (:func:`agent_pids`, on the scan of ``procscan.py``).
 """
+import json
 import os
 
 from .. import params
@@ -86,6 +97,30 @@ def status_lines(pids: list[int] | None, configured: bool, rows: list[tuple[str,
     return lines
 
 
-def action_status():
+def status_dict(pids: list[int] | None, configured: bool, rows: list[tuple[str, str, str]]) -> dict:
+    """The document of ``sre status --json``: the inputs of :func:`status_lines`, without the
+    display placeholders (``None`` for an unknown origin or without ``/proc``)."""
+    return {
+        params.status_sre_version_keyword: params.sre_version,
+        params.status_agent_keyword: {
+            params.status_agent_running_keyword: None if pids is None else bool(pids),
+            params.status_agent_pids_keyword: pids,
+            params.status_agent_configured_keyword: configured,
+            params.status_agent_config_file_keyword: params.agent_config_file,
+        },
+        params.status_projects_keyword: [{
+            params.running_lab_name_keyword: running_lab_name,
+            params.status_lab_name_keyword: params.get_lab_name_from_running_lab_name(running_lab_name),
+            params.origin_keyword: None if origin == UNKNOWN_ORIGIN else origin,
+            params.origin_user_keyword: user,
+        } for origin, user, running_lab_name in rows],
+    }
+
+
+def action_status(as_json: bool = False):
     user_not_allowed()
-    print('\n'.join(status_lines(agent_pids(), os.path.exists(params.agent_config_file), project_rows())))
+    pids, configured, rows = agent_pids(), os.path.exists(params.agent_config_file), project_rows()
+    if as_json:
+        print(json.dumps(status_dict(pids, configured, rows), ensure_ascii=False))
+    else:
+        print('\n'.join(status_lines(pids, configured, rows)))
