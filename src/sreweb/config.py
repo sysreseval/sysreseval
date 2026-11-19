@@ -23,6 +23,10 @@ _DURATION_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*([smhd]?)\s*$')
 _MAC_RE = re.compile(r'^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$', re.I)
 _HOURS_RE = re.compile(r'^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$')
 _DURATION_UNITS = {'': 1, 's': 1, 'm': 60, 'h': 3600, 'd': 86400}
+# a sub-path of the portal: segments of unreserved URL characters, so that the path is the same
+# text in a URL, in a cookie attribute and in a page
+_BASE_PATH_RE = re.compile(r'^(/[A-Za-z0-9._~-]+)+$')
+_PUBLIC_URL_SCHEMES = ('http', 'https')
 
 
 class ConfigError(ValueError):
@@ -58,6 +62,19 @@ def parse_listen(value, key='listen') -> tuple[str, int]:
     if not port.isdigit() or not 0 < int(port) < 65536:
         raise ConfigError(f"{key}: bad port in {value!r}")
     return host or '0.0.0.0', int(port)
+
+
+def parse_base_path(value, key='base_path') -> str:
+    """The sub-path the portal is served under, without its trailing slash (``"/sre"``, or
+    ``"/apps/sre"``); ``''`` and ``"/"`` are the root of the host name."""
+    if not isinstance(value, str):
+        raise ConfigError(f"{key}: a path is expected (\"/sre\")")
+    text = value.strip().rstrip('/')
+    if not text:
+        return ''
+    if not _BASE_PATH_RE.match(text) or any(part in ('.', '..') for part in text.split('/')):
+        raise ConfigError(f"{key}: bad path {value!r} (use \"/sre\": segments of letters, digits and . _ ~ -)")
+    return text
 
 
 def parse_mac(value, key='mac') -> str:
@@ -727,6 +744,7 @@ def _check_bbb_userdata(userdata, where: str):
 class WebConfig:
     listen: tuple = ('127.0.0.1', 8450)
     public_url: str = ''
+    base_path: str = ''       # the sub-path the site is served under ("/sre"), '' = the root of the host name
     secret: str = ''
     trusted_proxies: list = field(default_factory=list)   # ipaddress networks: the peers trusted in proxy mode
     tls_cert: str = ''
@@ -743,6 +761,22 @@ class WebConfig:
     site: SiteConfig = field(default_factory=SiteConfig)
     bbb: BbbConfig = field(default_factory=BbbConfig)
     hosts: list = field(default_factory=list)
+
+    @property
+    def cookie_path(self) -> str:
+        """The ``Path`` of the cookies: the site alone, so that a browser does not send them to
+        what else the host name serves next to a ``base_path``."""
+        return self.base_path or '/'
+
+    @property
+    def public_base(self) -> str:
+        """The URL of the site as the users type it, without trailing slash (``''`` without
+        ``public_url``): ``public_url``, under ``base_path`` whether it was written with it or
+        without."""
+        if not self.public_url or not self.base_path:
+            return self.public_url.rstrip('/')
+        parts = urllib.parse.urlsplit(self.public_url)
+        return f"{parts.scheme}://{parts.netloc}{self.base_path}"
 
     @property
     def exams_available(self) -> bool:
@@ -1008,7 +1042,18 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, access_log=access_log,
                  archives=archives, groups=groups, exams=exams, site=site, bbb=bbb, hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
+                 base_path=parse_base_path(top.get('base_path', ''), f'{path}: base_path'),
                  trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))
+    if cfg.base_path and cfg.public_url:
+        # public_url may name the site with its sub-path or without: any other path is a mistake
+        # (without base_path it is used as it always was, unchecked)
+        parts = urllib.parse.urlsplit(cfg.public_url) if isinstance(cfg.public_url, str) else None
+        if parts is None or parts.scheme not in _PUBLIC_URL_SCHEMES or not parts.netloc:
+            raise ConfigError(f"{path}: public_url must be an http:// or https:// URL")
+        public_path = parts.path.rstrip('/')
+        if public_path and public_path != cfg.base_path:
+            raise ConfigError(f"{path}: public_url has the path {public_path!r} and base_path is {cfg.base_path!r}: "
+                              "they must be the same")
     if auth.mode == AUTH_PROXY and not cfg.trusted_proxies:
         raise ConfigError(f"{path}: trusted_proxies is required in proxy mode (the address of the reverse proxy)")
     if len(cfg.secret) < MIN_SECRET_LENGTH:

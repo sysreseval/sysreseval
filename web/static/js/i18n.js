@@ -3,13 +3,15 @@
 // portal from locale/<lang>/LC_MESSAGES/sreweb.mo.  _() must be called after init() resolved,
 // so the strings of a module are looked up inside functions, never at the module top level.
 
+import {siteUrl} from './base_path.js';
+
 let catalog = {};
 let language = 'en';
 
 export async function init() {
   language = document.documentElement.lang || 'en';
   try {
-    const response = await fetch(`/i18n/${encodeURIComponent(language)}.json`, {credentials: 'same-origin'});
+    const response = await fetch(siteUrl(`/i18n/${encodeURIComponent(language)}.json`), {credentials: 'same-origin'});
     if (response.ok) {
       catalog = await response.json();
     }

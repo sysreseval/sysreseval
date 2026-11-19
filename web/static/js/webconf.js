@@ -31,6 +31,7 @@ import * as api from './api.js';
 import * as i18n from './i18n.js';
 import {_, format} from './i18n.js';
 import {el, toast} from './ui.js';
+import {siteUrl} from './base_path.js';
 import {createTerminalWindows} from './terminal_windows.js';
 import * as M from './webconf_model.js';
 
@@ -204,7 +205,7 @@ export function act(type, detail) {
   }
   if (type === 'popout') {
     // synchronously in the click: the popup blockers
-    const opened = window.open(state.joinUrl, 'sre-webconf-' + state.id, POPUP_FEATURES);
+    const opened = window.open(siteUrl(state.joinUrl), 'sre-webconf-' + state.id, POPUP_FEATURES);
     if (!opened) {
       toast(_('The browser blocked the separate window.'), {error: true});
       return;
@@ -412,11 +413,12 @@ function ensureWindow(room) {
   });
 }
 
+// url: the join URL of the room, an application path.
 function ensureFrame(url) {
   if (frame) {
     return;
   }
-  frame = el('iframe', {id: 'webconf-frame', src: url, allow: ALLOW, allowfullscreen: true, title: _('Web conference')});
+  frame = el('iframe', {id: 'webconf-frame', src: siteUrl(url), allow: ALLOW, allowfullscreen: true, title: _('Web conference')});
   frame.style.visibility = 'hidden';
   body.append(frame);
 }

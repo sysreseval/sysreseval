@@ -1,5 +1,8 @@
 // The calls of the browser to the portal: JSON requests with the CSRF header, the errors as
-// ApiError, the NDJSON stream of a start read line by line, the WebSocket URLs.
+// ApiError, the NDJSON stream of a start read line by line, the WebSocket URLs.  The URLs given
+// to these functions are application paths ('/api/...'): the sub-path of the site is added here.
+
+import {siteUrl} from './base_path.js';
 
 // The portal refuses every non-GET /api request and every WebSocket without this header
 // (the WebSockets are checked on their Origin instead: nothing to add there).
@@ -31,12 +34,12 @@ export async function fetchRaw(method, url, {json, body, headers} = {}) {
   }
   let response;
   try {
-    response = await fetch(url, options);
+    response = await fetch(siteUrl(url), options);
   } catch (e) {
     throw new ApiError(0, e.message || 'network error');
   }
   if (response.status === 401) {
-    window.location.href = '/login';
+    window.location.href = siteUrl('/login');
     throw new ApiError(401, 'not logged in');
   }
   if (!response.ok) {
@@ -106,10 +109,10 @@ export async function readNdjson(response, onEvent) {
   return result;
 }
 
-// The WebSocket URL of a path of this site: ws:// or wss:// after the protocol of the page.
+// The WebSocket URL of an application path: ws:// or wss:// after the protocol of the page.
 export function wsUrl(path) {
   const scheme = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-  return scheme + window.location.host + path;
+  return scheme + window.location.host + siteUrl(path);
 }
 
 // Add query parameters to a URL (the values are encoded; undefined / null values are skipped).

@@ -135,11 +135,13 @@ def table(rows: list, columns=COLUMNS) -> str:
 
 
 def _portal_url(cfg) -> str:
+    """The URL of the running portal for this command: its listening port (never the reverse
+    proxy), under its ``base_path`` when the site lives in a sub-path."""
     host, port = cfg.listen
     if host in ('0.0.0.0', '', '::'):
         host = '127.0.0.1'
     scheme = 'https' if cfg.tls_cert else 'http'
-    return f"{scheme}://{host}:{port}"
+    return f"{scheme}://{host}:{port}{cfg.base_path}"
 
 
 def restart_hosts(client: PoolClient, names: list | None, *, wait: bool, timeout: float, as_json: bool) -> int:

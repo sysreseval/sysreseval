@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ _("Groups") }} - SRE{% endblock %}
-{% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block nav %}<a href="{{ base_path }}/projects">{{ _("Running projects") }}</a> <a href="{{ base_path }}/open">{{ _("Open a lab") }}</a>{% endblock %}
 {% block content %}
 <div class="toolbar">
   <h1>{{ _("User groups") }}</h1>
@@ -32,4 +32,4 @@
   <tbody><tr><td colspan="7" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/groups.js"></script>{% endblock %}
+{% block scripts %}<script type="module" src="{{ base_path }}/static/js/groups.js"></script>{% endblock %}

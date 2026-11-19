@@ -31,6 +31,7 @@ from aiohttp import web
 
 from .accessdb import DatabaseSink, connector
 from .accesshistory import AccessDatabase
+from .basepath import route_pattern, strip_base
 from ..config import AccessLogConfig, ConfigError, client_allowed
 from ..identity import IDENTITY_KEY, Identity, request_key, VIEW_INSTRUCTOR
 
@@ -323,11 +324,14 @@ class AccessLog:
     """The log itself: the logger and its file, the database sink and its reader, the
     sessions, the middleware deriving the events from the routes, the expiry task.  *clock*
     (``time.time``) gives the timestamps and the durations (the tests move it); *connect* is the
-    ``(connect, transient)`` pair of ``accessdb.connector`` (the tests give a fake connection)."""
+    ``(connect, transient)`` pair of ``accessdb.connector`` (the tests give a fake connection);
+    *base_path* the sub-path of the site (``WebConfig.base_path``): the routes and the paths of
+    the lines are those of the application, the same with or without one."""
 
-    def __init__(self, cfg: AccessLogConfig, trusted_proxies, *, clock=time.time, connect=None):
+    def __init__(self, cfg: AccessLogConfig, trusted_proxies, *, clock=time.time, connect=None, base_path: str = ''):
         self.cfg = cfg
         self.trusted_proxies = list(trusted_proxies or [])
+        self.base_path = base_path
         self.clock = clock
         self.visits = Visits()
         self.logger = logging.getLogger(LOGGER_NAME)
@@ -478,7 +482,7 @@ class AccessLog:
         """After the identity middleware: touches the session of the request, logs the event of
         its route (``EVENTS``) with the status and the duration, the open and close of a
         WebSocket, and the denied calls."""
-        canonical = getattr(request.match_info.route.resource, 'canonical', '') or ''
+        canonical = route_pattern(request, self.base_path)
         if canonical in IGNORED:
             return await handler(request)
         method = 'GET' if request.method == 'HEAD' else request.method
@@ -500,7 +504,7 @@ class AccessLog:
         if request.query.get('view') == VIEW_INSTRUCTOR:
             fields['view'] = VIEW_INSTRUCTOR
         if event == 'admin':
-            fields.update(method=request.method, path=request.path)
+            fields.update(method=request.method, path=strip_base(request.path, self.base_path))
         extra = request[ACCESS_KEY] = {}
         if event in WS_EVENTS:
             return await self._websocket(request, handler, event, key, fields)
@@ -536,7 +540,8 @@ class AccessLog:
             raise
         finally:
             if denied and status in DENIED_STATUSES:
-                self.record('denied', **fields, method=request.method, path=request.path, status=status)
+                self.record('denied', **fields, method=request.method, path=strip_base(request.path, self.base_path),
+                            status=status)
 
     async def _websocket(self, request, handler, event: str, key, fields: dict):
         """A WebSocket route: ``<event>_open`` now, ``<event>_close`` when the handler ends (the

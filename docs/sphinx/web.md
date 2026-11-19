@@ -141,7 +141,8 @@ it holds the cookie secret and the agent tokens; the files it imports likewise),
 `systemctl enable --now sre-web`. Put a
 reverse proxy doing TLS in front (`scripts/etc/sre-web-nginx.conf` is an nginx example,
 `sre-web-apache.conf` an Apache one that also authenticates the users: the proxy mode below), or
-give the portal its own certificate (`tls_cert` / `tls_key`).
+give the portal its own certificate (`tls_cert` / `tls_key`). The examples give the site a host
+name of its own; *Under a sub-path* below puts it next to other applications of a host name.
 
 ### Debian packages
 
@@ -196,6 +197,7 @@ merges other files into this one, as for `web.toml` below.
 |---|---|---|
 | `listen` | `127.0.0.1:8450` | behind a reverse proxy: the loopback |
 | `public_url` | none | the URL the users type (the `Origin` of the WebSockets is checked against it) |
+| `base_path` | none | the sub-path the site is served under, e.g. `"/sre"` for `https://www.example.org/sre/` (*Under a sub-path* below); none: the root of the host name |
 | `secret` | required | signs the session cookies (32+ random characters) |
 | `trusted_proxies` | `[]` | proxy mode: the addresses or networks of the reverse proxy, the only peers whose identity headers are trusted (the TCP peer address, never `X-Forwarded-For`); required in that mode. In every mode, the connection log takes the client address from the `X-Forwarded-For` header of these peers |
 | `languages` | `["en", "fr", "de"]` | the languages offered at login, the first one by default |
@@ -244,6 +246,49 @@ The answers file also says which program wrote it, under the key `client` (hence
 archives too): `web` for the agent, `local` for the Qt GUI. A project used on both sides
 carries the name of the last one that wrote; an instructor helping from the web site leaves
 the student's value as it is.
+
+### Under a sub-path
+
+By default the site is the root of its host name (`https://sre.example.org/`). With
+`base_path = "/sre"` in `web.toml` it is served at `https://www.example.org/sre/` instead, next
+to whatever else that host name serves: every page, every API call, the static files and the
+WebSockets live under the sub-path, and the portal answers 404 to anything outside it
+(`https://www.example.org/sre`, without the slash, goes to the site).
+
+The portal serves the sub-path itself, so the reverse proxy passes the requests **as they
+come**, without removing the prefix: a proxy that rewrites a path decodes and encodes it again,
+and the names of the groups and of the projects travel percent-encoded in the paths. With nginx:
+
+```nginx
+location /sre/ {
+    proxy_pass http://127.0.0.1:8450;       # no path after the port: the request path is kept
+    # ... the headers and timeouts of the "location /" of sre-web-nginx.conf
+}
+```
+
+and with Apache, in place of the two `ProxyPass "/"` lines of the example (its `<Location "/">`
+becoming `<Location "/sre/">`):
+
+```apache
+ProxyPass        "/sre/" "http://127.0.0.1:8450/sre/" upgrade=websocket timeout=3600
+ProxyPassReverse "/sre/" "http://127.0.0.1:8450/sre/"
+```
+
+- `public_url` names the site with the sub-path or without (`https://www.example.org/sre` or
+  `https://www.example.org`); another path is refused at startup.
+- The cookies are set for the sub-path (`Path=/sre`): the browser does not send the session to
+  the other applications of the host name, and two portals under two sub-paths of one host name
+  keep separate sessions (they share the local storage of the browser: the display settings).
+- `[auth.proxy] logout_url` and `[site] url` are used as they are written: the first is a
+  location of the reverse proxy (`/apache-logout`, or `/sre-logout`: any path the proxy does not
+  hand to the portal), the second another site.
+- `sre-web-tool` reads `base_path` in `web.toml`; with `--url`, give the URL with the sub-path
+  (`--url http://127.0.0.1:8450/sre`).
+- The applications of one host name are one origin for the browser: a page of another
+  application of that host can call the portal with the session of the user who opened it, and
+  neither the `Origin` check nor the `X-Requested-With` header tells it from a page of the
+  portal. Give the portal a host name of its own unless everything else served under that
+  host name is trusted as much as the portal.
 
 ### Authentication by the reverse proxy
 
@@ -2153,6 +2198,8 @@ once.
   state-changing calls need the `X-Requested-With: sre-web` header and the WebSockets a
   matching `Origin`; the pages carry a `Content-Security-Policy` (the origin of the BigBlueButton
   server added to its `frame-src` when `[bbb]` is set: the only other origin a page may frame).
+  These checks tell origins apart, not the applications of one host name: a portal served under
+  a sub-path (`base_path`) trusts what else that host name serves (*Under a sub-path*).
 - In proxy mode nothing is stored in a cookie: every request carries the identity set by the
   reverse proxy, accepted from the peers of `trusted_proxies` only (a request reaching the
   portal from anywhere else has no identity, headers or not).
@@ -2361,6 +2408,8 @@ after it closed.
 `--administrators prof,...` makes those logins administrators of the portal (`[auth]
 administrators`), so that an instructor among them (`X-Remote-Gid: 2000`) can exercise the
 History page; its Sessions view lists the open sessions without any database.
+`--base-path /sre` gives the portal that `base_path` (*Under a sub-path*): the URL printed and
+exported carries it, and the stress generator runs under it as it is.
 
 ### Stage 2: the production pool
 

@@ -6,9 +6,9 @@ import os
 import pytest
 
 from sreweb import config
-from sreweb.config import (ConfigError, parse_duration, parse_listen, web_config_from_dict, load_web_config,
-                           agent_config_from_dict, load_agent_config, DEFAULT_TIMEOUTS, read_config, merge_config,
-                           import_paths)
+from sreweb.config import (ConfigError, parse_duration, parse_listen, parse_base_path, web_config_from_dict,
+                           load_web_config, agent_config_from_dict, load_agent_config, DEFAULT_TIMEOUTS, read_config,
+                           merge_config, import_paths)
 
 SECRET = 's' * 32
 HOST = {'name': 'a01', 'url': 'http://10.0.0.11:8451', 'token': 't' * 32, 'max_projects': 10}
@@ -37,6 +37,55 @@ class TestListen:
     def test_bad(self, value):
         with pytest.raises(ConfigError):
             parse_listen(value)
+
+
+class TestBasePath:
+    """``base_path``: the sub-path the site is served under."""
+
+    @pytest.mark.parametrize('value, path', [('', ''), ('/', ''), ('/sre', '/sre'), ('/sre/', '/sre'), (' /sre ', '/sre'),
+                                             ('/apps/sre-2.0', '/apps/sre-2.0'), ('/my-sre-server/', '/my-sre-server'),
+                                             ('/a_b/~c', '/a_b/~c')])
+    def test_parse(self, value, path):
+        assert parse_base_path(value) == path
+
+    @pytest.mark.parametrize('value', ['sre', 'sre/', '/a//b', '/a b', '/a/../b', '/./a', '/a?b', '/a#b', '/a%20b',
+                                       '/é', 'https://example.org/sre', '/a"b', 3, None, ['/sre']])
+    def test_bad(self, value):
+        with pytest.raises(ConfigError, match='base_path'):
+            parse_base_path(value)
+
+    def test_default_is_the_root(self):
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST]})
+        assert (cfg.base_path, cfg.cookie_path, cfg.public_base) == ('', '/', '')
+        # without a sub-path public_url is what it always was: its trailing slash dropped, unchecked
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'public_url': 'https://sre.example.org/'})
+        assert (cfg.cookie_path, cfg.public_base) == ('/', 'https://sre.example.org')
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'public_url': 'https://example.org/old'})
+        assert (cfg.base_path, cfg.public_base) == ('', 'https://example.org/old')
+
+    @pytest.mark.parametrize('public_url', ['https://example.org', 'https://example.org/', 'https://example.org/sre',
+                                            'https://example.org/sre/'])
+    def test_public_url_with_or_without_the_sub_path(self, public_url):
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'base_path': '/sre/', 'public_url': public_url})
+        assert (cfg.base_path, cfg.cookie_path) == ('/sre', '/sre')
+        assert cfg.public_base == 'https://example.org/sre'
+
+    def test_without_public_url(self):
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'base_path': '/sre'})
+        assert (cfg.base_path, cfg.public_base) == ('/sre', '')
+
+    @pytest.mark.parametrize('data, fragment', [
+        ({'base_path': 'sre'}, 'base_path'),
+        ({'base_path': 7}, 'base_path'),
+        ({'base_path': '/sre', 'public_url': 'https://example.org/other'}, 'must be the same'),
+        ({'base_path': '/sre', 'public_url': 'https://example.org/sre/more'}, 'must be the same'),
+        ({'base_path': '/sre', 'public_url': 'example.org'}, 'public_url'),
+        ({'base_path': '/sre', 'public_url': 'ftp://example.org'}, 'public_url'),
+        ({'base_path': '/sre', 'public_url': 5}, 'public_url'),
+    ])
+    def test_refused(self, data, fragment):
+        with pytest.raises(ConfigError, match=fragment):
+            web_config_from_dict({'secret': SECRET, 'hosts': [HOST], **data})
 
 
 class TestWebConfig:

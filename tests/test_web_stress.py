@@ -301,6 +301,26 @@ class TestFakePool:
         assert not (workdir / 'fake01' / 'pub' / 'projects').is_dir() or \
             not any((workdir / 'fake01' / 'pub' / 'projects').iterdir())
 
+    def test_under_a_sub_path(self, tmp_path):
+        """``--base-path``: the portal run for real (``python -m sreweb.portal``) with a
+        ``base_path``, the generator doing under it what the browser does (the pages, the start,
+        the sockets, a terminal, the evaluations, the stop)."""
+        workdir = tmp_path / 'pool'
+        port = free_port_run(2)            # the portal, then its agent
+        command = ['sh', '-c', f'"$0" "{STRESS}" --portal "$SRE_STRESS_PORTAL" --admin-token "$SRE_STRESS_ADMIN_TOKEN" '
+                               '--users 2 --hold 1 --browse 0.2 --type-pause 0.1', sys.executable]
+        completed = subprocess.run([sys.executable, str(FAKE_POOL), '--hosts', '1', '--max-projects', '3',
+                                    '--listen', f'127.0.0.1:{port}', '--base-path', '/my-sre-server/',
+                                    '--start-delay', '0', '--start-interval', '0', '--eval-interval', '0',
+                                    '--poll-interval', '0.5', '--workdir', str(workdir), '--keep-workdir', '--'] + command,
+                                   capture_output=True, text=True, timeout=180, env={**os.environ, 'PYTHONPATH': ''})
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert f'portal=http://127.0.0.1:{port}/my-sre-server ' in completed.stdout
+        assert 'students: 2/2 completed, 2 fully ok' in completed.stdout
+        assert 'base_path = "/my-sre-server"\n' in (workdir / 'web.toml').read_text()
+        access = (workdir / 'access.log').read_text()
+        assert access.count('event=start') == 2 and 'result=created' in access and 'my-sre-server' not in access
+
     def test_a_dead_agent_says_why(self, tmp_path):
         """The port of the first agent is taken: the failure carries the end of that agent's log
         (asserted on the words of asyncio: the errno text follows the locale of the host)."""

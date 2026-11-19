@@ -32,6 +32,7 @@
 // webconf.js and webconf_invite.js load their own).
 
 import * as api from './api.js';
+import {appPath, siteUrl} from './base_path.js';
 import {el, toast} from './ui.js';
 import {ReconnectingSocket} from './events.js';
 import {setupLogout} from './logout.js';
@@ -122,7 +123,7 @@ function showOverlay(id, url) {
   for (const dialog of document.querySelectorAll('dialog[open]')) {
     dialog.close();
   }
-  const iframe = el('iframe', {src: url});
+  const iframe = el('iframe', {src: siteUrl(url)});      // the url of the push: an application path
   const element = el('div', {id: 'presentation-overlay'}, iframe);
   body.append(element);
   body.classList.add('has-presentation');
@@ -183,9 +184,9 @@ function onFocus(message) {
     document.dispatchEvent(new CustomEvent('sre-focus', {detail: message}));   // this page: follow
   } else if (typeof message.url === 'string' && message.url.startsWith('/projects/')) {
     if (!message.free || message.bring) {
-      window.location.assign(message.url);                                     // any other page: go there
+      window.location.assign(siteUrl(message.url));                            // any other page: go there
     } else if (focusNotice) {
-      focusNotice.querySelector('a').href = message.url;
+      focusNotice.querySelector('a').href = siteUrl(message.url);
       setNotice(focusNotice, String(message.instructor || ''));
     }
   }
@@ -252,7 +253,7 @@ if (body.dataset.login && !framed) {
   // that opens late (it was connecting when the page was left) repeats it.
   let away = false;
   const presence = new ReconnectingSocket(
-    api.withQuery('/api/presence/ws', {page: window.location.pathname, client: clientId()}),
+    api.withQuery('/api/presence/ws', {page: appPath(), client: clientId()}),
     {onMessage: onPresence,
      onOpen: () => {
        if (away) {

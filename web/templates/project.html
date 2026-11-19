@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ rln }} - SRE{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/vendor/xterm/xterm.css">
-<script defer src="/static/vendor/xterm/xterm.js"></script>
-<script defer src="/static/vendor/xterm/addon-fit.js"></script>
+<link rel="stylesheet" href="{{ base_path }}/static/vendor/xterm/xterm.css">
+<script defer src="{{ base_path }}/static/vendor/xterm/xterm.js"></script>
+<script defer src="{{ base_path }}/static/vendor/xterm/addon-fit.js"></script>
 {% endblock %}
 {% block body_attrs %}data-api-base="{{ api_base }}" data-host="{{ host }}" data-rln="{{ rln }}"{% if presentation %} data-presentation="{{ presentation.id }}" data-presenter="{{ presentation.presenter }}"{% endif %}{% endblock %}
 {% block main_class %}project{% endblock %}
-{% block nav %}{% if not presentation %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endif %}{% endblock %}
+{% block nav %}{% if not presentation %}<a href="{{ base_path }}/projects">{{ _("Running projects") }}</a> <a href="{{ base_path }}/open">{{ _("Open a lab") }}</a>{% endif %}{% endblock %}
 {% block content %}
 <div class="project-bar">
   <h1 id="project-title" class="project-title" title="{{ rln }} ({{ host }})">{{ rln }}</h1>
@@ -18,7 +18,7 @@
     <button type="button" id="wrap-toggle" class="toggle" aria-pressed="true" title="{{ _("Wrap") }}">&#8629;</button>
     <button type="button" id="font-minus" title="{{ _("Smaller text") }}">A&minus;</button>
     <button type="button" id="font-plus" title="{{ _("Larger text") }}">A+</button>
-    <a id="schema-pdf-link" class="button" hidden href="{{ api_base }}/schema.pdf" download>{{ _("Export Schema to PDF") }}</a>
+    <a id="schema-pdf-link" class="button" hidden href="{{ base_path }}{{ api_base }}/schema.pdf" download>{{ _("Export Schema to PDF") }}</a>
     {% if instructor and not presentation %}<button type="button" id="focus-student" class="toggle" aria-pressed="false" hidden title="{{ _("Bring the student's browser to this project and keep both pages on the same tab, terminal and question") }}">{{ _("Focus student on project") }}</button>{% endif %}
     {% if instructor and not presentation and webconf_private %}<button type="button" id="talk-student" class="toggle" aria-pressed="false" hidden title="{{ _("Invite the student to a private voice and text conversation") }}">{{ _("Talk privately") }}</button>{% endif %}
     {% if instructor and not presentation %}<button type="button" id="present" class="primary" hidden title="{{ _("Show this project, read-only, on the browsers of chosen students") }}">{{ _("Present") }}</button>{% endif %}
@@ -36,7 +36,7 @@
 <div id="tabbar" class="tabbar" role="tablist"></div>
 <div id="panes" class="panes"></div>
 <div id="closed-banner" class="banner" hidden>
-  <p>{{ _("This project is closed.") }} {% if not presentation %}<a href="/projects">{{ _("Back to the projects") }}</a>{% endif %}</p>
+  <p>{{ _("This project is closed.") }} {% if not presentation %}<a href="{{ base_path }}/projects">{{ _("Back to the projects") }}</a>{% endif %}</p>
 </div>
 {% if presentation %}
 <div id="ended-banner" class="banner" hidden>
@@ -44,4 +44,4 @@
 </div>
 {% endif %}
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/project.js"></script>{% endblock %}
+{% block scripts %}<script type="module" src="{{ base_path }}/static/js/project.js"></script>{% endblock %}

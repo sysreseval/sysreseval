@@ -25,6 +25,7 @@ import './base.js';
 import * as api from './api.js';
 import * as i18n from './i18n.js';
 import * as settings from './settings.js';
+import {siteUrl} from './base_path.js';
 import {_} from './i18n.js';
 import {el, clear, toast} from './ui.js';
 import {ProjectEvents, ReconnectingSocket} from './events.js';
@@ -372,7 +373,7 @@ function applyProject(project) {
 // before an update): the project is shown without it.
 function updateSchemaPdfLink() {
   if (schemaPdfLink) {
-    schemaPdfLink.href = ctx.url('/schema.pdf', tabs.schema && tabs.schema.pdfQuery ? tabs.schema.pdfQuery() : {});
+    schemaPdfLink.href = siteUrl(ctx.url('/schema.pdf', tabs.schema && tabs.schema.pdfQuery ? tabs.schema.pdfQuery() : {}));
   }
 }
 
@@ -699,7 +700,7 @@ function applyExam(examState) {
   const examLab = (exam.labs || []).some((entry) => entry.lab_name === lab);
   if (exam.address_allowed === false || !examLab || exam.phase === 'waiting' || exam.phase === 'starting'
       || exam.phase === 'local') {
-    window.location.assign('/projects');     // local: the exam is taken at a workstation, nothing to open here
+    window.location.assign(siteUrl('/projects'));     // local: the exam is taken at a workstation, nothing to open here
     return;
   }
   closeButton.hidden = true;
@@ -789,7 +790,7 @@ function setupControls() {
     try {
       await api.del(ctx.url(''));
       projectClosed();
-      window.location.href = '/projects';
+      window.location.href = siteUrl('/projects');
     } catch (e) {
       toast(e.message, {error: true});
       closeButton.disabled = false;

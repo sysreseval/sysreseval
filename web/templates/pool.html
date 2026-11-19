@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ _("Pool") }} - SRE{% endblock %}
-{% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block nav %}<a href="{{ base_path }}/projects">{{ _("Running projects") }}</a> <a href="{{ base_path }}/open">{{ _("Open a lab") }}</a>{% endblock %}
 {% block content %}
 <div class="toolbar">
   <h1>{{ _("The hosts of the pool") }}</h1>
@@ -42,4 +42,4 @@
   <tbody><tr><td colspan="14" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/pool.js"></script>{% endblock %}
+{% block scripts %}<script type="module" src="{{ base_path }}/static/js/pool.js"></script>{% endblock %}

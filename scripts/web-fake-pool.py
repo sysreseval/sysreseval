@@ -69,6 +69,7 @@ class PoolOptions:
     max_preloads: int | None = None    # [pool] max_preloads of the portal (None: its default)
     placement: str = ''                # [pool] placement of the portal ('': its default, spread)
     project_memory_mb: int = 0         # [pool] project_memory_mb of the portal (0: the memory not checked)
+    base_path: str = ''                # base_path of the portal ('/sre': the site under a sub-path; '': the root)
     command: list = field(default_factory=list)
 
     @property
@@ -150,7 +151,8 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
         f'listen = {toml_str(opts.listen)}\n'
         f'secret = {toml_str(secrets.token_hex(32))}\n'
         'trusted_proxies = ["127.0.0.1", "::1"]\n'
-        '[auth]\nmode = "proxy"\n'
+        + (f'base_path = {toml_str(opts.base_path)}\n' if opts.base_path else '')
+        + '[auth]\nmode = "proxy"\n'
         + (f'administrators = [{", ".join(toml_str(a) for a in opts.administrators)}]\n' if opts.administrators else '')
         + '[auth.proxy]\n'
         'header_group = "X-Remote-Group"\n'
@@ -169,7 +171,7 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
     web_toml = workdir / 'web.toml'
     web_toml.write_text(web)
     return PoolFiles(workdir=workdir, web_toml=web_toml, admin_token=admin_token, hosts=hosts,
-                     portal_url=f"http://{opts.host}:{opts.port}")
+                     portal_url=f"http://{opts.host}:{opts.port}{opts.base_path}")
 
 
 def daemon_env() -> dict:
@@ -332,6 +334,9 @@ def parse_args(argv=None) -> PoolOptions:
     p.add_argument('--project-memory-mb', type=int, default=0, metavar='MIB',
                    help="[pool] project_memory_mb of the portal (0: the memory is not checked); the fake agents "
                         "all report the available memory of this machine")
+    p.add_argument('--base-path', default='', metavar='PATH',
+                   help="base_path of the portal: the site served under this sub-path (/my-sre-server) instead of "
+                        "the root; the portal URL printed and exported carries it")
     a = p.parse_args(argv)
     if a.hosts < 1:
         p.error("--hosts must be at least 1")
@@ -347,6 +352,7 @@ def parse_args(argv=None) -> PoolOptions:
                        administrators=[x.strip() for x in a.administrators.split(',') if x.strip()],
                        extra_web_config=a.extra_web_config, extra_agent_config=a.extra_agent_config,
                        max_preloads=a.max_preloads, placement=a.placement, project_memory_mb=a.project_memory_mb,
+                       base_path='/' + a.base_path.strip('/') if a.base_path.strip('/') else '',
                        command=command)
 
 

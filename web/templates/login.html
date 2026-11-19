@@ -12,7 +12,7 @@
   <p class="error">{{ _("The web server passed no identity.") }}</p>
   <p class="hint">{{ _("The sign-in is done by the web server in front of this site: check its configuration.") }}</p>
   {% else %}
-  <form method="post" action="/login">
+  <form method="post" action="{{ base_path }}/login">
     {% if auth_mode == "ldap" %}
     <label>{{ _("Login") }}
       <input name="login" required autofocus autocomplete="username">

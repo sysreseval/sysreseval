@@ -70,21 +70,22 @@ def decode(value: str, secret: str, now: float | None = None, max_age: float = M
 
 
 def set_cookie(response, identity: Identity, secret: str, *, secure: bool, issued_at: float | None = None,
-               now: float | None = None):
+               now: float | None = None, path: str = '/'):
     """A new session cookie (a sign-in), or, with *issued_at*, the cookie of the session issued
     then signed again with *identity* (a language change): it keeps its issue date and the time
-    it has left, so that a session never lives past ``MAX_AGE`` from the sign-in."""
+    it has left, so that a session never lives past ``MAX_AGE`` from the sign-in.  *path*: the
+    ``Path`` of the cookie (``WebConfig.cookie_path``: the sub-path of the site when it has one)."""
     current = now if now is not None else time.time()
     if issued_at is None:
         issued_at, max_age = current, MAX_AGE
     else:
         max_age = max(1, int(issued_at + MAX_AGE - current))
     response.set_cookie(COOKIE_NAME, encode(identity, secret, now=issued_at), max_age=max_age, httponly=True,
-                        secure=secure, samesite='Strict', path='/')
+                        secure=secure, samesite='Strict', path=path)
 
 
-def clear_cookie(response):
-    response.del_cookie(COOKIE_NAME, path='/')
+def clear_cookie(response, *, path: str = '/'):
+    response.del_cookie(COOKIE_NAME, path=path)
 
 
 def choose_language(candidates, languages) -> str:
@@ -96,6 +97,6 @@ def choose_language(candidates, languages) -> str:
     return languages[0]
 
 
-def set_language_cookie(response, language: str, *, secure: bool):
+def set_language_cookie(response, language: str, *, secure: bool, path: str = '/'):
     response.set_cookie(LANG_COOKIE, language, max_age=LANG_MAX_AGE, httponly=True, secure=secure,
-                        samesite='Lax', path='/')
+                        samesite='Lax', path=path)

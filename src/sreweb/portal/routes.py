@@ -15,6 +15,7 @@ from aiohttp import web, WSMsgType
 
 from . import auth_anon, session as S
 from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS, LOGIN_EVENTS, MAX_USER_AGENT
+from .basepath import route_pattern, strip_base
 from .clients import annotate_projects, local_clients, web_clients
 from .accesshistory import (parse_filters, session_filters, session_of_row, session_of_visit, visit_matches, resolve_group,
                             UNLOGGED_FILTERS, HistoryError)
@@ -294,6 +295,11 @@ class Routes:
     def _secure(self, request) -> bool:
         return self.cfg.public_url.lower().startswith('https://') or request.scheme == 'https'
 
+    def _url(self, path: str) -> str:
+        """The URL of a page of the site for the browser (a redirect): the application *path*
+        under ``base_path``."""
+        return self.cfg.base_path + path
+
     def _language(self, request) -> str:
         identity = request.get(IDENTITY_KEY)
         if identity is not None:
@@ -320,6 +326,10 @@ class Routes:
             'webconf_private': self.cfg.webconf_private,   # ... and Talk privately on a student's project
             'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
             'site': self._site(language),
+            # the sub-path of the site ('' at the root): before every href / src / action of the
+            # templates, and in <body data-base-path> for base_path.js; the other paths given to
+            # the pages (api_base, the logo) are those of the application
+            'base_path': self.cfg.base_path,
             **extra,
         }
 
@@ -362,7 +372,7 @@ class Routes:
             raise PoolError(404, "unknown project")
         if owner != identity.login and identity.role != ROLE_INSTRUCTOR:
             presentation = self.presentations.spectator_of(identity, host.name, rln)
-            canonical = getattr(request.match_info.route.resource, 'canonical', '') or ''
+            canonical = route_pattern(request, self.cfg.base_path)
             method = 'GET' if request.method == 'HEAD' else request.method
             if presentation is None or (method, canonical) not in SPECTATOR_ROUTES:
                 raise PoolError(403, "not your project")
@@ -445,11 +455,11 @@ class Routes:
     # -- pages ----------------------------------------------------------------------------------
 
     async def index(self, request):
-        raise web.HTTPFound('/projects' if request.get(IDENTITY_KEY) else '/login')
+        raise web.HTTPFound(self._url('/projects' if request.get(IDENTITY_KEY) else '/login'))
 
     async def login_page(self, request):
         if request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/projects')
+            raise web.HTTPFound(self._url('/projects'))
         code = request.query.get('error', '')       # a LOGIN_ERRORS code: the page has its own text for it
         return aiohttp_jinja2.render_template('login.html', request,
                                               self._page_context(request, error=code if code in LOGIN_ERRORS else ''))
@@ -488,43 +498,43 @@ class Routes:
         try:
             identity = await self._authenticate(request, dict(data))
         except LoginRefused as e:
-            raise web.HTTPFound('/login?' + urllib.parse.urlencode({'error': e.code}))
+            raise web.HTTPFound(self._url('/login?' + urllib.parse.urlencode({'error': e.code})))
         except PoolError:
-            raise web.HTTPFound('/login')
-        response = web.HTTPFound('/projects')
-        S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request))
+            raise web.HTTPFound(self._url('/login'))
+        response = web.HTTPFound(self._url('/projects'))
+        S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request), path=self.cfg.cookie_path)
         raise response
 
     async def logout(self, request):
         """Clears the session cookie (a stale cookie of a previous mode too); in proxy mode the
-        browser is sent to ``logout_url`` (the logout location or handler of the proxy) when
-        there is one."""
+        browser is sent to ``logout_url`` (the logout location or handler of the proxy, followed
+        as it is written: it is not a page of this site) when there is one."""
         target = self.cfg.auth.proxy.logout_url if self.proxy_mode else ''
-        if request.path.startswith('/api/'):
+        if strip_base(request.path, self.cfg.base_path).startswith('/api/'):
             response = web.json_response({'ok': True, 'logout_url': target})
         else:
-            response = web.HTTPFound(target or '/login')
-        S.clear_cookie(response)
+            response = web.HTTPFound(target or self._url('/login'))
+        S.clear_cookie(response, path=self.cfg.cookie_path)
         if isinstance(response, web.HTTPException):
             raise response
         return response
 
     async def projects_page(self, request):
         if not request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         return aiohttp_jinja2.render_template('projects.html', request, self._page_context(request))
 
     async def open_page(self, request):
         if not request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         if self._exam_binding(request[IDENTITY_KEY]) is not None:
-            raise web.HTTPFound('/projects')      # a student in an exam: the exam projects start by themselves
+            raise web.HTTPFound(self._url('/projects'))      # a student in an exam: the exam projects start by themselves
         return aiohttp_jinja2.render_template('open.html', request, self._page_context(request))
 
     async def watch_page(self, request):
         """Instructors: every running project of the pool with its last evaluation."""
         if not request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
             raise web.HTTPForbidden(text="instructors only")
         return aiohttp_jinja2.render_template('watch.html', request, self._page_context(request))
@@ -533,7 +543,7 @@ class Routes:
         """Instructors: the hosts of the pool with their state, and the actions of sre-web-tool
         (but add / remove)."""
         if not request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
             raise web.HTTPForbidden(text="instructors only")
         return aiohttp_jinja2.render_template('pool.html', request, self._page_context(request))
@@ -544,7 +554,7 @@ class Routes:
         statistics of a period.  The event select lists every event but, in proxy mode, those of
         the login page (never logged there)."""
         if not request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         if not request[IDENTITY_KEY].administrator:
             raise web.HTTPForbidden(text="administrators only")
         events = [e for e in ALL_EVENTS if not (self.proxy_mode and e in LOGIN_EVENTS)]
@@ -556,7 +566,7 @@ class Routes:
         (``[archives]`` + ``[access_log.database]``; the page says so when none is configured):
         the evaluations found by the filters, the detail of one, the lab summary."""
         if not request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
             raise web.HTTPForbidden(text="instructors only")
         return aiohttp_jinja2.render_template('archives.html', request, self._page_context(
@@ -567,7 +577,7 @@ class Routes:
         custom groups of the database), the members of each, the editing of the custom ones; the
         page says what is not configured."""
         if not request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
             raise web.HTTPForbidden(text="instructors only")
         return aiohttp_jinja2.render_template('groups.html', request, self._page_context(
@@ -579,7 +589,7 @@ class Routes:
         of one with its students and the actions during the exam; the page says what is not
         configured (the database holding the exams, a mode without stable logins)."""
         if not request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
             raise web.HTTPForbidden(text="instructors only")
         exams = self.cfg.exams
@@ -592,11 +602,11 @@ class Routes:
 
     async def project_page(self, request):
         if not request.get(IDENTITY_KEY):
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         try:
             host, rln, identity = self._target(request)
         except ExamRefusal:
-            raise web.HTTPFound('/projects')      # the exam bar of the Projects page says why
+            raise web.HTTPFound(self._url('/projects'))      # the exam bar of the Projects page says why
         return aiohttp_jinja2.render_template('project.html', request, self._page_context(
             request, host=host.name, rln=rln, api_base=f"/api/projects/{host.name}/{urllib.parse.quote(rln)}"))
 
@@ -627,7 +637,7 @@ class Routes:
             return json_error(400, "a JSON body is expected")
         identity = await self._authenticate(request, data if isinstance(data, dict) else {})
         response = web.json_response({'identity': identity.to_dict()})
-        S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request))
+        S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request), path=self.cfg.cookie_path)
         return response
 
     async def api_language(self, request):
@@ -639,9 +649,9 @@ class Routes:
         language = self._check_language(str((data or {}).get('language', '')))
         identity = replace(identity, language=language)
         response = web.json_response({'identity': identity.to_dict()})
-        S.set_language_cookie(response, language, secure=self._secure(request))
+        S.set_language_cookie(response, language, secure=self._secure(request), path=self.cfg.cookie_path)
         if not self.proxy_mode:       # the session cookie carries the language; proxy mode has none
-            S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request),
+            S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request), path=self.cfg.cookie_path,
                          issued_at=request.get(S.SESSION_IAT_KEY))     # the session keeps its date: it never slides
         return response
 
@@ -1966,7 +1976,7 @@ class Routes:
         view), shown in an iframe of the student's own page, hence the framing headers."""
         identity = request.get(IDENTITY_KEY)
         if not identity:
-            raise web.HTTPFound('/login')
+            raise web.HTTPFound(self._url('/login'))
         p = self._presentation(request)
         await self.memberships.refresh()
         if not p.includes(identity):
@@ -2324,9 +2334,9 @@ class Routes:
     # dialog (``webconf_dialog.js``).  Nothing here without ``[bbb]``: 404.
 
     def _origin(self, request) -> str:
-        """The URL of the portal as the browsers reach it (``public_url``, else this request's):
-        the ``logoutURL`` of a meeting."""
-        return self.cfg.public_url.rstrip('/') or f"{request.scheme}://{request.host}"
+        """The URL of the portal as the browsers reach it (``public_url``, else this request's;
+        with its ``base_path``): the ``logoutURL`` of a meeting."""
+        return self.cfg.public_base or f"{request.scheme}://{request.host}{self.cfg.base_path}"
 
     def _webconf(self, request) -> Room:
         if not self.webconfs.enabled:

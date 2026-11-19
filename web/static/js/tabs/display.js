@@ -17,7 +17,7 @@ import {el, clear} from '../ui.js';
 import {_} from '../i18n.js';
 
 const SUBPROTOCOL = 'sre-display.v1';
-const NOVNC_MODULE = '/static/vendor/novnc/core/rfb.js';
+const NOVNC_MODULE = '../../vendor/novnc/core/rfb.js';   // relative to this module: /static/vendor/novnc/, under any sub-path
 const SPECTATOR_RETRIES = 10;         // a spectator waits for the presenter's X server this many times
 const SPECTATOR_RETRY_DELAY = 1000;   // ms
 

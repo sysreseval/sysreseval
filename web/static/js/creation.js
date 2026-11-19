@@ -4,6 +4,7 @@
 // before starting (the Open page and the automatic starts of an exam).
 
 import * as api from './api.js';
+import {siteUrl} from './base_path.js';
 import {el} from './ui.js';
 import {_, format} from './i18n.js';
 import {Form} from './form.js';
@@ -135,9 +136,10 @@ export async function runCreation(box, label, method, url, options) {
   return result;
 }
 
-// The page of a project just created.
+// The URL of the page of a project (one just created, a row of a table): for a link or a
+// navigation, with the sub-path of the site.
 export function projectUrl(host, runningLabName) {
-  return `/projects/${encodeURIComponent(host)}/${encodeURIComponent(runningLabName)}`;
+  return siteUrl(`/projects/${encodeURIComponent(host)}/${encodeURIComponent(runningLabName)}`);
 }
 
 // The dialog of the Flavor form of a lab, built from a "flavor_form" result (its chunks and

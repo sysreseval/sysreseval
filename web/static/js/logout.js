@@ -24,7 +24,7 @@ function projectUrl(project) {
 }
 
 export function setupLogout() {
-  const form = document.querySelector('form[action="/logout"]');
+  const form = document.querySelector('form[action$="/logout"]');   // the action carries the sub-path of the site
   const dialog = document.getElementById('logout-dialog');
   if (!form || !dialog) {
     return;

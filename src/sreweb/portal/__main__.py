@@ -45,6 +45,9 @@ def main(argv=None) -> int:
     host, port = cfg.listen
     logger = logging.getLogger('sreweb.portal')
     logger.info("listening on %s:%d, %d host(s), auth %s", host, port, len(cfg.hosts), cfg.auth.mode)
+    if cfg.base_path:
+        logger.info("site served under %s (nothing at the root: the reverse proxy passes the path as it comes)",
+                    cfg.base_path)
     if cfg.auth.mode == AUTH_PROXY:
         logger.info("identity headers trusted from %s", ', '.join(str(n) for n in cfg.trusted_proxies))
     logger.info("connection log: %s", portal.access.describe())

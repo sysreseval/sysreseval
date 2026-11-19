@@ -55,6 +55,11 @@ IDENTITY = {'login': 'alice', 'fullname': 'Alice Martin', 'email': 'alice@exampl
             'language': 'fr', 'anonymous': False, 'group': '', 'administrator': False}
 RLN = '20261021153000@@@sre@dhcp.py@@@alice'
 API_BASE = '/api/projects/a01/20261021153000%40%40%40sre%40dhcp.py%40%40%40alice'
+#: a sub-path of the site (``base_path`` of web.toml) for the pages rendered under one
+BASE_PATH = '/my-sre-server'
+BASE_PATH_MODULE = 'base_path.js'
+# an attribute the browser follows, with its value (not a data-action="...")
+URL_ATTRIBUTE = re.compile(r"""(?<![\w-])(href|src|action)=(["'])(.*?)\2""")
 
 
 def environment() -> jinja2.Environment:
@@ -66,13 +71,31 @@ def context(**extra) -> dict:
     base = {'_': lambda text: text, 'identity': IDENTITY, 'auth_mode': 'anonymous', 'languages': LANGUAGES,
             'language': 'fr', 'instructor': False, 'administrator': False, 'groups': False, 'group_sources': False,
             'webconf': False, 'webconf_private': False, 'logout_url': '',
-            'site': {'name': '', 'url': '', 'logo_url': ''}}
+            'site': {'name': '', 'url': '', 'logo_url': ''}, 'base_path': ''}
     base.update(extra)
     return base
 
 
 def render(name: str, **extra) -> str:
     return environment().get_template(name).render(context(**extra))
+
+
+def every_page(**extra) -> list:
+    """Every page of the site rendered once (the project page as its owner's and as a
+    spectator's), *extra* added to the context of each."""
+    def page(name, **own):
+        return render(name, **{**own, **extra})
+
+    return [page('login.html', identity=None), page('projects.html'), page('open.html', instructor=True),
+            page('project.html', host='a01', rln=RLN, api_base=API_BASE), page('watch.html', instructor=True),
+            page('pool.html', instructor=True),
+            page('history.html', instructor=True, administrator=True, history_database=True, events=('login',)),
+            page('archives.html', instructor=True, archives_database=True),
+            page('groups.html', instructor=True, groups_directory=True, groups_database=True),
+            page('exams.html', instructor=True, exams_database=True, exams_available=True,
+                 exam_defaults={'lead': 10, 'pre_start': 5, 'eval_interval': 60}),
+            page('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'}),
+            page('webconf_left.html', webconf_id='r1')]
 
 
 def static_references(html: str) -> list:
@@ -667,16 +690,8 @@ class TestTemplates:
             assert not re.search(r'\son\w+\s*=', text), name   # no onclick="..."
 
     def test_static_references_exist(self):
-        pages = [render('login.html', identity=None), render('projects.html'), render('open.html', instructor=True),
-                 render('project.html', host='a01', rln=RLN, api_base=API_BASE), render('watch.html', instructor=True),
-                 render('pool.html', instructor=True),
-                 render('history.html', instructor=True, administrator=True, history_database=True, events=('login',)),
-                 render('archives.html', instructor=True, archives_database=True),
-                 render('groups.html', instructor=True, groups_directory=True, groups_database=True),
-                 render('exams.html', instructor=True, exams_database=True, exams_available=True,
-                        exam_defaults={'lead': 10, 'pre_start': 5, 'eval_interval': 60}),
-                 render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'}),
-                 render('webconf_left.html', webconf_id='r1')]
+        pages = every_page()
+        assert len(pages) == len(template_names())      # every template but base.html, the project page twice
         # the image of the end overlay of an exam is referenced by exam.js, not by a template
         assert (STATIC / 'img' / 'thats_all_folks.svg').is_file()
         assert "'/static/img/thats_all_folks.svg'" in (JS / 'exam.js').read_text(encoding='utf-8')
@@ -691,6 +706,46 @@ class TestTemplates:
                 assert (STATIC / relative).is_file(), ref
                 checked += 1
         assert checked >= 3
+
+    def test_every_url_under_the_sub_path(self):
+        """Served under a sub-path (``base_path`` of web.toml) a page names nothing outside it:
+        every href, src and action starts with it, but the language links (relative) and the
+        institution's link (another site).  The paths the scripts read (``data-api-base``,
+        ``data-join-url``) stay those of the application: ``base_path.js`` adds the sub-path, given
+        in ``data-base-path`` by every page."""
+        site = {'name': 'IUT', 'url': 'https://www.example.org/', 'logo_url': '/site/logo'}
+        pages = every_page(base_path=BASE_PATH, site=site, webconf=True, webconf_private=True)
+        pages.append(render('login.html', identity=None, auth_mode='ldap', base_path=BASE_PATH))
+        pages.append(render('projects.html', auth_mode='proxy', logout_url='/apache-logout', base_path=BASE_PATH))
+        checked = 0
+        for html in pages:
+            assert f'data-base-path="{BASE_PATH}"' in html
+            for attribute, _quote, value in URL_ATTRIBUTE.findall(html):
+                if value.startswith('?') or value == site['url']:
+                    continue
+                assert value.startswith(BASE_PATH + '/'), f'{attribute}="{value}"'
+                checked += 1
+        assert checked > 60
+        project = render('project.html', host='a01', rln=RLN, api_base=API_BASE, base_path=BASE_PATH, site=site)
+        assert f'data-api-base="{API_BASE}"' in project
+        assert f'href="{BASE_PATH}{API_BASE}/schema.pdf"' in project and f'src="{BASE_PATH}/site/logo"' in project
+        assert f'src="{BASE_PATH}/static/js/project.js"' in project and f'action="{BASE_PATH}/logout"' in project
+        left = render('webconf_left.html', webconf_id='r1', base_path=BASE_PATH)
+        assert 'data-join-url="/api/webconfs/r1/join"' in left and f'href="{BASE_PATH}/static/css/sre.css"' in left
+        # at the root of a host name: the pages as they always were
+        assert 'data-base-path=""' in render('projects.html') and 'href="/static/css/sre.css"' in render('projects.html')
+
+    def test_no_root_absolute_url_in_a_template(self):
+        """No template writes a URL of the site from the root: every branch of every page goes
+        through ``{{ base_path }}`` (the rendering test above only sees the branches it takes)."""
+        for name in template_names():
+            text = (TEMPLATES / name).read_text(encoding='utf-8')
+            for match in re.finditer(r"""(?<![\w-])(?:href|src|action)=["']/[^"']*""", text):
+                pytest.fail(f"{name}: {match.group(0)}")
+            for match in re.finditer(r"""(?<![\w-])(?:href|src|action)=["']\{\{\s*(\w+)""", text):
+                # a value that starts with a variable: the sub-path, or a URL of the configuration
+                assert match.group(1) in ('base_path', 'site'), f"{name}: {match.group(0)}"
+            assert 'data-base-path="{{ base_path }}"' in text or '{% extends "base.html" %}' in text, name
 
     def test_js_imports_exist(self):
         """Every relative import of a module names an existing module."""
@@ -829,8 +884,9 @@ def js() -> JsRuntime:
 
 def js_project(directory: Path, runner: str, *modules: str) -> str:
     """``modules`` of web/static/js copied into ``directory`` next to ``run.mjs`` = ``runner`` and
-    the package.json making them ES modules; returns the name of the runner."""
-    for name in modules:
+    the package.json making them ES modules; returns the name of the runner.  ``base_path.js``
+    comes along: a leaf without import that i18n.js, api.js and others import."""
+    for name in (*modules, BASE_PATH_MODULE):
         shutil.copy(JS / name, directory / name)
     (directory / 'package.json').write_text('{"type": "module"}\n')
     (directory / 'run.mjs').write_text(runner)
@@ -1760,6 +1816,100 @@ class TestActivityTracker:
         assert "actionAge(row) === null ? '' : ageText(actionAge(row))" in watch
 
 
+# base_path.js without a page (the modules run by these tests), then on fake pages under a
+# sub-path, at the root and without the attribute
+BASE_PATH_RUNNER = """\
+import {basePath, siteUrl, appPath} from './base_path.js';
+
+const out = {};
+out.noPage = [basePath(), siteUrl('/projects'), appPath('/projects/a01/x')];
+const page = (dataset, pathname) => {
+  globalThis.document = {body: {dataset}};
+  globalThis.window = {location: {pathname}};
+};
+page({basePath: '/sre'}, '/sre/projects/a01/x');
+out.sub = [basePath(), siteUrl('/api/me'), siteUrl('/projects?x=1'), appPath(), appPath('/sre'), appPath('/sre/'),
+           appPath('/sre/open'), appPath('/sreX/open'), appPath('/open')];
+page({basePath: ''}, '/projects');
+out.root = [basePath(), siteUrl('/api/me'), appPath(), appPath('/')];
+page({}, '/watch');
+out.noAttribute = [basePath(), siteUrl('/api/me'), appPath()];
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+class TestBasePath:
+    """base_path.js (the sub-path of the site, ``base_path`` of web.toml) run by the ``js``
+    runtime, skipped without one, and the rule it stands for: the modules name application
+    paths, the sub-path is added where a URL is handed to the browser."""
+
+    def test_paths(self, tmp_path, js):
+        runner = js_project(tmp_path, BASE_PATH_RUNNER)
+        out = json.loads(js.run(tmp_path, runner))
+        assert out['noPage'] == ['', '/projects', '/projects/a01/x']
+        # only the sub-path itself is taken away: /sreX is another path
+        assert out['sub'] == ['/sre', '/sre/api/me', '/sre/projects?x=1', '/projects/a01/x', '/', '/', '/open',
+                              '/sreX/open', '/open']
+        assert out['root'] == ['', '/api/me', '/projects', '/']
+        assert out['noAttribute'] == ['', '/api/me', '/watch']
+
+    def test_a_leaf_module(self):
+        """Imported by i18n.js and api.js, hence by every page and by the modules these tests run
+        without a browser: no import, nothing read at the top level."""
+        text = (JS / BASE_PATH_MODULE).read_text(encoding='utf-8')
+        assert not re.search(r'^\s*import\b', text, re.M)
+        assert "typeof document === 'undefined'" in text
+
+    def test_requests_and_sockets_go_through_api_js(self):
+        """api.js adds the sub-path to every request and WebSocket URL: no module calls fetch()
+        itself (i18n.js does, with siteUrl()), and a module opening a WebSocket builds its URL
+        with wsUrl()."""
+        api = (JS / 'api.js').read_text(encoding='utf-8')
+        assert 'response = await fetch(siteUrl(url), options);' in api
+        assert 'return scheme + window.location.host + siteUrl(path);' in api
+        assert "window.location.href = siteUrl('/login');" in api
+        assert 'await fetch(siteUrl(`/i18n/' in (JS / 'i18n.js').read_text(encoding='utf-8')
+        sockets = 0
+        for module in js_modules():
+            name = module.relative_to(JS).as_posix()
+            text = module.read_text(encoding='utf-8')
+            if name not in ('api.js', 'i18n.js'):
+                assert not re.search(r'\bfetch\(', text), name
+            if 'new WebSocket(' in text:
+                assert 'wsUrl(' in text and not re.search(r"new WebSocket\(\s*[`'\"]", text), name
+                sockets += 1
+        assert sockets == 3
+
+    def test_no_root_absolute_url_handed_to_the_browser(self):
+        """A navigation, a link, an image, a frame or a dynamic import never takes a literal
+        path from the root: siteUrl() (or projectUrl(), which calls it) gives the URL.  The
+        location of the page is read through appPath() alone, so that the page a browser reports
+        and the pages exam.js compares are application paths."""
+        sink = re.compile(r"""(?:location\.(?:assign|replace)\(|window\.open\(|location\.href\s*=|\.(?:href|src)\s*=|"""
+                          r"""\b(?:href|src):|\bimport\()\s*[`'"]/""")
+        for module in js_modules():
+            name = module.relative_to(JS).as_posix()
+            text = module.read_text(encoding='utf-8')
+            found = sink.search(text)
+            assert not found, f"{name}: {found.group(0) if found else ''}"
+            if name != BASE_PATH_MODULE:
+                assert 'location.pathname' not in text, name
+        assert "return siteUrl(`/projects/${encodeURIComponent(host)}/${encodeURIComponent(runningLabName)}`);" in (
+            JS / 'creation.js').read_text(encoding='utf-8')
+        base = (JS / 'base.js').read_text(encoding='utf-8')
+        assert "{page: appPath(), client: clientId()}" in base
+        assert 'window.location.assign(siteUrl(message.url));' in base and "el('iframe', {src: siteUrl(url)})" in base
+        exam = (JS / 'exam.js').read_text(encoding='utf-8')
+        assert 'const path = appPath();' in exam and "window.location.assign('/projects')" not in exam
+        webconf = (JS / 'webconf.js').read_text(encoding='utf-8')
+        assert 'window.open(siteUrl(state.joinUrl),' in webconf and 'src: siteUrl(url),' in webconf
+        assert 'window.location.assign(siteUrl(body.dataset.joinUrl));' in (JS / 'webconf_left.js').read_text(encoding='utf-8')
+        # the noVNC module is found from the module that loads it, the logout form by the end of its action
+        assert "const NOVNC_MODULE = '../../vendor/novnc/core/rfb.js';" in (JS / 'tabs' / 'display.js').read_text(encoding='utf-8')
+        assert (JS / 'tabs' / '../../vendor/novnc/core/rfb.js').resolve() == (STATIC / 'vendor/novnc/core/rfb.js').resolve()
+        assert """document.querySelector('form[action$="/logout"]')""" in (JS / 'logout.js').read_text(encoding='utf-8')
+
+
 class TestJavaScript:
     def test_table_sort_shared_by_the_history_views(self):
         """The two list tables of the History page and the users / labs tables of its statistics
@@ -1844,7 +1994,7 @@ class TestJavaScript:
         assert "'camera *; microphone *; display-capture *; fullscreen; autoplay'" in webconf
         assert "id: 'webconf-frame'" in webconf and "visibility = 'hidden'" in webconf
         assert "display = 'none'" not in webconf and 'display: none' not in webconf
-        assert "window.open(state.joinUrl, 'sre-webconf-' + state.id, POPUP_FEATURES)" in webconf
+        assert "window.open(siteUrl(state.joinUrl), 'sre-webconf-' + state.id, POPUP_FEATURES)" in webconf
         assert "ev.data.t !== 'webconf-left'" in webconf and 'ev.origin !== window.location.origin' in webconf
         assert "new BroadcastChannel(CHANNEL)" in webconf and "'pagehide'" in webconf and "'pageshow'" in webconf
         assert "'sreweb.webconf'" not in webconf                      # the storage key lives in the model

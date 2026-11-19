@@ -16,9 +16,10 @@
 import * as api from './api.js';
 import * as i18n from './i18n.js';
 import {_, format, resolveText} from './i18n.js';
+import {appPath, siteUrl} from './base_path.js';
 import {el, toast} from './ui.js';
 
-const REFRESH_INTERVAL = 60000;     // ms: the fallback poll of GET /api/exam
+const REFRESH_INTERVAL = 60000;    // ms: the fallback poll of GET /api/exam
 const PHASE_WAITING = 'waiting';
 const PHASE_STARTING = 'starting';
 const PHASE_ACTIVE = 'active';
@@ -201,10 +202,10 @@ function showOverlay(exam) {
         return;
       }
     }
-    window.location.assign('/projects');
+    window.location.assign(siteUrl('/projects'));
   });
   overlay = el('div', {id: 'exam-ended', class: 'exam-ended'},
-    el('img', {src: '/static/img/thats_all_folks.svg', alt: ''}),
+    el('img', {src: siteUrl('/static/img/thats_all_folks.svg'), alt: ''}),
     el('p', {class: 'exam-ended-title'}, format(_('The exam «{title}» is over.'), {title: resolveText(exam.title) || ''})),
     el('p', {class: 'muted'}, _('Your work has been evaluated. Press Continue to get back to your projects.')),
     button);
@@ -257,22 +258,22 @@ function navigate(exam, phase) {
   if (!phase) {
     return;
   }
-  const path = window.location.pathname;
+  const path = appPath();
   const onProjects = path === '/projects' || path === '/';
   const rln = body.dataset.rln || '';
   const onExamProject = Boolean(rln) && labs.includes(labOfRunningLabName(rln));
   if (phase === lastPhase) {
     const added = previousLabs !== null && labs.some((name) => !previousLabs.includes(name));
     if (added && onExamProject && (phase === PHASE_ACTIVE || phase === PHASE_STARTING)) {
-      window.location.assign('/projects');
+      window.location.assign(siteUrl('/projects'));
     }
     return;
   }
   const wasPreparing = lastPhase === PHASE_WAITING || lastPhase === PHASE_STARTING;
   if (phase === PHASE_ACTIVE && wasPreparing && !onProjects && !onExamProject) {
-    window.location.assign('/projects');
+    window.location.assign(siteUrl('/projects'));
   } else if (lastPhase === null && path === '/open') {
-    window.location.assign('/projects');
+    window.location.assign(siteUrl('/projects'));
   }
 }
 

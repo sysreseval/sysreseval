@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ _("Watch") }} - SRE{% endblock %}
-{% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block nav %}<a href="{{ base_path }}/projects">{{ _("Running projects") }}</a> <a href="{{ base_path }}/open">{{ _("Open a lab") }}</a>{% endblock %}
 {% block content %}
 <div class="toolbar">
   <h1 id="watch-title">{{ _("All running projects") }}</h1>
@@ -78,4 +78,4 @@
 </table>
 </div>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/watch.js"></script>{% endblock %}
+{% block scripts %}<script type="module" src="{{ base_path }}/static/js/watch.js"></script>{% endblock %}

@@ -20,6 +20,11 @@
 # Behind a reverse proxy doing TLS (nginx, caddy): listen on the loopback and give public_url.
 listen = "127.0.0.1:8450"
 public_url = "https://sre.example.org"
+# The site under a sub-path of a host name instead of its root (https://www.example.org/sre/):
+# every URL of the portal lives under it.  The reverse proxy passes the requests as they come,
+# without removing the prefix (nginx: location /sre/ { proxy_pass http://127.0.0.1:8450; }), and
+# public_url names the site with the sub-path or without.
+# base_path = "/sre"
 # Signs the session cookies (32+ random characters; changing it logs everybody out).
 secret = "change-me-to-a-long-random-string"
 # Proxy mode (see [auth]): the addresses or networks of the reverse proxy, the only peers whose

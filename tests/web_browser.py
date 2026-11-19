@@ -315,12 +315,14 @@ class IdentityProxy:
     every request, HTTP and WebSocket, forwarded to *target*; ``url`` once started.  *ws_delays*
     (``{path fragment: seconds}``) holds what the server sends on the WebSockets whose path
     contains a fragment: the browser's socket opens at once, its first frame (and those behind
-    it) comes that much later, so a test can fix the order of two sockets of a page."""
+    it) comes that much later, so a test can fix the order of two sockets of a page.  ``paths``:
+    the path of every request the browser made, in order (what a page really fetched)."""
 
     def __init__(self, target: str, headers: dict, *, ws_delays: dict | None = None):
         self.target = target.rstrip('/')
         self.headers = dict(headers)
         self.ws_delays = dict(ws_delays or {})
+        self.paths = []
         self.runner = None
         self.session = None
         self.url = None
@@ -344,6 +346,7 @@ class IdentityProxy:
             await self.session.close()
 
     async def _handle(self, request):
+        self.paths.append(request.path)
         url = self.target + request.path_qs
         headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
         headers.update(self.headers)

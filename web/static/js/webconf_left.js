@@ -5,6 +5,8 @@
 // in place (a fallback for a holder that does not answer).  No catalog: the texts come from the
 // template.
 
+import {siteUrl} from './base_path.js';
+
 const body = document.body;
 const id = body.dataset.webconfId || '';
 const holder = window.parent !== window ? window.parent : window.opener;
@@ -17,6 +19,6 @@ if (window.opener && window.parent === window) {
 const rejoin = document.getElementById('webconf-rejoin');
 if (rejoin) {
   rejoin.addEventListener('click', () => {
-    window.location.assign(body.dataset.joinUrl);
+    window.location.assign(siteUrl(body.dataset.joinUrl));
   });
 }

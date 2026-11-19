@@ -16,6 +16,7 @@ from aiohttp import web
 from . import session as S
 from .accessdb import connector
 from .accesslog import AccessLog
+from .basepath import strip_base
 from .archives import ArchiveStore
 from .auth_ldap import LdapRoleResolver
 from .auth_proxy import identity_from_headers
@@ -74,7 +75,7 @@ class Portal:
         connect = db_connect
         if connect is None and cfg.access_log.database.enabled:
             connect = connector(cfg.access_log.database)
-        self.access = AccessLog(cfg.access_log, cfg.trusted_proxies, connect=connect)
+        self.access = AccessLog(cfg.access_log, cfg.trusted_proxies, connect=connect, base_path=cfg.base_path)
         self.archives: ArchiveStore | None = None       # the evaluation archives ([archives], same database)
         if connect is not None and cfg.access_log.database.enabled:
             self.archives = ArchiveStore(cfg.access_log.database, cfg.archives, connect=connect[0], transient=connect[1])
@@ -105,9 +106,10 @@ class Portal:
         self.access.open()     # the log file: a bad path fails here, before the server starts
         if self.archives is not None:
             self.archives.open()
+        client_max_size = max(1 << 20, self.cfg.limits.max_answer_bytes)
         app = web.Application(middlewares=[self.identity_middleware, self.access.middleware, self.csrf_middleware,
                                            self.error_middleware],
-                              client_max_size=max(1 << 20, self.cfg.limits.max_answer_bytes))
+                              client_max_size=client_max_size)
         app[PORTAL_KEY] = self
         aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(str(self.web_dir / 'templates')), autoescape=True)
         # the client session is created at startup, inside the running loop (aiohttp requires it)
@@ -125,7 +127,7 @@ class Portal:
         if self.cfg.bbb.enabled:
             self.bbb = BbbClient(self.cfg.bbb.api_url, self.cfg.bbb.secret, self.cfg.bbb.checksum)
         self.webconfs = Webconfs(self.presence, self.bbb, memberships=self.memberships, cfg=self.cfg.bbb,
-                                 public_url=self.cfg.public_url, languages=self.cfg.languages)
+                                 public_url=self.cfg.public_base, languages=self.cfg.languages)
         self.exams = Exams(self.presence, self.exam_store, memberships=self.memberships, cfg=self.cfg.exams)
         self.exam_projects = ExamProjects(self.exams, self.pool, self.relay)
         self.exams.on_tick.append(self.exam_projects.reconcile)
@@ -148,7 +150,28 @@ class Portal:
         app.on_startup.append(self._on_startup)
         app.on_shutdown.append(self._on_shutdown)
         app.on_cleanup.append(self._on_cleanup)
-        return app
+        return self._under_base_path(app, client_max_size) if self.cfg.base_path else app
+
+    def _under_base_path(self, app: web.Application, client_max_size: int) -> web.Application:
+        """The application the server runs when the site lives in a sub-path (``base_path``):
+        *app* mounted under it, so that every route, the static files included, answers there and
+        nowhere else (a path outside is a plain 404).  The requests are built by this outer
+        application: it takes the body limit of the inner one.  The sub-path without its slash
+        goes to the site (its route comes first: the resources of one path are tried in the order
+        they were registered)."""
+        base = self.cfg.base_path
+        outer = web.Application(client_max_size=client_max_size)
+
+        async def to_site(request):
+            raise web.HTTPFound(base + '/')
+
+        outer.router.add_get(base, to_site)
+        outer.add_subapp(base, app)
+        return outer
+
+    def _path(self, request) -> str:
+        """The path of *request* in the application (without ``base_path``)."""
+        return strip_base(request.path, self.cfg.base_path)
 
     def client_ssl_context(self):
         """The TLS context of the calls to the agents: their certificates verified against
@@ -239,12 +262,11 @@ class Portal:
             await self.bbb.close()
         await self.session.close()
 
-    @staticmethod
-    async def _static_no_cache(request, response):
+    async def _static_no_cache(self, request, response):
         """The scripts and style sheets are revalidated on every page load (aiohttp sends an
         ``ETag``, so an unchanged file costs a 304): without it a browser keeps a script for hours
         after ``web/`` is updated and runs it on a page it no longer matches."""
-        if request.path.startswith('/static/'):
+        if self._path(request).startswith('/static/'):
             response.headers['Cache-Control'] = 'no-cache'
 
     # -- middlewares ----------------------------------------------------------------------------
@@ -329,9 +351,10 @@ class Portal:
 
     @web.middleware
     async def csrf_middleware(self, request, handler):
-        if request.path.startswith('/api/pool') and request.headers.get('Authorization', '').lower().startswith('bearer '):
+        path = self._path(request)
+        if path.startswith('/api/pool') and request.headers.get('Authorization', '').lower().startswith('bearer '):
             return await handler(request)   # sre-web-tool: the admin token, checked by the handler
-        if request.path.startswith('/api/'):
+        if path.startswith('/api/'):
             upgrade = request.headers.get('Upgrade', '').lower() == 'websocket'
             if request.method not in ('GET', 'HEAD', 'OPTIONS') or upgrade:
                 if not self._same_origin(request):
@@ -347,7 +370,7 @@ class Portal:
         try:
             return await handler(request)
         except PoolError as e:
-            if request.path.startswith('/api/'):
+            if self._path(request).startswith('/api/'):
                 extra = {'retry_after': e.retry_after} if e.retry_after else {}
                 return json_error(e.status, e.message, **extra)
             return web.Response(status=e.status, text=e.message)
@@ -355,6 +378,6 @@ class Portal:
             raise
         except Exception:
             log.exception("unhandled error on %s %s", request.method, request.path)
-            if request.path.startswith('/api/'):
+            if self._path(request).startswith('/api/'):
                 return json_error(500, "internal error")
             raise
