@@ -864,8 +864,11 @@ class TestProxyMode:
                 assert (await h.client.get(f'/projects/a01/{rln}', headers=bob)).status == 403
                 assert await (await h.client.get('/api/projects', headers=bob)).json() == []
                 assert (await h.client.get('/api/pool', headers=bob)).status == 403
+                assert (await h.client.get('/api/pool/costs', headers=bob)).status == 403
                 assert (await h.client.get(base, headers=prof)).status == 200
                 assert (await h.client.get('/api/pool', headers=prof)).status == 200
+                costs = await h.client.get('/api/pool/costs', headers=prof)     # the Lab costs box of the Pool page
+                assert costs.status == 200 and 'labs' in await costs.json()
                 assert (await h.client.delete(base, headers={**alice, **CSRF})).status == 200
         run(go())
 

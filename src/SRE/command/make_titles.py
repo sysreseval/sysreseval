@@ -7,7 +7,8 @@ from pathlib import Path
 
 from .. import params
 from ..common import TranslatedText
-from ..utils import _iter_labs, _lab_tree, error_quit, user_not_allowed
+from ..utils import (_iter_labs, _lab_tree, error_quit, user_not_allowed, generate_default_data,
+                     offline_net_scheme, lab_module_as_srelab, normalized_weight, declared_lab_weight)
 
 
 def _import_lab_module(srelab_file: str):
@@ -28,21 +29,28 @@ def _import_lab_module(srelab_file: str):
     return module
 
 
-def _extract_title(parent_dir_abs: str, lab_local_name: str):
-    """Import the lab and return its title as a plain string when only one
-    language is defined, otherwise as a plain dict (TranslatedText). Returns
-    ``None`` if the lab has no ``title`` attribute, or on import failure (with
-    a warning)."""
-    full_path = os.path.join(parent_dir_abs, lab_local_name)
-    if os.path.isdir(full_path):
-        srelab_file = os.path.join(full_path, params.srelab_py_name)
+def _load_lab(parent_dir_abs: str, lab_local_name: str):
+    """Import the lab *lab_local_name* of *parent_dir_abs*: ``(module, lab_path, srelab_file)``,
+    *lab_path* being the lab as the lab tree names it (its file, or its directory) and
+    *srelab_file* the file imported; the module is ``None`` on an import failure (with a
+    warning)."""
+    lab_path = os.path.join(parent_dir_abs, lab_local_name)
+    if os.path.isdir(lab_path):
+        srelab_file = os.path.join(lab_path, params.srelab_py_name)
     else:
-        srelab_file = full_path
+        srelab_file = lab_path
     try:
         module = _import_lab_module(srelab_file)
     except Exception as e:
         print(f"sre make-titles: skipping {srelab_file}: {e}", file=sys.stderr)
-        return None
+        return None, lab_path, srelab_file
+    return module, lab_path, srelab_file
+
+
+def _title_of_module(module):
+    """The title of the lab *module* as a plain string when only one language is defined,
+    otherwise as a plain dict (TranslatedText); ``None`` if the lab has no ``title``
+    attribute."""
     if not hasattr(module, 'title'):
         return None
     default_language = getattr(module, 'default_language', 'en')
@@ -52,6 +60,34 @@ def _extract_title(parent_dir_abs: str, lab_local_name: str):
     if len(tt) == 1:
         return next(iter(tt.values()))
     return dict(tt)
+
+
+def _weight_of_module(module, lab_path: str, srelab_file: str):
+    """The weight of the lab *module* (``params.image_weights``): the one it declares itself
+    (``params.lab_weight_attribute``), else the sum of the weights of the machines of its
+    ``NetScheme`` built without Docker as ``sre check`` does, hence for the default flavor.
+    ``None`` for a module without ``Data`` / ``NetScheme`` (not a lab) and, with a warning, when
+    the declared value is not a weight or the lab cannot be built here (it stays without
+    weight: nothing fails)."""
+    try:
+        declared = declared_lab_weight(module)
+    except ValueError as e:
+        print(f"sre make-titles: no weight for {srelab_file}: {e}", file=sys.stderr)
+        return None
+    if declared is not None:
+        return declared
+    if not hasattr(module, 'Data') or not hasattr(module, 'NetScheme'):
+        return None
+    lab_name = params.get_lab_name_from_cli_arg(lab_path, is_path=True)
+    try:
+        with lab_module_as_srelab(module):
+            net_scheme = offline_net_scheme(module, generate_default_data(module), lab_name)
+            return normalized_weight(net_scheme.get_weight())
+    except SystemExit:      # error_quit() of the core library or of the lab: its message is printed
+        print(f"sre make-titles: no weight for {srelab_file}: the lab cannot be built here", file=sys.stderr)
+    except Exception as e:
+        print(f"sre make-titles: no weight for {srelab_file}: {type(e).__name__}: {e}", file=sys.stderr)
+    return None
 
 
 def _read_existing(path: str) -> dict:
@@ -71,10 +107,13 @@ def _read_existing(path: str) -> dict:
     return data
 
 
-def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=()) -> dict:
+def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=(), weights=None) -> dict:
     """The new content of the ``titles.json`` of *parent_dir_abs*: the options (the keys starting
     with ``params.titles_reserved_prefix``) first, as they were (an unknown ``@sort`` value is
-    warned about); then the entries already there, in their order (a manual order survives a
+    warned about) but for the weights of the labs (``params.titles_weights_key``), which are
+    computed and never written by hand: those of the file are dropped and *weights*
+    (``{local name: weight}`` of the labs found now) take their place, last of the options, when
+    there are some; then the entries already there, in their order (a manual order survives a
     rerun), when they still name a lab or a sub-directory of the directory, with the title
     *found* now when the lab has one, else as they were (a title written by hand, a lab that
     lost its ``title``, a sub-directory); then the labs *found* that were not listed, by name.
@@ -94,12 +133,14 @@ def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=()) 
 
     merged: dict = {}
     for key, value in existing.items():
-        if key.startswith(params.titles_reserved_prefix):
+        if key.startswith(params.titles_reserved_prefix) and key != params.titles_weights_key:
             if key == params.titles_sort_key and value not in params.titles_sort_modes:
                 print(f"sre make-titles: {os.path.join(parent_dir_abs, params.titles_file_name)}: "
                       f"unknown {key} value {value!r} (one of {', '.join(params.titles_sort_modes)} "
                       f"expected, the value is kept)", file=sys.stderr)
             merged[key] = value
+    if weights:
+        merged[params.titles_weights_key] = dict(weights)
     for key, value in existing.items():
         if key.startswith(params.titles_reserved_prefix):
             continue
@@ -133,12 +174,13 @@ def _write_json_atomic(path: str, data: dict):
 
 
 def _update_titles_file(target: str, found: dict, parent_dir_abs: str, *, always: bool,
-                        subdirs=()) -> bool:
-    """Merge the titles *found* (and, with ``--directories``, the sub-directories *subdirs*)
-    into *target* and write it: always, or only when the result has something or the file
-    already exists (the recursive scan creates no empty file).  The sub-directories of *subdirs*
-    left without a title are named on the report line: the titles to write by hand."""
-    merged = _merge_titles(_read_existing(target), found, parent_dir_abs, subdirs)
+                        subdirs=(), weights=None) -> bool:
+    """Merge the titles *found*, the *weights* computed (and, with ``--directories``, the
+    sub-directories *subdirs*) into *target* and write it: always, or only when the result has
+    something or the file already exists (the recursive scan creates no empty file).  The
+    sub-directories of *subdirs* left without a title are named on the report line: the titles
+    to write by hand."""
+    merged = _merge_titles(_read_existing(target), found, parent_dir_abs, subdirs, weights)
     if not always and not merged and not os.path.exists(target):
         return False
     _write_json_atomic(target, merged)
@@ -160,14 +202,22 @@ def action_make_titles(directory: str, output_file: str | None, recursive: bool,
 
     # The titles found, per parent directory: every directory holding labs is visited, titled
     # or not, so that its titles.json (its options, its order, its stale entries) is updated.
+    # The weights of the labs go the same way.
     grouped: dict[str, dict] = {}
+    weights_of: dict[str, dict] = {}
     for parent_dir_abs, lab_local_name in _iter_labs(
         directory_abs, include_exam_only_labs=True, recursive=recursive
     ):
         found = grouped.setdefault(parent_dir_abs, {})
-        title = _extract_title(parent_dir_abs, lab_local_name)
+        module, lab_path, srelab_file = _load_lab(parent_dir_abs, lab_local_name)
+        if module is None:
+            continue
+        title = _title_of_module(module)
         if title is not None:
             found[lab_local_name] = title
+        weight = _weight_of_module(module, lab_path, srelab_file)
+        if weight is not None:
+            weights_of.setdefault(parent_dir_abs, {})[lab_local_name] = weight
 
     # -d: the sub-directories each titles.json names, those of the lab tree (a lab lies below
     # them: what `sre list --with-titles` lists); with -r the directories holding
@@ -187,20 +237,24 @@ def action_make_titles(directory: str, output_file: str | None, recursive: bool,
         found = {}
         for entries in grouped.values():
             found.update(entries)
+        weights = {}
+        for entries in weights_of.values():
+            weights.update(entries)
         _update_titles_file(output_file, found, directory_abs, always=True,
-                            subdirs=subdirs_of.get(directory_abs, ()))
+                            subdirs=subdirs_of.get(directory_abs, ()), weights=weights)
         return
 
     if not recursive:
         target = os.path.join(directory_abs, params.titles_file_name)
         _update_titles_file(target, grouped.get(directory_abs, {}), directory_abs, always=True,
-                            subdirs=subdirs_of.get(directory_abs, ()))
+                            subdirs=subdirs_of.get(directory_abs, ()), weights=weights_of.get(directory_abs))
         return
 
     written = 0
     for parent_dir_abs, found in sorted(grouped.items()):
         target = os.path.join(parent_dir_abs, params.titles_file_name)
         written += _update_titles_file(target, found, parent_dir_abs, always=False,
-                                       subdirs=subdirs_of.get(parent_dir_abs, ()))
+                                       subdirs=subdirs_of.get(parent_dir_abs, ()),
+                                       weights=weights_of.get(parent_dir_abs))
     if not written:
         print(f"no title found under {directory_abs}", file=sys.stderr)

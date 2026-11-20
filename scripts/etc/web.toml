@@ -180,6 +180,28 @@ max_preloads = 2
 # counting as one, and the spare capacity of the elastic pool counts the same slots.  Measure a
 # project of the heaviest lab you run and add a margin.
 project_memory_mb = 0
+# What tells how much a host holds.  "projects": its number of projects against its max_projects
+# (and project_memory_mb), every project counting the same.  "resources": its free memory and its
+# processors against what a project of each lab costs: a project of thirty routers weighs more
+# than one of four idle machines.  The agents measure their running projects ([usage] of
+# agent.toml) and the portal learns the cost of each lab from them (`sre-web-tool costs`, the Lab
+# costs box of the Pool page); until three projects of a lab have been measured, its cost comes
+# from the weight the lab declares (`sre make-titles`).  A host takes a project while its free
+# memory and its processors hold the cost of the lab; a host without project always takes one;
+# max_projects stays a ceiling.  The costs are learned and shown in both modes: try "resources"
+# once they look right.
+capacity = "projects"
+# The memory kept free on every host, in MiB, and the share of the processors of a host its
+# projects may use on average (the rest absorbs the bursts: starts, evaluations).
+memory_reserve_mb = 1024
+cpu_target = 0.7
+# What one unit of the weight a lab declares stands for, in MiB and in cores (1 = one plain
+# container): the cost of a lab whose projects were not measured yet.  Real projects measured on
+# a classroom workstation used 3.9 MiB and 0.0003 core per unit, their evaluations included and
+# nobody typing: the defaults add a margin.  `sre-web-tool costs` prints what the measures of
+# your pool say a unit is: set these two from it.
+weight_memory_mb = 5
+weight_cpu = 0.001
 
 [admin]
 # The token of `sre-web-tool ...` (32+ random characters; empty: the command is refused), accepted

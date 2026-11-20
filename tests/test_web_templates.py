@@ -498,11 +498,12 @@ class TestTemplates:
         html = render('pool.html', instructor=True)
         assert 'id="pool"' in html and 'id="pool-filter"' in html and 'id="pool-count"' in html
         assert 'id="pool-status"' in html and '/static/js/pool.js' in html and 'href="/pool"' in html
-        for key in ('name', 'state', 'projects', 'terminals', 'load1', 'mem_available_mb', 'occupied_by', 'uptime',
-                    'priority', 'sre_version'):
+        for key in ('name', 'state', 'projects', 'terminals', 'load1', 'mem_available_mb', 'cpu_used', 'occupied_by',
+                    'uptime', 'priority', 'sre_version'):
             assert f'data-sort="{key}"' in html, key
-        # the Free memory column, after the load
-        assert html.index('data-sort="load1"') < html.index('data-sort="mem_available_mb"') < html.index('data-sort="occupied_by"')
+        # the Free memory column, after the load, then the CPU one (the cores counted / usable)
+        assert (html.index('data-sort="load1"') < html.index('data-sort="mem_available_mb"')
+                < html.index('data-sort="cpu_used"') < html.index('data-sort="occupied_by"'))
         assert 'data-login="alice"' in html and 'class="grid watch pool striped"' in html
         # the selection: the header checkbox, the bar of bulk buttons, one more column
         assert 'id="pool-select-all"' in html and 'id="pool-selection"' in html and 'id="pool-selected"' in html
@@ -512,8 +513,14 @@ class TestTemplates:
         # the Priority column (group:order, the lowest is used first), before the flags
         assert html.index('data-sort="uptime"') < html.index('data-sort="priority"') < html.index('data-sort="sre_version"')
         assert 'title="group:order: the lowest group is used first, then the lowest order"' in html
-        assert 'colspan="14"' in html and len(re.findall(r'<th[ >]', html)) == 14
+        hosts, costs = html.split('<details id="pool-costs-box"')
+        assert 'colspan="15"' in hosts and len(re.findall(r'<th[ >]', hosts)) == 15
         assert 'Host name: one or several words' in html
+        # the Lab costs box, folded under the table: what a project of each lab is counted for
+        assert 'class="pool-costs">' in costs and '<summary>Lab costs</summary>' in costs
+        assert 'id="pool-costs-note"' in costs and '<table id="pool-costs" class="grid watch">' in costs
+        assert 'colspan="7"' in costs and len(re.findall(r'<th[ >]', costs)) == 7
+        assert ' open' not in costs.split('>')[0]                 # folded: nothing is asked until it is opened
 
     def test_project_page(self):
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True)

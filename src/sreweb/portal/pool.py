@@ -16,8 +16,13 @@ import aiohttp
 from ..agent.occupancy import SESSION_PREFIX
 from ..agent.runner import (PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED,
                             LAB_README_KEY)
-from ..config import HostConfig, Priority, host_config_from_dict, host_entry, check_priority, ConfigError
+from ..agent.usage import (STATUS_CPUS, STATUS_MEM_TOTAL, STATUS_CPU_BUSY, STATUS_USAGE, USAGE_NAME, USAGE_LAB,
+                           USAGE_CONTAINERS, USAGE_MEM, USAGE_CPU, USAGE_SETTLED)
+from ..config import (HostConfig, Priority, host_config_from_dict, host_entry, check_priority, ConfigError,
+                      CAPACITY_PROJECTS, CAPACITY_RESOURCES)
 from ..identity import Identity, is_valid_login
+from .costs import (Cost, CostBook, HostLoad, Usage, host_load, lab_key, figure, DEFAULT_MEMORY_MB, DEFAULT_CPU,
+                    MAX_NAME)
 
 log = logging.getLogger('sreweb.portal')
 
@@ -85,6 +90,11 @@ LAB_KIND_LAB = 'lab'
 LAB_KINDS = (LAB_KIND_DIR, LAB_KIND_LAB)
 LAB_SORT_NAME = 'name'
 LAB_SORT_MODES = (LAB_SORT_NAME, 'title', 'manual')
+#: The weight of a ``lab`` entry of the list (``sre make-titles``), when its host tells one: the
+#: first estimate of what a project of the lab costs (``costs.CostBook.declare``).
+LAB_WEIGHT_KEY = 'weight'
+#: The file of the costs of the labs is written at most this often (and when the portal stops).
+COSTS_SAVE_INTERVAL = 60.0
 
 
 def readme_of(entry: dict) -> dict:
@@ -109,6 +119,7 @@ class PoolError(Exception):
 class Reservation:
     released_at: float | None = None
     placement: str = PLACEMENT_LOAD
+    cost: Cost | None = None        # what the project being started is counted for (its lab's cost)
 
 
 @dataclass
@@ -123,6 +134,13 @@ class HostStatus:
     # MemAvailable of the host in MiB (``None``: an agent older than the key, or unreachable): the
     # projects it still takes with ``[pool] project_memory_mb`` (``Pool.memory_room``)
     mem_available_mb: int | None = None
+    # the size of the host and what its projects use (``agent/usage.py``; ``None`` / empty: an
+    # agent older than these figures, or unreachable): its processors, its memory in MiB, the
+    # cores it uses now, and one ``costs.Usage`` per project (``usage_fields``)
+    cpus: int | None = None
+    mem_total_mb: int | None = None
+    cpu_busy: float | None = None
+    usage: list = field(default_factory=list)
     exam_mode: bool = False
     occupied: bool = False
     occupied_by: list = field(default_factory=list)
@@ -169,6 +187,7 @@ class HostStatus:
 MAX_STATUS_TEXT = 200
 MAX_OCCUPIED_BY = 100
 MAX_GUI_USERS = 64
+MAX_USAGE = 256             # the projects kept from the ``usage`` of a status
 
 
 def _number(value) -> float | None:
@@ -212,6 +231,35 @@ def gui_user_fields(value) -> list:
         if len(users) >= MAX_GUI_USERS:
             break
     return list(users.values())
+
+
+def usage_fields(value, cpus: int | None, mem_total_mb: int | None) -> list:
+    """The ``usage`` of a status as the portal keeps it: one ``costs.Usage`` per entry that is
+    an object naming a project and its lab (the lab in the form of the lab list), one per
+    project, at most ``MAX_USAGE``.  A figure that is no number is ``None``, and none says more
+    than the host has (*cpus*, *mem_total_mb*, when it tells them): a broken or hostile agent
+    cannot make a lab look larger than a whole machine in the costs the pool learns."""
+    if not isinstance(value, list):
+        return []
+    rows = {}
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        name, lab = entry.get(USAGE_NAME), entry.get(USAGE_LAB)
+        if not isinstance(name, str) or not isinstance(lab, str) or not name or not lab or name in rows \
+                or len(name) > MAX_NAME or len(lab) > MAX_NAME:
+            continue
+        memory, processors = figure(entry.get(USAGE_MEM)), figure(entry.get(USAGE_CPU))
+        if memory is not None and mem_total_mb:
+            memory = min(memory, float(mem_total_mb))
+        if processors is not None and cpus:
+            processors = min(processors, float(cpus))
+        containers = figure(entry.get(USAGE_CONTAINERS))
+        rows[name] = Usage(name=name, lab=lab_key(lab), containers=int(containers) if containers is not None else None,
+                           mem_mb=memory, cpu=processors, settled=entry.get(USAGE_SETTLED) is True)
+        if len(rows) >= MAX_USAGE:
+            break
+    return list(rows.values())
 
 
 def _names(value) -> list:
@@ -283,7 +331,12 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
     if not isinstance(data, dict):
         return HostStatus(error="status: not a JSON object")
     occupied_by = data.get('occupied_by')
+    cpus, mem_total_mb = _seconds(data.get(STATUS_CPUS)) or None, _seconds(data.get(STATUS_MEM_TOTAL)) or None
+    cpu_busy = figure(data.get(STATUS_CPU_BUSY))
     return HostStatus(reachable=True,
+                      cpus=cpus, mem_total_mb=mem_total_mb,
+                      cpu_busy=min(cpu_busy, float(cpus)) if cpu_busy is not None and cpus else cpu_busy,
+                      usage=usage_fields(data.get(STATUS_USAGE), cpus, mem_total_mb),
                       projects=_count(data.get('projects')) + extra_projects,
                       managed_projects=_count(data.get('managed_projects')),
                       local_projects=_count(data.get('local_projects')),
@@ -345,7 +398,9 @@ class HostRuntime:
 class Pool:
     def __init__(self, hosts: list, session, *, poll_interval: float = 2.0, wake_timeout: float = 180.0,
                  state_file: str = '', follow_local_sessions: bool = True, labs_cache_ttl: float = 60.0,
-                 restart_hold: float = RESTART_HOLD, project_memory_mb: int = 0):
+                 restart_hold: float = RESTART_HOLD, project_memory_mb: int = 0,
+                 memory_reserve_mb: int = 1024, cpu_target: float = 0.7, weight_memory_mb: float = 5.0,
+                 weight_cpu: float = 0.001, costs_file: str = '', capacity: str = CAPACITY_PROJECTS):
         self.hosts: dict[str, HostConfig] = {}
         self.status: dict[str, HostStatus] = {}
         self.runtime: dict[str, HostRuntime] = {}
@@ -357,6 +412,22 @@ class Pool:
         self.follow_local_sessions = follow_local_sessions
         self.labs_cache_ttl = labs_cache_ttl
         self.project_memory_mb = project_memory_mb  # [pool] project_memory_mb: 0 = memory not checked
+        #: [pool] capacity: what tells how much a host holds, its number of projects
+        #: (``CAPACITY_PROJECTS``) or its load in memory and processors (``CAPACITY_RESOURCES``).
+        self.capacity = capacity
+        #: The load of a host in memory and processors (``load_of``): the memory kept free on
+        #: every host, and the share of its processors its projects may use on average.
+        self.memory_reserve_mb = memory_reserve_mb
+        self.cpu_target = cpu_target
+        #: What a project of each lab costs (``costs.py``): learned from the ``usage`` of the
+        #: statuses, from the weights of the lab lists before that; kept in ``costs_file`` (a
+        #: cache: '' = not kept) so that a restart of the portal does not forget it.
+        self.costs = CostBook(default=Cost(float(project_memory_mb or DEFAULT_MEMORY_MB), DEFAULT_CPU),
+                              unit=Cost(weight_memory_mb, weight_cpu))
+        self.costs_file = costs_file
+        self.costs_error = ''           # why the costs could not be written ('' when they are saved)
+        self._costs_saved_at = 0.0      # monotonic time of the last write
+        self.load_costs()
         #: The lab list of the Open page per role (``labs``), kept labs_cache_ttl seconds, and the
         #: lock making the requests of a role wait for the one fetching it.
         self._labs_cache: dict[tuple, tuple[float, list]] = {}      # (instructor, all labs) -> (when, labs)
@@ -772,6 +843,8 @@ class Pool:
         self._report_preload(host.name, self.status[host.name], status)
         self._report_local_drain(host.name, self.status[host.name], status)
         self.status[host.name] = status
+        if status.usage:
+            self.costs.observe(status.usage, time.time())
         return status
 
     def note_exam(self, name: str, view):
@@ -858,6 +931,7 @@ class Pool:
         await asyncio.gather(*(self.refresh_host(h) for h in list(self.hosts.values())))
         if self.state_file and self._state_key() != self._saved_key:
             self.save_state()       # a drain over, a wake, a power off or a restart sent since the last save
+        self.save_costs()
 
     async def _loop(self):
         while True:
@@ -897,6 +971,7 @@ class Pool:
 
     def summary(self, now: float | None = None) -> list:
         now = time.monotonic() if now is None else now
+        reference = self.reference_cost() if self.capacity == CAPACITY_RESOURCES else None
         rows = []
         for h in self.hosts.values():
             st, rt = self.status[h.name], self.runtime[h.name]
@@ -913,11 +988,98 @@ class Pool:
                 'wake_failures': rt.wake_failures,
                 'idle_for': round(now - rt.idle_since) if rt.idle_since is not None else None,
                 'exam_hold': self.held_for_exam(h.name),
-                'memory_room': self.memory_room(h.name),
-                # the users in the Qt GUI are for the Watch page (``gui_users()``), not for the pool
-                **{k: v for k, v in vars(st).items() if k not in ('updated', 'polled_at', 'gui_users')},
+                'memory_room': self.memory_room(h.name, reference),
+                'cpu_room': self.cpu_room(h.name, reference),
+                **self._load_fields(h.name),
+                # the users in the Qt GUI are for the Watch page (``gui_users()``), the usage of
+                # each project for the costs of the labs (``costs_view()``): not for the pool
+                **{k: v for k, v in vars(st).items() if k not in ('updated', 'polled_at', 'gui_users', 'usage')},
             })
         return rows
+
+    # -- the load of a host, the costs of the labs ------------------------------------------------
+
+    def load_of(self, name: str) -> HostLoad | None:
+        """The load of *name* in memory and processors (``costs.host_load``) from its last
+        status: its projects counted for the cost of their lab, the starts in flight for theirs
+        (a reservation counts until a status asked after the end of its start, as for the number
+        of projects).  ``None`` for a host that is unreachable or whose agent does not tell its
+        size (older than these figures): it is judged by its number of projects."""
+        st = self.status[name]
+        if not st.reachable:
+            return None
+        return host_load(cpus=st.cpus, mem_total_mb=st.mem_total_mb, mem_available_mb=st.mem_available_mb,
+                         cpu_busy=st.cpu_busy, committed_cpu=sum(self.costs.cost(row.lab).cpu for row in st.usage),
+                         in_flight=[r.cost or self.costs.default for r in self._reservations[name]],
+                         reserve_mb=self.memory_reserve_mb, cpu_target=self.cpu_target)
+
+    def _load_fields(self, name: str) -> dict:
+        """The load of a host in a row of ``summary()``: the cores its projects are counted for
+        and those they may use, how full it is (the larger of its memory and of its
+        processors); ``None`` each without the figures."""
+        load = self.load_of(name)
+        if load is None:
+            return {'cpu_used': None, 'cpu_capacity': None, 'fill': None}
+        return {'cpu_used': round(load.cpu_used, 2), 'cpu_capacity': round(load.cpu_capacity, 2),
+                'fill': round(load.fill, 3)}
+
+    def costs_view(self) -> dict:
+        """What the pool knows of the cost of each lab (``GET /api/pool/costs``): the default
+        and the unit of the configuration, the unit its measures give (``None`` without any), one
+        row per lab (``CostBook.rows``), and the file they are kept in."""
+        measured = self.costs.measured_unit()
+        return {'default': {'mem_mb': self.costs.default.mem_mb, 'cpu': self.costs.default.cpu},
+                'weight_unit': {'mem_mb': self.costs.unit.mem_mb, 'cpu': self.costs.unit.cpu},
+                'measured_unit': ({'mem_mb': round(measured.mem_mb, 1), 'cpu': round(measured.cpu, 4)}
+                                  if measured is not None else None),
+                'memory_reserve_mb': self.memory_reserve_mb, 'cpu_target': self.cpu_target,
+                'file': self.costs_file, 'error': self.costs_error,
+                'labs': self.costs.rows(self.lab_titles())}
+
+    def load_costs(self):
+        """The costs of the labs as the last run left them (``costs_file``).  A cache: a file
+        that cannot be read, or is something else, is said once and the book starts empty (the
+        measures fill it again)."""
+        if not self.costs_file:
+            return
+        try:
+            with open(self.costs_file, encoding='utf-8') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError) as e:
+            log.warning("costs of the labs not read from %s (%s): they are learned again", self.costs_file, e)
+            return
+        if not self.costs.load(data):
+            log.warning("%s is no costs file: the costs of the labs are learned again", self.costs_file)
+
+    def save_costs(self, force: bool = False):
+        """Write the costs of the labs when they changed, at most every ``COSTS_SAVE_INTERVAL``
+        seconds (*force*: now, when the portal stops).  A failure is said once, and kept in
+        ``costs_error`` until a write passes."""
+        if not self.costs_file or not self.costs.dirty:
+            return
+        now = time.monotonic()
+        if not force and self._costs_saved_at and now - self._costs_saved_at < COSTS_SAVE_INTERVAL:
+            return
+        self._costs_saved_at = now
+        try:
+            os.makedirs(os.path.dirname(self.costs_file) or '.', exist_ok=True)
+            tmp = self.costs_file + '.tmp'
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(self.costs.to_json(time.time()), f)
+            os.replace(tmp, self.costs_file)
+        except OSError as e:
+            self.costs.dirty = True         # still to write
+            if not self.costs_error:
+                log.warning("costs of the labs NOT saved in %s (%s): a restart learns them again",
+                            self.costs_file, e)
+            self.costs_error = str(e)
+            return
+        if self.costs_error:
+            log.info("costs of the labs saved again in %s", self.costs_file)
+            self.costs_error = ''
 
     def gui_users(self) -> dict:
         """The users with a running Qt GUI on each reachable host, as its last status said:
@@ -931,22 +1093,84 @@ class Pool:
 
     # -- placement ------------------------------------------------------------------------------
 
-    def memory_room(self, name: str) -> int | None:
-        """The new projects the memory of *name* still holds (``project_memory_mb``): its
+    def _resources(self, name: str) -> HostLoad | None:
+        """The load of *name* when it is what tells how much the host holds: ``load_of`` with
+        ``capacity = "resources"``, for a host whose agent tells its size; ``None`` otherwise
+        (``capacity = "projects"``, an older agent, an unreachable host): the host is judged by
+        its number of projects, as before."""
+        return self.load_of(name) if self.capacity == CAPACITY_RESOURCES else None
+
+    def reference_cost(self) -> Cost:
+        """The cost of the project the room of a host is counted in (``memory_room``,
+        ``cpu_room``, the spare capacity of the elastic pool): the mean of the costs of the labs
+        of the projects running now on the hosts the students use, the default cost without
+        any — "room for N more projects like those running"."""
+        costs = [self.costs.cost(row.lab) for h in self.hosts.values() if not h.instructors_only
+                 for row in (self.status[h.name].usage if self.status[h.name].reachable else ())]
+        if not costs:
+            return self.costs.default
+        return Cost(sum(c.mem_mb for c in costs) / len(costs), sum(c.cpu for c in costs) / len(costs))
+
+    def _rooms(self, name: str, reference: Cost | None = None) -> tuple | None:
+        """``(by its memory, by its processors)``: the projects of the reference cost *name*
+        still holds (``HostLoad.rooms``), one at least for a host without project (it always
+        takes one); ``None`` when the host is judged by its number of projects."""
+        load = self._resources(name)
+        if load is None:
+            return None
+        rooms = load.rooms(reference or self.reference_cost())
+        return tuple(max(1, room) for room in rooms) if self.status[name].projects == 0 else rooms
+
+    def memory_room(self, name: str, reference: Cost | None = None) -> int | None:
+        """The new projects the memory of *name* still holds.  With ``project_memory_mb``: its
         available memory at the last poll divided by the memory of a project, less the starts in
         flight (a reservation counts until a status asked after the end of its start: the
         containers of a project starting may not show in the reading yet); ``None`` when the
-        memory is not checked, or the agent does not tell it (unreachable, older than the key)."""
+        memory is not checked, or the agent does not tell it (unreachable, older than the key).
+        With ``capacity = "resources"``, for a host that tells its size: its free memory in
+        projects of the reference cost (``_rooms``; *reference*: that cost when the caller has
+        it)."""
+        rooms = self._rooms(name, reference)
+        if rooms is not None:
+            return rooms[0]
         st = self.status[name]
         if not self.project_memory_mb or not st.reachable or st.mem_available_mb is None:
             return None
         return max(0, st.mem_available_mb // self.project_memory_mb - len(self._reservations[name]))
 
-    def _has_room(self, h: HostConfig) -> bool:
-        """Below its ``max_projects`` and, with ``project_memory_mb``, memory for one more."""
-        return self.status[h.name].projects < h.max_projects and self.memory_room(h.name) != 0
+    def cpu_room(self, name: str, reference: Cost | None = None) -> int | None:
+        """The new projects of the reference cost the processors of *name* still hold
+        (``capacity = "resources"``); ``None`` when the host is judged by its number of
+        projects."""
+        rooms = self._rooms(name, reference)
+        return rooms[1] if rooms is not None else None
 
-    def pick(self, identity: Identity | None = None, host: str | None = None) -> tuple:
+    def _fill(self, h: HostConfig) -> float:
+        """How full a host is, what the placement ranks the hosts of a group by: its projects
+        against its ``max_projects``; with ``capacity = "resources"``, for a host that tells its
+        size, the larger of its memory in use and of its processors counted (``HostLoad.fill``),
+        0 for a host without project (its memory in use is not its projects': the order of the
+        priorities tells the empty hosts apart, as before)."""
+        st = self.status[h.name]
+        load = self._resources(h.name)
+        if load is None:
+            return st.projects / h.max_projects
+        return load.fill if st.projects else 0.0
+
+    def _has_room(self, h: HostConfig, cost: Cost | None = None) -> bool:
+        """Whether *h* takes one more project (of that *cost*): below its ``max_projects`` and,
+        with ``project_memory_mb``, memory for one more; with ``capacity = "resources"``, for a
+        host that tells its size, memory and processors for that cost — a host without project
+        always takes one (a lab larger than every host still starts somewhere)."""
+        st = self.status[h.name]
+        if st.projects >= h.max_projects:
+            return False
+        load = self._resources(h.name)
+        if load is None:
+            return self.memory_room(h.name) != 0
+        return st.projects == 0 or load.fits(cost or self.reference_cost())
+
+    def pick(self, identity: Identity | None = None, host: str | None = None, *, lab: str | None = None) -> tuple:
         """The host of a new project and its reservation.  Without *host*: the host of a local
         login session of *identity* (``follow_local_sessions``: the workstation the user sits at,
         occupied by them, whatever its load), else, among the hosts up (enabled, reachable, not
@@ -957,13 +1181,17 @@ class Pool:
         max_projects, then load), the one with the lowest order among those without project (a
         start in flight counts as a project);
         always with room (below their maximum, and memory for one more project with
-        ``project_memory_mb``: ``memory_room``) and among the hosts *identity* may use: a host with
+        ``project_memory_mb``: ``memory_room``; with ``capacity = "resources"``, how loaded a host
+        is and whether it has room are told by its memory and its processors against the cost of
+        the lab, ``_fill`` / ``_has_room``) and among the hosts *identity* may use: a host with
         ``instructors_only`` takes an instructor's project only, and the caller is a student
         without identity.  With *host* (an instructor naming one on the Open page): that host,
         when the identity may use it (403 otherwise), it is available to them (503) and has room
-        (503).  The caller releases the reservation when the start is over."""
+        (503).  The caller releases the reservation when the start is over.  *lab*: the lab of
+        the project, whose cost (``costs.CostBook``) the reservation carries."""
         instructor = identity is not None and identity.is_instructor
         now = time.monotonic()
+        cost = self.costs.cost(lab)
         if host is not None:
             chosen = self.host(host)
             if chosen.instructors_only and not instructor:
@@ -972,9 +1200,15 @@ class Pool:
                 raise PoolError(503, f"the host {host} is not available", retry_after=60)
             if self.status[host].projects >= chosen.max_projects:
                 raise PoolError(503, f"the host {host} is full", retry_after=60)
-            if self.memory_room(host) == 0:
-                raise PoolError(503, f"the host {host} has not enough free memory", retry_after=60)
-            return self._reserve(chosen, PLACEMENT_NAMED)
+            load = self._resources(host)
+            if load is None:
+                if self.memory_room(host) == 0:
+                    raise PoolError(503, f"the host {host} has not enough free memory", retry_after=60)
+            elif self.status[host].projects and not load.fits(cost):
+                if load.mem_free_mb < cost.mem_mb:
+                    raise PoolError(503, f"the host {host} has not enough free memory", retry_after=60)
+                raise PoolError(503, f"the host {host} has not enough free processor time", retry_after=60)
+            return self._reserve(chosen, PLACEMENT_NAMED, cost)
         candidates = []
         waking = False
         for h in self.hosts.values():
@@ -983,10 +1217,10 @@ class Pool:
             state = self.state_of(h.name, now)
             waking = waking or state == STATE_WAKING or self.runtime[h.name].restart_sent is not None
             available, placement = self._available_to(h, identity, state)
-            if not available or not self._has_room(h):
+            if not available or not self._has_room(h, cost):
                 continue
             st, priority = self.status[h.name], self.runtime[h.name].priority
-            fill, load = st.projects / h.max_projects, st.load1 if st.load1 is not None else 0.0
+            fill, load = self._fill(h), st.load1 if st.load1 is not None else 0.0
             # the group before anything else: the candidates are the hosts that can take the
             # project, so the first one is in the lowest group that has such a host.  In a group
             # the order only tells the hosts without project apart: the least loaded host is one
@@ -998,7 +1232,7 @@ class Pool:
                 raise PoolError(503, "a host is starting, please retry in a moment", retry_after=30)
             raise PoolError(503, "no host available for a new project", retry_after=60)
         candidates.sort(key=lambda c: c[:6])
-        return self._reserve(candidates[0][6], candidates[0][7])
+        return self._reserve(candidates[0][6], candidates[0][7], cost)
 
     def _available_to(self, h: HostConfig, identity: Identity | None, state: str) -> tuple:
         """Whether a new project of *identity* may go on *h*, in *state*, and what the placement
@@ -1017,9 +1251,9 @@ class Pool:
             return True, PLACEMENT_SESSION
         return False, ''
 
-    def _reserve(self, host: HostConfig, placement: str = PLACEMENT_LOAD) -> tuple:
+    def _reserve(self, host: HostConfig, placement: str = PLACEMENT_LOAD, cost: Cost | None = None) -> tuple:
         self.status[host.name].projects += 1
-        reservation = Reservation(placement=placement)
+        reservation = Reservation(placement=placement, cost=cost)
         self._reservations[host.name].append(reservation)
         return host, reservation
 
@@ -1080,7 +1314,7 @@ class Pool:
             st, rt = self.status[h.name], self.runtime[h.name]
             if not rt.enabled or not st.reachable:
                 continue
-            rows.append((self.state_of(h.name, now) != STATE_UP, st.projects / h.max_projects,
+            rows.append((self.state_of(h.name, now) != STATE_UP, self._fill(h),
                          st.load1 if st.load1 is not None else 0.0, h.name, h))
         rows.sort(key=lambda r: r[:4])
         return [r[4] for r in rows]
@@ -1111,6 +1345,7 @@ class Pool:
                 labs = await self._labs_of(host, identity, {'all': '1'} if all_labs else None)
                 if labs is not None:
                     self._labs_cache[key] = (time.monotonic(), labs)
+                    self.costs.declare(labs, time.time())       # the weights the labs declare
                     return labs
             return []
 
@@ -1127,7 +1362,8 @@ class Pool:
     async def _labs_of(self, host: HostConfig, identity: Identity, params=None) -> list | None:
         """``GET /v1/labs`` of one host, normalised (``[{name, title, kind, sort}]``, a bare name
         accepted as a lab, an unknown kind or sort mode replaced by the default, duplicates
-        dropped, the order kept); ``None`` when the host does not answer a list.  A directory
+        dropped, the order kept); ``None`` when the host does not answer a list.  A lab entry
+        keeps its ``weight`` when the host tells one that is a number (``LAB_WEIGHT_KEY``).  A directory
         entry keeps its README (``readme_of``: ``LAB_README_KEY``, shown under the tree of the
         Open page when the directory is opened), and the entry without name, the top of the lab
         directory, is kept for its README only: it is no entry of the tree."""
@@ -1160,4 +1396,7 @@ class Pool:
                                    'sort': mode if mode in LAB_SORT_MODES else LAB_SORT_NAME}
             if readme:
                 seen[entry['name']][LAB_README_KEY] = readme
+            weight = figure(entry.get(LAB_WEIGHT_KEY)) if kind != LAB_KIND_DIR else None
+            if weight is not None:
+                seen[entry['name']][LAB_WEIGHT_KEY] = weight
         return list(seen.values())

@@ -220,6 +220,43 @@ class TestLabTree:
         assert by_name['c.py']["title"] == "C" and by_name['a.py']["title"] is None
         assert {e["sort"] for e in result} == {'manual'}           # late/x.py inherits it
 
+    def test_weights_of_the_labs(self, tmp_lab_dir):
+        """The "@weights" option of a titles.json (`sre make-titles`) gives its labs a `weight`:
+        the lab entries only, and only those it names with a weight."""
+        _touch(tmp_lab_dir, 'a.py', 'b.py', 'c.py', 'd.py', 'e.py', 's4/x.py', 's4/tp/srelab.py')
+        _titles(tmp_lab_dir, '', {"@weights": {"a.py": 12, "b.py": 2.5, "c.py": "heavy", "d.py": -1,
+                                               "e.py": True, "s4": 9, "ghost.py": 4}, "a.py": "A"})
+        _titles(tmp_lab_dir, 's4', {"@weights": {"tp": 35.0, "x.py": 0}})
+        entries = {e["name"]: e for e in get_lab_list_with_titles()}
+        assert entries['a.py'] == {"name": "a.py", "title": "A", "kind": "lab", "sort": "name", "weight": 12}
+        assert entries['b.py']["weight"] == 2.5
+        assert entries['s4/tp']["weight"] == 35 and isinstance(entries['s4/tp']["weight"], int)
+        assert entries['s4/x.py']["weight"] == 0
+        for name in ('c.py', 'd.py', 'e.py', 's4'):                 # not a weight; a directory
+            assert params.lab_list_weight_key not in entries[name], name
+
+    def test_no_weight_without_the_option(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'a.py', 'b.py')
+        _titles(tmp_lab_dir, '', {"a.py": "A"})
+        assert get_lab_list_with_titles() == [
+            {"name": "a.py", "title": "A", "kind": "lab", "sort": "name"},
+            {"name": "b.py", "title": None, "kind": "lab", "sort": "name"}]
+
+    @pytest.mark.parametrize('weights', [None, 7, "all", [1, 2], {"a.py": {"en": 3}}])
+    def test_weights_that_are_no_table_are_ignored(self, tmp_lab_dir, weights):
+        _touch(tmp_lab_dir, 'a.py')
+        _titles(tmp_lab_dir, '', {"@weights": weights, "a.py": "A"})
+        assert get_lab_list_with_titles() == [{"name": "a.py", "title": "A", "kind": "lab", "sort": "name"}]
+
+    def test_weights_leave_the_manual_order_alone(self, tmp_lab_dir):
+        """An option is no entry: the table of the weights names labs without listing them."""
+        _touch(tmp_lab_dir, 'a.py', 'b.py', 'c.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "@weights": {"a.py": 1, "b.py": 2, "c.py": 3},
+                                  "c.py": "C", "a.py": None})
+        result = get_lab_list_with_titles()
+        assert self._names(result) == ['c.py', 'a.py', 'b.py']
+        assert [e["weight"] for e in result] == [3, 1, 2]
+
     def test_title_mode_is_name_order_with_the_mode(self, tmp_lab_dir):
         _touch(tmp_lab_dir, 'a.py', 'b.py')
         _titles(tmp_lab_dir, '', {"@sort": "title", "b.py": "A lab", "a.py": "Z lab"})

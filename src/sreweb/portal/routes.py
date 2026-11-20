@@ -195,6 +195,7 @@ class Routes:
         r.add_get('/api/labs', self.api_labs)
         r.add_get('/api/pool', self.api_pool)
         r.add_get('/api/pool/status', self.api_pool_status)
+        r.add_get('/api/pool/costs', self.api_pool_costs)
         r.add_post('/api/pool/hosts', self.api_pool_add)
         r.add_delete('/api/pool/hosts/{name}', self.api_pool_remove)
         r.add_post('/api/pool/hosts/{name}/{action}', self.api_pool_action)
@@ -715,6 +716,12 @@ class Routes:
     async def api_pool_status(self, request):
         self._require_pool_access(request)
         return web.json_response(self.manager.status() if self.manager else {})
+
+    async def api_pool_costs(self, request):
+        """What a project of each lab costs a host, as the pool learned it (``Pool.costs_view``):
+        the *Lab costs* table of the Pool page, ``sre-web-tool costs``."""
+        self._require_pool_access(request)
+        return web.json_response(self.pool.costs_view())
 
     async def api_pool_add(self, request):
         self._require_admin(request)
@@ -1485,7 +1492,7 @@ class Routes:
         started = False
         reservation = None
         try:
-            host, reservation = self.pool.pick(identity, wanted)
+            host, reservation = self.pool.pick(identity, wanted, lab=body['lab'])
             if logged is not None:
                 logged.update(host=host.name, placement=reservation.placement)
             payload = {'lab': body['lab'], 'idle_timeout': self._idle_timeout(identity)}

@@ -33,8 +33,11 @@ _INTEGER_RE = re.compile(r'^-?\d+$')
 # the sub-commands taking a priority, a "group:order" whose group is negative ("-1:5")
 _NEGATIVE_VALUE_RE = re.compile(r'^-\d+(:-?\d+)?$|^-\d*\.\d+$')
 COLUMNS = [('name', 'NAME'), ('state', 'STATE'), ('projects', 'PROJECTS'), ('load1', 'LOAD'),
-           ('mem_available_mb', 'FREE MEM'), ('terminals', 'TERMINALS'), ('occupied_by', 'OCCUPIED'), ('uptime', 'UPTIME'), ('source', 'SOURCE'),
-           ('error', 'LAST ERROR')]
+           ('mem_available_mb', 'FREE MEM'), ('cpu_used', 'CPU'), ('terminals', 'TERMINALS'), ('occupied_by', 'OCCUPIED'),
+           ('uptime', 'UPTIME'), ('source', 'SOURCE'), ('error', 'LAST ERROR')]
+# `costs`: what a project of each lab costs a host (the rows are formatted by cost_rows())
+COSTS_COLUMNS = [('lab', 'LAB'), ('weight', 'WEIGHT'), ('containers', 'CONTAINERS'), ('memory', 'MEMORY'),
+                 ('cpu', 'CPU'), ('samples', 'PROJECTS'), ('source', 'SOURCE')]
 
 
 class CallError(Exception):
@@ -88,6 +91,11 @@ def _cell(row: dict, key: str) -> str:
         if isinstance(value, (int, float)) and row.get('reachable'):
             return f"{value / 1024:.1f}G"
         return '-' if row.get('reachable') else ''
+    if key == 'cpu_used':       # the cores the projects of the host are counted for / those they may use
+        capacity = row.get('cpu_capacity')
+        if isinstance(value, (int, float)) and isinstance(capacity, (int, float)) and row.get('reachable'):
+            return f"{value:.1f}/{capacity:.1f}"
+        return '-' if row.get('reachable') else ''
     if key == 'terminals':
         return str(value) if row.get('reachable') else '-'
     if key == 'occupied_by':
@@ -113,6 +121,8 @@ def _cell(row: dict, key: str) -> str:
             extra.append('kept for an exam')
         if row.get('memory_room') == 0 and row.get('reachable'):    # [pool] project_memory_mb: no new project
             extra.append('memory full')
+        if row.get('cpu_room') == 0 and row.get('reachable'):       # [pool] capacity = "resources": no new project
+            extra.append('cpu full')
         if row.get('preload') == PRELOAD_RUNNING:       # the Docker images: pulling (image 2 of 5), waiting, failed
             total = row.get('preload_total')
             extra.append(f"preload {row.get('preload_current', 0)}/{total}" if total else 'preload')
@@ -129,6 +139,38 @@ def _cell(row: dict, key: str) -> str:
         text = '' if row.get('reachable') else (value or '')
         return text if len(text) <= ERROR_WIDTH else text[:ERROR_WIDTH - 1] + '…'
     return '' if value is None else str(value)
+
+
+def _figure(value, form: str) -> str:
+    return form.format(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else '-'
+
+
+def cost_rows(labs: list) -> list:
+    """The rows of ``GET /api/pool/costs`` as `costs` prints them (``COSTS_COLUMNS``): the weight
+    the lab declares, the containers its projects had, the memory and the cores one more project
+    is counted for, the projects that were measured, and where the cost comes from."""
+    return [{'lab': str(row.get('lab', '')), 'weight': _figure(row.get('weight'), '{:g}'),
+             'containers': _figure(row.get('containers'), '{:.0f}'), 'memory': _figure(row.get('mem_mb'), '{:.0f}M'),
+             'cpu': _figure(row.get('cpu'), '{:.3f}'), 'samples': _figure(row.get('samples'), '{:.0f}'),
+             'source': str(row.get('source', ''))} for row in labs if isinstance(row, dict)]
+
+
+def cost_lines(costs: dict) -> list:
+    """What `costs` prints above its table: the cost of a lab the pool knows nothing of, what a
+    unit of weight stands for and what the measures of the pool say it is, the file."""
+    def pair(value) -> str:
+        if not isinstance(value, dict):
+            return '?'
+        return f"{_figure(value.get('mem_mb'), '{:g}')} MiB, {_figure(value.get('cpu'), '{:g}')} core"
+    lines = [f"a lab never seen, without weight: {pair(costs.get('default'))}"]
+    measured = costs.get('measured_unit')
+    lines.append(f"one unit of weight: {pair(costs.get('weight_unit'))}"
+                 + (f" (measured on this pool: {pair(measured)})" if measured else " (nothing measured yet)"))
+    if costs.get('error'):
+        lines.append(f"costs: NOT SAVED in {costs.get('file') or '?'}: {costs['error']}")
+    else:
+        lines.append(f"costs: {costs.get('file') or 'not kept (no state file)'}")
+    return lines
 
 
 def table(rows: list, columns=COLUMNS) -> str:
@@ -259,6 +301,8 @@ def main(argv, default_config: str) -> int:
     sub.add_parser('list', help="the hosts of the pool", parents=[common])
     sub.add_parser('status', help="spare capacity, floor, active hours, hosts waking, the state file",
                    parents=[common])
+    sub.add_parser('costs', help="what a project of each lab costs a host (memory, processors): measured on "
+                                 "the running projects, else from the weight the lab declares", parents=[common])
     add = sub.add_parser('add', help="add a host", parents=[common])
     add.add_argument('name')
     add.add_argument('--url', required=True, dest='host_url', help="the agent, e.g. https://10.0.0.11:8451")
@@ -350,6 +394,21 @@ def _dispatch(client: PoolClient, args) -> int:
                     print(f"memory per project: {memory} MiB (memory full: {full})")
                 else:
                     print("memory per project: not checked")
+            if status.get('capacity') == 'resources':   # the hosts hold what their memory and processors hold
+                reference = status.get('reference') or {}
+                full = ', '.join(status.get('cpu_full') or []) or 'none'
+                memory_full = ', '.join(status.get('memory_full') or []) or 'none'
+                print(f"capacity: resources (a slot: {_figure(reference.get('mem_mb'), '{:g}')} MiB, "
+                      f"{_figure(reference.get('cpu'), '{:g}')} core; memory full: {memory_full}; cpu full: {full})")
+            elif 'capacity' in status:
+                print("capacity: projects (the number of projects of a host)")
+            if 'cpu_target' in status:          # the load of a host in memory and processors (an older portal says nothing)
+                unit = status.get('weight_unit') or {}
+                share = status['cpu_target'] * 100 if isinstance(status['cpu_target'], (int, float)) else None
+                print(f"load of a host: {_figure(status.get('memory_reserve_mb'), '{:g}')} MiB of memory kept free, "
+                      f"{_figure(share, '{:.0f}')} % of its processors for the projects; "
+                      f"one unit of weight: {_figure(unit.get('mem_mb'), '{:g}')} MiB, "
+                      f"{_figure(unit.get('cpu'), '{:g}')} core")
             if 'max_preloads' in status:        # the preloads of the Docker images (an older portal says nothing)
                 running = status.get('preloading') or []
                 names = f" ({', '.join(running)})" if running else ''
@@ -360,6 +419,13 @@ def _dispatch(client: PoolClient, args) -> int:
                 print(f"pool state: NOT SAVED in {status.get('state_file') or '?'}: {status['state_error']}")
             elif 'state_file' in status:
                 print(f"pool state: {status['state_file'] or 'not kept (no state file)'}")
+    elif args.command == 'costs':
+        costs = client.call('GET', '/api/pool/costs')
+        if args.json:
+            print(json.dumps(costs, indent=2))
+        else:
+            print('\n'.join(cost_lines(costs)))
+            print(table(cost_rows(costs.get('labs') or []), COSTS_COLUMNS))
     elif args.command == 'add':
         body = {'name': args.name, 'url': args.host_url, 'token': args.host_token, 'max_projects': args.max_projects,
                 'mac': args.mac, 'wake_command': args.wake_command, 'power': args.power,

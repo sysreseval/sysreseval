@@ -28,6 +28,9 @@ Environment variables (all optional but the first):
                       key of the entry of a directory of the tree, "" being the top directory
                       (an entry of its own, first) and "" the language of README.md; none by
                       default, and a directory the list does not hold is ignored
+  MOCK_LAB_WEIGHTS    JSON {lab name: weight}: the "weight" key `list --with-titles` gives the
+                      entry of a lab whose titles.json stores one (`sre make-titles`); none by
+                      default, and a lab the list does not hold is ignored
   MOCK_FLAVOR_FORM    when set, `start` without --flavor-json (user mode) exits 3 with the
                       flavor_form event, `form` being its value
   MOCK_FLAVOR_REFUSE  when set, `start --flavor-json` exits 4 with the flavor_error event carrying
@@ -112,6 +115,7 @@ ENV_PUB_DIR = 'SRE_PUB_DIR'
 ENV_LOG = 'MOCK_SRE_LOG'
 ENV_LAB_LIST = 'MOCK_LAB_LIST'
 ENV_LAB_READMES = 'MOCK_LAB_READMES'
+ENV_LAB_WEIGHTS = 'MOCK_LAB_WEIGHTS'
 ENV_FLAVOR_FORM = 'MOCK_FLAVOR_FORM'
 ENV_FLAVOR_REFUSE = 'MOCK_FLAVOR_REFUSE'
 ENV_FLAVOR_PRESETS = 'MOCK_FLAVOR_PRESETS'
@@ -330,7 +334,10 @@ class Mock:
     def lab_tree(self, labs: list) -> list:
         """The entries of `list --with-titles` as the real CLI prints them: the tree of the lab
         names flattened in display order, a directory entry (no title) right before its content,
-        the sub-directories of a directory before its labs, each group by name."""
+        the sub-directories of a directory before its labs, each group by name; a lab named by
+        MOCK_LAB_WEIGHTS has its "weight"."""
+        value = self.env.get(ENV_LAB_WEIGHTS)
+        weights = json.loads(value) if value else {}
         tree: dict = {}
         for lab in labs:
             parts = lab.split('/')
@@ -347,6 +354,8 @@ class Mock:
             for name in sorted(k for k, v in node.items() if v is None):
                 result.append({"name": prefix + name, "title": self.lab_title(prefix + name),
                                "kind": "lab", "sort": "name"})
+                if prefix + name in weights:
+                    result[-1]["weight"] = weights[prefix + name]
             return result
         return flatten(tree, '')
 

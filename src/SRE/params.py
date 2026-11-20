@@ -168,6 +168,30 @@ authorized_src_dir = None    # None: [lab_dir, shipped_lab_dir, '/home']
 terminal_cmd_prefix = ["/usr/bin/mate-terminal", "--"]
 terminal_title_opt = "--title"
 
+# The weight of a machine in the load its project puts on a host: 1 = one plain idle container of
+# the base image.  The weight of a lab is the sum of the weights of its machines (hidden ones
+# included), stored by `sre make-titles` in titles.json and carried by `sre list --with-titles`:
+# the first estimate the web portal has of what a project of the lab costs, until it has measured
+# some.  A machine takes the `weight` of its spec, else the weight of its image here (by short
+# name: "routing-frr" for sysreseval/routing-frr:1.34), else default_machine_weight.  The stored
+# weights are those of the last `sre make-titles` run: run it again after a change here.
+# The figures below come from real projects measured on a classroom workstation (2026-11, the
+# Debian 13 images; a plain container idles at 1 to 3 MiB): they make the weight of a lab, at
+# the 3.9 MiB a unit those projects used (the web portal counts 5, a margin), what its project
+# used at the peak of its evaluations, within a factor of two for most labs.  An image says what
+# is installed, not what runs: give a machine its own `weight` when it differs (a plain host on
+# the routing image weighs 1).
+default_machine_weight = 1.0
+image_weights = {
+    "init12": 12, "init13": 12,     # systemd as PID 1 and the service of the lab (bind9, a DHCP server): 37 MiB on average
+    "routing-frr": 6,               # zebra and the routing daemons: 26 to 31 MiB per router, 1 MiB per host of the lab
+    "ldap-mail": 8,                 # slapd, Postfix, Dovecot: 30 MiB
+    "proxy": 10,                    # nginx, Varnish, HAProxy: 28 MiB
+    "voip": 7,                      # Asterisk: 21 MiB
+    "aaa": 10,                      # FreeRADIUS, slapd, a KDC, hostapd: 41 MiB
+    "monitoring": 14,               # Prometheus, Nagios and their exporters: 49 MiB
+}
+
 
 #################################################################################
 #
@@ -302,6 +326,12 @@ sre_docker_namespace = "sysreseval"
 def sre_docker_image(image_name: str = "base13") -> str:
     version = docker_image_versions.get(image_name, default_docker_image_version)
     return f"{sre_docker_namespace}/{image_name}:{version}"
+
+def docker_image_short_name(image: str) -> str:
+    """The name of an image without its registry, namespace, tag and digest: ``routing-frr`` for
+    ``sysreseval/routing-frr:1.34`` or ``registry:5000/sysreseval/routing-frr@sha256:...`` (the
+    key of ``image_weights``)."""
+    return image.partition('@')[0].rpartition('/')[2].partition(':')[0]
 
 default_docker_image = sre_docker_image()
 
@@ -478,11 +508,17 @@ titles_sort_name = "name"           # by file name (the default)
 titles_sort_title = "title"         # by title, in the user's language
 titles_sort_manual = "manual"       # the order of the entries in titles.json
 titles_sort_modes = (titles_sort_name, titles_sort_title, titles_sort_manual)
+# The weights of the labs of the directory, {local name: number}: computed by `sre make-titles`
+# (never written by hand: every run replaces them), see image_weights
+titles_weights_key = "@weights"
+lab_weight_attribute = "lab_weight"  # the module attribute of a lab that sets its weight itself
+lab_weight_decimals = 2             # a stored weight is rounded to this many decimals
 # The keys of the entries of `sre list --with-titles`
 lab_list_name_key = "name"
 lab_list_title_key = "title"
 lab_list_kind_key = "kind"
 lab_list_sort_key = "sort"          # the titles_sort_* mode the entry is placed among its siblings by
+lab_list_weight_key = "weight"      # the weight of a "lab" entry, when titles.json has one
 lab_list_kind_dir = "dir"
 lab_list_kind_lab = "lab"
 # The README of a directory of the lab tree, shown under the tree when the directory is opened in

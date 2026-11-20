@@ -1268,3 +1268,68 @@ class TestDefaultImage:
         monkeypatch.setitem(sys.modules, 'srelab', types.SimpleNamespace(default_image='x/y:1'))
         DefaultImageScheme(MockData())
         assert DefaultImageScheme._machine_specs == {'m1': {'color': 'red'}, 'r1': {'image': self.FRR}}
+
+
+# ---------------------------------------------------------------------------
+# weight: what a machine, and its lab, weigh in the load of a host (params.image_weights)
+# ---------------------------------------------------------------------------
+
+class WeightScheme(NetScheme0):
+    _machine_specs = {
+        'm1': {},
+        'r1': {'image': params.sre_docker_image('routing-frr')},
+        'r2': {'image': params.sre_docker_image('routing-frr'), 'weight': 1},
+        'big': {'weight': 7.5},
+        'probe': {'hidden': True, 'image': 'registry:5000/site/custom@sha256:0123'},
+    }
+    _topology = {'net1': ['m1', 'r1', 'r2', 'big', 'probe']}
+
+    def __init__(self, data):
+        super().__init__(data=data, running_lab_name=RUNNING_LAB)
+
+
+class TestWeight:
+    @pytest.fixture(autouse=True)
+    def _table(self, monkeypatch):
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        monkeypatch.setattr(params, 'default_machine_weight', 1.0)
+        monkeypatch.setattr(params, 'image_weights', {'routing-frr': 3, 'custom': 0.5})
+
+    def test_the_spec_then_the_image_then_the_default(self):
+        s = WeightScheme(MockData())
+        assert s.m1.get_weight() == 1.0           # no weight, an image the table does not name
+        assert s.r1.get_weight() == 3             # the image, by its short name
+        assert s.r2.get_weight() == 1             # the spec wins over the image
+        assert s.big.get_weight() == 7.5
+        assert s.probe.get_weight() == 0.5        # registry, port and digest left out of the name
+
+    def test_a_weight_of_zero_is_a_weight(self):
+        assert Machine(name='m', image=params.sre_docker_image('routing-frr'), weight=0).get_weight() == 0
+
+    def test_the_table_is_read_when_asked(self, monkeypatch):
+        s = WeightScheme(MockData())
+        monkeypatch.setattr(params, 'image_weights', {})
+        monkeypatch.setattr(params, 'default_machine_weight', 2)
+        assert (s.m1.get_weight(), s.r1.get_weight(), s.r2.get_weight()) == (2, 2, 1)
+
+    def test_the_lab_is_the_sum_of_its_machines_hidden_ones_included(self):
+        assert WeightScheme(MockData()).get_weight() == 1.0 + 3 + 1 + 7.5 + 0.5
+
+    def test_a_machine_under_two_attributes_counts_once(self):
+        s = WeightScheme(MockData())
+        s.alias = s.big
+        assert s.get_weight() == 13.0
+
+    @pytest.mark.parametrize('bad', [-1, True, 'heavy', float('nan'), float('inf'), [3]])
+    def test_a_bad_weight_is_refused(self, bad):
+        with pytest.raises(ValueError, match="invalid weight"):
+            Machine(name='m', weight=bad)
+
+    def test_the_weight_is_no_argument_of_the_kathara_machine(self, monkeypatch):
+        """A weight limits nothing: Kathara never hears of it."""
+        lab_cls = MagicMock()
+        monkeypatch.setattr(lib_sre, 'Lab', lab_cls)
+        WeightScheme(MockData()).get_new_lab_from_scheme()
+        calls = lab_cls.return_value.new_machine.call_args_list
+        assert len(calls) == 5
+        assert all('weight' not in call.kwargs for call in calls)

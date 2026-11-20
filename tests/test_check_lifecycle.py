@@ -151,3 +151,44 @@ class TestCheckInformations:
         with pytest.raises(ValueError, match='level 3 but no level 2'):
             action_check()
         assert 'FAIL  informations: section' in capsys.readouterr().out
+
+
+class TestCheckWeight:
+    """`sre check` prints the weight of the lab, the figure `sre make-titles` stores for the web
+    portal: the sum of the weights of its machines, or the one the module declares."""
+
+    @pytest.fixture(autouse=True)
+    def _table(self, monkeypatch):
+        monkeypatch.setattr(params, 'default_machine_weight', 1.0)
+        monkeypatch.setattr(params, 'image_weights', {'routing-frr': 3})
+
+    def test_the_sum_of_the_machines(self, check_env, capsys):
+        frr = params.sre_docker_image('routing-frr')
+        check_env('weighed.py', lambda t: t.replace(
+            "_machine_specs = {'router': {}, 'client': {}}",
+            f"_machine_specs = {{'router': {{'image': {frr!r}}}, 'client': {{'weight': 0.5}}}}"))
+        action_check()
+        out = capsys.readouterr().out
+        assert f"machine: router  image: {frr}  weight: 3\n" in out
+        assert f"machine: client  image: {params.default_docker_image}  weight: 0.5\n" in out
+        assert "ok  weight: 3.5 (2 machine(s))" in out
+
+    def test_the_weight_the_module_declares(self, check_env, capsys):
+        check_env('declared.py', lambda t: 'lab_weight = 13\n' + t)
+        action_check()
+        assert ("ok  weight: 13 (declared by the module with lab_weight; its 2 machine(s) sum to 2)"
+                in capsys.readouterr().out)
+
+    def test_a_bad_declared_weight_fails(self, check_env, capsys):
+        check_env('bad.py', lambda t: 'lab_weight = -4\n' + t)
+        with pytest.raises(ValueError, match="lab_weight = -4"):
+            action_check()
+        assert "FAIL  weight: lab_weight = -4" in capsys.readouterr().out
+
+    def test_a_bad_machine_weight_fails(self, check_env, capsys):
+        check_env('badmachine.py', lambda t: t.replace(
+            "_machine_specs = {'router': {}, 'client': {}}",
+            "_machine_specs = {'router': {'weight': 'heavy'}, 'client': {}}"))
+        with pytest.raises(ValueError, match="machine 'router': invalid weight 'heavy'"):
+            action_check()
+        assert "FAIL  NetScheme() raised an exception" in capsys.readouterr().out

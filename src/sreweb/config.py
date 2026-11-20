@@ -144,6 +144,11 @@ def client_allowed(remote, networks) -> bool:
                if candidate.version == network.version)
 
 
+def _is_number(value) -> bool:
+    """A finite number of a configuration file (a boolean is not one)."""
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+
+
 def _section(data, key, path) -> dict:
     value = data.get(key, {})
     if not isinstance(value, dict):
@@ -381,6 +386,13 @@ class AuthConfig:
 PLACEMENT_SPREAD = 'spread'
 PLACEMENT_PACK = 'pack'
 PLACEMENT_MODES = (PLACEMENT_SPREAD, PLACEMENT_PACK)
+#: ``[pool] capacity``: what tells how much a host holds.  ``projects``: its number of projects
+#: against its ``max_projects`` (and ``project_memory_mb``), every project counting the same;
+#: ``resources``: its free memory and its processors against what a project of each lab costs
+#: (``portal/costs.py``), ``max_projects`` staying a ceiling.
+CAPACITY_PROJECTS = 'projects'
+CAPACITY_RESOURCES = 'resources'
+CAPACITY_MODES = (CAPACITY_PROJECTS, CAPACITY_RESOURCES)
 
 
 @dataclass
@@ -426,6 +438,29 @@ class PoolConfig:
     # of them, each start in flight counting as one (its containers may not show yet), and no
     # more than its max_projects; the spare capacity of the elastic pool counts the same slots
     project_memory_mb: int = 0
+    # the load of a host in memory and processors (portal/costs.py): the agents tell the size of
+    # their host and what each running project uses, the portal learns from it what a project of
+    # each lab costs (shown by `sre-web-tool costs` and on the Pool page).  memory_reserve_mb:
+    # the memory kept free on every host, in MiB; cpu_target: the share of the processors of a
+    # host its projects may use on average (the rest absorbs the bursts: starts, evaluations);
+    # weight_memory_mb / weight_cpu: what one unit of the weight a lab declares (`sre
+    # make-titles`: 1 = one plain idle container) stands for, in MiB and in cores, until projects
+    # of the lab have been measured (the defaults: real projects measured on a classroom
+    # workstation with the image weights of params.py used 3.9 MiB and 0.0003 core per unit, their
+    # evaluations included and nobody typing; a margin is added).  A lab without weight, never
+    # measured, counts for project_memory_mb (512 MiB when 0) and 0.2 core
+    memory_reserve_mb: int = 1024
+    cpu_target: float = 0.7
+    weight_memory_mb: float = 5.0
+    weight_cpu: float = 0.001
+    # what tells how much a host holds (CAPACITY_MODES above).  "projects" (the default): its
+    # number of projects, as before.  "resources": a host takes a project while its free memory
+    # (less memory_reserve_mb) and its processors (by cpu_target) hold what a project of that lab
+    # costs, the hosts are ranked by how full they are in those terms, and the spare capacity of
+    # the elastic pool counts the room left for projects like those running; max_projects stays
+    # a ceiling, a host without project always takes one, and a host whose agent does not tell
+    # its size (an older one) is judged by its number of projects
+    capacity: str = CAPACITY_PROJECTS
 
 
 @dataclass
@@ -1027,6 +1062,16 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     if isinstance(pool.project_memory_mb, bool) or not isinstance(pool.project_memory_mb, int) \
             or pool.project_memory_mb < 0:
         raise ConfigError(f"{path}: pool.project_memory_mb must be an integer, 0 or more (MiB)")
+    if isinstance(pool.memory_reserve_mb, bool) or not isinstance(pool.memory_reserve_mb, int) \
+            or pool.memory_reserve_mb < 0:
+        raise ConfigError(f"{path}: pool.memory_reserve_mb must be an integer, 0 or more (MiB)")
+    if pool.capacity not in CAPACITY_MODES:
+        raise ConfigError(f"{path}: pool.capacity must be one of {', '.join(CAPACITY_MODES)}")
+    if not _is_number(pool.cpu_target) or not 0 < pool.cpu_target <= 1:
+        raise ConfigError(f"{path}: pool.cpu_target must be a number above 0, up to 1 (a share of the processors)")
+    for key in ('weight_memory_mb', 'weight_cpu'):
+        if not _is_number(getattr(pool, key)) or getattr(pool, key) <= 0:
+            raise ConfigError(f"{path}: pool.{key} must be a positive number")
     admin_data = _section(data, 'admin', path)
     admin = _build(AdminConfig, admin_data, f"{path}: [admin]")
     if admin.token and len(admin.token) < MIN_SECRET_LENGTH:
@@ -1197,6 +1242,29 @@ def _check_preload(p: PreloadConfig, path: str):
 
 
 @dataclass
+class UsageConfig:
+    """``[usage]``: what the running projects use, measured by the agent for the portal (the
+    containers of each project, their memory and their processor time: ``agent/usage.py``), the
+    figures the portal learns the cost of a lab from."""
+    interval: float = 15.0            # seconds between two measures; 0 = no measure
+    docker_socket: str = ''           # the Docker socket the containers are listed on; '' = the one of the host
+    cgroup_root: str = '/sys/fs/cgroup'   # where the cgroups (v2) of the containers are read
+    meminfo: str = '/proc/meminfo'    # where the memory of the host is read (MemTotal, MemAvailable)
+
+
+def _check_usage(u: UsageConfig, path: str):
+    where = f"{path}: usage."
+    if isinstance(u.interval, bool) or not isinstance(u.interval, (int, float)) or u.interval < 0:
+        raise ConfigError(f"{where}interval must be a duration, 0 or more")
+    if not isinstance(u.docker_socket, str) or (u.docker_socket and not u.docker_socket.startswith('/')):
+        raise ConfigError(f"{where}docker_socket must be an absolute path")
+    if not isinstance(u.cgroup_root, str) or not u.cgroup_root.startswith('/'):
+        raise ConfigError(f"{where}cgroup_root must be an absolute path")
+    if not isinstance(u.meminfo, str) or not u.meminfo.startswith('/'):
+        raise ConfigError(f"{where}meminfo must be an absolute path")
+
+
+@dataclass
 class AgentConfig:
     listen: tuple = ('127.0.0.1', 8451)
     token: str = ''
@@ -1237,6 +1305,7 @@ class AgentConfig:
     timeouts: dict = field(default_factory=lambda: dict(DEFAULT_TIMEOUTS))
     display: DisplayConfig = field(default_factory=DisplayConfig)
     preload: PreloadConfig = field(default_factory=PreloadConfig)
+    usage: UsageConfig = field(default_factory=UsageConfig)
 
 
 def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str = '',
@@ -1261,10 +1330,14 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
     preload = _build(PreloadConfig, preload_data, f"{path}: [preload]",
                      **({'timeout': parse_duration(preload_data['timeout'], 'preload.timeout')}
                         if 'timeout' in preload_data else {}))
-    top = {k: v for k, v in data.items() if k not in ('timeouts', 'display', 'preload')}
+    usage_data = _section(data, 'usage', path)
+    usage = _build(UsageConfig, usage_data, f"{path}: [usage]",
+                   **({'interval': parse_duration(usage_data['interval'], 'usage.interval')}
+                      if 'interval' in usage_data else {}))
+    top = {k: v for k, v in data.items() if k not in ('timeouts', 'display', 'preload', 'usage')}
     converted = {k: parse_duration(top[k], k) for k in ('poll_interval', 'max_idle', 'lab_list_cache_ttl',
                                                         'shutdown_timeout', 'terminals_linger') if k in top}
-    cfg = _build(AgentConfig, top, path, timeouts=timeouts, display=display, preload=preload,
+    cfg = _build(AgentConfig, top, path, timeouts=timeouts, display=display, preload=preload, usage=usage,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8451')),
                  allowed_clients=parse_networks(top.get('allowed_clients', []), f'{path}: allowed_clients'), **converted)
     if len(cfg.token) < MIN_SECRET_LENGTH:
@@ -1290,6 +1363,7 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
         raise ConfigError(f"{path}: close_projects_on_stop must be shutdown, always or never")
     _check_display(cfg.display, path)
     _check_preload(cfg.preload, path)
+    _check_usage(cfg.usage, path)
     return cfg
 
 

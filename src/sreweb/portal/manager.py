@@ -15,7 +15,7 @@ import aiohttp
 from .pool import (Pool, PoolError, preload_fields, STATE_UP, STATE_WAKING, STATE_OCCUPIED, STATE_EXAM,
                    STATE_DRAINING, STATE_OFF)
 from ..agent.runner import PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_FAILED
-from ..config import PoolConfig, HostConfig, Priority, parse_active_hours, in_active_hours
+from ..config import PoolConfig, HostConfig, Priority, parse_active_hours, in_active_hours, CAPACITY_RESOURCES
 
 log = logging.getLogger('sreweb.portal')
 
@@ -61,13 +61,20 @@ class HostView:
     priority: Priority = Priority()
     # the new projects its free memory holds (``Pool.memory_room``; None: not checked or not told)
     memory_room: int | None = None
+    # the new projects its processors hold (``Pool.cpu_room``, ``capacity = "resources"``; None:
+    # the host is judged by its number of projects)
+    cpu_room: int | None = None
 
 
 def free_slots(host) -> int:
     """The new projects a host up takes: below its ``max_projects`` and, when its memory is
-    checked (``project_memory_mb``), no more than its memory holds."""
+    checked (``project_memory_mb``, or ``capacity = "resources"``), no more than its memory
+    holds, nor than its processors do (``capacity = "resources"``)."""
     free = host.max_projects - host.projects
-    return free if host.memory_room is None else min(free, host.memory_room)
+    for room in (host.memory_room, host.cpu_room):
+        if room is not None:
+            free = min(free, room)
+    return free
 
 
 def awake_count(hosts) -> int:
@@ -188,6 +195,7 @@ class PoolManager:
 
     def views(self, now: float | None = None) -> list:
         now = time.monotonic() if now is None else now
+        reference = self.pool.reference_cost() if self.pool.capacity == CAPACITY_RESOURCES else None
         views = []
         for host in self.pool.hosts.values():
             st, rt = self.pool.status[host.name], self.pool.runtime[host.name]
@@ -206,12 +214,19 @@ class PoolManager:
                                   preload_granted=rt.preload_granted is not None,
                                   preload_hold=now < rt.next_preload_at, exam_projects=st.exam_projects,
                                   held=self.pool.held_for_exam(host.name), priority=rt.priority,
-                                  memory_room=self.pool.memory_room(host.name)))
+                                  memory_room=self.pool.memory_room(host.name, reference),
+                                  cpu_room=self.pool.cpu_room(host.name, reference)))
         return views
 
     def status(self) -> dict:
         views = self.views()
+        reference = self.pool.reference_cost()
         return {'spare_projects': spare_capacity(views), 'wanted_spare': self.cfg.spare_projects,
+                # what tells how much a host holds ([pool] capacity); with "resources": the hosts
+                # up whose processors hold no more project, and the project the rooms are counted in
+                'capacity': self.pool.capacity,
+                'cpu_full': [h.name for h in views if h.state == STATE_UP and h.cpu_room == 0],
+                'reference': {'mem_mb': round(reference.mem_mb, 1), 'cpu': round(reference.cpu, 3)},
                 'awake': sum(1 for h in views if h.state in AWAKE_STATES and not h.instructors_only),
                 'min_hosts_up': self.cfg.min_hosts_up,
                 'active_hours': self.cfg.active_hours or 'always', 'active_now': self.active(),
@@ -223,6 +238,10 @@ class PoolManager:
                 'preload_failed': sum(1 for h in views if h.preload == PRELOAD_FAILED),
                 'project_memory_mb': self.pool.project_memory_mb,
                 'memory_full': [h.name for h in views if h.state == STATE_UP and h.memory_room == 0],
+                # the load of a host in memory and processors (Pool.load_of): the memory kept free,
+                # the share of the processors the projects may use, what a unit of weight stands for
+                'memory_reserve_mb': self.pool.memory_reserve_mb, 'cpu_target': self.pool.cpu_target,
+                'weight_unit': {'mem_mb': self.pool.costs.unit.mem_mb, 'cpu': self.pool.costs.unit.cpu},
                 **self.pool.state_info()}
 
     # -- the loop -------------------------------------------------------------------------------

@@ -49,6 +49,7 @@ from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, 
                      RESULT_CREATED, RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_ERROR,
                      build_env, PHASE_PROJECT, LAB_README_KEY)
 from .schedulers import Schedulers
+from .usage import UsageSampler, STATUS_CPUS, STATUS_MEM_TOTAL, STATUS_CPU_BUSY, STATUS_USAGE
 from .terminals import (TerminalSession, MAX_CLIENTS_PER_SESSION, MAX_READONLY_CLIENTS_PER_SESSION,
                         PROBE_DELAY)  # noqa: F401  (PROBE_DELAY: the tests)
 from ..config import AgentConfig
@@ -148,15 +149,27 @@ def unit_of_cgroup(text: str) -> str | None:
     return None
 
 
-def _mem_available_mb() -> int | None:
+MEMINFO = '/proc/meminfo'
+
+
+def _meminfo_mb(key: str, path: str = MEMINFO) -> int | None:
+    """The line *key* of the meminfo file *path* in MiB; ``None`` when it cannot be read."""
     try:
-        with open('/proc/meminfo') as f:
+        with open(path) as f:
             for line in f:
-                if line.startswith('MemAvailable:'):
+                if line.startswith(key + ':'):
                     return int(line.split()[1]) // 1024
     except (OSError, ValueError, IndexError):
         pass
     return None
+
+
+def _mem_available_mb(path: str = MEMINFO) -> int | None:
+    return _meminfo_mb('MemAvailable', path)
+
+
+def _mem_total_mb(path: str = MEMINFO) -> int | None:
+    return _meminfo_mb('MemTotal', path)
 
 
 def _lab_directories() -> list:
@@ -217,6 +230,11 @@ class Agent:
                                      on_exam_ended=self._exam_ended)
         # the Docker images of the labs, pulled when the portal gives this host its turn
         self.preloader = Preloader(self.runner, cfg.preload, default_paths=_lab_directories())
+        # what the running projects use, measured for the portal.  An agent given its own
+        # projects directory (the tests, the fake pool) is not the agent of the machine: it asks
+        # the Docker daemon of the workstation nothing unless [usage] docker_socket names one
+        self.usage = UsageSampler(self.registry, cfg.usage, docker_socket=cfg.usage.docker_socket or (
+            params.docker_socket_path if pub_dir is None else ''))
         # the drain asked on the host itself (`sre set-drain`), told to the portal in the status
         self.local_drain = LocalDrain(self.pub_dir, cfg.allow_local_drain)
         self._labs_cache: tuple[float, list] | None = None
@@ -391,6 +409,7 @@ class Agent:
         self.displays.prepare()
         await self.registry.tick()
         self.registry.start()
+        self.usage.start()
 
     async def _on_shutdown(self, app):
         """SIGTERM (a stop or a restart of the unit; the listening socket is already closed):
@@ -401,6 +420,7 @@ class Agent:
         preload of the images is stopped first: waited for, it would take the whole
         ``shutdown_timeout`` and leave none to close the projects."""
         started = time.monotonic()
+        await self.usage.stop()
         await self.preloader.stop()
         left = await self.runner.wait_idle(self.cfg.shutdown_timeout)
         if left:
@@ -555,7 +575,12 @@ class Agent:
             'exam_mode': self.exam_mode(),
             'exam': self.host_exam_view(),
             'exam_projects': self._exam_projects(),
-            'load1': load1, 'mem_available_mb': _mem_available_mb(),
+            'load1': load1, 'mem_available_mb': _mem_available_mb(self.cfg.usage.meminfo),
+            # the size of the host and what its projects use (usage.py): what the portal weighs
+            # the load of the host with
+            STATUS_CPUS: os.cpu_count(), STATUS_MEM_TOTAL: _mem_total_mb(self.cfg.usage.meminfo),
+            STATUS_CPU_BUSY: round(self.usage.cpu_busy, 3) if self.usage.cpu_busy is not None else None,
+            STATUS_USAGE: self.usage.rows(),
             'occupied': occupied, 'occupied_by': reasons,
             # the users in the Qt GUI of the machine: the Clients view of the Watch page
             'gui_users': gui_users,

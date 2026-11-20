@@ -1,4 +1,14 @@
 {
+  "@weights": {
+    "dhcp.py": 45,
+    "dns1.py": 30,
+    "latency.py": 5,
+    "mtu.py": 7,
+    "ssh.py": 9,
+    "static_routing.py": 13,
+    "traceroute.py": 23,
+    "wireshark.py": 10
+  },
   "_DRAFT_misc": {
     "en": "*** Works in progress: various projects not yet completed and tested (some maybe bogus and/or incompletes)",
     "fr": "*** travaux en cours : divers projets non encore finalisés et testés (certains peuvent être buggés et/ou incomplets)"

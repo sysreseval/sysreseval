@@ -17,6 +17,7 @@ from . import session as S
 from .accessdb import connector
 from .accesslog import AccessLog
 from .basepath import strip_base
+from .defaults import costs_file_beside
 from .archives import ArchiveStore
 from .auth_ldap import LdapRoleResolver
 from .auth_proxy import identity_from_headers
@@ -117,7 +118,11 @@ class Portal:
                          wake_timeout=self.cfg.pool.wake_timeout, state_file=self.cfg.admin.state_file,
                          follow_local_sessions=self.cfg.pool.follow_local_sessions,
                          labs_cache_ttl=self.cfg.pool.labs_cache_ttl,
-                         project_memory_mb=self.cfg.pool.project_memory_mb)
+                         project_memory_mb=self.cfg.pool.project_memory_mb,
+                         memory_reserve_mb=self.cfg.pool.memory_reserve_mb, cpu_target=self.cfg.pool.cpu_target,
+                         weight_memory_mb=self.cfg.pool.weight_memory_mb, weight_cpu=self.cfg.pool.weight_cpu,
+                         costs_file=costs_file_beside(self.cfg.admin.state_file),
+                         capacity=self.cfg.pool.capacity)
         self.manager = PoolManager(self.pool, self.cfg.pool)
         self.relay = Relay(self.pool, None)
         self.presence = Presence()
@@ -258,6 +263,7 @@ class Portal:
         await self.manager.stop()
         await self.pool.stop()
         self.pool.save_state()              # the clocks of the hosts as they are now (the wakes, the holds)
+        self.pool.save_costs(force=True)    # the costs of the labs learned since the last write
         if self.bbb is not None:
             await self.bbb.close()
         await self.session.close()

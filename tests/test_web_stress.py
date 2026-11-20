@@ -8,9 +8,11 @@ import importlib.util
 import json
 import os
 import random
+import re
 import socket
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -300,6 +302,69 @@ class TestFakePool:
             assert 'listening on' in (workdir / host / 'agent.log').read_text()
         assert not (workdir / 'fake01' / 'pub' / 'projects').is_dir() or \
             not any((workdir / 'fake01' / 'pub' / 'projects').iterdir())
+
+    def test_usage_and_capacity(self, tmp_path):
+        """``--usage --capacity resources``: every fake host has a fake Docker daemon whose
+        projects use memory and processor time (``MOCK_USAGE``), measured by its agent; the
+        portal counts the hosts by that load and knows the weight the labs declare
+        (``MOCK_LAB_WEIGHTS``).  The directories of the fake daemons are gone at the end."""
+        workdir = tmp_path / 'pool'
+        port = free_port_run(2)            # the portal, then its agent
+        probe = tmp_path / 'probe.py'
+        probe.write_text(textwrap.dedent('''\
+            import json, os, sys, time, urllib.request
+            portal, token = os.environ['SRE_STRESS_PORTAL'], os.environ['SRE_STRESS_ADMIN_TOKEN']
+
+            def call(method, path, user=None, body=None):
+                headers = {'Content-Type': 'application/json'}
+                headers.update({'X-Remote-User': user, 'X-Requested-With': 'sre-web'} if user
+                               else {'Authorization': 'Bearer ' + token})
+                data = json.dumps(body).encode() if body is not None else None
+                request = urllib.request.Request(portal + path, data=data, method=method, headers=headers)
+                with urllib.request.urlopen(request, timeout=60) as resp:
+                    return resp.read().decode()
+
+            labs = json.loads(call('GET', '/api/labs', user='alice'))
+            before = json.loads(call('GET', '/api/pool'))[0]
+            result = json.loads(call('POST', '/api/projects', user='alice', body={'lab': 'sre/dhcp.py'}).splitlines()[-1])
+            row = {}
+            for _ in range(100):           # the agent measures every 2 s
+                row = json.loads(call('GET', '/api/pool'))[0]
+                if row['mem_available_mb'] < before['mem_available_mb'] and row['projects'] == 1:
+                    break
+                time.sleep(0.2)
+            json.dump({'weights': {e['name']: e.get('weight') for e in labs if e['kind'] == 'lab'},
+                       'before': before, 'result': result, 'row': row,
+                       'status': json.loads(call('GET', '/api/pool/status')),
+                       'costs': json.loads(call('GET', '/api/pool/costs'))},
+                      open(os.path.join(os.environ['SRE_STRESS_WORKDIR'], 'probe.json'), 'w'))
+            '''))
+        env = {**os.environ, 'PYTHONPATH': '', 'MOCK_USAGE': json.dumps({'sre/dhcp.py': [15, 300, 0.1]}),
+               'MOCK_LAB_WEIGHTS': json.dumps({'sre/dhcp.py': 15})}
+        completed = subprocess.run([sys.executable, str(FAKE_POOL), '--hosts', '1', '--usage', '--capacity', 'resources',
+                                    '--host-memory-mb', '8000', '--listen', f'127.0.0.1:{port}', '--start-delay', '0',
+                                    '--start-interval', '0', '--poll-interval', '0.5', '--workdir', str(workdir),
+                                    '--keep-workdir', '--', sys.executable, str(probe)],
+                                   capture_output=True, text=True, timeout=180, env=env)
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        seen = json.loads((workdir / 'probe.json').read_text())
+        assert seen['weights']['sre/dhcp.py'] == 15 and seen['result']['status'] == 'created'
+        # the fake host: 8000 MiB, 1500 used by nothing, then the 300 MiB of the project
+        assert (seen['before']['mem_total_mb'], seen['before']['mem_available_mb']) == (8000, 6500)
+        assert seen['row']['mem_available_mb'] == 6200 and seen['row']['cpus'] == os.cpu_count()
+        assert seen['row']['cpu_capacity'] == round(os.cpu_count() * 0.7, 2)
+        # the lab as it declares itself (15 x 0.001 core), or the 0.1 core its fake containers
+        # burn once the agent has measured the host twice
+        assert 0.01 <= seen['row']['cpu_used'] <= 0.11
+        assert seen['status']['capacity'] == 'resources'
+        assert seen['costs']['labs'] == [{'lab': 'sre/dhcp.py', 'title': {'en': 'DHCP lab', 'fr': 'TP DHCP'},
+                                          'weight': 15.0, 'containers': None, 'mem_mb': 75.0, 'cpu': 0.015,
+                                          'samples': 0, 'source': 'declared'}]
+        agent_toml = (workdir / 'fake01' / 'agent.toml').read_text()
+        assert '[usage]' in agent_toml and 'capacity = "resources"' in (workdir / 'web.toml').read_text()
+        docker_dir = re.search(r'docker_socket = "(.+)/docker\.sock"', agent_toml).group(1)
+        assert docker_dir.startswith('/tmp/sre-fd-') and not os.path.exists(docker_dir)
+        assert (workdir / 'fake01' / 'docker.log').is_file()
 
     def test_under_a_sub_path(self, tmp_path):
         """``--base-path``: the portal run for real (``python -m sreweb.portal``) with a

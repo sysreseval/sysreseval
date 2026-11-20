@@ -248,6 +248,19 @@ class TestList:
         completed = run_mock(pub, 'list', '--with-readmes', extra_env=env)
         assert completed.returncode == 1 and b'--with-titles' in completed.stderr
 
+    def test_weights(self, pub):
+        """MOCK_LAB_WEIGHTS: the "weight" `list --with-titles` gives the labs whose titles.json
+        stores one (`sre make-titles`), like the real CLI; none by default, never on a
+        directory, and the plain list is the names alone."""
+        env = {'MOCK_LAB_WEIGHTS': json.dumps({'sre/dhcp.py': 15, 's4/tp_ssh': 2.5, 'sre': 9, 'gone.py': 4})}
+        plain = json.loads(run_mock(pub, 'list', '--with-titles').stdout)
+        assert all('weight' not in entry for entry in plain)
+        data = json.loads(run_mock(pub, 'list', '--with-titles', extra_env=env).stdout)
+        assert {entry['name']: entry.get('weight') for entry in data} == {
+            's4': None, 's4/tp_ssh': 2.5, 'sre': None, 'sre/dhcp.py': 15}
+        assert [{k: v for k, v in entry.items() if k != 'weight'} for entry in data] == plain
+        assert json.loads(run_mock(pub, 'list', extra_env=env).stdout) == ['sre/dhcp.py', 's4/tp_ssh']
+
     def test_exam_only_labs_need_the_flag(self, pub):
         """The exam-only labs (a component holding one of params.exam_only_affix) are listed with
         --include-exam-only only, which user mode refuses, like the real CLI."""

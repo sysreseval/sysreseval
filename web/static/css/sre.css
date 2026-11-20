@@ -432,6 +432,10 @@ table.grid.pool td.state.disabled { background-color: var(--bar-bg); color: var(
 .pool-status { margin: 0 8px 8px; }
 
 .pool-status.unsaved { color: var(--danger); font-weight: bold; }   /* the state file cannot be written */
+/* the Lab costs box under the table of the hosts: what a project of each lab is counted for */
+details.pool-costs { margin: 12px 8px; }
+details.pool-costs > summary { cursor: pointer; font-weight: bold; }
+details.pool-costs > p { margin: 6px 0; }
 /* the Priority cell: its value (group:order) is a button, drawn as the clickable cells of the
    other tables, opening the dialog that changes it: two number fields, one under the other */
 table.grid.pool td.priority button { border: none; background: none; padding: 0 2px; color: inherit; font: inherit;

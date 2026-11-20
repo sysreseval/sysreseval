@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_web_portal as P   # noqa: E402  (the Harness: a real agent on the fake sre, a portal in front)
 
 from sreweb.portal.accesslog import parse_line   # noqa: E402
+from sreweb.identity import Identity   # noqa: E402
+from sreweb.portal.costs import Usage   # noqa: E402
 from sreweb.portal.pool import PoolError   # noqa: E402
 
 SRC = Path(__file__).resolve().parent.parent / 'src'
@@ -521,7 +523,7 @@ class TestCli:
                 r = await loop.run_in_executor(None, cli, 'list')
                 assert r.returncode == 0, r.stderr
                 lines = r.stdout.splitlines()
-                assert lines[0].split() == ['NAME', 'STATE', 'PROJECTS', 'LOAD', 'FREE', 'MEM', 'TERMINALS',
+                assert lines[0].split() == ['NAME', 'STATE', 'PROJECTS', 'LOAD', 'FREE', 'MEM', 'CPU', 'TERMINALS',
                                             'OCCUPIED', 'UPTIME', 'SOURCE', 'LAST', 'ERROR']
                 assert lines[1].split()[:3] == ['a01', 'up', '0/3'] and lines[1].split()[-1] == 'config'
                 r = await loop.run_in_executor(None, lambda: cli('add', 'b02', '--url', 'http://127.0.0.1:9',
@@ -624,7 +626,7 @@ class TestCli:
         host whose memory holds no more project is ``(memory full)`` in ``list`` and named by
         ``status``; ``placement``, the key of 0.18 that is no longer used, is read and not told."""
         from sreweb.agent import app as agent_app
-        monkeypatch.setattr(agent_app, '_mem_available_mb', lambda: 3000)
+        monkeypatch.setattr(agent_app, '_mem_available_mb', lambda path=None: 3000)
         over = {'admin': {'token': ADMIN}, 'pool': {**QUIET_POOL, 'placement': 'pack', 'project_memory_mb': 1000}}
 
         async def go():
@@ -655,6 +657,141 @@ class TestCli:
                     h.portal.pool.pick()
                 assert e.value.status == 503 and 'no host' in e.value.message
         run(go())
+
+    def test_costs_of_the_labs(self, tmp_path, monkeypatch):
+        """``GET /api/pool/costs`` and ``sre-web-tool costs``: what a project of each lab is
+        counted for.  The weights come with the lab list of the agent (the fake sre gives them),
+        the measures with its status; the file is beside the state file; ``list`` and ``status``
+        show the processors."""
+        from sreweb.agent import app as agent_app
+        monkeypatch.setattr(agent_app, '_mem_available_mb', lambda path=None: 12000)
+        monkeypatch.setattr(agent_app, '_mem_total_mb', lambda path=None: 16000)
+        monkeypatch.setattr(agent_app.os, 'cpu_count', lambda: 8)
+        state = tmp_path / 'state' / 'pool.json'
+        over = {'admin': {'token': ADMIN, 'state_file': str(state)},
+                'pool': {**QUIET_POOL, 'weight_memory_mb': 20, 'weight_cpu': 0.01, 'cpu_target': 0.5}}
+        weights = {'MOCK_LAB_WEIGHTS': json.dumps({'sre/dhcp.py': 15, 's4/tp_ssh': 4})}
+
+        async def go():
+            async with P.Harness(tmp_path, web_over=over, mock_env=weights) as h:
+                url = f"http://127.0.0.1:{h.client.port}"
+                env = {**os.environ, 'PYTHONPATH': str(SRC)}
+
+                def cli(*args):
+                    return subprocess.run([sys.executable, '-m', 'sreweb.tool', '--url', url, '--token', ADMIN,
+                                           *args], capture_output=True, text=True, env=env, timeout=120)
+                loop = asyncio.get_running_loop()
+                assert h.portal.pool.costs_file == str(state.parent / 'pool-costs.json')
+                # nothing known yet: the header lines and an empty table
+                costs = await (await h.client.get('/api/pool/costs', headers=auth(ADMIN))).json()
+                assert costs['labs'] == [] and costs['default'] == {'mem_mb': 512.0, 'cpu': 0.2}
+                assert costs['weight_unit'] == {'mem_mb': 20, 'cpu': 0.01} and costs['measured_unit'] is None
+                assert (costs['file'], costs['error']) == (str(state.parent / 'pool-costs.json'), '')
+                # the lab list of the Open page declares the weights
+                await h.portal.pool.labs(Identity(login='alice'))
+                costs = await (await h.client.get('/api/pool/costs', headers=auth(ADMIN))).json()
+                assert {row['lab']: (row['weight'], row['mem_mb'], row['cpu'], row['source']) for row in costs['labs']} == {
+                    's4/tp_ssh': (4, 80.0, 0.04, 'declared'), 'sre/dhcp.py': (15, 300.0, 0.15, 'declared')}
+                # three projects of a lab measured on a host: their figures replace the weight
+                h.portal.pool.costs.observe(
+                    [Usage(name=f'p{i}', lab='sre/dhcp.py', containers=15, mem_mb=400.0 + i, cpu=0.3, settled=True)
+                     for i in range(3)], time.time())
+                r = await loop.run_in_executor(None, cli, 'costs')
+                assert r.returncode == 0, r.stderr
+                lines = r.stdout.splitlines()
+                assert lines[0] == 'a lab never seen, without weight: 512 MiB, 0.2 core'
+                assert lines[1] == 'one unit of weight: 20 MiB, 0.01 core (measured on this pool: 26.7 MiB, 0.02 core)'
+                assert lines[2] == f"costs: {state.parent / 'pool-costs.json'}"
+                assert lines[3].split() == ['LAB', 'WEIGHT', 'CONTAINERS', 'MEMORY', 'CPU', 'PROJECTS', 'SOURCE']
+                assert [line.split() for line in lines[4:]] == [
+                    ['s4/tp_ssh', '4', '-', '80M', '0.040', '0', 'declared'],
+                    ['sre/dhcp.py', '15', '15', '402M', '0.300', '3', 'measured']]
+                r = await loop.run_in_executor(None, cli, 'costs', '--json')
+                assert r.returncode == 0 and [row['lab'] for row in json.loads(r.stdout)['labs']] == ['s4/tp_ssh', 'sre/dhcp.py']
+                # the processors of the hosts: none counted on an empty host, half of its 8 cores usable
+                row = await pool_row(h, lambda row: row['cpus'] == 8)
+                assert (row['mem_total_mb'], row['cpu_used'], row['cpu_capacity']) == (16000, 0.0, 4.0)
+                r = await loop.run_in_executor(None, cli, 'list')
+                assert r.stdout.splitlines()[1].split()[4:6] == ['11.7G', '0.0/4.0']
+                r = await loop.run_in_executor(None, cli, 'status')
+                assert ('load of a host: 1024 MiB of memory kept free, 50 % of its processors for the projects; '
+                        'one unit of weight: 20 MiB, 0.01 core\n') in r.stdout
+            # the stop of the portal wrote the costs: a restart finds them again
+            saved = json.loads((state.parent / 'pool-costs.json').read_text())
+            assert saved['labs']['sre/dhcp.py']['weight'] == 15 and len(saved['labs']['sre/dhcp.py']['samples']) == 3
+        run(go())
+
+    def test_capacity_resources(self, tmp_path, monkeypatch):
+        """``[pool] capacity = "resources"`` on a real portal and agent: a host whose processors
+        hold no more project takes none (503), is ``(cpu full)`` in ``list`` and named by
+        ``status``, and is no spare capacity; without the key the same host goes on by its
+        number of projects."""
+        from sreweb.agent import app as agent_app
+        monkeypatch.setattr(agent_app, '_mem_available_mb', lambda path=None: 12000)
+        monkeypatch.setattr(agent_app, '_mem_total_mb', lambda path=None: 16000)
+        monkeypatch.setattr(agent_app.os, 'cpu_count', lambda: 1)       # 0.3 core for the projects
+        pool = {**QUIET_POOL, 'cpu_target': 0.3}
+
+        async def go(directory, capacity, expected):
+            over = {'admin': {'token': ADMIN}, 'pool': {**pool, **capacity}}
+            async with P.Harness(directory, web_over=over) as h:
+                url = f"http://127.0.0.1:{h.client.port}"
+                env = {**os.environ, 'PYTHONPATH': str(SRC)}
+
+                def cli(*args):
+                    return subprocess.run([sys.executable, '-m', 'sreweb.tool', '--url', url, '--token', ADMIN,
+                                           *args], capture_output=True, text=True, env=env, timeout=120)
+                loop = asyncio.get_running_loop()
+                await h.login()
+                await pool_row(h, lambda row: row['cpus'] == 1)
+                # an empty host takes a project whatever it costs; a lab never seen: 512 MiB, 0.2 core
+                assert (await h.start())['status'] == 'created'
+                # the row is asked once a status asked after the end of the start has consumed its
+                # reservation: until then the project counts twice (the agent lists it, the
+                # reservation holds), in the number of projects and in the load
+                async with asyncio.timeout(10):
+                    while h.portal.pool._reservations['a01']:
+                        await asyncio.sleep(0.02)
+                row = await pool_row(h, lambda row: row['projects'] == 1)
+                assert row['cpu_used'] == 0.2
+                assert (row['cpu_capacity'], row['cpu_room'], row['memory_room']) == expected['rooms']
+                h.portal.routes.limiter._last.clear()
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers=P.CSRF)
+                assert resp.status == expected['second_start'], await resp.text()
+                if resp.status == 200:
+                    await resp.text()
+                r = await loop.run_in_executor(None, cli, 'status')
+                assert r.returncode == 0, r.stderr
+                assert expected['status_line'] in r.stdout.splitlines(), r.stdout
+                assert f"spare capacity: {expected['spare']} project slot(s)" in r.stdout
+                r = await loop.run_in_executor(None, cli, 'list')
+                assert ('(cpu full)' in r.stdout.splitlines()[1]) is expected['flag'], r.stdout
+        run(go(tmp_path / 'resources', {'capacity': 'resources'},
+               {'rooms': (0.3, 0, 21), 'second_start': 503, 'flag': True, 'spare': 0,
+                'status_line': 'capacity: resources (a slot: 512 MiB, 0.2 core; memory full: none; cpu full: a01)'}))
+        # the default: the processors are shown, and decide nothing
+        run(go(tmp_path / 'projects', {},
+               {'rooms': (0.3, None, None), 'second_start': 200, 'flag': False, 'spare': 1,
+                'status_line': 'capacity: projects (the number of projects of a host)'}))
+
+    def test_cost_cells(self):
+        from sreweb.portal.poolctl import table, cost_rows, cost_lines, COSTS_COLUMNS
+        rows = cost_rows([{'lab': 'a.py', 'weight': 2.5, 'containers': None, 'mem_mb': 40.04, 'cpu': 0.025,
+                           'samples': 0, 'source': 'declared'},
+                          {'lab': 'b.py', 'weight': None, 'containers': 6, 'mem_mb': 1234.5, 'cpu': 1.5,
+                           'samples': 12, 'source': 'measured'}, 'junk', {'lab': 'c.py'}])
+        out = table(rows, COSTS_COLUMNS).splitlines()
+        assert out[1].split() == ['a.py', '2.5', '-', '40M', '0.025', '0', 'declared']
+        assert out[2].split() == ['b.py', '-', '6', '1234M', '1.500', '12', 'measured']
+        assert out[3].split() == ['c.py', '-', '-', '-', '-', '-']        # an older portal: nothing invented
+        assert cost_lines({}) == ['a lab never seen, without weight: ?', 'one unit of weight: ? (nothing measured yet)',
+                                  'costs: not kept (no state file)']
+        # whatever the portal sends where a number is expected, nothing breaks the table
+        assert table(cost_rows([{'lab': 'd.py', 'weight': 'x', 'containers': 15.0, 'mem_mb': None, 'cpu': True,
+                                 'samples': 3.0, 'source': 'measured'}]), COSTS_COLUMNS).splitlines()[1].split() == \
+            ['d.py', '-', '15', '-', '-', '3', 'measured']
+        assert cost_lines({'file': '/x/pool-costs.json', 'error': 'Read-only file system'})[-1] == \
+            'costs: NOT SAVED in /x/pool-costs.json: Read-only file system'
 
     def test_local_drain_commands(self, tmp_path):
         """``sre-web-tool allow-local-drain`` / ``forbid-local-drain``, and the drain a host asked
@@ -696,12 +833,14 @@ class TestCli:
                  'error': 'down', 'source': 'config', 'max_projects': 3},
                 {'name': 'b02', 'state': 'up', 'drain': True, 'reachable': True, 'projects': 2, 'max_projects': 3,
                  'load1': 1.234, 'mem_available_mb': 12595, 'terminals': 4, 'occupied_by': ['session:bob'],
-                 'uptime': 3725, 'source': 'added'},
+                 'uptime': 3725, 'source': 'added', 'cpu_used': 3.24, 'cpu_capacity': 11.2},
                 {'name': 'c03', 'state': 'off', 'instructors_only': True, 'reachable': False, 'source': 'config',
                  'max_projects': 3, 'restart_sent': True}]
         out = table(rows).splitlines()
         assert out[1].split()[:2] == ['a01', 'waking'] and '(12s, 1 failed)' in out[1] and out[1].endswith('down')
-        assert out[2].split() == ['b02', 'up', '(drain)', '2/3', '1.23', '12.3G', '4', 'session:bob', '1h02', 'added']
+        # CPU: the cores the projects of the host are counted for / those they may use
+        assert out[2].split() == ['b02', 'up', '(drain)', '2/3', '1.23', '12.3G', '3.2/11.2', '4', 'session:bob',
+                                  '1h02', 'added']
         assert out[3].split()[:4] == ['c03', 'off', '(restart,', 'instructors)']
         # the preload of the Docker images: pulling (image 2 of 5), waiting for its turn, failed
         from sreweb.portal.poolctl import _cell

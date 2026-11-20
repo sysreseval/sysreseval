@@ -763,6 +763,81 @@ msgstr "{n} Gio"
 msgid "memory full"
 msgstr "mémoire pleine"
 
+msgid "cpu full"
+msgstr "processeurs pleins"
+
+msgid "CPU"
+msgstr "CPU"
+
+msgid "The cores the projects of the host are counted for / those they may use"
+msgstr "Les cœurs pour lesquels comptent les projets de la machine / ceux qu'ils peuvent utiliser"
+
+msgid "Lab costs"
+msgstr "Coût des TP"
+
+msgid "Weight"
+msgstr "Poids"
+
+msgid "The weight the lab declares: 1 is one plain idle container"
+msgstr "Le poids que déclare le TP : 1 est un conteneur simple au repos"
+
+msgid "Containers"
+msgstr "Conteneurs"
+
+msgid "The most containers a project of the lab had"
+msgstr "Le plus grand nombre de conteneurs qu'a eu un projet du TP"
+
+msgid "Memory"
+msgstr "Mémoire"
+
+msgid "The memory one more project of the lab is counted for"
+msgstr "La mémoire pour laquelle compte un projet de plus du TP"
+
+msgid "The cores one more project of the lab is counted for"
+msgstr "Les cœurs pour lesquels compte un projet de plus du TP"
+
+msgid "Measured projects"
+msgstr "Projets mesurés"
+
+msgid "The projects of the lab that were measured"
+msgstr "Les projets du TP qui ont été mesurés"
+
+msgid "Source"
+msgstr "Origine"
+
+msgid "Where the cost comes from: measured on the projects, the weight the lab declares, or the default"
+msgstr "D'où vient le coût : mesuré sur les projets, le poids que déclare le TP, ou la valeur par défaut"
+
+msgid "measured"
+msgstr "mesuré"
+
+msgid "declared"
+msgstr "déclaré"
+
+msgid "default"
+msgstr "par défaut"
+
+msgid "{memory} MiB, {cpu} core"
+msgstr "{memory} Mio, {cpu} cœur"
+
+msgid "{n} MiB"
+msgstr "{n} Mio"
+
+msgid "a lab never seen, without weight: {cost}"
+msgstr "un TP jamais vu, sans poids : {cost}"
+
+msgid "one unit of weight: {cost}"
+msgstr "une unité de poids : {cost}"
+
+msgid "measured on this pool: {cost}"
+msgstr "mesuré sur ce parc : {cost}"
+
+msgid "the costs are NOT saved: {error}"
+msgstr "les coûts ne sont PAS enregistrés : {error}"
+
+msgid "No lab measured or declared yet."
+msgstr "Aucun TP mesuré ni déclaré pour l'instant."
+
 msgid "Occupied by"
 msgstr "Occupée par"
 
@@ -909,6 +984,9 @@ msgstr "hors des heures actives"
 
 msgid "memory full: {names}"
 msgstr "mémoire pleine : {names}"
+
+msgid "cpu full: {names}"
+msgstr "processeurs pleins : {names}"
 
 msgid "the changes are NOT saved, a restart of the portal loses them: {error}"
 msgstr "les changements ne sont PAS enregistrés, un redémarrage du portail les perd : {error}"

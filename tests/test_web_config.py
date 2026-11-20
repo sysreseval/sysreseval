@@ -549,6 +549,35 @@ class TestWebConfig:
             with pytest.raises(ConfigError, match='project_memory_mb'):
                 web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'project_memory_mb': bad}})
 
+    def test_load_of_a_host(self):
+        """The keys of the load of a host in memory and processors: the memory kept free, the
+        share of the processors the projects may use, what a unit of weight stands for."""
+        defaults = web_config_from_dict({'secret': SECRET, 'hosts': [HOST]}).pool
+        assert (defaults.memory_reserve_mb, defaults.cpu_target, defaults.weight_memory_mb, defaults.weight_cpu) == \
+            (1024, 0.7, 5.0, 0.001)
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {
+            'memory_reserve_mb': 0, 'cpu_target': 1, 'weight_memory_mb': 24, 'weight_cpu': 0.02}}).pool
+        assert (cfg.memory_reserve_mb, cfg.cpu_target, cfg.weight_memory_mb, cfg.weight_cpu) == (0, 1, 24, 0.02)
+        for key, values in (('memory_reserve_mb', (-1, True, '1G', 1.5)),
+                            ('cpu_target', (0, -0.5, 1.01, True, '70%', float('nan'))),
+                            ('weight_memory_mb', (0, -1, True, '16', float('inf'))),
+                            ('weight_cpu', (0, -0.01, True, 'x', float('nan')))):
+            for bad in values:
+                with pytest.raises(ConfigError, match=key):
+                    web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {key: bad}})
+
+    def test_capacity(self):
+        """``capacity``: what tells how much a host holds, its number of projects (the default:
+        nothing changes for a web.toml of before) or its memory and its processors."""
+        assert web_config_from_dict({'secret': SECRET, 'hosts': [HOST]}).pool.capacity == 'projects'
+        assert config.CAPACITY_MODES == ('projects', 'resources')
+        for mode in config.CAPACITY_MODES:
+            cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'capacity': mode}})
+            assert cfg.pool.capacity == mode
+        for bad in ('Resources', 'memory', '', 1, True, None):
+            with pytest.raises(ConfigError, match='capacity must be one of projects, resources'):
+                web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'capacity': bad}})
+
     def test_active_hours(self):
         from sreweb.config import parse_active_hours, in_active_hours
         assert parse_active_hours('') is None and in_active_hours(None, 0)

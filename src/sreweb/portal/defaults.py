@@ -11,6 +11,8 @@ CONFIG = '/etc/sreweb/web.toml'
 FHS_CONFIG = '/etc/sysreseval/web.toml'
 FHS_LOCALE = '/usr/share/locale'
 FHS_STATE_DIR = '/var/lib/sre-web'
+# The costs of the labs the pool learned (portal/costs.py), kept beside its state file.
+COSTS_FILE_NAME = 'pool-costs.json'
 
 
 def root() -> Path:
@@ -27,6 +29,12 @@ def default_config_file() -> str:
 
 def default_locale_dirs() -> list:
     return [str(root() / 'locale'), FHS_LOCALE]
+
+
+def costs_file_beside(state_file: str) -> str:
+    """The file of the costs of the labs for a pool whose state file is *state_file*: in the
+    same directory; '' (not kept) without a state file."""
+    return os.path.join(os.path.dirname(os.path.abspath(state_file)), COSTS_FILE_NAME) if state_file else ''
 
 
 def default_state_file(config_file: str) -> str:

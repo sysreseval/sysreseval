@@ -4,7 +4,8 @@ from pathlib import Path
 
 from .. import params
 from ..params import SRE
-from ..utils import user_not_allowed, error_quit
+from ..utils import (user_not_allowed, error_quit, generate_default_data, offline_net_scheme,
+                     normalized_weight, declared_lab_weight)
 from ..common import TranslatedText
 from ..informations import resolve_informations, resolve_text, outline
 
@@ -133,13 +134,7 @@ def action_check():
     # ── Step 2: generate Data ─────────────────────────────────────────
     print(f"\n[ 2/{total_steps} ] Calling Data.generate() …")
     try:
-        module.Data.compute_pre_generate(None)
-        data = module.Data.generate()
-        data.compute_post_generate()
-        if data.flavor is None:
-            flavor_cls = getattr(module, 'Flavor', None)
-            if flavor_cls is not None:
-                object.__setattr__(data, 'flavor', flavor_cls())
+        data = generate_default_data(module)
     except Exception:
         _fail("Data.generate() raised an exception:")
         raise
@@ -158,13 +153,8 @@ def action_check():
 
     # ── Step 3: instantiate NetScheme ──────────────────────────────────
     print(f"\n[ 3/{total_steps} ] Instantiating NetScheme …")
-    dummy_running_lab_name = params.get_running_lab_name(
-        lab_name=lab_name,
-        instance_start_date=__import__('datetime').datetime(2000, 1, 1),
-        username="check",
-    )
     try:
-        net_scheme = module.NetScheme(data=data, running_lab_name=dummy_running_lab_name)
+        net_scheme = offline_net_scheme(module, data, lab_name)
     except Exception:
         _fail("NetScheme() raised an exception:")
         raise
@@ -172,9 +162,22 @@ def action_check():
     networks = list(net_scheme.get_networks())
     _ok(f"NetScheme instantiated — {len(machines)} machine(s), {len(networks)} network(s)")
     for m in machines:
-        print(f"         machine: {m.name}  image: {m.image}")
+        print(f"         machine: {m.name}  image: {m.image}  weight: {m.get_weight():g}")
     for n in networks:
         print(f"         network: {n.name}{_network_details(n)}")
+    # the weight of the lab, as `sre make-titles` stores it for the web portal: what the module
+    # declares, else the sum of its machines (for this Data: the default flavor)
+    summed = normalized_weight(net_scheme.get_weight())
+    try:
+        declared = declared_lab_weight(module)
+    except ValueError as exc:
+        _fail(f"weight: {exc}")
+        raise
+    if declared is None:
+        _ok(f"weight: {summed:g} ({len(machines)} machine(s))")
+    else:
+        _ok(f"weight: {declared:g} (declared by the module with {params.lab_weight_attribute}; "
+            f"its {len(machines)} machine(s) sum to {summed:g})")
     # the numbered sections / references / table of contents of the course (SRE.informations
     # markers), resolved as save_lab_info() does when it writes info.json
     default_language = getattr(module, 'default_language', 'en')

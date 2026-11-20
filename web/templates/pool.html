@@ -30,6 +30,7 @@
       <th class="sortable" data-sort="terminals">{{ _("Terminals") }}</th>
       <th class="sortable" data-sort="load1">{{ _("Load") }}</th>
       <th class="sortable" data-sort="mem_available_mb" title="{{ _("The available memory of the host") }}">{{ _("Free memory") }}</th>
+      <th class="sortable" data-sort="cpu_used" title="{{ _("The cores the projects of the host are counted for / those they may use") }}">{{ _("CPU") }}</th>
       <th class="sortable" data-sort="occupied_by">{{ _("Occupied by") }}</th>
       <th class="sortable" data-sort="uptime">{{ _("Uptime") }}</th>
       <th class="sortable" data-sort="priority" title="{{ _("group:order: the lowest group is used first, then the lowest order") }}">{{ _("Priority") }}</th>
@@ -39,7 +40,25 @@
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="14" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="15" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
+<details id="pool-costs-box" class="pool-costs">
+  <summary>{{ _("Lab costs") }}</summary>
+  <p id="pool-costs-note" class="muted"></p>
+  <table id="pool-costs" class="grid watch">
+    <thead>
+      <tr>
+        <th>{{ _("Lab") }}</th>
+        <th title="{{ _("The weight the lab declares: 1 is one plain idle container") }}">{{ _("Weight") }}</th>
+        <th title="{{ _("The most containers a project of the lab had") }}">{{ _("Containers") }}</th>
+        <th title="{{ _("The memory one more project of the lab is counted for") }}">{{ _("Memory") }}</th>
+        <th title="{{ _("The cores one more project of the lab is counted for") }}">{{ _("CPU") }}</th>
+        <th title="{{ _("The projects of the lab that were measured") }}">{{ _("Measured projects") }}</th>
+        <th title="{{ _("Where the cost comes from: measured on the projects, the weight the lab declares, or the default") }}">{{ _("Source") }}</th>
+      </tr>
+    </thead>
+    <tbody><tr><td colspan="7" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  </table>
+</details>
 {% endblock %}
 {% block scripts %}<script type="module" src="{{ base_path }}/static/js/pool.js"></script>{% endblock %}

@@ -77,7 +77,10 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
   machine an exam of the web site is about to lock, a host
   with `instructors_only = true` never for a student (an instructor may also name the host on
   the Open page); the whole rule is under *Placement* in *A pool of workstations*. A classroom
-  workstation holds about thirty projects (210 containers in 3.4 GB).
+  workstation holds about thirty projects (210 containers in 3.4 GB). The labs differ a lot,
+  though: with `[pool] capacity = "resources"` a host is judged by its free memory and its
+  processors against what a project of each lab costs, not by its number of projects (*The load
+  of a host* in *A pool of virtual machines*).
 - The lab list of the Open page comes from one host, the one a new project of the user would
   go to (every host of a pool serves the same lab tree; the next candidate is asked when it
   fails), and is kept `labs_cache_ttl` seconds (`60`) per role, since the reserved hosts are
@@ -186,6 +189,7 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30`, `report = 600` | seconds, per `sre` command (`report`: the spreadsheet / PDF reports of the Archives page, built by `sre report` on this host; `export`, the timeout of the former Kathara export, is still accepted) |
 | `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
 | `[preload]` | `at_start = false` | the Docker images of the labs pulled by the agent (`sre preload-images`) when the portal gives the host its turn (see *Pre-loading the images* below): `at_start` (the agent asks for a preload each time it starts; `sre-web-tool preload` asks by hand in any case), `paths` (the lab files and directories scanned; default: the lab directories of the installation), `timeout` (`"2h"`: a preload still running after this long is stopped) |
+| `[usage]` | `interval = "15s"` | what the running projects use, measured by the agent for the portal (*The load of a host* below): `interval` (the time between two measures; `0` = none), `docker_socket` (the socket of the Docker daemon the containers are listed on; default: the one of the host), `cgroup_root` (`/sys/fs/cgroup`: where the cgroups, version 2, of the containers are read), `meminfo` (`/proc/meminfo`: where the memory of the host is read) |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
 `import` (a path or a list of paths relative to `agent.toml`: a directory, a glob or a file)
@@ -206,7 +210,7 @@ merges other files into this one, as for `web.toml` below.
 | `[auth] administrators` | `[]` | the logins of the administrators: instructors who may read the connection log on the History page (*Administrators* below); a login that is not an instructor gets nothing. By group: `administrator_groups` / `administrator_group_filter` of `[auth.ldap]`, `administrator_groups` of `[auth.proxy]` |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); the administrator tests (*Administrators* below): `administrator_groups` (DNs, tested like `instructor_groups`) and `administrator_group_filter` (a group search under `group_search_base`, none by default); the connection: `ldaps://` or `ldap://` + `start_tls`, the server certificate always verified against the system CA store or `tls_ca` (the absolute path of a PEM file: a CA bundle, or the self-signed certificate of the server itself) and the host of the `uri` against the names of the certificate (`subjectAltName`, else the CN: name the server as its certificate does, not by address); a plain `ldap://` without `start_tls` is refused at startup unless `allow_cleartext = true` (the passwords in LDAP mode, the roles, groups and administrators in every mode would travel unprotected); `timeout`. The login attribute: `attr_login` (none = the attribute of a `search_filter` of the form `(attribute={login})`, else the RDN attribute of `bind_dn_template`); in LDAP mode the identity carries its stored value, whatever case the user typed (the directory matches `Bob` for `bob`: one user, not two), and the Groups page (*User groups* below) lists the people by it, in every mode, with `groups_filter` (`"(objectClass=posixGroup)"`: the groups listed under `group_search_base`; `""` = none), `attr_group_name` (`cn`), `attr_group_members` (`memberUid`; a value may be the login, the `uid` or the DN of a person). Also read in proxy mode with `ldap_roles` / `ldap_groups` |
 | `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `administrator_groups`: the values of the groups header making an instructor an administrator; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (the `/apache-logout` location of the Apache example; none: no Logout button) |
-| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open); `max_preloads` (`2`): the hosts pulling the Docker images of the labs at the same time (*Pre-loading the images* below; `0` = the portal lets none); `placement`: no longer used, read so that a file of 0.18 loads (`"pack"` logs a warning at the start: each host then needs its own group, *A pool of virtual machines* below); `project_memory_mb` (`0` = not checked): the memory one project may need, in MiB: a host takes no more new projects than its available memory holds of them (same section) |
+| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open); `max_preloads` (`2`): the hosts pulling the Docker images of the labs at the same time (*Pre-loading the images* below; `0` = the portal lets none); `placement`: no longer used, read so that a file of 0.18 loads (`"pack"` logs a warning at the start: each host then needs its own group, *A pool of virtual machines* below); `project_memory_mb` (`0` = not checked): the memory one project may need, in MiB: a host takes no more new projects than its available memory holds of them (same section); the load of a host in memory and processors (*The load of a host*, same section): `capacity` (`"projects"`: a host holds its `max_projects`; `"resources"`: what its free memory and its processors hold, by the cost of each lab), `memory_reserve_mb` (`1024`: the memory kept free on every host), `cpu_target` (`0.7`: the share of the processors of a host its projects may use on average), `weight_memory_mb` (`5`) and `weight_cpu` (`0.001`): what one unit of the weight a lab declares stands for, in MiB and in cores |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts of a user; a start that created no project — the flavor form shown or refused, no host available, the agent not answering — gives the slot back at once), `login_per_minute` (`5` per client address), `max_answer_bytes`; in anonymous mode `eval_interval` and `start_interval` count per client address too, since a new pseudonym costs one `POST /login` |
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: what is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained), kept across the restarts of the portal (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`; *Restarting the portal* below) |
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session); `database` (the next row) |
@@ -1270,7 +1274,11 @@ on the Open page skips the ranking: the host must exist (404), be open to them (
 student), be available to them (503 "not available") and have room (503 "full", or "not enough
 free memory" with `project_memory_mb`). The `start`
 line of the connection log says why the host was chosen: `placement=load`, `session` or
-`named`.
+`named`. With `[pool] capacity = "resources"` the two figures of this rule that count projects
+are replaced by the load of the host in memory and processors: "below their `max_projects`"
+gains "and with memory and processors for the cost of the lab", and "the lowest
+`projects / max_projects`" becomes "the least filled host"; the rest is unchanged (*The load of a
+host* in *A pool of virtual machines* below).
 
 **Waking.** A host with a `mac` gets a magic packet (UDP port 9 to `wol_broadcast`: the portal
 must be on the hosts' network, or the routers must forward the directed broadcast); a host with a
@@ -1279,7 +1287,8 @@ The portal wakes one sleeping host, the one with the lowest `priority` (the grou
 order) and in configuration order among equal ones, whenever the free project slots of
 the hosts up (plus the capacity of those waking) drop below `spare_projects`, and keeps
 `min_hosts_up` hosts awake during `active_hours`: the floor is re-established in the morning and
-not fought at night after the cron. A host still silent after `wake_timeout` is retried after 1,
+not fought at night after the cron. (With `capacity = "resources"` a free slot is room, in
+memory and in processors, for one more project like those running: *The load of a host* below.) A host still silent after `wake_timeout` is retried after 1,
 2, 4… up to 30 minutes, so a machine that is really down is not hammered. The agent must be an
 enabled systemd unit on every host (boot → agent up → the portal sees it).
 
@@ -1480,6 +1489,7 @@ portal through its administration API (`[admin] token`, loopback only by default
 ```
 sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
 sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking, the state file
+sre-web-tool costs                # what a project of each lab costs a host (memory, processors): measured, else declared by the lab
 sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only] [--priority 0:0]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
 sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them; enable also cancels a drain (the one the host asked for itself too)
@@ -1618,6 +1628,93 @@ the key) is not checked either. `sre-web-tool list` shows the free memory of eve
 MEM) and `(memory full)` after the state of a host that takes no more project for want of memory;
 `sre-web-tool status` prints `memory per project: 2048 MiB (memory full: …)`;
 the Pool page has a *Free memory* column, the flag *memory full* and the same summary.
+
+**The load of a host.** `project_memory_mb` is one figure for every lab, sized on the heaviest
+one, and nothing counts the processors: a project of thirty routing daemons and one of four idle
+machines weigh the same. `[pool] capacity = "resources"` replaces the count by three figures.
+
+- The **weight** of a lab is what the lab declares: the sum of the weights of its machines,
+  hidden ones included, 1 being one plain idle container (the `weight` of a machine, else the
+  weight of its image, `image_weights` of `params.py`; *Lab authoring*). `sre make-titles` stores
+  it in the `titles.json` of the lab directory and the lab list carries it to the portal: it is
+  known before the first start of the lab.
+- The **usage** of a running project is measured by the agent of its host (`[usage]` of
+  `agent.toml`, every 15 s): the containers of the project (one request to the Docker daemon on
+  its socket: the containers Kathara labelled), the memory of each (its working set: `memory.current`
+  less the inactive file pages, as `docker stats` shows it) and its processor time, read in its
+  cgroup (version 2). A project is *settled* once the set of its containers has not changed for
+  two minutes: the boot of the containers is left out, and its processor figure is the mean
+  number of cores it used since then. The agent also tells the processors and the memory of its
+  host, and the cores the whole host uses. A host without Docker socket or without cgroup
+  version 2 gives no figure (one warning in the journal of the agent): its labs keep their
+  declared weight.
+- The **cost** of a lab is what the portal sets aside for one more project of it, in MiB and in
+  cores. Once three projects of the lab have been measured: the 80th percentile of what its
+  last forty projects used (their memory at its highest, their mean processor use). Before
+  that: its weight by `weight_memory_mb` and `weight_cpu` (and never less than what one or two
+  measured projects used). A lab without weight that was never seen: `project_memory_mb`
+  (512 MiB when it is 0) and 0.2 core.
+
+The load of a host is then, from the last status of its agent:
+
+```
+memory free  = MemAvailable - memory_reserve_mb - the costs of the starts in flight
+cpu used     = max(the costs of the labs of its projects, the cores the host really uses)
+               + the costs of the starts in flight
+cpu capacity = its processors x cpu_target
+fill         = max(1 - memory free / (MemTotal - memory_reserve_mb), cpu used / cpu capacity)
+```
+
+A host takes a project when it is below its `max_projects`, its free memory holds the memory of
+the lab and its processors the cores of the lab; **a host without project always takes one** (a
+lab larger than every host still starts, and an idle pool never refuses more than the count
+did). The hosts of a group are ranked by their `fill` in place of `projects / max_projects`, a
+host without project counting for 0, so that the order of the priorities still tells the empty
+hosts apart. The memory is the one the host really has left: it sees everything that runs there,
+and the cost of a lab only stands for the starts in flight, whose containers do not show yet.
+The processors are counted, not read: the mean use of a lab says what its projects will need,
+where the reading of one instant says what they do now; the cores the host really uses are a
+floor, for what no project accounts for (the Docker daemon, a container gone wild). `cpu_target`
+below 1 leaves room for the bursts: the starts, the evaluations. A host named by an instructor
+is refused with 503 "not enough free memory" or "not enough free processor time". A host whose
+agent does not tell its size (older than these figures) is judged by its number of projects, as
+before, in the same pool.
+
+The elastic pool counts the same thing: a free slot is room for one more **reference project**,
+the mean cost of the projects running now on the hosts the students use (the default cost
+without any), and never more than `max_projects` leaves; `spare_projects` therefore keeps its
+meaning, "room for that many more projects like those running". A host whose memory or
+processors hold no such project is *memory full* / *cpu full* in `sre-web-tool list` and on the
+Pool page, and counts for no spare capacity; it may still take a lighter project.
+
+The measures, the costs and their display do not wait for the key: they are on in both modes.
+`sre-web-tool costs` and the *Lab costs* box of the Pool page list every lab the pool heard of
+with its declared weight, the containers its projects had, its cost and where it comes from
+(`measured`, `declared`, `default`); `sre-web-tool list` and the Pool page have a CPU column
+(the cores the projects of the host are counted for / those they may use). So: leave
+`capacity = "projects"`, let a few classes run, read the costs, set `weight_memory_mb` and
+`weight_cpu` from the line `one unit of weight: … (measured on this pool: …)`, then switch. The
+costs are kept in `pool-costs.json` beside the state file of the pool (a cache: written at most
+once a minute and when the portal stops; lost, they are learned again). On a real host,
+`docker stats --no-stream $(docker ps -q --filter label=lab_hash=<the lab_hash of info.json>)`
+gives the figures of one project to compare with the `usage` of `GET /v1/status` of its agent.
+
+For the order of magnitude, on a classroom workstation (12 processors, 16 GB; sixteen projects
+of fourteen labs on the Debian 13 images, 187 containers, nobody typing, the periodic
+evaluations running): a plain container idles at 1 to 3 MiB, an FRR router at 26 to 31 MiB, a
+machine running systemd and a service at 20 to 50 MiB; at its highest a lab of 23 plain machines
+used 35 MiB, one of 35 routers 598 MiB, an MPLS lab of 25 machines 527 MiB, a Prometheus lab of
+6 machines 306 MiB, an AAA lab of 13 machines 587 MiB, and none more than 0.04 core on average,
+the whole host 0.5 core. Memory is what fills a host; the processors matter while containers
+boot (eight service labs started within ninety seconds took 6.8 cores for a moment, which the
+host-wide measure counts at once: the host was then at 81 % of its processor budget) and for
+the labs that really compute. Per unit of weight the labs used 3.9 MiB and 0.0003 core: the
+defaults of `weight_memory_mb` and `weight_cpu` add a margin, and `image_weights` was set so
+that the declared cost of those labs lands within a factor of two of what they used, for most
+of them. Listing the 187 containers took 16 ms and reading their cgroups as much; the agent
+itself used 50 MB and 0.8 % of a processor (a measure every 5 s). With the memory reserve
+raised to leave little room, the host took two more projects of the 35-router lab, refused the
+third (503), and still took a small one.
 
 **On the server.** Create only as many agent machines as the memory of the server holds while
 they all run (keep memory for the hypervisor and, with ZFS, its cache): the pool would otherwise
@@ -1889,12 +1986,14 @@ What an instructor gets:
   for a class.
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
-  projects and terminals, its load, its free memory, who occupies it, its uptime, its priority
+  projects and terminals, its load, its free memory, the cores its projects are counted for
+  and those they may use (*CPU*; *The load of a host* above), who occupies it, its uptime, its priority
   (`group:order`, *Priorities* above: the lowest is used first), its flags (reserved for
   instructors, power, drain, *local drain* for a drain the host asked for itself and *local drain
   allowed* for a host that may ask for one (*local drain forbidden* when it was forbidden from
   this page; *A drain asked on the host* above), power off sent, restart sent, memory full (`project_memory_mb`,
-  *A pool of virtual machines* above), and where the preload of the Docker
+  *A pool of virtual machines* above; with `capacity = "resources"`: *memory full* / *cpu full*
+  for a host whose memory or processors hold no more project like those running), and where the preload of the Docker
   images is: *preload queued*, *preloading 2/5* with the image as tooltip, *preload failed* with
   the error), the agent's version and its last error, the line
   of `sre-web-tool status` above the table (in red, with the reason, when the state file of the
@@ -2428,6 +2527,14 @@ administrators`), so that an instructor among them (`X-Remote-Gid: 2000`) can ex
 History page; its Sessions view lists the open sessions without any database.
 `--base-path /sre` gives the portal that `base_path` (*Under a sub-path*): the URL printed and
 exported carries it, and the stress generator runs under it as it is.
+`--usage` gives every fake host a fake Docker daemon (`tests/fake_docker.py`): each project
+gets the containers of its lab, which use memory and processor time (`MOCK_USAGE`, JSON
+`{lab: [containers, MiB, cores]}`; 4 containers, 60 MiB and 0.02 core otherwise), and the host a
+memory of `--host-memory-mb` (16384) that fills with them; its agent measures them as on a real
+host, so the portal learns the costs of the labs (three minutes after their start: the time a
+project takes to settle, then a minute of measure). `--capacity resources` sets that key of the
+portal, and `MOCK_LAB_WEIGHTS` (JSON `{lab: weight}`) gives the labs the weight `sre make-titles`
+would store: the load model runs whole without a container, on any machine.
 
 ### Stage 2: the production pool
 

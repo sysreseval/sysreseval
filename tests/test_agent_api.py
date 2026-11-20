@@ -185,6 +185,80 @@ class TestOccupancyAndPower:
                 assert (await h.client.post('/v1/power/off', headers=headers())).status == 403
         run(go())
 
+    def test_usage_of_the_projects(self, tmp_path, short_dir, monkeypatch):
+        """The status tells the size of the host and what each of its projects uses (the
+        containers of the fake Docker daemon carrying the ``lab_hash`` of the project), the
+        project of the Qt GUI like the others."""
+        import hashlib
+        from fake_docker import FakeDocker, MIB
+        from sreweb.agent import app as agent_app, usage
+        from test_agent_exam import start_by_hand
+        monkeypatch.setattr(agent_app, '_mem_total_mb', lambda path=None: 16000)
+        monkeypatch.setattr(agent_app.os, 'cpu_count', lambda: 8)
+
+        async def go():
+            async with FakeDocker(short_dir) as docker:
+                # interval 0: no task, the test measures when it wants
+                async with Harness(tmp_path, usage=docker.config(interval=0)) as h:
+                    assert h.agent.usage.docker_socket == docker.socket and not h.agent.usage.enabled
+                    st = await (await h.client.get('/v1/status', headers=headers())).json()
+                    assert (st['cpus'], st['mem_total_mb'], st['cpu_busy'], st['usage']) == (8, 16000, None, [])
+                    web = await h.started()
+                    local = start_by_hand(h, lab='s4/tp_ssh', login='bob')
+                    await h.agent.registry.tick()
+                    for rln, mem in ((web, 40), (local, 25)):
+                        lab_hash = hashlib.md5(rln.encode()).hexdigest()    # what the fake sre writes in info.json
+                        docker.add(lab_hash, mem=mem * MIB)
+                        docker.add(lab_hash, mem=10 * MIB)
+                    docker.host_cpu(0)
+                    await h.agent.usage.sample()
+                    clock = h.agent.usage.clock
+                    monkeypatch.setattr(h.agent.usage, 'clock', lambda: clock() + usage.SETTLE_AFTER)
+                    docker.host_cpu(int(usage.SETTLE_AFTER * 1.5e6))
+                    await h.agent.usage.sample()
+                    st = await (await h.client.get('/v1/status', headers=headers())).json()
+                    assert st['cpu_busy'] == pytest.approx(1.5, rel=0.01)
+                    assert {row['name']: row for row in st['usage']} == {
+                        web: {'name': web, 'lab': 'sre@dhcp.py', 'containers': 2, 'mem_mb': 50.0, 'cpu': None,
+                              'settled': True},
+                        local: {'name': local, 'lab': 's4@tp_ssh', 'containers': 2, 'mem_mb': 35.0, 'cpu': None,
+                                'settled': True}}
+        run(go())
+
+    def test_memory_of_the_host_from_the_meminfo_file(self, tmp_path):
+        """``[usage] meminfo``: the file the memory of the host is read from (``/proc/meminfo``
+        by default; the fake pool gives each fake host its own): MemTotal and MemAvailable in
+        MiB, nothing when it cannot be read."""
+        meminfo = tmp_path / 'meminfo'
+        meminfo.write_text("MemTotal:       16384000 kB\nMemFree:          100 kB\nMemAvailable:   12288000 kB\n")
+
+        async def go():
+            async with Harness(tmp_path, usage={'meminfo': str(meminfo)}) as h:
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert (st['mem_total_mb'], st['mem_available_mb']) == (16000, 12000)
+                meminfo.write_text("MemTotal: 16384000 kB\nMemAvailable: 1024 kB\n")
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert (st['mem_total_mb'], st['mem_available_mb']) == (16000, 1)        # read at every status
+                meminfo.unlink()
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert (st['mem_total_mb'], st['mem_available_mb']) == (None, None)
+        run(go())
+
+    def test_no_usage_measured_by_an_agent_that_is_not_the_one_of_the_machine(self, tmp_path):
+        """An agent given its own projects directory (every test, the fake pool) never asks the
+        Docker daemon of the workstation: its status lists its projects, without figures."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                assert h.agent.usage.docker_socket == '' and not h.agent.usage.enabled
+                assert h.agent.usage._task is None
+                rln = await h.started()
+                await h.agent.usage.sample()                # even asked by hand: nothing to ask
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['cpu_busy'] is None and isinstance(st['cpus'], int)
+                assert st['usage'] == [{'name': rln, 'lab': 'sre@dhcp.py', 'containers': None, 'mem_mb': None,
+                                        'cpu': None, 'settled': False}]
+        run(go())
+
     def test_users_in_the_qt_gui(self, tmp_path, monkeypatch):
         """The status names the users with a running Qt GUI on the machine (the Clients view of
         the Watch page).  An agent given its own projects directory, as every test and the fake

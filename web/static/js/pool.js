@@ -1,8 +1,10 @@
 // The Pool page of the instructors: every host of the pool (GET /api/pool and /api/pool/status
 // every 5 s), one row per host with its state as `sre-web-tool list` shows it (the seconds and
 // the failed attempts of a wake), its projects, terminals, load, free memory, who occupies it, its
-// uptime, its flags (reserved for instructors, power, drain, power off sent, restart sent, memory
-// full with [pool] project_memory_mb, and where the
+// uptime, the cores its projects are counted for and those they may use (CPU), its flags
+// (reserved for instructors, power, drain, power off sent, restart sent, memory
+// full with [pool] project_memory_mb, memory full / cpu full with [pool] capacity =
+// "resources", and where the
 // preload of the Docker images is: queued, preloading 2/5, failed), the agent's version and
 // its last error, and the summary of `sre-web-tool status` above the table.  The rows can be
 // sorted by any column and filtered by host name.  The buttons are the commands of the tool (Enable /
@@ -20,7 +22,9 @@
 // lowest host is woken first, the highest one is powered off first when idle; `sre-web-tool
 // priority`): its value opens a dialog to change the two numbers, and Priority… of the bar sets
 // the group, the order or both on every selected host (POST /api/pool/hosts/{name}/priority
-// with {priority: "group:order"}).
+// with {priority: "group:order"}).  Under the table, the folded Lab costs box lists what a
+// project of each lab is counted for on a host (GET /api/pool/costs, asked while it is open):
+// measured on the running projects, else from the weight the lab declares.
 
 import './base.js';
 import * as api from './api.js';
@@ -31,7 +35,7 @@ import {el, clear, toast} from './ui.js';
 const REFRESH_INTERVAL = 5000;
 const ERROR_WIDTH = 60;        // the Last error cell (the whole text in its tooltip), as the tool
 const STATE_ORDER = ['up', 'occupied', 'exam', 'draining', 'waking', 'off', 'disabled'];   // the sort of the State column
-const NUMERIC = ['projects', 'terminals', 'load1', 'mem_available_mb', 'uptime'];   // sorted descending first
+const NUMERIC = ['projects', 'terminals', 'load1', 'mem_available_mb', 'cpu_used', 'uptime'];   // sorted descending first
 // the group and the order of a priority: integers from -9999 to 9999 (config.PRIORITY_LIMIT of the portal)
 const PRIORITY_LIMIT = 9999;
 
@@ -43,6 +47,9 @@ const statusElement = document.getElementById('pool-status');
 const selectAll = document.getElementById('pool-select-all');
 const selectedElement = document.getElementById('pool-selected');
 const bulkButtons = Array.from(document.querySelectorAll('#pool-selection button[data-action]'));
+const costsBox = document.getElementById('pool-costs-box');
+const costsBody = document.querySelector('#pool-costs tbody');
+const costsNote = document.getElementById('pool-costs-note');
 const pending = new Map();     // host name -> the action in progress: its buttons stay disabled across re-renders
 const selected = new Set();    // the names of the selected hosts, kept across re-renders
 
@@ -109,6 +116,10 @@ function flagsText(row) {
     // [pool] project_memory_mb: the free memory of the host holds no new project
     flags.push(_('memory full'));
   }
+  if (row.cpu_room === 0 && row.reachable) {
+    // [pool] capacity = "resources": the processors of the host hold no new project
+    flags.push(_('cpu full'));
+  }
   const preload = preloadFlag(row);
   if (preload) {
     flags.push(preload);
@@ -162,6 +173,13 @@ function memoryText(row) {   // 12.3 GiB: the MemAvailable of the host (an older
     ? format(_('{n} GiB'), {n: (row.mem_available_mb / 1024).toFixed(1)}) : '';
 }
 
+// 3.2 / 11.2: the cores the projects of the host are counted for, and those they may use (an
+// older agent, or an older portal, says nothing)
+function cpuText(row) {
+  return row.reachable && isNumber(row.cpu_used) && isNumber(row.cpu_capacity)
+    ? `${row.cpu_used.toFixed(1)} / ${row.cpu_capacity.toFixed(1)}` : '';
+}
+
 function uptimeText(seconds) {   // 1h02, as the tool
   if (!isNumber(seconds)) {
     return '';
@@ -198,6 +216,7 @@ function sortValue(row, key) {
     case 'terminals': return row.reachable ? Number(row.terminals) || 0 : -1;
     case 'load1': return isNumber(row.load1) ? row.load1 : -1;
     case 'mem_available_mb': return row.reachable && isNumber(row.mem_available_mb) ? row.mem_available_mb : -1;
+    case 'cpu_used': return row.reachable && isNumber(row.cpu_used) ? row.cpu_used : -1;
     case 'uptime': return isNumber(row.uptime) ? row.uptime : -1;
     case 'occupied_by': return (row.occupied_by || []).join(',');
     case 'priority': {      // the group, then the order: one number
@@ -581,6 +600,9 @@ function renderStatus() {
   if (Array.isArray(s.memory_full) && s.memory_full.length) {
     pieces.push(format(_('memory full: {names}'), {names: s.memory_full.join(', ')}));
   }
+  if (Array.isArray(s.cpu_full) && s.cpu_full.length) {
+    pieces.push(format(_('cpu full: {names}'), {names: s.cpu_full.join(', ')}));
+  }
   // the preloads of the Docker images, when there is something to say
   const preloading = Array.isArray(s.preloading) ? s.preloading.length : 0;
   if (isNumber(s.max_preloads) && (preloading || s.preload_queued || s.preload_failed)) {
@@ -630,6 +652,7 @@ function renderRow(row) {
     el('td', {class: 'num'}, row.reachable ? String(row.terminals) : ''),
     el('td', {class: 'num'}, isNumber(row.load1) ? row.load1.toFixed(2) : ''),
     el('td', {class: 'num memory'}, memoryText(row)),
+    el('td', {class: 'num cpu'}, cpuText(row)),
     el('td', {}, (row.occupied_by || []).join(', ')),
     el('td', {class: 'num'}, uptimeText(row.uptime)),
     priorityCell(row),
@@ -639,7 +662,64 @@ function renderRow(row) {
     el('td', {class: 'actions'}, ...actions(row)));
 }
 
+// where the cost of a lab comes from, translated (the map is built here, as stateLabel)
+function sourceLabel(raw) {
+  const labels = {measured: _('measured'), declared: _('declared'), 'default': _('default')};
+  return Object.hasOwn(labels, raw) ? labels[raw] : String(raw || '');
+}
+
+function costPair(value) {   // "16 MiB, 0.005 core"
+  return value && isNumber(value.mem_mb) && isNumber(value.cpu)
+    ? format(_('{memory} MiB, {cpu} core'), {memory: value.mem_mb, cpu: value.cpu}) : '?';
+}
+
+// the Lab costs box: one row per lab the pool heard of, and above the table what a lab never
+// seen costs and what one unit of weight stands for
+function renderCosts(costs) {
+  clear(costsBody);
+  const pieces = [format(_('a lab never seen, without weight: {cost}'), {cost: costPair(costs.default)}),
+                  format(_('one unit of weight: {cost}'), {cost: costPair(costs.weight_unit)})];
+  if (costs.measured_unit) {
+    pieces.push(format(_('measured on this pool: {cost}'), {cost: costPair(costs.measured_unit)}));
+  }
+  if (typeof costs.error === 'string' && costs.error !== '') {
+    pieces.push(format(_('the costs are NOT saved: {error}'), {error: costs.error}));
+  }
+  costsNote.textContent = pieces.join(' — ');
+  const labs = Array.isArray(costs.labs) ? costs.labs : [];
+  if (!labs.length) {
+    costsBody.append(el('tr', {}, el('td', {colspan: 7, class: 'muted'}, _('No lab measured or declared yet.'))));
+    return;
+  }
+  for (const lab of labs) {
+    const title = i18n.resolveText(lab.title) || '';
+    costsBody.append(el('tr', {dataset: {lab: lab.lab}},
+      el('td', {title}, lab.lab || ''),
+      el('td', {class: 'num'}, isNumber(lab.weight) ? String(lab.weight) : ''),
+      el('td', {class: 'num'}, isNumber(lab.containers) ? String(lab.containers) : ''),
+      el('td', {class: 'num'}, isNumber(lab.mem_mb) ? format(_('{n} MiB'), {n: Math.round(lab.mem_mb)}) : ''),
+      el('td', {class: 'num'}, isNumber(lab.cpu) ? lab.cpu.toFixed(3) : ''),
+      el('td', {class: 'num'}, isNumber(lab.samples) ? String(lab.samples) : ''),
+      el('td', {class: `source ${lab.source || ''}`}, sourceLabel(lab.source))));
+  }
+}
+
+// asked only while the box is open: at its opening, then with every poll of the page
+async function refreshCosts() {
+  if (!costsBox.open) {
+    return;
+  }
+  try {
+    const costs = await api.get('/api/pool/costs');
+    renderCosts(costs && typeof costs === 'object' ? costs : {});
+  } catch (e) {
+    clear(costsBody);
+    costsBody.append(el('tr', {}, el('td', {colspan: 7, class: 'error'}, e.message)));
+  }
+}
+
 async function refresh() {
+  refreshCosts();
   let rows;
   let status;
   try {
@@ -690,6 +770,7 @@ function setupControls() {
   for (const button of bulkButtons) {
     button.addEventListener('click', () => actMany(button.dataset.action));
   }
+  costsBox.addEventListener('toggle', refreshCosts);
 }
 
 async function main() {

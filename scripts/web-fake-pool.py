@@ -16,6 +16,14 @@ Every ``MOCK_*`` variable of the environment reaches the fake ``sre`` (the wrapp
 the delays: the agents build the environment of ``sre`` from scratch), e.g. ``MOCK_NO_MARK=1`` for
 the letters of a self-evaluation or ``MOCK_EVAL_ERRORS`` for errors on the Watch page.
 
+``--usage`` gives every fake host a fake Docker daemon (``tests/fake_docker.py``): each project
+gets the containers of its lab, which use memory and processor time (``MOCK_USAGE``: JSON
+``{lab: [containers, MiB, cores]}``), and the host a memory that fills with them; its agent
+measures them as on a real host (``[usage]`` of its agent.toml), so that the portal learns the
+cost of the labs.  ``--capacity resources`` makes the portal place the projects by that load
+(with ``MOCK_LAB_WEIGHTS``, JSON ``{lab: weight}``, the labs declare a weight as `sre make-titles`
+stores it).
+
     venv/bin/python3 scripts/web-fake-pool.py --hosts 4 -- \\
         venv/bin/python3 scripts/web-stress.py --users 100 --ramp 60 --hold 120 --instructor --probe
 """
@@ -39,6 +47,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MOCK_SRE = ROOT / 'tests' / 'mock_sre.py'
+FAKE_DOCKER = ROOT / 'tests' / 'fake_docker.py'
+ENV_USAGE = 'MOCK_USAGE'           # --usage: {lab: [containers, MiB, cores]} of a project of each lab
 ENV_PORTAL = 'SRE_STRESS_PORTAL'
 ENV_ADMIN_TOKEN = 'SRE_STRESS_ADMIN_TOKEN'
 ENV_WORKDIR = 'SRE_STRESS_WORKDIR'
@@ -69,6 +79,9 @@ class PoolOptions:
     max_preloads: int | None = None    # [pool] max_preloads of the portal (None: its default)
     project_memory_mb: int = 0         # [pool] project_memory_mb of the portal (0: the memory not checked)
     base_path: str = ''                # base_path of the portal ('/sre': the site under a sub-path; '': the root)
+    usage: bool = False                # a fake Docker daemon per host: the projects use memory and processors
+    capacity: str = ''                 # [pool] capacity of the portal ('': its default, the number of projects)
+    host_memory_mb: int = 16384        # --usage: the memory of every fake host
     command: list = field(default_factory=list)
 
     @property
@@ -86,6 +99,7 @@ class FakeHost:
     dir: Path
     port: int
     token: str
+    docker_dir: Path | None = None     # --usage: the socket, the cgroups and the meminfo of its fake Docker daemon
 
     @property
     def url(self) -> str:
@@ -136,7 +150,8 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
             f'max_concurrent_evals = {opts.max_concurrent_evals}\n'
             'close_projects_on_stop = "never"\n'
             'shutdown_timeout = 5\n'
-            + (Path(opts.extra_agent_config).read_text() + '\n' if opts.extra_agent_config else ''))
+            + (Path(opts.extra_agent_config).read_text() + '\n' if opts.extra_agent_config else '')
+            + usage_table(host, opts))
         hosts.append(host)
     admin_token = secrets.token_hex(16)
     limits = ''
@@ -160,6 +175,7 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
         f'[pool]\npoll_interval = {opts.poll_interval}\nactive_hours = ""\n'
         + (f'max_preloads = {opts.max_preloads}\n' if opts.max_preloads is not None else '')
         + (f'project_memory_mb = {opts.project_memory_mb}\n' if opts.project_memory_mb else '')
+        + (f'capacity = {toml_str(opts.capacity)}\n' if opts.capacity else '')
         + f'[admin]\ntoken = {toml_str(admin_token)}\nstate_file = {toml_str(str(workdir / "pool.json"))}\n'
         f'[access_log]\nfile = {toml_str(str(workdir / "access.log"))}\njournal = false\n'
         + limits
@@ -172,8 +188,53 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
                      portal_url=f"http://{opts.host}:{opts.port}{opts.base_path}")
 
 
+def usage_table(host: FakeHost, opts: PoolOptions) -> str:
+    """``--usage``: the ``[usage]`` table of the agent.toml of *host*, measuring its fake Docker
+    daemon; the directory of that daemon is made here, short (a unix socket path is limited)."""
+    if not opts.usage:
+        return ''
+    host.docker_dir = Path(tempfile.mkdtemp(prefix='sre-fd-', dir='/tmp'))
+    return ('[usage]\ninterval = 2\n'
+            f'docker_socket = {toml_str(str(host.docker_dir / "docker.sock"))}\n'
+            f'cgroup_root = {toml_str(str(host.docker_dir / "cgroup"))}\n'
+            f'meminfo = {toml_str(str(host.docker_dir / "meminfo"))}\n')
+
+
 def daemon_env() -> dict:
     return {**os.environ, 'PYTHONPATH': str(ROOT / 'src')}
+
+
+def start_fake_dockers(files: PoolFiles, opts: PoolOptions) -> dict:
+    """``--usage``: one fake Docker daemon per host (``tests/fake_docker.py``), following the
+    projects directory of its agent; ``{name: process}``."""
+    procs = {}
+    for host in files.hosts:
+        if host.docker_dir is None:
+            continue
+        log = open(host.dir / 'docker.log', 'ab')
+        argv = [sys.executable, str(FAKE_DOCKER), '--dir', str(host.docker_dir),
+                '--follow', str(host.dir / 'pub' / 'projects'), '--usage', os.environ.get(ENV_USAGE) or '{}',
+                '--mem-total-mb', str(opts.host_memory_mb)]
+        procs[f'{host.name}-docker'] = subprocess.Popen(argv, env=daemon_env(), stdout=log, stderr=subprocess.STDOUT,
+                                                        stdin=subprocess.DEVNULL, cwd=str(ROOT))
+        log.close()
+    return procs
+
+
+def wait_fake_dockers(files: PoolFiles, procs: list, timeout: float = READY_TIMEOUT) -> str:
+    """Until every fake Docker daemon has its socket and its meminfo; '' or why not."""
+    deadline = time.monotonic() + timeout
+    while True:
+        waiting = [h.name for h in files.hosts if h.docker_dir is not None
+                   and not ((h.docker_dir / 'docker.sock').exists() and (h.docker_dir / 'meminfo').exists())]
+        if not waiting:
+            return ''
+        for name, proc in procs:
+            if proc.poll() is not None:
+                return f"{name} exited with status {proc.returncode}"
+        if time.monotonic() > deadline:
+            return f"the fake Docker daemon of {', '.join(waiting)} is not ready after {timeout:.0f} s"
+        time.sleep(0.1)
 
 
 def start_agents(files: PoolFiles, opts: PoolOptions) -> dict:
@@ -199,8 +260,13 @@ def start_portal(files: PoolFiles, opts: PoolOptions) -> subprocess.Popen:
 
 
 def log_file(files: PoolFiles, name: str) -> Path:
-    """The log of a daemon: ``portal.log``, or ``<host>/agent.log``."""
-    return files.workdir / 'portal.log' if name == 'portal' else files.workdir / name / 'agent.log'
+    """The log of a daemon: ``portal.log``, ``<host>/agent.log``, or ``<host>/docker.log`` for
+    the fake Docker daemon ``<host>-docker``."""
+    if name == 'portal':
+        return files.workdir / 'portal.log'
+    if name.endswith('-docker'):
+        return files.workdir / name.removesuffix('-docker') / 'docker.log'
+    return files.workdir / name / 'agent.log'
 
 
 def log_tail(path: Path, lines: int = LOG_TAIL_LINES) -> str:
@@ -330,6 +396,13 @@ def parse_args(argv=None) -> PoolOptions:
     p.add_argument('--project-memory-mb', type=int, default=0, metavar='MIB',
                    help="[pool] project_memory_mb of the portal (0: the memory is not checked); the fake agents "
                         "all report the available memory of this machine")
+    p.add_argument('--usage', action='store_true',
+                   help="a fake Docker daemon per host: every project gets containers that use memory and "
+                        "processor time (MOCK_USAGE: JSON {lab: [containers, MiB, cores]}), measured by its agent")
+    p.add_argument('--capacity', default='', choices=('', 'projects', 'resources'),
+                   help="[pool] capacity of the portal (its default: projects); resources needs --usage")
+    p.add_argument('--host-memory-mb', type=int, default=16384, metavar='MIB',
+                   help="with --usage: the memory of every fake host (16384)")
     p.add_argument('--base-path', default='', metavar='PATH',
                    help="base_path of the portal: the site served under this sub-path (/my-sre-server) instead of "
                         "the root; the portal URL printed and exported carries it")
@@ -349,6 +422,7 @@ def parse_args(argv=None) -> PoolOptions:
                        extra_web_config=a.extra_web_config, extra_agent_config=a.extra_agent_config,
                        max_preloads=a.max_preloads, project_memory_mb=a.project_memory_mb,
                        base_path='/' + a.base_path.strip('/') if a.base_path.strip('/') else '',
+                       usage=a.usage, capacity=a.capacity, host_memory_mb=a.host_memory_mb,
                        command=command)
 
 
@@ -362,9 +436,11 @@ def main(argv=None) -> int:
     status = 0
     failure = ''
     try:
-        agents = start_agents(files, opts)
+        procs.extend(start_fake_dockers(files, opts).items())
+        failure = wait_fake_dockers(files, procs)
+        agents = start_agents(files, opts) if not failure else {}
         procs.extend(agents.items())
-        for host in files.hosts:
+        for host in files.hosts if not failure else ():
             failure = wait_http(f"{host.url}/v1/status", {'Authorization': f"Bearer {host.token}"},
                                 lambda s, b: s == 200, READY_TIMEOUT, procs)
             if failure:
@@ -390,6 +466,9 @@ def main(argv=None) -> int:
         # log says why, e.g. the port of an agent already in use
         dead = [name for name, proc in procs if proc.poll() is not None] if failure else []
         stop_all(procs)
+        for host in files.hosts:        # the sockets and cgroup trees of the fake Docker daemons
+            if host.docker_dir is not None:
+                shutil.rmtree(host.docker_dir, ignore_errors=True)
         if failure:
             print(f"web-fake-pool: {failure}; logs kept in {files.workdir}", file=sys.stderr)
             for name in dead:

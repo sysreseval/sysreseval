@@ -40,7 +40,7 @@ from . import params
 from .form_spec import FIELD_RE as _FORM_SPEC_FIELD_RE, form_fields as _form_fields
 from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoMachine, InfoLab, InfoInterface,
                      InfoSwitch, TranslatedText, _tt_hash_str)
-from .utils import log_error, error_quit, log_debug
+from .utils import log_error, error_quit, log_debug, normalized_weight
 from .instructor_text import instructor, set_instructor_context, strip_instructor
 from .informations import resolve_informations, resolve_text, info_subtitle, info_tag, info_ref, info_toc  # noqa: F401 (the info_* functions are re-exported for the labs)
 from .operations_log import OperationsLog, format_grade, format_total
@@ -1010,6 +1010,13 @@ class NetScheme0:
     def has_privileged_machines(self):
         return any(m.privileged for m in self.get_machines())
 
+    def get_weight(self):
+        """The weight of the lab as its machines give it: the sum of their weights
+        (``Machine.get_weight``), the hidden ones included (they are containers like the
+        others); a machine reachable under two attributes counts once."""
+        machines = {id(m): m for m in self.get_machines()}
+        return sum(m.get_weight() for m in machines.values())
+
     def get_accessible_machine_names(self):
         return [m.name for m in self.get_machines()
                 if not m.hidden and m.allow_connection]
@@ -1557,6 +1564,14 @@ class Machine:
     * ``sysctls``: iterable of ``"net.<key>=<value>"`` strings (a dict is iterated over its
       keys, so ``{"net.ipv6.conf.all.accept_ra=2": True}`` works; a ``{name: value}`` dict is
       rejected by Kathara).  They are merged after Kathara's own defaults and win.
+
+    Load:
+
+    * ``weight``: what the machine weighs in the load of its project on a host, 1 being one
+      plain idle container (``get_weight()``: ``None``, the default, takes the weight of the
+      image in ``params.image_weights``, else ``params.default_machine_weight``).  A number, 0
+      or more: ``ValueError`` otherwise.  It limits nothing (``mem`` and ``cpus`` are the
+      limits Kathara knows); it only feeds the weight of the lab, ``NetScheme0.get_weight()``.
     """
 
     def __init__(self, name, image=params.default_docker_image, bridged=False, x11_host=False, mem="",
@@ -1571,11 +1586,15 @@ class Machine:
                  hidden=False,
                  allow_connection=True,
                  color=None,
-                 shape=None):
+                 shape=None,
+                 weight=None):
         if ports is None:
             ports = []
         if not isinstance(name, str) or not MACHINE_NAME_RE.fullmatch(name):
             raise ValueError(f"invalid machine name {name!r}: Kathara device names are {MACHINE_NAME_RULE}")
+        if weight is not None and normalized_weight(weight) is None:
+            raise ValueError(f"machine {name!r}: invalid weight {weight!r}: a number, 0 or more, is expected")
+        self.weight = weight
         self.name = name
         self.image = image
         self.bridged = bridged
@@ -1621,6 +1640,14 @@ class Machine:
 
         if not self.bridged and len(self.ports) > 0:
             error_quit("To add ports in a machine, you need to activate bridged mode")
+
+    def get_weight(self):
+        """The weight of the machine: the ``weight`` of its spec, else the weight of its image
+        (``params.image_weights``, by short name), else ``params.default_machine_weight``."""
+        if self.weight is not None:
+            return self.weight
+        return params.image_weights.get(params.docker_image_short_name(self.image),
+                                        params.default_machine_weight)
 
 
 def build_exetests_string(cmds) -> str:

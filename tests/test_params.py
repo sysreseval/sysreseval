@@ -205,6 +205,33 @@ class TestDockerImages:
         assert params.sre_docker_image('init13') == f'{params.sre_docker_namespace}/init13:1.34'
         assert params.sre_docker_image() == f'{params.sre_docker_namespace}/base13:1.34'
 
+    @pytest.mark.parametrize('image, short', [
+        ('sysreseval/routing-frr:1.34', 'routing-frr'),
+        ('routing-frr', 'routing-frr'),
+        ('debian:13', 'debian'),
+        ('registry:5000/sysreseval/init13:1.34', 'init13'),
+        ('registry:5000/sysreseval/init13', 'init13'),
+        ('ghcr.io/site/monitoring@sha256:0123abcd', 'monitoring'),
+        ('ghcr.io/site/monitoring:2@sha256:0123abcd', 'monitoring'),
+    ])
+    def test_short_name(self, image, short):
+        """The key of `image_weights`: the image without registry, namespace, tag and digest."""
+        assert params.docker_image_short_name(image) == short
+
+    def test_short_name_of_the_images_of_the_labs(self):
+        assert params.docker_image_short_name(params.sre_docker_image('ldap-mail')) == 'ldap-mail'
+        assert params.docker_image_short_name(params.default_docker_image) == 'base13'
+
+    def test_the_weights_name_images_of_the_tree(self):
+        """Every image `image_weights` names is one of images/ (a renamed image would silently
+        weigh `default_machine_weight`), with a weight that is one."""
+        if not IMAGES_DIR.is_dir():
+            pytest.skip(f"no {IMAGES_DIR} in this tree")
+        for name, weight in params.image_weights.items():
+            assert (IMAGES_DIR / name / 'Dockerfile').is_file(), name
+            assert not isinstance(weight, bool) and isinstance(weight, (int, float)) and weight >= 0, name
+        assert params.default_machine_weight >= 0
+
     def test_params_follow_the_images_makefile(self):
         """`make images` copies the versions of images/Makefile into params.py: `VERSION` and the
         `VERSION_<image>` lines, each naming an image of images/."""

@@ -1,5 +1,7 @@
+import contextlib
 import importlib
 import json
+import math
 import os
 import shutil
 import sys
@@ -199,6 +201,70 @@ def set_lab_dir_and_import_module(start_projet=False, lab_cli_arg=None, path=Non
     return module, lab_name, running_lab_name, current_srelab_file
 
 
+def generate_default_data(module):
+    """The ``Data`` of the lab *module* as ``sre start`` generates it without a flavor: the
+    class prepared (``compute_pre_generate(None)``), an instance generated, and the default
+    ``Flavor()`` of the lab given to it when it has a ``Flavor`` and ``generate()`` set none."""
+    module.Data.compute_pre_generate(None)
+    data = module.Data.generate()
+    data.compute_post_generate()
+    if data.flavor is None:
+        flavor_cls = getattr(module, 'Flavor', None)
+        if flavor_cls is not None:
+            object.__setattr__(data, 'flavor', flavor_cls())
+    return data
+
+
+def offline_net_scheme(module, data, lab_name: str):
+    """The ``NetScheme`` of the lab *module* for *data*, built without Docker under the name of
+    a project that does not exist (what ``sre check`` and ``sre make-titles`` look at)."""
+    running_lab_name = params.get_running_lab_name(lab_name=lab_name, instance_start_date=datetime(2000, 1, 1),
+                                                   username="check")
+    return module.NetScheme(data=data, running_lab_name=running_lab_name)
+
+
+@contextlib.contextmanager
+def lab_module_as_srelab(module):
+    """*module* registered under the name of a lab module (``srelab``) for the time of the block,
+    whatever name it was imported under: the core library reads the options of the lab being
+    built there (``default_image``, ``ipv6``).  The entry that was there comes back at the end."""
+    name = params.srelab_py_name.removesuffix(".py")
+    absent = object()
+    previous = sys.modules.get(name, absent)
+    sys.modules[name] = module
+    try:
+        yield module
+    finally:
+        if previous is absent:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = previous
+
+
+def normalized_weight(value):
+    """*value* as a weight (of a machine, of a lab): a finite number, 0 or more, that is not a
+    bool — an int when it is whole, else rounded to ``params.lab_weight_decimals`` — or ``None``
+    for anything else."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value) or value < 0:
+        return None
+    rounded = round(float(value), params.lab_weight_decimals)
+    return int(rounded) if rounded == int(rounded) else rounded
+
+
+def declared_lab_weight(module):
+    """The weight the lab *module* sets itself (its attribute ``params.lab_weight_attribute``),
+    normalised; ``None`` when it sets none.  ``ValueError`` when the value is not a weight."""
+    if not hasattr(module, params.lab_weight_attribute):
+        return None
+    value = getattr(module, params.lab_weight_attribute)
+    weight = normalized_weight(value)
+    if weight is None:
+        raise ValueError(f"{params.lab_weight_attribute} = {value!r}: a number, 0 or more, is expected")
+    return weight
+
+
 def _is_exam_only(name):
     return any(affix in name for affix in params.exam_only_affix)
 
@@ -380,9 +446,20 @@ def _ordered_names(names: list, mode: str, titles: dict) -> list:
     return listed + sorted(wanted.difference(listed))
 
 
-def _lab_list_entry(name: str, title, kind: str, mode: str) -> dict:
-    return {params.lab_list_name_key: name, params.lab_list_title_key: title,
-            params.lab_list_kind_key: kind, params.lab_list_sort_key: mode}
+def _weight_of(titles: dict, local_name: str):
+    """The weight a ``titles.json`` dict gives to the lab *local_name* (its
+    ``params.titles_weights_key`` option, written by ``sre make-titles``), normalised; ``None``
+    without one, or when the file holds something else than a weight there."""
+    weights = titles.get(params.titles_weights_key)
+    return normalized_weight(weights.get(local_name)) if isinstance(weights, dict) else None
+
+
+def _lab_list_entry(name: str, title, kind: str, mode: str, weight=None) -> dict:
+    entry = {params.lab_list_name_key: name, params.lab_list_title_key: title,
+             params.lab_list_kind_key: kind, params.lab_list_sort_key: mode}
+    if weight is not None:
+        entry[params.lab_list_weight_key] = weight
+    return entry
 
 
 _readme_re = re.compile(params.lab_readme_pattern)
@@ -427,7 +504,9 @@ def load_readmes(dirpath: str) -> dict:
 
 def get_lab_list_with_titles(include_exam_only_labs=False, with_readmes=False):
     """Walk the lab directory and return its tree flattened in display order: one
-    ``{"name": rel_path, "title": dict|str|None, "kind": "dir"|"lab", "sort": mode}`` per entry.
+    ``{"name": rel_path, "title": dict|str|None, "kind": "dir"|"lab", "sort": mode}`` per entry,
+    a ``lab`` entry also having ``"weight": number`` when the ``titles.json`` of its directory
+    stores one (``params.titles_weights_key``, computed by ``sre make-titles``).
 
     A directory (``kind`` ``dir``, listed only when a lab lies below) comes right before its
     content; the sub-directories of a directory come before its labs (a directory lab is a
@@ -467,7 +546,7 @@ def get_lab_list_with_titles(include_exam_only_labs=False, with_readmes=False):
             result.extend(entries_of(os.path.join(dirpath, d), os.path.join(rel, d), mode))
         for name in _ordered_names(labs, mode, titles):
             result.append(_lab_list_entry(os.path.join(rel, name), _title_of(titles, name),
-                                          params.lab_list_kind_lab, mode))
+                                          params.lab_list_kind_lab, mode, weight=_weight_of(titles, name)))
         return result
 
     entries = entries_of(lab_dir_abs, '', params.titles_sort_name)

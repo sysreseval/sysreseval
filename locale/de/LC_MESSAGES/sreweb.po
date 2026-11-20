@@ -778,6 +778,81 @@ msgstr "{n} GiB"
 msgid "memory full"
 msgstr "Speicher voll"
 
+msgid "cpu full"
+msgstr "Prozessoren voll"
+
+msgid "CPU"
+msgstr "CPU"
+
+msgid "The cores the projects of the host are counted for / those they may use"
+msgstr "Die Kerne, mit denen die Projekte des Rechners angerechnet werden / die sie nutzen dürfen"
+
+msgid "Lab costs"
+msgstr "Kosten der Labore"
+
+msgid "Weight"
+msgstr "Gewicht"
+
+msgid "The weight the lab declares: 1 is one plain idle container"
+msgstr "Das Gewicht, das das Labor angibt: 1 ist ein einfacher Container im Leerlauf"
+
+msgid "Containers"
+msgstr "Container"
+
+msgid "The most containers a project of the lab had"
+msgstr "Die meisten Container, die ein Projekt des Labors hatte"
+
+msgid "Memory"
+msgstr "Arbeitsspeicher"
+
+msgid "The memory one more project of the lab is counted for"
+msgstr "Der Arbeitsspeicher, mit dem ein weiteres Projekt des Labors angerechnet wird"
+
+msgid "The cores one more project of the lab is counted for"
+msgstr "Die Kerne, mit denen ein weiteres Projekt des Labors angerechnet wird"
+
+msgid "Measured projects"
+msgstr "Gemessene Projekte"
+
+msgid "The projects of the lab that were measured"
+msgstr "Die Projekte des Labors, die gemessen wurden"
+
+msgid "Source"
+msgstr "Herkunft"
+
+msgid "Where the cost comes from: measured on the projects, the weight the lab declares, or the default"
+msgstr "Woher die Kosten stammen: an den Projekten gemessen, das Gewicht, das das Labor angibt, oder der Standardwert"
+
+msgid "measured"
+msgstr "gemessen"
+
+msgid "declared"
+msgstr "angegeben"
+
+msgid "default"
+msgstr "Standard"
+
+msgid "{memory} MiB, {cpu} core"
+msgstr "{memory} MiB, {cpu} Kern"
+
+msgid "{n} MiB"
+msgstr "{n} MiB"
+
+msgid "a lab never seen, without weight: {cost}"
+msgstr "ein nie gesehenes Labor ohne Gewicht: {cost}"
+
+msgid "one unit of weight: {cost}"
+msgstr "eine Gewichtseinheit: {cost}"
+
+msgid "measured on this pool: {cost}"
+msgstr "in diesem Pool gemessen: {cost}"
+
+msgid "the costs are NOT saved: {error}"
+msgstr "die Kosten werden NICHT gespeichert: {error}"
+
+msgid "No lab measured or declared yet."
+msgstr "Noch kein Labor gemessen oder angegeben."
+
 msgid "Occupied by"
 msgstr "Belegt von"
 
@@ -928,6 +1003,9 @@ msgstr "außerhalb der aktiven Zeiten"
 
 msgid "memory full: {names}"
 msgstr "Speicher voll: {names}"
+
+msgid "cpu full: {names}"
+msgstr "Prozessoren voll: {names}"
 
 msgid "the changes are NOT saved, a restart of the portal loses them: {error}"
 msgstr ""

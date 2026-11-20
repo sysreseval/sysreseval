@@ -7,7 +7,9 @@ is said in red in the status line, for as long as it lasts; the Priority column 
 dialog that changes the two numbers of a host, or the group, the order or both of the selected
 hosts, the column sorted, the priorities back after a restart; Enable cancelling a drain, from the row (in place of Drain) and from the bar, and
 not once the power off of the host is sent; a drain the host asked for itself, its flag, Enable
-cancelling it, the local drains forbidden and allowed from the bar."""
+cancelling it, the local drains forbidden and allowed from the bar; the CPU column (the cores the
+projects of a host are counted for / those they may use) and the Lab costs box, asked only once
+opened and refreshed with the polls."""
 import asyncio
 import contextlib
 import json
@@ -60,6 +62,17 @@ STRIPES = ("[...document.querySelectorAll('#pool tbody tr[data-host]')].map((tr)
            "const first = getComputedStyle(tr.children[0]), state = getComputedStyle(tr.querySelector('td.state')); "
            "return [first.backgroundImage !== 'none', state.backgroundImage !== 'none', "
            "state.backgroundColor !== 'rgba(0, 0, 0, 0)']; })")
+
+
+# the load of a host and the costs of the labs: the CPU cell of a01, the box under the table
+# (folded at first), its note and its rows as lists of cell texts
+CPU = f"({ROW} ? {ROW}.querySelector('td.cpu').textContent : null)"
+COSTS_SUMMARY = '#pool-costs-box summary'
+COSTS_OPEN = "document.getElementById('pool-costs-box').open"
+COSTS_BODY = "document.querySelector('#pool-costs tbody').textContent.trim()"
+COSTS_NOTE = "document.getElementById('pool-costs-note').textContent"
+COSTS_ROWS = ("JSON.stringify([...document.querySelectorAll('#pool-costs tbody tr[data-lab]')]"
+              ".map((tr) => [...tr.children].map((td) => td.textContent)))")
 
 
 def cell(name: str) -> str:
@@ -122,6 +135,42 @@ async def browser_of(tmp_path, state, host_over=None, agent_over=None):
 
 
 class TestPoolPage:
+    def test_cpu_of_the_host_and_costs_of_the_labs(self, tmp_path, monkeypatch):
+        """The CPU cell of a host: the cores its projects are counted for / those they may use
+        (its processors by ``cpu_target``).  The Lab costs box is folded and asks nothing; once
+        opened it lists what a project of each lab is counted for, from the weight the lab
+        declares, then from what its projects used once three were measured (the next poll)."""
+        from sreweb.agent import app as agent_app
+        from sreweb.portal.costs import Usage
+        monkeypatch.setattr(agent_app, '_mem_available_mb', lambda path=None: 12000)
+        monkeypatch.setattr(agent_app, '_mem_total_mb', lambda path=None: 16000)
+        monkeypatch.setattr(agent_app.os, 'cpu_count', lambda: 8)
+
+        async def go():
+            async with browser_of(tmp_path, tmp_path / 'state' / 'pool.json', host_over={}) as (h, browser, url):
+                h.portal.pool.costs.declare([{'name': 'sre/dhcp.py', 'weight': 15}, {'name': 's4/tp_ssh', 'weight': 4}])
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(f"{CPU} === '0.0 / 5.6'", what="the CPU cell of the host")    # 8 cores, 70 %
+                assert await page.evaluate(COSTS_OPEN) is False
+                assert await page.evaluate(COSTS_BODY) == 'Loading…'           # folded: the costs were not asked
+                await page.click(COSTS_SUMMARY)
+                await page.wait_for(f"{COSTS_ROWS} !== '[]'", what="the costs of the labs")
+                assert json.loads(await page.evaluate(COSTS_ROWS)) == [
+                    ['s4/tp_ssh', '4', '', '20 MiB', '0.010', '0', 'declared'],      # its processors: the least cost
+                    ['sre/dhcp.py', '15', '', '75 MiB', '0.015', '0', 'declared']]
+                note = await page.evaluate(COSTS_NOTE)
+                assert 'a lab never seen, without weight: 512 MiB, 0.2 core' in note
+                assert 'one unit of weight: 5 MiB, 0.001 core' in note and 'measured on this pool' not in note
+                # three projects of the lab measured: their figures replace its weight at the next poll
+                h.portal.pool.costs.observe(
+                    [Usage(name=f'p{i}', lab='sre/dhcp.py', containers=15, mem_mb=400.0, cpu=0.3, settled=True)
+                     for i in range(3)], time.time())
+                await page.wait_for(f"{COSTS_ROWS}.includes('measured')", timeout=POLL, what="the measured cost")
+                assert json.loads(await page.evaluate(COSTS_ROWS))[1] == [
+                    'sre/dhcp.py', '15', '15', '400 MiB', '0.300', '3', 'measured']
+                assert 'measured on this pool: 26.7 MiB, 0.02 core' in await page.evaluate(COSTS_NOTE)
+        P.run(go())
+
     def test_enabled_host_kept_and_unsaved_state_told(self, tmp_path):
         state = tmp_path / 'state' / 'pool.json'
 

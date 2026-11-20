@@ -3,11 +3,12 @@ on an existing titles.json (its options, its order and its sub-directory entries
 no longer there dropped, the new ones appended), and ``--directories`` (the sub-directories of
 the lab tree listed in the titles.json of their parent)."""
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
-from SRE import utils
+from SRE import params, utils
 from SRE.command.make_titles import action_make_titles
 from SRE.utils import get_lab_list_with_titles
 
@@ -294,3 +295,188 @@ class TestDirectories:
         assert _read_titles(tmp_lab_dir / 'titles.json')["a1"] is None
         assert _read_titles(tmp_lab_dir / 's4' / 'titles.json')["deep"] is None
         assert _tree_of(tmp_lab_dir) == before
+
+
+# --- the weights of the labs ("@weights") -------------------------------------------------------
+
+_FIXTURE_LAB = (Path(__file__).parent / 'labs' / 'functional_test_lab.py').read_text()
+_FIXTURE_SPECS = "_machine_specs = {'router': {}, 'client': {}}"
+SHIPPED_LABS = Path(__file__).parent.parent / 'lab' / 'sre'
+
+
+def _lab(specs: str | None = None, head: str = '') -> str:
+    """The text of a real lab of two machines (the fixture lab of the functional tests), with
+    other machine specs and lines added at the top of the module."""
+    assert _FIXTURE_SPECS in _FIXTURE_LAB
+    text = _FIXTURE_LAB if specs is None else _FIXTURE_LAB.replace(_FIXTURE_SPECS, f"_machine_specs = {specs}")
+    return head + text
+
+
+def _make(directory, **options):
+    action_make_titles(str(directory), output_file=options.pop('output_file', None),
+                       recursive=options.pop('recursive', False), **options)
+
+
+class TestWeights:
+    """`sre make-titles` stores the weight of every lab it can build under the "@weights" option
+    of titles.json: what `sre list --with-titles` gives the web portal as the first estimate of
+    the cost of a project."""
+
+    @pytest.fixture(autouse=True)
+    def _table(self, monkeypatch):
+        monkeypatch.setattr(params, 'default_machine_weight', 1.0)
+        monkeypatch.setattr(params, 'image_weights', {'routing-frr': 3})
+
+    def test_written_among_the_options(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'a.py', _lab(head='title = "A"\n'))
+        _write(tmp_lab_dir / 'b.py', 'title = "B"\n')           # no NetScheme: not a lab, no weight
+        _make(tmp_lab_dir)
+        path = tmp_lab_dir / 'titles.json'
+        assert _read_titles(path) == {"@weights": {"a.py": 2}, "a.py": "A", "b.py": "B"}
+        assert list(_read_titles(path)) == ["@weights", "a.py", "b.py"]
+
+    def test_no_key_without_a_lab_to_weigh(self, tmp_lab_dir, capsys):
+        _write(tmp_lab_dir / 'b.py', 'title = "B"\n')
+        _make(tmp_lab_dir)
+        assert _read_titles(tmp_lab_dir / 'titles.json') == {"b.py": "B"}
+        assert "weight" not in capsys.readouterr().err
+
+    def test_the_spec_and_the_image_of_each_machine(self, tmp_lab_dir):
+        frr = params.sre_docker_image('routing-frr')
+        _write(tmp_lab_dir / 'a.py', _lab(
+            f"{{'router': {{'image': {frr!r}}}, 'client': {{'weight': 0.25}}, 'probe': {{'hidden': True}}}}"))
+        _make(tmp_lab_dir)
+        assert _read_titles(tmp_lab_dir / 'titles.json') == {"@weights": {"a.py": 4.25}}
+
+    def test_the_default_image_of_the_lab(self, tmp_lab_dir):
+        """The machines without image take the `default_image` of their lab: the module is the
+        lab being built while its NetScheme is."""
+        frr = params.sre_docker_image('routing-frr')
+        _write(tmp_lab_dir / 'a.py', _lab(head=f"default_image = {frr!r}\n"))
+        _write(tmp_lab_dir / 'b.py', _lab())
+        _make(tmp_lab_dir)
+        assert _read_titles(tmp_lab_dir / 'titles.json') == {"@weights": {"a.py": 6, "b.py": 2}}
+
+    def test_directory_lab(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'tp' / 'srelab.py', _lab(head='title = "TP"\n'))
+        _make(tmp_lab_dir)
+        assert _read_titles(tmp_lab_dir / 'titles.json') == {"@weights": {"tp": 2}, "tp": "TP"}
+
+    def test_the_weight_the_module_declares_wins(self, tmp_lab_dir, capsys):
+        _write(tmp_lab_dir / 'a.py', _lab(head='lab_weight = 13\n'))
+        # declared: the lab is not even built (it could not be)
+        _write(tmp_lab_dir / 'b.py', _lab(head='lab_weight = 7.126\n').replace(
+            'return cls(value=42)', 'raise RuntimeError("no generation here")'))
+        _make(tmp_lab_dir)
+        assert _read_titles(tmp_lab_dir / 'titles.json') == {"@weights": {"a.py": 13, "b.py": 7.13}}
+        assert capsys.readouterr().err.count("no weight") == 0
+
+    def test_a_bad_declared_weight_is_warned_about(self, tmp_lab_dir, capsys):
+        _write(tmp_lab_dir / 'a.py', _lab(head='lab_weight = "heavy"\ntitle = "A"\n'))
+        _make(tmp_lab_dir)
+        assert _read_titles(tmp_lab_dir / 'titles.json') == {"a.py": "A"}
+        err = capsys.readouterr().err
+        assert "no weight for" in err and "lab_weight = 'heavy'" in err
+
+    def test_a_lab_that_cannot_be_built_has_no_weight(self, tmp_lab_dir, capsys):
+        _write(tmp_lab_dir / 'a.py', _lab(head='title = "A"\n').replace(
+            'return cls(value=42)', 'raise RuntimeError("no generation here")'))
+        # error_quit() of the core library: ports without the bridged mode
+        _write(tmp_lab_dir / 'b.py', _lab("{'router': {'ports': ['80:80']}, 'client': {}}"))
+        _write(tmp_lab_dir / 'c.py', _lab())
+        _make(tmp_lab_dir)
+        assert _read_titles(tmp_lab_dir / 'titles.json') == {"@weights": {"c.py": 2}, "a.py": "A"}
+        err = capsys.readouterr().err
+        assert "a.py: RuntimeError: no generation here" in err
+        assert "b.py: the lab cannot be built here" in err
+
+    def test_the_weights_of_the_file_are_replaced(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'a.py', _lab())
+        (tmp_lab_dir / 'titles.json').write_text(json.dumps(
+            {"@sort": "manual", "@weights": {"a.py": 99, "ghost.py": 5}, "a.py": "Hand"}))
+        _make(tmp_lab_dir)
+        path = tmp_lab_dir / 'titles.json'
+        assert _read_titles(path) == {"@sort": "manual", "@weights": {"a.py": 2}, "a.py": "Hand"}
+        assert list(_read_titles(path)) == ["@sort", "@weights", "a.py"]
+
+    def test_the_weights_of_the_file_go_with_the_last_lab(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'b.py', 'title = "B"\n')
+        (tmp_lab_dir / 'titles.json').write_text(json.dumps({"@weights": {"gone.py": 5}, "b.py": "B"}))
+        _make(tmp_lab_dir)
+        assert _read_titles(tmp_lab_dir / 'titles.json') == {"b.py": "B"}
+
+    def test_a_second_run_changes_nothing(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'z.py', _lab(head='title = "Z"\n'))
+        _write(tmp_lab_dir / 'a.py', _lab(head='lab_weight = 2.5\n'))
+        _write(tmp_lab_dir / 's4' / 'x.py', _lab())
+        _make(tmp_lab_dir, recursive=True, directories=True)
+        first = {p: p.read_bytes() for p in tmp_lab_dir.rglob('titles.json')}
+        assert len(first) == 2
+        _make(tmp_lab_dir, recursive=True, directories=True)
+        assert {p: p.read_bytes() for p in tmp_lab_dir.rglob('titles.json')} == first
+
+    def test_recursive_writes_the_weights_of_untitled_labs(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 's4' / 'x.py', _lab())
+        _make(tmp_lab_dir, recursive=True)
+        assert _read_titles(tmp_lab_dir / 's4' / 'titles.json') == {"@weights": {"x.py": 2}}
+        assert not (tmp_lab_dir / 'titles.json').exists()
+
+    def test_the_new_directories_stay_after_the_options(self, tmp_lab_dir):
+        """`--directories` places the missing sub-directories right after the options: the
+        weights are one of them."""
+        _write(tmp_lab_dir / 'a.py', _lab(head='title = "A"\n'))
+        _write(tmp_lab_dir / 's4' / 'x.py', '# a lab\n')
+        (tmp_lab_dir / 'titles.json').write_text(json.dumps({"@sort": "manual", "a.py": "A"}))
+        _make(tmp_lab_dir, directories=True)
+        assert list(_read_titles(tmp_lab_dir / 'titles.json')) == ["@sort", "@weights", "s4", "a.py"]
+
+    def test_output_file(self, tmp_lab_dir, tmp_path):
+        _write(tmp_lab_dir / 'a.py', _lab())
+        out = tmp_path / 'elsewhere.json'
+        _make(tmp_lab_dir, output_file=str(out))
+        assert _read_titles(out) == {"@weights": {"a.py": 2}}
+        assert not (tmp_lab_dir / 'titles.json').exists()
+
+    def test_the_lab_module_of_the_process_is_left_as_it_was(self, tmp_lab_dir, monkeypatch):
+        _write(tmp_lab_dir / 'a.py', _lab())
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        _make(tmp_lab_dir)
+        assert 'srelab' not in sys.modules
+        mine = object()
+        monkeypatch.setitem(sys.modules, 'srelab', mine)
+        _make(tmp_lab_dir)
+        assert sys.modules['srelab'] is mine
+
+    def test_the_lab_list_carries_the_weights(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'a.py', _lab(head='title = "A"\n'))
+        _write(tmp_lab_dir / 'b.py', 'title = "B"\n')
+        _write(tmp_lab_dir / 's4' / 'x.py', _lab(head='lab_weight = 40\n'))
+        _make(tmp_lab_dir, recursive=True)
+        utils._titles_cache.clear()
+        entries = {e['name']: e for e in get_lab_list_with_titles()}
+        assert entries['a.py'] == {'name': 'a.py', 'title': 'A', 'kind': 'lab', 'sort': 'name', 'weight': 2}
+        assert entries['s4/x.py']['weight'] == 40
+        assert 'weight' not in entries['b.py'] and 'weight' not in entries['s4']
+
+
+class TestShippedWeights:
+    """The weights committed with the shipped labs are still those `sre make-titles` computes: a
+    lab that gained machines, or a changed `params.image_weights`, asks for a new run of
+    `sre make-titles <directory>` on the directories named here.  A lab that has no weight yet (a
+    new one) is no failure: the web portal counts it for its default until the next run."""
+
+    def test_the_stored_weights_are_not_stale(self, tmp_path):
+        files = sorted(SHIPPED_LABS.rglob(params.titles_file_name)) if SHIPPED_LABS.is_dir() else []
+        if not files:
+            pytest.skip(f"no titles.json readable under {SHIPPED_LABS}")
+        stale = {}
+        for number, path in enumerate(files):
+            out = tmp_path / f'{number}.json'
+            action_make_titles(str(path.parent), output_file=str(out), recursive=False)
+            stored = _read_titles(path).get(params.titles_weights_key, {})
+            computed = _read_titles(out).get(params.titles_weights_key, {})
+            changed = {name: (weight, computed.get(name)) for name, weight in stored.items()
+                       if computed.get(name) != weight}
+            if changed:
+                stale[str(path.parent.relative_to(SHIPPED_LABS.parent.parent))] = changed
+        assert not stale, f"weights (stored, computed) to refresh with `sre make-titles`: {stale}"

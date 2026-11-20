@@ -63,6 +63,10 @@ shared_path = True
 
 flavor_form_at_startup = True
 
+# The machines depend on the flavor (6, 9 or 13 of them): the weight of the lab is the one of the
+# large network, where `sre make-titles` would only see the default flavor (the small one).
+lab_weight = 13
+
 
 @dataclass(slots=True)
 class Flavor(Flavor0):

@@ -409,6 +409,7 @@ class NetScheme(NetScheme0):
 | `ports` | `[]` | Port mappings, e.g. `["80XX:80/tcp"]` (X = wildcard digit) |
 | `ulimits` | `{}` | ulimit settings |
 | `volumes` | `{}` | Volume mounts |
+| `weight` | `None` | What the machine weighs in the load of its project on a host: 1 is one plain idle container. `None`: the weight of its image (`image_weights` of `params.py`: more for an image running systemd or routing daemons), else `default_machine_weight` (1). Set it when a machine is lighter or heavier than its image says (a plain host on the routing image, a server under load). It limits nothing: see [The weight of a lab](#the-weight-of-a-lab) |
 
 Port wildcards: `"80XX:80/tcp"` allocates the first free port in 8000–8099.
 
@@ -1698,6 +1699,7 @@ Declare these at the top level of `srelab.py` to customize behavior. They are re
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `ipv6` | `bool` | `params.default_ipv6` (`None`: Kathara's own setting, off) | If `True`, IPv6 is enabled in every machine (`disable_ipv6=0`, forwarding and `accept_ra=0` set by Kathara); `Machine(ipv6=...)` overrides it per machine. The effective value is written to the `lab.conf` of `sre export`. See [IPv6 labs](#ipv6-labs) |
+| `lab_weight` | number | the sum of the weights of the machines | The weight of the lab in the load of a pool host (see [The weight of a lab](#the-weight-of-a-lab)): set it when the machines depend on the flavor (the weight of the largest one), or when the lab cannot be built without Docker |
 | `default_image` | `str` | `params.default_docker_image` | Image of the machines whose spec has no `image` (e.g. `sre_docker_image("base12")`), so that a lab keeps its image when the default of SRE changes. `scripts/keep-images-debian12 [-r] <file_or_dir>...` adds `default_image = sre_docker_image("base12")` to every lab file that does not set it, and replaces the former names `sre_docker_image("init")` / `("base")` and `sre_docker_image()` with `init12` / `base12` |
 
 ### Filesystem and export
@@ -1853,6 +1855,29 @@ A directory of the tree is shown by its name unless the `titles.json` of its **p
 ```
 
 A directory has no title of its own to read, so these titles are written by hand. `sre make-titles` never touches them (a rerun keeps the entry of a sub-directory as it is), and its option `-d` (`--directories`) prepares the files: every sub-directory of the tree is listed in the `titles.json` of its parent with `null` (shown by its name), and with `-r` the levels holding directories only, such as the lab root, get their file too. `sre make-titles -r -d /opt/sre/lab` then reports the sub-directories still without a title, file by file; replace a `null` by a title and the pickers show it. Without `-d` the command writes the labs only.
+
+### The weight of a lab
+
+On the web front-end a project is placed on one host of a pool, and the labs differ a lot: four idle machines for one, more than thirty routers for another. The **weight** of a lab tells the portal, before any project of the lab has run, how much one project loads a host: the sum of the weights of its machines, hidden ones included (they are containers like the others), 1 being one plain idle container. The portal turns it into memory and processors (`[pool] weight_memory_mb` / `weight_cpu` of `web.toml`) and drops it for what the projects of the lab really use once it has measured three of them (*The load of a host* in the web front-end documentation). A weight therefore only needs to be roughly right.
+
+- A machine weighs the `weight` of its spec, else the weight of its image in `image_weights` of `params.py` (keyed by the short name of the image: `routing-frr` for `sysreseval/routing-frr:1.34`), else `default_machine_weight` (1).
+- `sre check <lab>` prints the weight of every machine and of the lab.
+- `sre make-titles` computes the weight of every lab it can build (without Docker, as `sre check` does) and stores them in the `titles.json` of the directory under the option `"@weights"`; `sre list --with-titles` gives each lab its `weight`. They are computed, never written by hand: every run replaces them, so run the command again when a lab gains machines or `image_weights` changes.
+- The machines of a lab may depend on its `Flavor`: the weight computed is the one of the default flavor. Such a lab says its weight itself with the module attribute `lab_weight`, which wins over the sum (and is also the way out for a lab that cannot be built without Docker):
+
+```python
+# 6, 9 or 13 machines by the size of the network: the weight of the largest
+lab_weight = 13
+```
+
+```json
+{
+  "@sort": "title",
+  "@weights": {"dns1.py": 30, "static_routing.py": 13},
+  "dns1.py": "DNS 1",
+  "static_routing.py": {"en": "Static routing", "fr": "Routage statique"}
+}
+```
 
 ### The order of a directory: `"@sort"`
 
