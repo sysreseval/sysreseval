@@ -1,0 +1,37 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname tl_r1
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+interface eth0
+ ip ospf area 0
+ ip ospf cost 10
+ ip ospf network point-to-point
+exit
+!
+interface eth1
+ ip ospf area 0
+ ip ospf cost 10
+ ip ospf network point-to-point
+exit
+!
+interface lo
+ ip ospf area 0
+exit
+!
+router ospf
+ ospf router-id 10.161.95.1
+ fast-reroute ti-lfa node-protection
+ capability opaque
+ segment-routing on
+ segment-routing prefix 10.161.95.1/32 index 1
+ router-info area
+exit
+!
+end

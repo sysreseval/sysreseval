@@ -1,0 +1,18 @@
+{
+  "neighbors":[
+    {
+      "addressFamily":"ipv4",
+      "neighborId":"10.161.47.1",
+      "state":"OPERATIONAL",
+      "transportAddress":"10.161.47.1",
+      "upTime":"00:08:15"
+    },
+    {
+      "addressFamily":"ipv4",
+      "neighborId":"10.161.47.3",
+      "state":"OPERATIONAL",
+      "transportAddress":"10.161.47.3",
+      "upTime":"00:08:15"
+    }
+  ]
+}

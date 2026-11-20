@@ -1,0 +1,1 @@
+[{"dst":"10.161.16.0/30","dev":"eth1","protocol":"kernel","scope":"link","prefsrc":"10.161.16.1","flags":[]},{"dst":"10.161.17.0/24","dev":"eth0","protocol":"kernel","scope":"link","prefsrc":"10.161.17.1","flags":[]},{"dst":"10.161.18.0/24","encap":{"encap_type":"mpls","dst":"381"},"gateway":"10.161.16.2","dev":"eth1","flags":[]}]

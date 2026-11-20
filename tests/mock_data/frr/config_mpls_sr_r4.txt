@@ -1,0 +1,30 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname sr_r4
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+interface eth0
+ ip ospf area 0
+ ip ospf network point-to-point
+exit
+!
+interface lo
+ ip ospf area 0
+exit
+!
+router ospf
+ ospf router-id 10.161.63.4
+ capability opaque
+ segment-routing on
+ segment-routing global-block 17000 24999
+ segment-routing prefix 10.161.63.4/32 index 40 no-php-flag
+ router-info area
+exit
+!
+end

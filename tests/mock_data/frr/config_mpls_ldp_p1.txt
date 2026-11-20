@@ -1,0 +1,51 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname ldp_p1
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+interface eth0
+ ip ospf area 0
+ ip ospf network point-to-point
+exit
+!
+interface eth1
+ ip ospf area 0
+ ip ospf network point-to-point
+exit
+!
+interface lo
+ ip ospf area 0
+exit
+!
+router ospf
+ ospf router-id 10.161.47.2
+exit
+!
+mpls ldp
+ router-id 10.161.47.2
+ !
+ address-family ipv4
+  discovery transport-address 10.161.47.2
+  label local allocate for LDP-FEC
+  !
+  interface eth0
+  exit
+  !
+  interface eth1
+  exit
+  !
+ exit-address-family
+ !
+exit
+!
+access-list LDP-FEC seq 5 permit 10.161.47.0/24
+access-list LDP-FEC seq 10 permit 10.161.33.0/24
+access-list LDP-FEC seq 15 permit 10.161.34.0/24
+!
+end

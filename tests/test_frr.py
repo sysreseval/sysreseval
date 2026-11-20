@@ -493,7 +493,7 @@ class TestKernelRoutes:
         r = parse_kernel_routes(load('iproute_r1_final.json'))
         assert r['0.0.0.0/0']['protocol'] == 'static'
         assert r['10.139.140.0/22'] == {'protocol': 'ospf', 'metric': 20, 'scope': None,
-                                       'nexthops': [('172.22.40.54', 'eth1')]}
+                                       'nexthops': [('172.22.40.54', 'eth1')], 'labels': [[]]}
         assert r['192.168.226.0/24']['protocol'] == 'kernel'
         assert r['192.168.226.0/24']['nexthops'] == [(None, 'eth0')]
         assert r['192.168.226.0/24']['scope'] == 'link'
@@ -1752,3 +1752,292 @@ class TestIpv6LabCaptures:
         routes = parse_kernel_routes(load('ip6route_ospf6_o2_r1_stub.json'), ipv6=True)
         assert routes['::/0']['protocol'] == 'ospf' and routes['::/0']['nexthops'][0][0].startswith('fe80::')
         assert parse_ospf6_info(load_json('ospf6_info_fix_r2_fixed.json'))['router_id'] == '6.0.0.2'
+
+
+# ---------------------------------------------------------------------------
+# MPLS: LDP, label table, segment routing in OSPF, RIB with labels and backups
+# (FRR 10.3, captured in the solved and in the untouched MPLS lab: lab/sre/_DRAFT_misc/mpls.py)
+# ---------------------------------------------------------------------------
+
+from frr import (  # noqa: E402
+    MPLS_IMPLICIT_NULL, get_frr_routes, get_ldp_bindings, get_ldp_neighbors, get_mpls_table, get_ospf_sr_database,
+    kernel_route_labels, ldp_session_up, mpls_label_value, parse_frr_routes, parse_ldp_bindings,
+    parse_ldp_discovery, parse_ldp_neighbors, parse_mpls_table, parse_ospf_sr_database,
+)
+
+MPLS_FIXTURES = Path(__file__).parent / 'mock_data' / 'mpls'
+
+
+class TestMplsLabelValue:
+    @pytest.mark.parametrize('text, value', [('16', 16), (16, 16), ('imp-null', 3), ('implicit-null', 3),
+                                             ('exp-null', 0), ('-', None), ('', None), (None, None)])
+    def test_values(self, text, value):
+        assert mpls_label_value(text) == value
+        assert MPLS_IMPLICIT_NULL == 3
+
+
+class TestLdp:
+    def test_neighbors(self):
+        n = parse_ldp_neighbors(load_json('ldp_neighbor_p1.json'))
+        assert set(n) == {'10.161.47.1', '10.161.47.3'}
+        assert n['10.161.47.1'] == {'state': 'OPERATIONAL', 'operational': True, 'transport_address': '10.161.47.1',
+                                    'uptime': '00:08:15'}
+        assert ldp_session_up(n, '10.161.47.3') and not ldp_session_up(n, '10.161.47.4')
+
+    def test_no_ldp(self):
+        # ldpd running without configuration: an empty object; a transport address out of
+        # reach: an adjacency without session
+        assert parse_ldp_neighbors(load_json('ldp_neighbor_none.json')) == {}
+        assert parse_ldp_neighbors(load_json('ldp_neighbor_fix_p2_initial.json')) == {}
+        assert parse_ldp_discovery(load_json('ldp_discovery_fix_p2_initial.json')) == {'eth1': ['10.24.79.4']}
+        assert get_ldp_bindings(make_grade(load('ldp_binding_none.txt')), 'ldp_p1') == {}
+
+    def test_discovery(self):
+        assert parse_ldp_discovery(load_json('ldp_discovery_p1.json')) == {'eth0': ['10.161.47.1'],
+                                                                             'eth1': ['10.161.47.3']}
+        data = {'adjacencies': [{'neighborId': '1.1.1.1', 'type': 'targeted', 'peer': '1.1.1.1'}]}
+        assert parse_ldp_discovery(data) == {'targeted': ['1.1.1.1']}
+
+    def test_bindings_with_the_allocation_filter(self):
+        b = parse_ldp_bindings(load_json('ldp_binding_p1_filtered.json'))
+        # loopbacks and host networks only: no /30 link
+        assert set(b) == {'10.161.33.0/24', '10.161.34.0/24', '10.161.47.1/32', '10.161.47.2/32', '10.161.47.3/32',
+                          '10.161.47.4/32'}
+        assert b['10.161.47.4/32'] == {'local': 20, 'remote': {'10.161.47.1': 19, '10.161.47.3': 20},
+                                       'in_use': '10.161.47.3'}
+        # its own loopback: implicit-null locally; the next hop of pe1's loopback announces implicit-null
+        assert b['10.161.47.2/32']['local'] == 3 and b['10.161.47.2/32']['in_use'] is None
+        assert b['10.161.47.1/32']['remote']['10.161.47.1'] == 3
+
+    def test_bindings_without_filter_include_the_links(self):
+        b = parse_ldp_bindings(load_json('ldp_binding_fix_p2.json'))
+        assert {'10.161.64.0/30', '10.161.64.4/30', '10.161.64.8/30'} <= set(b)
+        assert len(b) == 9
+
+    def test_get_helpers_use_vtysh_json(self):
+        grade = make_grade(load('ldp_neighbor_p1.json'))
+        assert set(get_ldp_neighbors(grade, 'ldp_p1')) == {'10.161.47.1', '10.161.47.3'}
+        assert grade.test.call_args[0][1] == 'vtysh -c "show mpls ldp neighbor json"'
+
+
+class TestMplsTable:
+    def test_ldp_entries(self):
+        t = parse_mpls_table(load_json('mpls_table_ldp_p1.json'))
+        assert sorted(t) == [16, 17, 18, 19, 20]
+        assert t[18] == {'installed': True, 'nexthops': [{'type': 'LDP', 'out_labels': [19], 'nexthop': '10.161.32.6',
+                                                          'interface': 'eth1', 'installed': True}]}
+        assert t[16]['nexthops'][0]['out_labels'] == [3]
+
+    def test_sr_entries_and_empty_table(self):
+        t = parse_mpls_table(load_json('mpls_table_sr_r2.json'))
+        assert t[17040]['nexthops'][0]['type'] == 'SR (OSPF)' and t[17040]['nexthops'][0]['out_labels'] == [50040]
+        assert parse_mpls_table(load_json('mpls_table_none.json')) == {}
+        assert get_mpls_table(make_grade('', 1), 'ldp_p1') == {}
+
+
+class TestOspfSegmentRouting:
+    def test_database(self):
+        db = parse_ospf_sr_database(load_json('ospf_sr_sr_r2.json'))
+        assert set(db) == {'10.161.63.1', '10.161.63.2', '10.161.63.3', '10.161.63.4'}
+        # sr_r3 has its own SRGB; the labels towards sr_r4 use the SRGB of the next hop
+        assert db['10.161.63.3']['srgb'] == (50000, 8000) and db['10.161.63.4']['srgb'] == (17000, 8000)
+        assert db['10.161.63.4']['srlb'] == (15000, 1000)
+        r4 = db['10.161.63.4']['prefixes']['10.161.63.4/32']
+        assert r4['index'] == 40 and r4['input_label'] == 17040
+        assert r4['routes'] == [{'out_label': 50040, 'interface': 'eth1', 'nexthop': '10.161.48.6'}]
+        # the router that answers lists itself, without input label
+        assert db['10.161.63.2']['prefixes']['10.161.63.2/32']['index'] == 21
+
+    def test_disabled(self):
+        assert get_ospf_sr_database(make_grade(load('ospf_sr_disabled.txt')), 'sr_r2') == {}
+
+
+class TestFrrRoutes:
+    def test_ti_lfa_backup(self):
+        routes = parse_frr_routes(load_json('route_tl_r1_tilfa.json'))
+        r3 = routes['10.161.95.3/32']
+        assert r3['protocol'] == 'ospf' and r3['selected'] and r3['installed']
+        assert r3['nexthops'] == [{'ip': '10.161.80.2', 'interface': 'eth0', 'labels': [16003], 'active': True,
+                                   'fib': True}]
+        assert r3['backups'] == [{'ip': '10.161.80.14', 'interface': 'eth1', 'labels': [15003, 16003], 'active': True,
+                                  'fib': False}]
+        assert [p for p, r in routes.items() if r['backups']] == ['10.161.95.3/32']
+
+    def test_no_backup_before(self):
+        routes = parse_frr_routes(load_json('route_tl_r1_initial.json'))
+        assert routes['10.161.95.3/32']['backups'] == [] if '10.161.95.3/32' in routes else True
+        assert all(not r['backups'] for r in routes.values())
+
+    def test_vrf_command(self):
+        grade = make_grade('{}')
+        assert get_frr_routes(grade, 'pe1', vrf='CUST_A') == {}
+        assert grade.test.call_args[0][1] == 'vtysh -c "show ip route vrf CUST_A json"'
+
+
+class TestKernelRouteLabels:
+    def test_encap_labels(self):
+        routes = parse_kernel_routes((MPLS_FIXTURES / 'iproute_ldp_pe1_final.json').read_text())
+        assert kernel_route_labels(routes, '10.161.34.0/24') == [[18]]
+        assert kernel_route_labels(routes, '10.161.47.2/32') == [[]]
+        assert kernel_route_labels(routes, '192.0.2.0/24') == []
+        assert routes['10.161.47.4/32']['nexthops'] == [('10.161.32.2', 'eth1')]
+        st = parse_kernel_routes((MPLS_FIXTURES / 'iproute_st_pe1_final.json').read_text())
+        assert st['10.161.18.0/24']['labels'] == [[381]] and st['10.161.18.0/24']['protocol'] == ''
+
+    def test_label_stack_and_multipath(self):
+        data = [{'dst': '10.0.0.0/24', 'encap': {'encap_type': 'mpls', 'dst': '16003/16005'}, 'gateway': '10.1.0.2',
+                 'dev': 'eth1'},
+                {'dst': '10.0.1.0/24', 'nexthops': [
+                    {'encap': {'encap_type': 'mpls', 'dst': '20'}, 'gateway': '10.1.0.2', 'dev': 'eth1'},
+                    {'gateway': '10.1.0.6', 'dev': 'eth2'}]}]
+        routes = parse_kernel_routes(json.dumps(data))
+        assert routes['10.0.0.0/24']['labels'] == [[16003, 16005]]
+        assert routes['10.0.1.0/24']['labels'] == [[20], []]
+
+
+class TestFrrConfigMpls:
+    def test_mpls_ldp_block(self):
+        c = parse_frr_config(load('config_mpls_ldp_p1.txt'))
+        assert c['mpls_ldp'] == {'present': True, 'router_id': '10.161.47.2', 'transport_address': '10.161.47.2',
+                                 'interfaces': ['eth0', 'eth1'], 'label_allocate': 'for LDP-FEC',
+                                 'label_advertise': [], 'explicit_null': False}
+        assert [e['prefix'] for e in c['access_lists']['LDP-FEC']] == ['10.161.47.0/24', '10.161.33.0/24',
+                                                                       '10.161.34.0/24']
+        assert c['access_lists']['LDP-FEC'][0] == {'seq': 5, 'action': 'permit', 'prefix': '10.161.47.0/24',
+                                                   'exact': False}
+        # the interface statements of OSPF are still read
+        assert c['interfaces']['eth0']['network_type'] == 'point-to-point'
+
+    def test_fault_and_other_forms(self):
+        c = parse_frr_config(load('config_mpls_fix_pe2_initial.txt'))
+        assert c['mpls_ldp']['interfaces'] == ['eth1'] and 'lo' not in c['interfaces']
+        text = ("mpls ldp\n router-id 1.1.1.1\n !\n address-family ipv4\n  label local allocate host-routes\n"
+                "  label local advertise explicit-null\n  interface eth1\n  exit\n exit-address-family\n !\n"
+                " address-family ipv6\n  discovery transport-address ::1\n  interface eth2\n  exit\n"
+                " exit-address-family\nexit\n")
+        ldp = parse_frr_config(text)['mpls_ldp']
+        assert ldp['label_allocate'] == 'host-routes' and ldp['explicit_null'] is True
+        assert ldp['interfaces'] == ['eth1'] and ldp['transport_address'] is None
+
+    def test_segment_routing_and_ti_lfa(self):
+        sr = parse_frr_config(load('config_mpls_sr_r4.txt'))['router_ospf']
+        assert sr['capability_opaque'] is True and sr['ti_lfa'] is None
+        assert sr['segment_routing'] == {'enabled': True, 'srgb': (17000, 24999), 'srlb': None, 'node_msd': None,
+                                         'prefixes': {'10.161.63.4/32': {'index': 40, 'no_php': True,
+                                                                          'explicit_null': False}}}
+        tl = parse_frr_config(load('config_mpls_tl_r1.txt'))['router_ospf']
+        assert tl['ti_lfa'] == 'node' and tl['segment_routing']['srgb'] is None
+        text = ("router ospf\n fast-reroute ti-lfa\n segment-routing global-block 16000 23999 local-block 5000 5999\n"
+                " segment-routing node-msd 8\nexit\n")
+        ro = parse_frr_config(text)['router_ospf']
+        assert ro['ti_lfa'] == 'link' and ro['segment_routing']['srgb'] == (16000, 23999)
+        assert ro['segment_routing']['srlb'] == (5000, 5999) and ro['segment_routing']['node_msd'] == 8
+
+
+# ---------------------------------------------------------------------------
+# BGP/MPLS L3VPN: the VPNv4 family, the instances of the VRFs (FRR 10.3, captured in the solved and
+# in the untouched MPLS VPN lab: lab/sre/_DRAFT_misc/mpls-vpn.py)
+# ---------------------------------------------------------------------------
+
+from frr import bgp_neighbor_activated, get_bgp_vpn_routes, get_bgp_vpn_summary, parse_bgp_vpn_routes  # noqa: E402
+from policy_routing import vrf_devices, vrf_of_port  # noqa: E402
+
+
+class TestBgpVpn:
+    def test_vpnv4_table_by_rd(self):
+        routes = parse_bgp_vpn_routes(load_json('bgp_vpn_l3_pe2.json'))
+        # the two customers announce the same prefixes, kept apart by their RD
+        assert set(routes) == {'65000:18', '65000:35'}
+        for rd in routes:
+            assert set(routes[rd]) == {'192.168.16.0/24', '192.168.17.0/24'}
+            remote = routes[rd]['192.168.16.0/24'][0]
+            assert remote['path_from'] == 'internal' and remote['nexthop'] == '10.133.31.1' and remote['best']
+            assert routes[rd]['192.168.17.0/24'][0]['path_from'] == 'external'
+
+    def test_no_bgp(self):
+        assert parse_bgp_vpn_routes(load_json('bgp_vpn_none.json')) == {}
+        assert get_bgp_vpn_routes(make_grade(load('bgp_vpn_none.json')), 'pe1') == {}
+
+    def test_summaries(self):
+        s = parse_bgp_summary(load_json('bgp_vpn_summary_l3_pe1.json'))
+        assert s['peers']['10.133.31.3']['established'] and s['peers']['10.133.31.3']['pfx_rcd'] == 2
+        # a neighbour not activated in the family: no peer in the summary of the family
+        assert parse_bgp_summary(load_json('bgp_vpn_summary_not_activated.json')) == {}
+        grade = make_grade(load('bgp_vpn_summary_l3_pe1.json'))
+        assert get_bgp_vpn_summary(grade, 'l3_pe1')['as'] == 65000
+        assert grade.test.call_args[0][1] == 'vtysh -c "show bgp ipv4 vpn summary json"'
+
+    def test_vrf_instance_commands(self):
+        s = parse_bgp_summary(load_json('bgp_vrf_summary_ce_pe1.json'))
+        assert s['peers']['172.18.0.2']['remote_as'] == 65101 and s['peers']['172.18.0.2']['established']
+        grade = make_grade('{}')
+        get_bgp_summary(grade, 'ce_pe1', vrf='CUST_C')
+        assert grade.test.call_args[0][1] == 'vtysh -c "show bgp vrf CUST_C ipv4 unicast summary json"'
+        get_bgp_routes(grade, 'ce_pe1', vrf='CUST_C')
+        assert grade.test.call_args[0][1] == 'vtysh -c "show bgp vrf CUST_C ipv4 unicast json"'
+        get_bgp_routes(grade, 'ce_pe1')
+        assert grade.test.call_args[0][1] == 'vtysh -c "show bgp ipv4 unicast json"'
+        get_kernel_routes(grade, 'pe1', vrf='CUST_A')
+        assert grade.test.call_args[0][1] == 'ip -j route show vrf CUST_A'
+
+    def test_as_override_seen_by_the_ce(self):
+        routes = parse_bgp_routes(load_json('bgp_routes_ce_c2_override.json'))
+        remote = [p for p in routes['172.18.122.0/24'] if p['best']]
+        assert remote[0]['as_list'] == [65000, 65000]
+        # its own network comes back from the PE (not best): the AS of the customer was replaced
+        own = routes['172.18.29.0/24']
+        assert [p['as_list'] for p in own] == [[], [65000, 65000]] and own[0]['best']
+
+    def test_label_stacks_of_a_vrf(self):
+        rib = parse_frr_routes(load_json('route_vrf_l3_pe1_a.json'))
+        remote = rib['192.168.17.0/24']
+        assert remote['protocol'] == 'bgp' and [n['labels'] for n in remote['nexthops']] == [[145], [16, 145]]
+        kernel = parse_kernel_routes(load('iproute_vrf_l3_pe1_a.json'))
+        assert kernel['192.168.17.0/24']['labels'] == [[16, 145]]
+        # no LDP: the VPN label alone, which the P router does not know
+        no_ldp = parse_kernel_routes(load('iproute_vrf_sv_pe1_no_ldp.json'))
+        assert kernel_route_labels(no_ldp, '172.22.2.0/24') == [[16]]
+
+    def test_vrf_devices(self):
+        devices = vrf_devices(json.loads(load('links_vrf_l3_pe1.json')))
+        assert devices == {'CUST_A': {'table': 10, 'up': True, 'ports': ['eth0']},
+                           'CUST_B': {'table': 20, 'up': True, 'ports': ['eth1']}}
+        fault = vrf_devices(json.loads(load('links_vrf_fix_pe2_initial.json')))
+        assert fault['CUST_A']['ports'] == [] and vrf_of_port(fault, 'eth0') is None
+
+
+class TestFrrConfigVpn:
+    def test_vrf_instances(self):
+        c = parse_frr_config(load('config_vpn_ex_pe1.txt'))
+        # the VRF instances stay out of the main instance
+        assert c['router_bgp']['as'] == 65000 and list(c['router_bgp']['neighbors']) == ['10.133.63.2']
+        assert bgp_neighbor_activated(c['router_bgp'], '10.133.63.2', 'ipv4 vpn')
+        assert not bgp_neighbor_activated(c['router_bgp'], '10.133.63.2', 'ipv4')
+        assert set(c['router_bgp_vrfs']) == {'CUST_A', 'CUST_B'}
+        a = c['router_bgp_vrfs']['CUST_A']
+        assert a['as'] == 65000 and a['router_id'] == '10.133.63.1' and a['redistribute'] == ['connected']
+        assert a['vpn'] == {'rd': '65000:35', 'rt_import': ['65000:35', '65000:65'], 'rt_export': ['65000:35'],
+                            'label': 'auto', 'export_vpn': True, 'import_vpn': True}
+
+    def test_vrf_neighbor_and_rt_both(self):
+        c = parse_frr_config(load('config_vpn_ce_pe1.txt'))
+        vrf = c['router_bgp_vrfs']['CUST_C']
+        assert vrf['vpn']['rt_import'] == vrf['vpn']['rt_export'] == ['65000:45']
+        n = vrf['neighbors']['172.18.0.2']
+        assert n['remote_as'] == 65101 and n['route_map_in'] == 'ALL' and n['route_map_out'] == 'ALL'
+        assert '172.18.0.2' not in c['router_bgp']['neighbors']
+
+    def test_the_faults(self):
+        pe1 = parse_frr_config(load('config_vpn_fix_pe1_initial.txt'))
+        assert pe1['router_bgp_vrfs']['CUST_A']['vpn']['label'] is None
+        pe2 = parse_frr_config(load('config_vpn_fix_pe2_initial.txt'))
+        peer = list(pe2['router_bgp']['neighbors'])[0]
+        assert not bgp_neighbor_activated(pe2['router_bgp'], peer, 'ipv4 vpn')
+        assert pe2['router_bgp_vrfs']['CUST_A']['vpn']['rt_import'] == ['65000:57']
+
+    def test_negations(self):
+        text = ("router bgp 65000 vrf X\n address-family ipv4 unicast\n  rt vpn both 1:1\n  rt vpn import 1:1 2:2\n"
+                "  no rt vpn import 2:2\n  label vpn export 100\n  no export vpn\n exit-address-family\nexit\n")
+        vpn = parse_frr_config(text)['router_bgp_vrfs']['X']['vpn']
+        assert vpn['rt_import'] == ['1:1'] and vpn['rt_export'] == ['1:1'] and vpn['label'] == '100'
+        assert vpn['export_vpn'] is False and vpn['rd'] is None

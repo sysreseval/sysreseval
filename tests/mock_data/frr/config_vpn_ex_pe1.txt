@@ -1,0 +1,83 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname ex_pe1
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+vrf CUST_A
+exit-vrf
+!
+vrf CUST_B
+exit-vrf
+!
+interface eth2
+ ip ospf area 0
+ ip ospf network point-to-point
+exit
+!
+interface lo
+ ip ospf area 0
+exit
+!
+router bgp 65000
+ bgp router-id 10.133.63.1
+ no bgp default ipv4-unicast
+ neighbor 10.133.63.2 remote-as 65000
+ neighbor 10.133.63.2 update-source lo
+ !
+ address-family ipv4 vpn
+  neighbor 10.133.63.2 activate
+ exit-address-family
+exit
+!
+router bgp 65000 vrf CUST_A
+ bgp router-id 10.133.63.1
+ !
+ address-family ipv4 unicast
+  redistribute connected
+  label vpn export auto
+  rd vpn export 65000:35
+  rt vpn import 65000:35 65000:65
+  rt vpn export 65000:35
+  export vpn
+  import vpn
+ exit-address-family
+exit
+!
+router bgp 65000 vrf CUST_B
+ bgp router-id 10.133.63.1
+ !
+ address-family ipv4 unicast
+  redistribute connected
+  label vpn export auto
+  rd vpn export 65000:18
+  rt vpn import 65000:18 65000:65
+  rt vpn export 65000:18
+  export vpn
+  import vpn
+ exit-address-family
+exit
+!
+router ospf
+ ospf router-id 10.133.63.1
+exit
+!
+mpls ldp
+ router-id 10.133.63.1
+ !
+ address-family ipv4
+  discovery transport-address 10.133.63.1
+  !
+  interface eth2
+  exit
+  !
+ exit-address-family
+ !
+exit
+!
+end

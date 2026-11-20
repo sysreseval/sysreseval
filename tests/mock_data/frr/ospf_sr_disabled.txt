@@ -1,0 +1,1 @@
+Segment Routing is disabled on this router

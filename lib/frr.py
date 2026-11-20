@@ -467,9 +467,11 @@ def parse_kernel_routes(output: str, ipv6: bool = False) -> Dict[str, Dict[str, 
     """Parse the JSON of ``ip -j route`` (``ip -j -6 route`` with ``ipv6=True``).
 
     Returns ``{prefix: {'protocol': str, 'metric': int, 'scope': str | None,
-    'nexthops': [(gateway | None, dev)]}}``; ``default`` becomes ``0.0.0.0/0`` (``::/0``)
-    and host routes get ``/32`` (``/128``).  ECMP routes list every next hop.  When the
-    same prefix appears several times (different metrics, or ``fe80::/64`` on every
+    'nexthops': [(gateway | None, dev)], 'labels': [[int]]}}``; ``default`` becomes
+    ``0.0.0.0/0`` (``::/0``) and host routes get ``/32`` (``/128``).  ECMP routes list every
+    next hop.  ``labels`` holds, for each next hop in the same order, the MPLS label stack it
+    pushes (``encap mpls 16003/16005`` → ``[16003, 16005]``; ``[]`` without encapsulation).
+    When the same prefix appears several times (different metrics, or ``fe80::/64`` on every
     interface) the first entry wins.
     """
     try:
@@ -492,23 +494,47 @@ def parse_kernel_routes(output: str, ipv6: bool = False) -> Dict[str, Dict[str, 
         if dst in result:
             continue
         if isinstance(r.get('nexthops'), list):
-            nexthops = [(n.get('gateway'), n.get('dev')) for n in r['nexthops'] if isinstance(n, dict)]
+            hops = [n for n in r['nexthops'] if isinstance(n, dict)]
         else:
-            nexthops = [(r.get('gateway'), r.get('dev'))]
+            hops = [r]
         result[dst] = {
             'protocol': str(r.get('protocol', '')),
             'metric': int(r.get('metric', 0) or 0),
             'scope': r.get('scope'),
-            'nexthops': nexthops,
+            'nexthops': [(n.get('gateway'), n.get('dev')) for n in hops],
+            'labels': [_encap_labels(n.get('encap')) for n in hops],
         }
     return result
 
 
+def _encap_labels(encap) -> List[int]:
+    """The label stack of an ``encap`` object of ``ip -j route`` (``{"encap_type": "mpls",
+    "dst": "16003/16005"}``); ``[]`` for no or another encapsulation."""
+    if not isinstance(encap, dict) or encap.get('encap_type') != 'mpls':
+        return []
+    labels = []
+    for part in str(encap.get('dst') or '').split('/'):
+        value = _int_or_none(part)
+        if value is not None:
+            labels.append(value)
+    return labels
+
+
+def kernel_route_labels(routes: Dict[str, Dict[str, Any]], prefix) -> List[List[int]]:
+    """The label stacks pushed by the next hops of ``prefix`` in a :func:`parse_kernel_routes`
+    result (``[]`` when the prefix is absent)."""
+    entry = routes.get(str(prefix))
+    return list(entry.get('labels', [])) if entry else []
+
+
 def get_kernel_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
-                      ipv6: bool = False) -> Dict[str, Dict[str, Any]]:
-    """Run 'ip -j route' ('ip -j -6 route' with ``ipv6=True``) and parse it (see
-    :func:`parse_kernel_routes`). Returns {} on error."""
+                      ipv6: bool = False, vrf: str = None) -> Dict[str, Dict[str, Any]]:
+    """Run 'ip -j route' ('ip -j -6 route' with ``ipv6=True``; ``vrf``: the table of that VRF
+    device, ``ip -j route show vrf X``) and parse it (see :func:`parse_kernel_routes`). Returns {}
+    on error."""
     command = 'ip -j -6 route' if ipv6 else 'ip -j route'
+    if vrf:
+        command += f' show vrf {vrf}'
     output, code = _test(grade, machine_name, command, step, allow_error)
     if code != 0 or not output:
         return {}
@@ -766,7 +792,26 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                           'redistribute': [protocol, ...], 'default_information_originate': bool,
                           'default_information_always': bool,
                           'interface_areas': {ifname: area}},   # old ``interface X area A`` form
+         # MPLS
+         'access_lists': {name: [{'seq': int | None, 'action': 'permit' | 'deny', 'prefix': str,
+                                  'exact': bool}]},
+         'mpls_ldp': {'present': bool, 'router_id': str | None,
+                      'transport_address': str | None,     # IPv4 family
+                      'interfaces': [ifname],              # IPv4 family
+                      'label_allocate': str | None,        # 'host-routes' | 'for ACL'
+                      'label_advertise': [str],            # 'for ACL' | 'to ACL' | ...
+                      'explicit_null': bool},
+         # the BGP instances of the VRFs (``router bgp AS vrf NAME``): the keys of router_bgp
+         # plus their VPN export / import (IPv4 unicast family)
+         'router_bgp_vrfs': {vrf: {...router_bgp keys..., 'vpn': {'rd': str | None,
+                                   'rt_import': [str], 'rt_export': [str], 'label': str | None,
+                                   'export_vpn': bool, 'import_vpn': bool}}},
          }
+
+    ``router_ospf`` also gets ``'capability_opaque': bool``, ``'ti_lfa': None | 'link' |
+    'node'`` (``fast-reroute ti-lfa [node-protection]``) and ``'segment_routing': {'enabled':
+    bool, 'srgb': (low, high) | None, 'srlb': (low, high) | None, 'node_msd': int | None,
+    'prefixes': {prefix: {'index': int, 'no_php': bool, 'explicit_null': bool}}}``.
 
     Interfaces also get ``'addresses6'`` (``ipv6 address``) and ``'ospf6'``: ``{'area', 'cost',
     'passive', 'mtu_ignore', 'priority', 'hello_interval', 'dead_interval', 'network_type',
@@ -794,6 +839,8 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
             'passive_default': False, 'areas': {}, 'redistribute': [],
             'default_information_originate': False, 'default_information_always': False,
             'auto_cost_reference_bandwidth': None,
+            'capability_opaque': False, 'ti_lfa': None,
+            'segment_routing': {'enabled': False, 'srgb': None, 'srlb': None, 'node_msd': None, 'prefixes': {}},
         },
         'interfaces': {},
         'router_bgp': _empty_router_bgp_config(),
@@ -804,15 +851,27 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
         'static_routes6': [],
         'prefix_lists6': {},
         'router_ospf6': _empty_router_ospf6_config(),
+        'access_lists': {},
+        'mpls_ldp': {'present': False, 'router_id': None, 'transport_address': None, 'interfaces': [],
+                     'label_allocate': None, 'label_advertise': [], 'explicit_null': False},
+        'router_bgp_vrfs': {},
     }
-    # 'router_ospf' | 'router_ospf6' | 'router_bgp' | 'interface' | 'route_map' | 'other' | None
+    # 'router_ospf' | 'router_ospf6' | 'router_bgp' | 'interface' | 'route_map' | 'mpls_ldp' | 'other' | None
     section: Optional[str] = None
     iface: Dict[str, Any] | None = None
     rm_entry: Dict[str, Any] | None = None
     bgp_af: Optional[str] = None   # address family of the open ``address-family`` block of router bgp
+    ldp_af: Optional[str] = None   # address family of the open ``address-family`` block of mpls ldp
     ro = cfg['router_ospf']
     ro6 = cfg['router_ospf6']
     rb = cfg['router_bgp']
+    ml = cfg['mpls_ldp']
+    vrb: Dict[str, Any] | None = None   # the open ``router bgp AS vrf NAME`` block
+
+    def vrf_neighbor_cfg(peer: str) -> Dict[str, Any]:
+        if peer not in vrb['neighbors']:
+            vrb['neighbors'][peer] = _empty_bgp_neighbor_config()
+        return vrb['neighbors'][peer]
 
     def neighbor_cfg(peer: str) -> Dict[str, Any]:
         if peer not in rb['neighbors']:
@@ -867,6 +926,12 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 section, iface = 'router_ospf6', None
                 ro6['present'] = True
                 continue
+            if words[0] == 'router' and len(words) >= 5 and words[1] == 'bgp' and words[3] == 'vrf':
+                section, iface, bgp_af = 'router_bgp_vrf', None, None
+                vrb = cfg['router_bgp_vrfs'].setdefault(words[4], _empty_router_bgp_vrf_config())
+                vrb['present'] = True
+                vrb['as'] = int(words[2]) if words[2].isdigit() else words[2]
+                continue
             if words[0] == 'router' and len(words) >= 3 and words[1] == 'bgp':
                 section, iface, bgp_af = 'router_bgp', None, None
                 rb['present'] = True
@@ -878,12 +943,22 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                             'match': [], 'set': []}
                 cfg['route_maps'].setdefault(words[1], []).append(rm_entry)
                 continue
+            if words[:2] == ['mpls', 'ldp']:
+                section, iface, ldp_af = 'mpls_ldp', None, None
+                ml['present'] = True
+                continue
             if words[0] == 'router' or words[0] in ('vrf', 'route-map', 'key', 'line', 'segment-routing'):
                 section, iface = 'other', None
                 continue
             section, iface, rm_entry = None, None, None
             if words[0] == 'hostname' and len(words) >= 2:
                 cfg['hostname'] = words[1]
+            elif words[0] == 'access-list' and len(words) >= 4:
+                # access-list NAME [seq N] permit|deny PREFIX [exact-match]
+                seq, rest = seq_of(words[2:])
+                if len(rest) >= 2 and rest[0] in ('permit', 'deny'):
+                    cfg['access_lists'].setdefault(words[1], []).append(
+                        {'seq': seq, 'action': rest[0], 'prefix': rest[1], 'exact': 'exact-match' in rest[2:]})
             elif words[0] == 'ip' and len(words) >= 4 and words[1] == 'route':
                 cfg['static_routes'].append((words[2], words[3]))
             elif words[0] == 'ipv6' and len(words) >= 4 and words[1] == 'route':
@@ -954,11 +1029,41 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 _parse_ospf6_interface_line(iface['ospf6'], words[3:], negated=True)
             continue
 
+        if section == 'mpls_ldp':
+            if words[0] == 'address-family' and len(words) >= 2:
+                ldp_af = words[1]
+            elif words[0] == 'exit-address-family':
+                ldp_af = None
+            elif words[0] == 'router-id' and len(words) >= 2:
+                ml['router_id'] = words[1]
+            elif ldp_af == 'ipv4':
+                if words[:2] == ['discovery', 'transport-address'] and len(words) >= 3:
+                    ml['transport_address'] = words[2]
+                elif words[0] == 'interface' and len(words) >= 2:
+                    ml['interfaces'].append(words[1])
+                elif words[:3] == ['label', 'local', 'allocate'] and len(words) >= 4:
+                    ml['label_allocate'] = " ".join(words[3:])
+                elif words[:3] == ['label', 'local', 'advertise']:
+                    if 'explicit-null' in words:
+                        ml['explicit_null'] = True
+                    elif len(words) >= 4:
+                        ml['label_advertise'].append(" ".join(words[3:]))
+            continue
+
         if section == 'route_map' and rm_entry is not None:
             if words[0] == 'match' and len(words) >= 2:
                 rm_entry['match'].append(" ".join(words[1:]))
             elif words[0] == 'set' and len(words) >= 2:
                 rm_entry['set'].append(" ".join(words[1:]))
+            continue
+
+        if section == 'router_bgp_vrf' and vrb is not None:
+            if words[0] == 'address-family' and len(words) >= 2:
+                bgp_af = " ".join(words[1:3]) if len(words) >= 3 else f"{words[1]} unicast"
+            elif words[0] == 'exit-address-family':
+                bgp_af = None
+            if not _parse_bgp_vpn_line(vrb['vpn'], words):
+                _parse_router_bgp_line(vrb, words, vrf_neighbor_cfg, af=bgp_af)
             continue
 
         if section == 'router_bgp':
@@ -1027,9 +1132,69 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 ro['default_information_always'] = 'always' in words[2:]
             elif words[:2] == ['auto-cost', 'reference-bandwidth'] and len(words) >= 3:
                 ro['auto_cost_reference_bandwidth'] = int(words[2])
+            elif words[:2] == ['capability', 'opaque']:
+                ro['capability_opaque'] = True
+            elif words[:2] == ['fast-reroute', 'ti-lfa']:
+                ro['ti_lfa'] = 'node' if 'node-protection' in words else 'link'
+            elif words[0] == 'segment-routing' and len(words) >= 2:
+                _parse_ospf_sr_line(ro['segment_routing'], words[1:])
             continue
 
     return cfg
+
+
+def _empty_router_bgp_vrf_config() -> Dict[str, Any]:
+    cfg = _empty_router_bgp_config()
+    cfg['vpn'] = {'rd': None, 'rt_import': [], 'rt_export': [], 'label': None, 'export_vpn': False,
+                  'import_vpn': False}
+    return cfg
+
+
+def _parse_bgp_vpn_line(vpn: Dict[str, Any], words: List[str]) -> bool:
+    """A VPN statement of the IPv4 unicast family of a VRF instance applied to *vpn* (``rd vpn
+    export``, ``rt vpn both|import|export``, ``label vpn export``, ``export vpn``, ``import vpn``,
+    their ``no`` forms); False for any other statement."""
+    negated = bool(words) and words[0] == 'no'
+    w = words[1:] if negated else words
+    if w[:3] == ['rd', 'vpn', 'export']:
+        vpn['rd'] = None if negated else (w[3] if len(w) >= 4 else None)
+    elif w[:2] == ['rt', 'vpn'] and len(w) >= 3 and w[2] in ('both', 'import', 'export'):
+        keys = ['rt_import', 'rt_export'] if w[2] == 'both' else [f"rt_{w[2]}"]
+        for key in keys:
+            if negated:
+                vpn[key] = [x for x in vpn[key] if x not in w[3:]] if w[3:] else []
+            else:
+                vpn[key] = list(w[3:])
+    elif w[:3] == ['label', 'vpn', 'export']:
+        vpn['label'] = None if negated else (w[3] if len(w) >= 4 else None)
+    elif w == ['export', 'vpn']:
+        vpn['export_vpn'] = not negated
+    elif w == ['import', 'vpn']:
+        vpn['import_vpn'] = not negated
+    else:
+        return False
+    return True
+
+
+def _parse_ospf_sr_line(sr: Dict[str, Any], w: List[str]) -> None:
+    """``segment-routing <w...>`` of ``router ospf`` applied to *sr*."""
+    def block(i: int):
+        if len(w) > i + 2 and w[i + 1].isdigit() and w[i + 2].isdigit():
+            return int(w[i + 1]), int(w[i + 2])
+        return None
+    if w[0] == 'on':
+        sr['enabled'] = True
+    elif w[0] in ('global-block', 'local-block'):
+        for i, word in enumerate(w):
+            if word == 'global-block':
+                sr['srgb'] = block(i)
+            elif word == 'local-block':
+                sr['srlb'] = block(i)
+    elif w[0] == 'node-msd' and len(w) >= 2 and w[1].isdigit():
+        sr['node_msd'] = int(w[1])
+    elif w[0] == 'prefix' and len(w) >= 4 and w[2] == 'index' and w[3].isdigit():
+        sr['prefixes'][w[1]] = {'index': int(w[3]), 'no_php': 'no-php-flag' in w[4:],
+                                'explicit_null': 'explicit-null' in w[4:]}
 
 
 def _parse_ospf6_interface_line(o6: Dict[str, Any], w: List[str], negated: bool) -> None:
@@ -1067,13 +1232,14 @@ def _parse_ospf6_interface_line(o6: Dict[str, Any], w: List[str], negated: bool)
 
 def bgp_neighbor_activated(router_bgp: Dict[str, Any], peer, afi: str = 'ipv4') -> bool:
     """Whether the neighbour *peer* of a ``router_bgp`` of :func:`parse_frr_config` is active in
-    the unicast family *afi*: an explicit ``[no] neighbor X activate`` of that family wins; else
-    IPv4 unicast follows ``bgp default ipv4-unicast`` (on by default in FRR's traditional
-    profile) and IPv6 unicast is off."""
+    the unicast family *afi* (``'ipv4'``, ``'ipv6'``) or in the family named in full (``'ipv4
+    vpn'``): an explicit ``[no] neighbor X activate`` of that family wins; else IPv4 unicast
+    follows ``bgp default ipv4-unicast`` (on by default in FRR's traditional profile) and the
+    other families are off."""
     peer = str(peer)
     if peer not in (router_bgp or {}).get('neighbors', {}):
         return False
-    family = f"{afi} unicast"
+    family = afi if ' ' in afi else f"{afi} unicast"
     per_af = router_bgp.get('address_families', {}).get(family, {}).get('neighbors', {}).get(peer, {})
     if per_af.get('activate') is not None:
         return bool(per_af['activate'])
@@ -1220,12 +1386,23 @@ def parse_bgp_summary(data: Any) -> Dict[str, Any]:
 
 
 def get_bgp_summary(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
-                    afi: str = 'ipv4') -> Dict[str, Any]:
+                    afi: str = 'ipv4', vrf: str = None) -> Dict[str, Any]:
     """Run 'vtysh -c "show bgp ipv4 unicast summary json"' (``afi='ipv6'``: the IPv6 unicast
-    family; see :func:`parse_bgp_summary`).  Returns {} when BGP is not running, and when no
-    neighbour is active in that family."""
-    return parse_bgp_summary(_vtysh_json(grade, machine_name, f'show bgp {_afi_safi(afi)} summary', step,
-                                         allow_error))
+    family; ``vrf``: the instance of that VRF, ``show bgp vrf X ipv4 unicast summary``; see
+    :func:`parse_bgp_summary`).  Returns {} when BGP is not running, and when no neighbour is
+    active in that family."""
+    return parse_bgp_summary(_vtysh_json(grade, machine_name, f'show bgp {_vrf_words(vrf)}{_afi_safi(afi)} summary',
+                                         step, allow_error))
+
+
+def _vrf_words(vrf: str = None) -> str:
+    return f"vrf {vrf} " if vrf else ""
+
+
+def get_bgp_vpn_summary(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = True) -> Dict[str, Any]:
+    """The neighbours of the IPv4 VPN family (``show bgp ipv4 vpn summary json``, the shape of
+    :func:`parse_bgp_summary`); {} when no neighbour is active in it."""
+    return parse_bgp_summary(_vtysh_json(grade, machine_name, 'show bgp ipv4 vpn summary', step, allow_error))
 
 
 # -- show bgp neighbors X -----------------------------------------------------
@@ -1424,10 +1601,28 @@ def parse_bgp_routes(data: Any) -> Dict[str, List[Dict[str, Any]]]:
 
 
 def get_bgp_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
-                   afi: str = 'ipv4') -> Dict[str, List[Dict[str, Any]]]:
-    """Run 'vtysh -c "show bgp ipv4 unicast json"' (``afi='ipv6'``: ``ipv6 unicast``; see
-    :func:`parse_bgp_routes`). Returns {} on error."""
-    return parse_bgp_routes(_vtysh_json(grade, machine_name, f'show bgp {_afi_safi(afi)}', step, allow_error))
+                   afi: str = 'ipv4', vrf: str = None) -> Dict[str, List[Dict[str, Any]]]:
+    """Run 'vtysh -c "show bgp ipv4 unicast json"' (``afi='ipv6'``: ``ipv6 unicast``; ``vrf``: the
+    table of that VRF's instance; see :func:`parse_bgp_routes`). Returns {} on error."""
+    return parse_bgp_routes(_vtysh_json(grade, machine_name, f'show bgp {_vrf_words(vrf)}{_afi_safi(afi)}', step,
+                                        allow_error))
+
+
+def parse_bgp_vpn_routes(data: Any) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    """The JSON of ``show bgp ipv4 vpn`` (the VPNv4 table) → ``{rd: {prefix: [path, ...]}}``, the
+    paths of :func:`parse_bgp_routes`; ``{}`` without BGP (``{"warning": ...}``)."""
+    if not isinstance(data, dict):
+        return {}
+    by_rd = (data.get('routes') or {}).get('routeDistinguishers') if isinstance(data.get('routes'), dict) else None
+    if not isinstance(by_rd, dict):
+        return {}
+    return {rd: parse_bgp_routes({'routes': prefixes}) for rd, prefixes in by_rd.items() if isinstance(prefixes, dict)}
+
+
+def get_bgp_vpn_routes(grade: Grade0, machine_name: str, step: int = 1,
+                       allow_error: bool = True) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    """The VPNv4 table of *machine_name* (see :func:`parse_bgp_vpn_routes`)."""
+    return parse_bgp_vpn_routes(_vtysh_json(grade, machine_name, 'show bgp ipv4 vpn', step, allow_error))
 
 
 def bgp_best_path(routes: Dict[str, List[Dict[str, Any]]], prefix) -> Dict[str, Any]:
@@ -2233,3 +2428,192 @@ def get_ospf6_border_routers(grade: Grade0, machine_name: str, step: int = 1,
     if code != 0 or not output:
         return {}
     return parse_ospf6_border_routers(output)
+
+
+# ---------------------------------------------------------------------------
+# MPLS: LDP (ldpd), the label table of zebra, segment routing in OSPF, the RIB with labels
+# (json output of FRR 10.3; fixtures ldp_*, mpls_table_*, ospf_sr_*, route_* captured in the
+# MPLS lab).  The kernel side (net.mpls sysctls, ``ip -f mpls route``, MPLS counters) is
+# read by lib/mpls.py.
+# ---------------------------------------------------------------------------
+
+#: label values of the reserved labels as ldpd and zebra write them
+MPLS_IMPLICIT_NULL = 3
+MPLS_EXPLICIT_NULL = 0
+_LABEL_NAMES = {'imp-null': MPLS_IMPLICIT_NULL, 'implicit-null': MPLS_IMPLICIT_NULL,
+                'exp-null': MPLS_EXPLICIT_NULL, 'explicit-null': MPLS_EXPLICIT_NULL}
+
+
+def mpls_label_value(text) -> Optional[int]:
+    """A label as ldpd / zebra print it (``"16"``, ``16``, ``"imp-null"``, ``"exp-null"``) → its
+    value (``imp-null`` = 3, ``exp-null`` = 0); ``None`` for ``-`` or anything else."""
+    if isinstance(text, int):
+        return text
+    word = str(text or '').strip().lower()
+    if word in _LABEL_NAMES:
+        return _LABEL_NAMES[word]
+    return _int_or_none(word) if word.isdigit() else None
+
+
+def parse_ldp_neighbors(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show mpls ldp neighbor json`` → ``{lsr_id: {'state': str, 'operational': bool,
+    'transport_address': str | None, 'uptime': str | None}}`` (``{}`` without LDP)."""
+    result: Dict[str, Dict[str, Any]] = {}
+    for n in (data or {}).get('neighbors', []) if isinstance(data, dict) else []:
+        if not isinstance(n, dict) or not n.get('neighborId'):
+            continue
+        state = str(n.get('state') or '')
+        result[n['neighborId']] = {'state': state, 'operational': state.upper() == 'OPERATIONAL',
+                                   'transport_address': n.get('transportAddress'), 'uptime': n.get('upTime')}
+    return result
+
+
+def get_ldp_neighbors(grade: Grade0, machine_name: str, step: int = 1,
+                      allow_error: bool = True) -> Dict[str, Dict[str, Any]]:
+    """The LDP sessions of *machine_name* (see :func:`parse_ldp_neighbors`)."""
+    return parse_ldp_neighbors(_vtysh_json(grade, machine_name, "show mpls ldp neighbor", step, allow_error))
+
+
+def ldp_session_up(neighbors: Dict[str, Dict[str, Any]], lsr_id) -> bool:
+    return bool((neighbors.get(str(lsr_id)) or {}).get('operational'))
+
+
+def parse_ldp_discovery(data: Any) -> Dict[str, List[str]]:
+    """``show mpls ldp discovery json`` → ``{interface: [lsr_id]}`` for the link Hello
+    adjacencies (targeted adjacencies under ``'targeted'``)."""
+    result: Dict[str, List[str]] = {}
+    for a in (data or {}).get('adjacencies', []) if isinstance(data, dict) else []:
+        if not isinstance(a, dict) or not a.get('neighborId'):
+            continue
+        key = a.get('interface') if a.get('type') == 'link' else 'targeted'
+        result.setdefault(str(key), []).append(a['neighborId'])
+    return result
+
+
+def get_ldp_discovery(grade: Grade0, machine_name: str, step: int = 1,
+                      allow_error: bool = True) -> Dict[str, List[str]]:
+    """The LDP Hello adjacencies of *machine_name* (see :func:`parse_ldp_discovery`)."""
+    return parse_ldp_discovery(_vtysh_json(grade, machine_name, "show mpls ldp discovery", step, allow_error))
+
+
+def parse_ldp_bindings(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show mpls ldp binding json`` (the LIB) → ``{prefix: {'local': int | None, 'remote':
+    {lsr_id: int | None}, 'in_use': lsr_id | None}}``; labels are values (``imp-null`` = 3,
+    ``exp-null`` = 0), ``in_use`` the neighbour whose label the router forwards with."""
+    result: Dict[str, Dict[str, Any]] = {}
+    for b in (data or {}).get('bindings', []) if isinstance(data, dict) else []:
+        if not isinstance(b, dict) or not b.get('prefix'):
+            continue
+        entry = result.setdefault(b['prefix'], {'local': None, 'remote': {}, 'in_use': None})
+        entry['local'] = mpls_label_value(b.get('localLabel'))
+        if b.get('neighborId'):
+            entry['remote'][b['neighborId']] = mpls_label_value(b.get('remoteLabel'))
+            if b.get('inUse'):
+                entry['in_use'] = b['neighborId']
+    return result
+
+
+def get_ldp_bindings(grade: Grade0, machine_name: str, step: int = 1,
+                     allow_error: bool = True) -> Dict[str, Dict[str, Any]]:
+    """The LDP label bindings of *machine_name* (see :func:`parse_ldp_bindings`)."""
+    return parse_ldp_bindings(_vtysh_json(grade, machine_name, "show mpls ldp binding", step, allow_error))
+
+
+def parse_mpls_table(data: Any) -> Dict[int, Dict[str, Any]]:
+    """``show mpls table json`` (zebra's label table, LDP / SR / static) → ``{in_label:
+    {'installed': bool, 'nexthops': [{'type': 'LDP' | 'SR (OSPF)' | ..., 'out_labels': [int],
+    'nexthop': str | None, 'interface': str | None, 'installed': bool}]}}``.  ``installed`` is
+    zebra's view: the kernel may still have refused the label (``ip -f mpls route``)."""
+    result: Dict[int, Dict[str, Any]] = {}
+    for key, entry in (data or {}).items() if isinstance(data, dict) else []:
+        if not isinstance(entry, dict):
+            continue
+        label = _int_or_none(entry.get('inLabel', key))
+        if label is None:
+            continue
+        nexthops = []
+        for n in entry.get('nexthops', []):
+            if not isinstance(n, dict):
+                continue
+            stack = n.get('outLabelStack')
+            if not isinstance(stack, list):
+                stack = [n.get('outLabel')] if n.get('outLabel') is not None else []
+            nexthops.append({'type': n.get('type'), 'out_labels': [x for x in map(mpls_label_value, stack) if x is not None],
+                             'nexthop': n.get('nexthop'), 'interface': n.get('interface'),
+                             'installed': bool(n.get('installed'))})
+        result[label] = {'installed': bool(entry.get('installed')), 'nexthops': nexthops}
+    return result
+
+
+def get_mpls_table(grade: Grade0, machine_name: str, step: int = 1,
+                   allow_error: bool = True) -> Dict[int, Dict[str, Any]]:
+    """Zebra's label table of *machine_name* (see :func:`parse_mpls_table`)."""
+    return parse_mpls_table(_vtysh_json(grade, machine_name, "show mpls table", step, allow_error))
+
+
+def parse_ospf_sr_database(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show ip ospf database segment-routing json`` → ``{router_id: {'srgb': (base, size),
+    'srlb': (base, size), 'prefixes': {prefix: {'index': int, 'input_label': int,
+    'routes': [{'out_label': int, 'interface': str, 'nexthop': str}]}}}}`` (``{}`` when segment
+    routing is disabled on the router: FRR answers with a text line).  ``input_label`` and
+    ``routes`` are those of the router that answers, which also lists itself."""
+    result: Dict[str, Dict[str, Any]] = {}
+    for node in (data or {}).get('srNodes', []) if isinstance(data, dict) else []:
+        if not isinstance(node, dict) or not node.get('routerID'):
+            continue
+        prefixes = {}
+        for p in node.get('extendedPrefix', []):
+            if not isinstance(p, dict) or not p.get('prefix'):
+                continue
+            routes = [{'out_label': mpls_label_value(r.get('outputLabel')), 'interface': r.get('interface'),
+                       'nexthop': r.get('nexthop')} for r in p.get('prefixRoute', []) if isinstance(r, dict)]
+            prefixes[p['prefix']] = {'index': _int_or_none(p.get('sid')),
+                                     'input_label': _int_or_none(p.get('inputLabel')), 'routes': routes}
+        result[node['routerID']] = {
+            'srgb': (_int_or_none(node.get('srgbLabel')), _int_or_none(node.get('srgbSize'))),
+            'srlb': (_int_or_none(node.get('srlbLabel')), _int_or_none(node.get('srlbSize'))),
+            'prefixes': prefixes,
+        }
+    return result
+
+
+def get_ospf_sr_database(grade: Grade0, machine_name: str, step: int = 1,
+                         allow_error: bool = True) -> Dict[str, Dict[str, Any]]:
+    """The segment routing database of OSPF on *machine_name* (see :func:`parse_ospf_sr_database`)."""
+    return parse_ospf_sr_database(_vtysh_json(grade, machine_name, "show ip ospf database segment-routing", step,
+                                              allow_error))
+
+
+def _route_nexthop(n: Dict[str, Any]) -> Dict[str, Any]:
+    return {'ip': n.get('ip'), 'interface': n.get('interfaceName'), 'labels': list(n.get('labels') or []),
+            'active': bool(n.get('active')), 'fib': bool(n.get('fib'))}
+
+
+def parse_frr_routes(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show ip route [vrf X] json`` (zebra's RIB) → ``{prefix: {'protocol': str, 'selected':
+    bool, 'installed': bool, 'metric': int | None, 'nexthops': [{'ip', 'interface', 'labels':
+    [int], 'active', 'fib'}], 'backups': [same keys]}}``; ``backups`` are the backup next hops
+    of a protected route (TI-LFA), which zebra keeps but does not install in the kernel.  Of
+    several routes for a prefix the selected one wins (else the first)."""
+    result: Dict[str, Dict[str, Any]] = {}
+    for prefix, routes in (data or {}).items() if isinstance(data, dict) else []:
+        if not isinstance(routes, list):
+            continue
+        candidates = [r for r in routes if isinstance(r, dict)]
+        if not candidates:
+            continue
+        r = next((x for x in candidates if x.get('selected')), candidates[0])
+        result[prefix] = {
+            'protocol': r.get('protocol'), 'selected': bool(r.get('selected')), 'installed': bool(r.get('installed')),
+            'metric': _int_or_none(r.get('metric')),
+            'nexthops': [_route_nexthop(n) for n in r.get('nexthops', []) if isinstance(n, dict)],
+            'backups': [_route_nexthop(n) for n in r.get('backupNexthops', []) if isinstance(n, dict)],
+        }
+    return result
+
+
+def get_frr_routes(grade: Grade0, machine_name: str, vrf: str = None, step: int = 1,
+                   allow_error: bool = True) -> Dict[str, Dict[str, Any]]:
+    """Zebra's IPv4 RIB of *machine_name*, of the VRF *vrf* if given (see :func:`parse_frr_routes`)."""
+    command = f"show ip route vrf {vrf}" if vrf else "show ip route"
+    return parse_frr_routes(_vtysh_json(grade, machine_name, command, step, allow_error))

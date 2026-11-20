@@ -7,6 +7,14 @@
     "en": "LAN layer-2 attacks and defences (ARP, MITM, rogue DHCP, ICMP redirect)",
     "fr": "Attaques et parades sur un réseau local (niveau 2)"
   },
+  "mpls-vpn.py": {
+    "en": "BGP/MPLS VPNs and segment routing traffic engineering",
+    "fr": "VPN MPLS/BGP et ingénierie de trafic segment routing"
+  },
+  "mpls.py": {
+    "en": "MPLS: label switching, LDP and segment routing",
+    "fr": "MPLS : commutation de labels, LDP et segment routing"
+  },
   "nagios.py": {
     "en": "Nagios: supervising hosts and services",
     "fr": "Nagios : superviser des hôtes et des services"

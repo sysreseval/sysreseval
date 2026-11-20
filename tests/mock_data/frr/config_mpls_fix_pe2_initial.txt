@@ -1,0 +1,39 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname fix_pe2
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+interface eth0
+ ip ospf area 0
+ ip ospf passive
+exit
+!
+interface eth1
+ ip ospf area 0
+ ip ospf network point-to-point
+exit
+!
+router ospf
+ ospf router-id 10.24.79.4
+exit
+!
+mpls ldp
+ router-id 10.24.79.4
+ !
+ address-family ipv4
+  discovery transport-address 10.24.79.4
+  !
+  interface eth1
+  exit
+  !
+ exit-address-family
+ !
+exit
+!
+end

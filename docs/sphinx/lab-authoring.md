@@ -1445,6 +1445,32 @@ Use a token and groups of the evaluation that the students do not use, require s
 
 **Snooping of a Linux bridge** (`lib/bridging.py`). `bridge_mcast_info(get_ip_links(grade, m), 'br0')` → `snooping`, `querier`, `query_use_ifaddr`, `igmp_version`, the timers in seconds (`query_interval`, `membership_interval`…) and `ports` (`fast_leave`, `multicast_router`, `mcast_flood`); `get_mdb(grade, m, 'br0')` (`bridge -j -d mdb show dev br0`) + `mdb_ports(entries, group, source=None)`. A Linux bridge with snooping on but **no querier** (neither its own nor another one) still floods every group to every port.
 
+### MPLS helpers (from `/opt/sre/lib/mpls.py` and `/opt/sre/lib/frr.py`)
+
+```python
+from mpls import (trigger_mpls_modules_cmd, get_mpls_sysctls, get_kernel_mpls_routes, mpls_route_is_swap,
+                  mpls_route_is_pop, get_mpls_counters, mpls_counter_delta, parse_labels)
+from frr import (get_ldp_neighbors, ldp_session_up, get_ldp_discovery, get_ldp_bindings, get_mpls_table,
+                 get_ospf_sr_database, get_frr_routes, kernel_route_labels, mpls_label_value)
+```
+
+**The kernel modules.** Linux switches labels with the modules `mpls_router` and `mpls_iptunnel` of the **host**; the `net.mpls.*` sysctls of a container exist only once they are loaded. A lab needs no host command: `trigger_mpls_modules_cmd()` is a state command (run it on every router in `initial`, before any `net.mpls` sysctl) that asks the kernel for an `encap mpls` route, which makes it load both modules through its module autoload (the host's `modprobe`, no capability checked), then waits for `/proc/sys/net/mpls/platform_labels` of the container. Start FRR after it: zebra decides at start-up whether the kernel supports MPLS. `/proc/sys` must be writable (`net_config.remount_proc_sys()`).
+
+**The kernel side** (`lib/mpls.py`, every helper runs one command, `allow_error=True` by default):
+
+| Function | Returns |
+|----------|---------|
+| `get_mpls_sysctls(grade, m)` | `{platform_labels, ip_ttl_propagate, default_ttl, input: {ifname: 0 \| 1}}` (`grep -r . /proc/sys/net/mpls`; only `input` when the modules are missing) |
+| `get_kernel_mpls_routes(grade, m)` | the incoming label map, `ip -j -f mpls route`: `{label: {protocol, nexthops: [{out_labels, via, dev}]}}`; `out_labels == []` is a pop (`dev lo` alone: delivered to the machine) |
+| `mpls_route_is_swap(routes, label, out_labels, via=None)` / `mpls_route_is_pop(routes, label, via=None, dev=None)` | what a router does with a label |
+| `get_mpls_counters(grade, m, step=1)` + `mpls_counter_delta(before, after, ifname, key='rx_packets')` | the MPLS counters of each interface (`ip -j stats show group afstats subgroup mpls`): read at steps 1 and 3 around a ping burst at step 2, the delta proves that labelled packets crossed an interface (the routing protocols speak IP and never count). A packet received on an interface whose `input` is 0 still counts, then is dropped: gate the delta on the ping |
+
+**FRR** (`lib/frr.py`, json of vtysh): `get_ldp_neighbors` (`{lsr_id: {state, operational, transport_address, uptime}}`, `ldp_session_up(neighbors, lsr_id)`), `get_ldp_discovery` (`{ifname: [lsr_id]}`: an adjacency without a session means an unreachable transport address), `get_ldp_bindings` (the LIB: `{prefix: {local, remote: {lsr_id: label}, in_use}}`), `get_mpls_table` (zebra's labels: `{in_label: {installed, nexthops: [{type, out_labels, nexthop, interface}]}}`; zebra may say `installed` while the kernel refused the label), `get_ospf_sr_database` (`{router_id: {srgb: (base, size), srlb, prefixes: {prefix: {index, input_label, routes}}}}`, `{}` when segment routing is off), `get_frr_routes(grade, m, vrf=None)` (`show ip route [vrf X] json`: `{prefix: {protocol, selected, installed, metric, nexthops: [{ip, interface, labels}], backups: [...]}}`, the backups being the TI-LFA repair paths zebra keeps for itself). Labels are values: `imp-null` is 3, `exp-null` 0 (`mpls_label_value`). `parse_kernel_routes` gives each route a `labels` list (the stack pushed by each next hop, `kernel_route_labels(routes, prefix)`), and `parse_frr_config` an `mpls_ldp` block (router-id, transport address, interfaces, `label local allocate` / `advertise`), `access_lists`, and in `router_ospf` the `segment_routing` lines (SRGB, SRLB, prefix-SIDs with `no_php` / `explicit_null`), `capability_opaque` and `ti_lfa` (`'link'` / `'node'`).
+
+**BGP/MPLS L3VPN** (`lib/frr.py`, for `lab/sre/_DRAFT_misc/mpls-vpn.py`): `get_bgp_vpn_summary` (the VPNv4 neighbours, `show bgp ipv4 vpn summary json`, shape of `get_bgp_summary`: `{}` when no neighbour is activated in the family), `get_bgp_vpn_routes` (the VPNv4 table: `{rd: {prefix: [paths of get_bgp_routes]}}`), `vrf=` on `get_bgp_summary` / `get_bgp_routes` (`show bgp vrf X ipv4 unicast …`), on `get_frr_routes` and on `get_kernel_routes` (`ip -j route show vrf X`: the remote site of a VPN has `labels == [[transport, vpn]]`; with no LSP to the remote PE the VPN label alone, which the P router drops). `parse_frr_config` keeps the instances of the VRFs apart: `router_bgp_vrfs` = `{vrf: {…the keys of router_bgp…, vpn: {rd, rt_import, rt_export, label, export_vpn, import_vpn}}}` (`rt vpn both` fills both lists), and `bgp_neighbor_activated(router_bgp, peer, 'ipv4 vpn')` takes a family named in full. The VRF devices themselves are read by `policy_routing.vrf_devices(bridging.get_ip_links(grade, m))` / `vrf_of_port`.
+
+What Linux does that a router of an operator does not: it **drops** an MPLS packet whose TTL expires without any ICMP error (a `*` per core router in traceroute), and it pops the label of a PHP hop with the TTL of the label when `ip_ttl_propagate` is 1 (with propagation off at the ingress, the whole LSP and the egress disappear from traceroute). Setting `platform_labels` to 0 empties the label table of the kernel while zebra still believes its labels installed; zebra installs them again only when its LSPs change (`clear mpls ldp neighbor`). The MPLS lab (`lab/sre/_DRAFT_misc/mpls.py`) and the MPLS VPN lab (`lab/sre/_DRAFT_misc/mpls-vpn.py`) use all of these.
+
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
 `machine_config(net_scheme, machine_name, config)` — concise helper for wiring a machine inside `NetScheme.build()` (or `initial()`). `config` is a `(interfaces, sysctls)` tuple:

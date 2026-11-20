@@ -1,0 +1,6 @@
+/proc/sys/net/mpls/conf/eth0/input:0
+/proc/sys/net/mpls/conf/eth1/input:1
+/proc/sys/net/mpls/conf/lo/input:0
+/proc/sys/net/mpls/default_ttl:255
+/proc/sys/net/mpls/ip_ttl_propagate:1
+/proc/sys/net/mpls/platform_labels:100000

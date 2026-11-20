@@ -1,0 +1,10 @@
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 2,
+ "routerId": "172.18.0.6",
+ "defaultLocPrf": 100,
+ "localAS": 65101,
+ "routes": { "172.18.29.0/24": [{"valid":true,"bestpath":true,"selectionReason":"Weight","pathFrom":"external","prefix":"172.18.29.0","prefixLen":24,"network":"172.18.29.0/24","version":1,"metric":0,"weight":32768,"peerId":"(unspec)","path":"","origin":"IGP","nexthops":[{"ip":"0.0.0.0","hostname":"ce_c2","afi":"ipv4","used":true}]},{"valid":true,"pathFrom":"external","prefix":"172.18.29.0","prefixLen":24,"network":"172.18.29.0/24","version":1,"weight":0,"peerId":"172.18.0.5","path":"65000 65000","origin":"IGP","nexthops":[{"ip":"172.18.0.5","hostname":"ce_pe2","afi":"ipv4","used":true}]}]
+,"172.18.122.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"172.18.122.0","prefixLen":24,"network":"172.18.122.0/24","version":2,"metric":0,"weight":0,"peerId":"172.18.0.5","path":"65000 65000","origin":"IGP","nexthops":[{"ip":"172.18.0.5","hostname":"ce_pe2","afi":"ipv4","used":true}]}]
+ } , "totalRoutes": 2, "totalPaths": 3 } 
