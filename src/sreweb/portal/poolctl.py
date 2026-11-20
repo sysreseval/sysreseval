@@ -3,16 +3,18 @@ through its administration API (``[admin] token`` of web.toml; stdlib ``urllib``
 
   sre-web-tool list                 the hosts, their state, projects, load, terminals...
   sre-web-tool status               the spare capacity, the floor, the active hours, who is waking, the state file
-  sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power] [--instructors-only] [--priority N]
+  sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power] [--instructors-only] [--priority GROUP:ORDER]
   sre-web-tool remove NAME [--force]
   sre-web-tool enable | disable | wake | poweroff | drain NAME
   sre-web-tool allow-local-drain | forbid-local-drain NAME   whether the host may ask for its own drain (sre set-drain)
-  sre-web-tool priority NAME VALUE  the lowest priority is woken first and gets a project first among the empty hosts
+  sre-web-tool priority NAME GROUP:ORDER   a new project goes to the lowest group that has an available host, and
+                                    in it to the lowest order among the hosts without project (0:0 by default)
   sre-web-tool restart NAME | --all [--wait] [--timeout S]   the agents restart themselves (new code after an update)
   sre-web-tool preload NAME | --all | --failed   the hosts pull the Docker images of the labs, a few at a time
 """
 import argparse
 import json
+import re
 import ssl
 import sys
 import time
@@ -20,12 +22,16 @@ import urllib.error
 import urllib.request
 
 from ..agent.runner import PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_FAILED
-from ..config import load_web_config, ConfigError
+from ..config import load_web_config, check_priority, Priority, ConfigError
 
 PROG = 'sre-web-tool'
 ERROR_WIDTH = 60
 RESTART_WAIT_TIMEOUT = 180.0    # --wait: seconds for the agents to be back (the portal's hold is 120 s)
 RESTART_POLL = 2.0              # --wait: seconds between two readings of the pool
+_INTEGER_RE = re.compile(r'^-?\d+$')
+# what argparse takes for a value and not for an option: a negative number and, added here for
+# the sub-commands taking a priority, a "group:order" whose group is negative ("-1:5")
+_NEGATIVE_VALUE_RE = re.compile(r'^-\d+(:-?\d+)?$|^-\d*\.\d+$')
 COLUMNS = [('name', 'NAME'), ('state', 'STATE'), ('projects', 'PROJECTS'), ('load1', 'LOAD'),
            ('mem_available_mb', 'FREE MEM'), ('terminals', 'TERMINALS'), ('occupied_by', 'OCCUPIED'), ('uptime', 'UPTIME'), ('source', 'SOURCE'),
            ('error', 'LAST ERROR')]
@@ -116,7 +122,7 @@ def _cell(row: dict, key: str) -> str:
             extra.append('preload failed')
         if row.get('instructors_only'):
             extra.append('instructors')
-        if row.get('priority'):                         # not the default 0: the lowest is used first
+        if row.get('priority') not in (None, 0, str(Priority())):    # group:order, not the default: the lowest is used first
             extra.append(f"priority {row['priority']}")
         return value + (f" ({', '.join(extra)})" if extra else '')
     if key == 'error':
@@ -233,6 +239,15 @@ def _wait_restarted(client: PoolClient, sent: dict, timeout: float, rows: list) 
     return failures
 
 
+def _priority(text: str) -> str:
+    """A priority given on the command line, as the portal reads it: "group:order", or one
+    integer, that order in group 0 (the argparse type of ``priority`` and ``add --priority``)."""
+    try:
+        return str(check_priority(int(text) if _INTEGER_RE.match(text) else text, "the priority"))
+    except ConfigError as e:
+        raise argparse.ArgumentTypeError(str(e))
+
+
 def main(argv, default_config: str) -> int:
     parser = argparse.ArgumentParser(prog=PROG, description="manage the pool of the running portal")
     parser.add_argument('--config', default=default_config, help="web.toml (the portal address and the admin token)")
@@ -253,7 +268,8 @@ def main(argv, default_config: str) -> int:
     add.add_argument('--max-projects', type=int, default=25)
     add.add_argument('--power', action='store_true', help="the portal may power it off")
     add.add_argument('--instructors-only', action='store_true', help="only the instructors' projects are placed there")
-    add.add_argument('--priority', type=int, default=0, help="the lowest priority is used first (default: %(default)s)")
+    add.add_argument('--priority', type=_priority, default=None, metavar='GROUP:ORDER',
+                     help="the lowest group is used first, then the lowest order in it (default: 0:0)")
     remove = sub.add_parser('remove', help="remove a host", parents=[common])
     remove.add_argument('name')
     remove.add_argument('--force', action='store_true', help="even with projects (they stay on the host)")
@@ -264,10 +280,16 @@ def main(argv, default_config: str) -> int:
                          ('forbid-local-drain', "the host may not ask for its own drain, until its next boot; "
                                                 "cancels the one it asked for")):
         sub.add_parser(action, help=text, parents=[common]).add_argument('name')
-    priority = sub.add_parser('priority', help="set the priority of the host: the lowest one is woken first and gets a "
-                                               "project first among the hosts without project", parents=[common])
+    priority = sub.add_parser('priority', help="set the priority of the host, group:order: a new project goes to the "
+                                               "lowest group that has an available host and, in it, to the lowest "
+                                               "order among the hosts without project; the hosts are woken in that "
+                                               "order and powered off in the reverse one", parents=[common])
     priority.add_argument('name')
-    priority.add_argument('value', type=int, help="an integer, 0 by default (negative: before the others)")
+    priority.add_argument('value', type=_priority, metavar='GROUP:ORDER',
+                          help="two integers, 0:0 by default (negative ones: before the others; one integer: "
+                               "that order in group 0)")
+    for parser_with_priority in (add, priority):      # "-1:5" is a value there, as "-2" is everywhere
+        parser_with_priority._negative_number_matcher = _NEGATIVE_VALUE_RE
     restart = sub.add_parser('restart', help="the agent of a host restarts itself (new code after an update; "
                                              "the projects stay, the open terminals are lost)", parents=[common])
     restart.add_argument('name', nargs='?', help="the host (or --all)")
@@ -321,8 +343,7 @@ def _dispatch(client: PoolClient, args) -> int:
                   f"{'active' if status['active_now'] else 'inactive'} now)")
             print(f"waking: {', '.join(status['waking']) or 'none'}")
             print(f"idle host timeout: {status['idle_host_timeout'] or 'never (the nightly cron)'}")
-            if 'placement' in status:           # an older portal says nothing
-                print(f"placement: {status['placement']}")
+            if 'project_memory_mb' in status:   # an older portal says nothing
                 memory = status.get('project_memory_mb') or 0
                 if memory:
                     full = ', '.join(status.get('memory_full') or []) or 'none'
@@ -343,7 +364,7 @@ def _dispatch(client: PoolClient, args) -> int:
         body = {'name': args.name, 'url': args.host_url, 'token': args.host_token, 'max_projects': args.max_projects,
                 'mac': args.mac, 'wake_command': args.wake_command, 'power': args.power,
                 'instructors_only': args.instructors_only}
-        if args.priority:       # left out when it is the default: a portal not restarted yet refuses a key it does not know
+        if args.priority is not None:   # left out unless given: a portal not restarted yet refuses what it does not know
             body['priority'] = args.priority
         row = client.call('POST', '/api/pool/hosts', body)
         print(json.dumps(row, indent=2) if args.json else table([row]))

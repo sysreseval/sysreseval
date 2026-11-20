@@ -9,15 +9,14 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field, asdict, replace
+from dataclasses import dataclass, field, replace
 
 import aiohttp
 
 from ..agent.occupancy import SESSION_PREFIX
 from ..agent.runner import (PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED,
                             LAB_README_KEY)
-from ..config import (HostConfig, host_config_from_dict, check_priority, ConfigError, PLACEMENT_SPREAD,
-                      PLACEMENT_PACK)
+from ..config import HostConfig, Priority, host_config_from_dict, host_entry, check_priority, ConfigError
 from ..identity import Identity, is_valid_login
 
 log = logging.getLogger('sreweb.portal')
@@ -40,7 +39,8 @@ SOURCE_ADDED = 'added'
 #: whose flag was set by hand and differs from their ``enabled`` of the configuration (of their
 #: ``added`` entry for an added host); ``drain``: host -> when it was asked; ``priority``: host
 #: -> the priority set by hand (``value``) and the one of the configuration it was set over
-#: (``configured``), for the hosts where they differ; ``clocks``: per
+#: (``configured``), both as ``"group:order"``, for the hosts where they differ (a file of before
+#: the groups has one integer there: that order in group 0); ``clocks``: per
 #: host, the wake in progress, the hold after failed wakes or a power off, the power off and
 #: the restart sent.  Every time is a wall-clock one (the runtime keeps monotonic ones).  A
 #: version 1 file had ``removed``, ``added`` and every disabled host in ``disabled``; a version
@@ -313,7 +313,7 @@ class HostRuntime:
     """What the portal remembers about a host between polls."""
     source: str = SOURCE_CONFIG
     enabled: bool = True
-    priority: int = 0                  # the one of the configuration until it is set by hand (``set_priority``)
+    priority: Priority = Priority()    # the one of the configuration until it is set by hand (``set_priority``)
     woken_at: float | None = None      # monotonic time of the last wake, None when not waking
     wake_failures: int = 0
     next_wake_at: float = 0.0          # backoff after failed wakes
@@ -345,7 +345,7 @@ class HostRuntime:
 class Pool:
     def __init__(self, hosts: list, session, *, poll_interval: float = 2.0, wake_timeout: float = 180.0,
                  state_file: str = '', follow_local_sessions: bool = True, labs_cache_ttl: float = 60.0,
-                 restart_hold: float = RESTART_HOLD, placement: str = PLACEMENT_SPREAD, project_memory_mb: int = 0):
+                 restart_hold: float = RESTART_HOLD, project_memory_mb: int = 0):
         self.hosts: dict[str, HostConfig] = {}
         self.status: dict[str, HostStatus] = {}
         self.runtime: dict[str, HostRuntime] = {}
@@ -356,7 +356,6 @@ class Pool:
         self.state_file = state_file
         self.follow_local_sessions = follow_local_sessions
         self.labs_cache_ttl = labs_cache_ttl
-        self.placement = placement                  # [pool] placement: spread or pack (``pick``)
         self.project_memory_mb = project_memory_mb  # [pool] project_memory_mb: 0 = memory not checked
         #: The lab list of the Open page per role (``labs``), kept labs_cache_ttl seconds, and the
         #: lock making the requests of a role wait for the one fetching it.
@@ -450,14 +449,15 @@ class Pool:
             runtime.drain_at = round(time.time(), 3) if drain else 0.0
             self.save_state()
 
-    def set_priority(self, name: str, priority: int):
-        """``priority``: the host with the lowest one is woken first and takes a project first
-        among the hosts without project; the one with the highest is powered off first when
-        idle (``pick``, ``manager.wake_plan`` / ``poweroff_plan``)."""
+    def set_priority(self, name: str, priority: Priority):
+        """``priority`` (group:order): a new project goes to the lowest group that has an
+        available host and, in it, to the lowest order among the hosts without project; the
+        lowest host is woken first, the highest powered off first when idle (``pick``,
+        ``manager.wake_plan`` / ``poweroff_plan``)."""
         self.host(name)
         self.runtime[name].priority = priority
         self.save_state()
-        log.info("host %s: priority %d", name, priority)
+        log.info("host %s: priority %s", name, priority)
 
     # -- the state file -------------------------------------------------------------------------
 
@@ -472,11 +472,11 @@ class Pool:
         the configuration it was set over) and the drains."""
         return {
             KEY_REMOVED: sorted(self._removed),
-            KEY_ADDED: [asdict(self.hosts[n]) for n, r in self.runtime.items() if r.source == SOURCE_ADDED],
+            KEY_ADDED: [host_entry(self.hosts[n]) for n, r in self.runtime.items() if r.source == SOURCE_ADDED],
             KEY_ENABLED: sorted(n for n, r in self.runtime.items() if r.enabled and not self.hosts[n].enabled),
             KEY_DISABLED: sorted(n for n, r in self.runtime.items() if not r.enabled and self.hosts[n].enabled),
             KEY_DRAIN: {n: r.drain_at for n, r in sorted(self.runtime.items()) if r.drain},
-            KEY_PRIORITY: {n: {PRIORITY_VALUE: r.priority, PRIORITY_CONFIGURED: self.hosts[n].priority}
+            KEY_PRIORITY: {n: {PRIORITY_VALUE: str(r.priority), PRIORITY_CONFIGURED: str(self.hosts[n].priority)}
                            for n, r in sorted(self.runtime.items()) if r.priority != self.hosts[n].priority},
         }
 
@@ -617,7 +617,9 @@ class Pool:
         the priority of the host in the configuration is the one it was set over
         (``configured``): once the configuration gives another one, or the same as the entry,
         or the host is gone, the entry is dropped — an edit of the configuration wins.  A plain
-        number (written by hand, without the configured value) holds."""
+        value (written by hand, without the configured one) holds.  Every value is a priority
+        as the configuration writes it (``check_priority``): ``"group:order"``, or the one
+        integer of a file of before the groups."""
         for name, entry in (priorities if isinstance(priorities, dict) else {}).items():
             runtime = self.runtime.get(name)
             if runtime is None:
@@ -629,13 +631,15 @@ class Pool:
                 value, configured = entry.get(PRIORITY_VALUE), entry.get(PRIORITY_CONFIGURED)
             try:
                 value = check_priority(value, f"{self.state_file}: the priority of {name}")
+                if configured is not None:
+                    configured = check_priority(configured, f"{self.state_file}: the configured priority of {name}")
             except ConfigError as e:
                 log.error("%s", e)
                 continue
             in_config = self.hosts[name].priority
             if configured is not None and configured != in_config:
-                log.info("pool state: the priority of %s was set by hand to %d over %r and the configuration says "
-                         "%d now: it follows the configuration", name, value, configured, in_config)
+                log.info("pool state: the priority of %s was set by hand to %s over %s and the configuration says "
+                         "%s now: it follows the configuration", name, value, configured, in_config)
                 continue
             runtime.priority = value
 
@@ -899,7 +903,9 @@ class Pool:
             rows.append({
                 'name': h.name, 'url': h.url, 'max_projects': h.max_projects, 'state': self.state_of(h.name, now),
                 'source': rt.source, 'enabled': rt.enabled, 'can_wake': h.can_wake, 'power': h.power,
-                'instructors_only': h.instructors_only, 'priority': rt.priority,
+                'instructors_only': h.instructors_only,
+                # "group:order" as it is written, and its two numbers (what the Pool page sorts on)
+                'priority': str(rt.priority), 'group': rt.priority.group, 'order': rt.priority.order,
                 # a drain is wanted: the portal's, or the one asked on the host (``local_drain``, below)
                 'drain': self.draining(h.name), 'power_off_sent': rt.power_off_sent is not None,
                 'restart_sent': rt.restart_sent is not None,
@@ -944,11 +950,12 @@ class Pool:
         """The host of a new project and its reservation.  Without *host*: the host of a local
         login session of *identity* (``follow_local_sessions``: the workstation the user sits at,
         occupied by them, whatever its load), else, among the hosts up (enabled, reachable, not
-        occupied, not in exam mode, not draining), with ``placement = "spread"`` the least loaded
-        (projects / max_projects, then load), the one with the lowest priority among those
-        without project (``set_priority``; a start in flight counts as a project), with
-        ``placement = "pack"`` the one with the lowest priority, the fullest first among equal
-        priorities (then load): the hosts left empty can be powered off;
+        occupied, not in exam mode, not draining), those of the lowest group of the priorities
+        (``set_priority``: a host of a higher group takes a project only when no host of the
+        groups below can, so one host per group fills them one after the other and leaves the
+        others empty, to be powered off), and in that group the least loaded (projects /
+        max_projects, then load), the one with the lowest order among those without project (a
+        start in flight counts as a project);
         always with room (below their maximum, and memory for one more project with
         ``project_memory_mb``: ``memory_room``) and among the hosts *identity* may use: a host with
         ``instructors_only`` takes an instructor's project only, and the caller is a student
@@ -980,21 +987,18 @@ class Pool:
                 continue
             st, priority = self.status[h.name], self.runtime[h.name].priority
             fill, load = st.projects / h.max_projects, st.load1 if st.load1 is not None else 0.0
-            if self.placement == PLACEMENT_PACK:
-                # the lowest priority until it is full, the fullest among equal ones: the
-                # projects gather on the fewest hosts, the others empty
-                candidates.append((placement != PLACEMENT_SESSION, priority, -fill, load, h.name, h, placement))
-            else:
-                # the priority only tells the hosts without project apart: the least loaded host
-                # is one of them whenever there is one, and the loaded hosts are settled as before
-                candidates.append((placement != PLACEMENT_SESSION, fill, priority if st.projects == 0 else 0,
-                                   load, h.name, h, placement))
+            # the group before anything else: the candidates are the hosts that can take the
+            # project, so the first one is in the lowest group that has such a host.  In a group
+            # the order only tells the hosts without project apart: the least loaded host is one
+            # of them whenever there is one, and the loaded hosts are settled by their load
+            candidates.append((placement != PLACEMENT_SESSION, priority.group, fill,
+                               priority.order if st.projects == 0 else 0, load, h.name, h, placement))
         if not candidates:
             if waking:
                 raise PoolError(503, "a host is starting, please retry in a moment", retry_after=30)
             raise PoolError(503, "no host available for a new project", retry_after=60)
-        candidates.sort(key=lambda c: c[:5])
-        return self._reserve(candidates[0][5], candidates[0][6])
+        candidates.sort(key=lambda c: c[:6])
+        return self._reserve(candidates[0][6], candidates[0][7])
 
     def _available_to(self, h: HostConfig, identity: Identity | None, state: str) -> tuple:
         """Whether a new project of *identity* may go on *h*, in *state*, and what the placement

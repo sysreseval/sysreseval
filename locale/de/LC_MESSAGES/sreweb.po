@@ -926,9 +926,6 @@ msgstr "wird geweckt: {names}"
 msgid "outside the active hours"
 msgstr "außerhalb der aktiven Zeiten"
 
-msgid "placement: pack"
-msgstr "Platzierung: gebündelt"
-
 msgid "memory full: {names}"
 msgstr "Speicher voll: {names}"
 
@@ -1011,11 +1008,14 @@ msgstr "Priorität"
 msgid "Priority…"
 msgstr "Priorität…"
 
-msgid "The lowest priority is used first"
-msgstr "Die niedrigste Priorität wird zuerst verwendet"
+msgid "group:order: the lowest group is used first, then the lowest order"
+msgstr "Gruppe:Rang: die niedrigste Gruppe wird zuerst verwendet, dann der niedrigste Rang"
 
-msgid "Change the priority: the lowest one is used first"
-msgstr "Die Priorität ändern: die niedrigste wird zuerst verwendet"
+msgid "Change the priority (group:order): the lowest group is used first, then the lowest order"
+msgstr "Die Priorität (Gruppe:Rang) ändern: die niedrigste Gruppe wird zuerst verwendet, dann der niedrigste Rang"
+
+msgid "Order"
+msgstr "Rang"
 
 msgid "Priority of {name}"
 msgstr "Priorität von {name}"
@@ -1023,15 +1023,11 @@ msgstr "Priorität von {name}"
 msgid "Priority of the {n} selected host(s)"
 msgstr "Priorität der {n} ausgewählten Rechner"
 
-msgid ""
-"The host with the lowest priority is woken first and gets a project first "
-"among the hosts without project; the one with the highest is powered off "
-"first when idle. 0 by default; a negative number comes before."
-msgstr ""
-"Der Rechner mit der niedrigsten Priorität wird zuerst geweckt und erhält "
-"unter den Rechnern ohne Projekt zuerst ein Projekt; der mit der höchsten "
-"wird im Leerlauf zuerst ausgeschaltet. Standardmäßig 0; eine negative Zahl "
-"kommt davor."
+msgid "A new project goes to the lowest group that has an available host, and in that group to the least loaded host, the lowest order first among the hosts without project. The hosts are woken in that order and powered off, when idle, in the reverse one. 0:0 by default; a negative number comes before."
+msgstr "Ein neues Projekt geht in die niedrigste Gruppe, die einen verfügbaren Rechner hat, und dort auf den am wenigsten ausgelasteten Rechner, unter den Rechnern ohne Projekt zuerst auf den mit dem niedrigsten Rang. Die Rechner werden in dieser Reihenfolge geweckt und im Leerlauf in umgekehrter Reihenfolge ausgeschaltet. Standardmäßig 0:0; eine negative Zahl kommt davor."
+
+msgid "A field left empty leaves that number of each host as it is."
+msgstr "Ein leer gelassenes Feld lässt diese Zahl bei jedem Rechner unverändert."
 
 # --- the instructor role: tabs/evaluation.js, terminal.js, tabs/terminals.js -------------------
 msgid "No archived evaluation yet."

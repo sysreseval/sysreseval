@@ -14,7 +14,7 @@ import aiohttp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
 
-from sreweb.config import HostConfig, PoolConfig, PLACEMENT_PACK, PLACEMENT_SPREAD
+from sreweb.config import HostConfig, PoolConfig, check_priority
 from sreweb.identity import Identity, ROLE_INSTRUCTOR
 from sreweb.portal.manager import (HostView, PoolManager, free_slots, magic_packet, poweroff_plan, preload_plan,
                                    spare_capacity, wake_plan, BACKOFF_MIN, PRELOAD_REFUSED_HOLD)
@@ -25,11 +25,20 @@ from sreweb.portal.pool import (Pool, HostStatus, PoolError, STATE_OFF, STATE_UP
 TOKEN = 't' * 32
 
 
+def prio(value):
+    """A priority as the configuration writes it: ``"group:order"``, or one integer, that
+    order in group 0."""
+    return check_priority(value, 'priority')
+
+
 def view(name, state, projects=0, max_projects=10, can_wake=True, enabled=True, power=False,
          power_off_allowed=False, next_wake_at=0.0, idle_for=None, drain=False, power_off_pending=False,
          instructors_only=False, restart_pending=False, **more):
     """*more*: the preload fields (``preload``, ``preload_since``, ``preload_granted``,
-    ``preload_hold``, ``exam_projects``), ``held``, ``priority``, ``memory_room``."""
+    ``preload_hold``, ``exam_projects``), ``held``, ``priority`` (as ``prio`` takes it),
+    ``memory_room``."""
+    if 'priority' in more:
+        more['priority'] = prio(more['priority'])
     return HostView(name=name, state=state, projects=projects, max_projects=max_projects, can_wake=can_wake,
                     enabled=enabled, power=power, power_off_allowed=power_off_allowed, next_wake_at=next_wake_at,
                     idle_for=idle_for, drain=drain, power_off_pending=power_off_pending,
@@ -130,6 +139,15 @@ class TestWakePlan:
         assert wake_plan(hosts, PoolConfig(spare_projects=0, min_hosts_up=1), 1000.0, True, 0.0) == ['b']
         # a pool without priorities: the order of the configuration, as before
         assert wake_plan([view('b', STATE_OFF), view('a', STATE_OFF)], cfg, 1000.0, False, 0.0) == ['b']
+        # the group before the order
+        hosts = [view('a', STATE_OFF, priority='1:-9'), view('b', STATE_OFF, priority='0:5'),
+                 view('c', STATE_OFF, priority='-1:7')]
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['c']
+        hosts[2].can_wake = False
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['b']
+        hosts[1].state = STATE_UP
+        hosts[1].projects = 9                                           # one slot left: the next group
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['a']
 
 
 class TestPowerOffPlan:
@@ -154,6 +172,16 @@ class TestPowerOffPlan:
         assert poweroff_plan(hosts, cfg, active=True) == ['z']
         # a pool without priorities: the most idle, as before
         assert poweroff_plan([idle('a', 700), idle('b', 900)], cfg, active=True) == ['b']
+        # the group before the order: the highest group goes first, whatever the orders and the idle times
+        hosts = [idle('a', 5000, priority='0:9'), idle('b', 700, priority='2:-5'), idle('c', 900, priority='1:50'),
+                 idle('d', 800, priority='2:-4')]
+        assert poweroff_plan(hosts, cfg, active=True) == ['d']          # group 2: d (-4) before b (-5)
+        hosts[3].idle_for = 100
+        assert poweroff_plan(hosts, cfg, active=True) == ['b']
+        hosts[1].idle_for = 100
+        assert poweroff_plan(hosts, cfg, active=True) == ['c']          # then group 1, group 0 last
+        hosts[2].idle_for = 100
+        assert poweroff_plan(hosts, cfg, active=True) == ['a']
 
     def test_drained_host_first(self):
         cfg = PoolConfig(idle_host_timeout=0)   # never for idleness
@@ -640,20 +668,25 @@ class TestStates:
         assert rows['d']['drain'] is True and rows['e']['enabled'] is False and 'token' not in rows['a']
 
     def test_pick_priority_among_the_hosts_without_project(self):
-        """The lowest priority decides between the hosts without project; a loaded host is
-        still chosen on its load alone, and the user's own session comes before everything."""
-        hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in 'abc'] + [HostConfig('d', 'http://d', TOKEN, 10, priority=-1)]
+        """In a group (here group 0, the default) the lowest order decides between the hosts
+        without project; a loaded host is still chosen on its load alone, and the user's own
+        session comes before everything."""
+        hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in 'abc'] \
+            + [HostConfig('d', 'http://d', TOKEN, 10, priority=prio(-1))]
         pool = Pool(hosts, session=None)
-        assert [pool.runtime[n].priority for n in 'abcd'] == [0, 0, 0, -1]      # those of the configuration
+        assert [pool.runtime[n].priority for n in 'abcd'] == [(0, 0), (0, 0), (0, 0), (0, -1)]   # those of the configuration
         for name in 'abcd':
             pool.status[name] = HostStatus(reachable=True, load1=1.0)
         pool.status['d'].load1 = 9.0                 # the priority comes before the load
         assert pool.pick()[0].name == 'd'
         assert pool.pick()[0].name == 'a'            # d has a start in flight: the others, by name
-        pool.set_priority('c', -5)
-        pool.set_priority('b', 7)
+        pool.set_priority('c', prio(-5))
+        pool.set_priority('b', prio(7))
         assert pool.pick()[0].name == 'c' and pool.pick()[0].name == 'b'      # b, the last one without project
-        assert {row['name']: row['priority'] for row in pool.summary()} == {'a': 0, 'b': 7, 'c': -5, 'd': -1}
+        assert {row['name']: row['priority'] for row in pool.summary()} == {'a': '0:0', 'b': '0:7', 'c': '0:-5',
+                                                                            'd': '0:-1'}
+        assert {row['name']: (row['group'], row['order']) for row in pool.summary()} == {
+            'a': (0, 0), 'b': (0, 7), 'c': (0, -5), 'd': (0, -1)}
         # every host has one project: the load and the name, the priorities play no part
         pool.status['b'].load1 = 0.5
         assert pool.pick()[0].name == 'b'
@@ -665,49 +698,82 @@ class TestStates:
         # the host of a local session of the user first, whatever its priority and its load
         pool.runtime['c'].drain = False
         pool.status['a'] = HostStatus(reachable=True, projects=6, occupied=True, occupied_by=['session:bob'])
-        pool.set_priority('a', 50)
+        pool.set_priority('a', prio(50))
         host, reservation = pool.pick(Identity(login='bob'))
         assert host.name == 'a' and reservation.placement == PLACEMENT_SESSION
         host, reservation = pool.pick(Identity(login='alice'))
         assert host.name == 'c' and reservation.placement == PLACEMENT_LOAD
         with pytest.raises(PoolError) as e:
-            pool.set_priority('nope', 1)
+            pool.set_priority('nope', prio(1))
         assert e.value.status == 404
 
-    def test_pick_pack(self):
-        """``placement = "pack"``: the lowest priority until it is full, the fullest among equal
-        priorities (then the load and the name); the user's own session still comes first."""
-        hosts = [HostConfig('a', 'http://a', TOKEN, 4), HostConfig('b', 'http://b', TOKEN, 4),
-                 HostConfig('c', 'http://c', TOKEN, 4, priority=-1)]
-        pool = Pool(hosts, session=None, placement=PLACEMENT_PACK)
-        for name in 'abc':
+    def test_pick_the_lowest_group_first(self):
+        """The group of the priorities is strict: a new project goes to the lowest group that
+        has a host able to take it, whatever the load of its hosts; a higher group is used
+        when the hosts below are full, down or draining, and left as soon as one of them has
+        room again; the user's own session still comes before everything."""
+        hosts = [HostConfig('a', 'http://a', TOKEN, 3), HostConfig('b', 'http://b', TOKEN, 3),
+                 HostConfig('c', 'http://c', TOKEN, 3, priority=prio('1:0')),
+                 HostConfig('d', 'http://d', TOKEN, 3, priority=prio('1:-4')),
+                 HostConfig('e', 'http://e', TOKEN, 3, priority=prio('-1:9'))]
+        pool = Pool(hosts, session=None)
+        for name in 'abcde':
             pool.status[name] = HostStatus(reachable=True, load1=1.0)
-        pool.status['a'].projects = 1
-        # c first (priority -1) until it is full, though a has a project and c none
-        assert [pool.pick()[0].name for _ in range(4)] == ['c'] * 4
-        # then a, the fullest of the hosts at 0, until it is full; b last
-        assert [pool.pick()[0].name for _ in range(4)] == ['a', 'a', 'a', 'b']
-        # equal priority and fill: the lowest load, then the name
-        pool = Pool([HostConfig(n, f'http://{n}', TOKEN, 4) for n in 'xyz'], session=None, placement=PLACEMENT_PACK)
-        for name, load in zip('xyz', (2.0, 1.0, 1.0)):
-            pool.status[name] = HostStatus(reachable=True, load1=load, projects=1)
-        assert pool.pick()[0].name == 'y'
-        assert [pool.pick()[0].name for _ in range(3)] == ['y', 'y', 'z']    # y full after the first three
-        # the fill is a ratio: 3 of 10 is emptier than 2 of 4
+        pool.status['e'].load1 = 9.0
+        # group -1: e until it is full, though the hosts of the other groups are empty and less loaded
+        assert [pool.pick()[0].name for _ in range(3)] == ['e'] * 3
+        # then group 0, by the rule of a group: the least loaded host, then the name
+        assert [pool.pick()[0].name for _ in range(6)] == ['a', 'b', 'a', 'b', 'a', 'b']
+        # then group 1: d (order -4) before c while both are empty, then the least loaded
+        assert [pool.pick()[0].name for _ in range(6)] == ['d', 'c', 'c', 'd', 'c', 'd']
+        with pytest.raises(PoolError) as e:
+            pool.pick()
+        assert e.value.status == 503 and 'no host' in e.value.message
+        # a host of a lower group that cannot take the project is not waited for
+        pool.status['c'].projects = 0
+        pool.status['e'].projects = 0
+        pool.runtime['e'].drain = True                       # group -1: draining
+        pool.status['a'] = HostStatus(reachable=False)       # group 0: a down, b full
+        assert pool.pick()[0].name == 'c'
+        # a host of a lower group has room again: it takes the project, loaded as it is
+        pool.status['b'].projects = 2
+        pool.status['b'].load1 = 30.0
+        assert [pool.pick()[0].name for _ in range(2)] == ['b', 'c']      # b full again: back to group 1
+        # a priority set by hand counts at once
+        pool.runtime['e'].drain = False
+        pool.set_priority('c', prio('-5:0'))
+        assert [pool.pick()[0].name for _ in range(2)] == ['c', 'e']      # c (2 of 3) in group -5, then e, empty
+        # the host of a local session of the user first, whatever its group
+        pool.set_priority('d', prio('9:9'))
+        pool.status['d'] = HostStatus(reachable=True, projects=1, occupied=True, occupied_by=['session:bob'])
+        host, reservation = pool.pick(Identity(login='bob'))
+        assert host.name == 'd' and reservation.placement == PLACEMENT_SESSION
+        host, reservation = pool.pick(Identity(login='alice'))
+        assert host.name == 'e' and reservation.placement == PLACEMENT_LOAD
+
+    def test_pick_one_host_per_group_fills_them_in_turn(self):
+        """One host per group, what ``placement = "pack"`` was for: the lowest group until it is
+        full, though the other hosts are emptier and less loaded, so that the projects gather
+        on the fewest hosts; the pool has no placement mode any more."""
+        hosts = [HostConfig(f'vm{n}', f'http://vm{n}', TOKEN, 4, priority=prio(f'{n}:0')) for n in (1, 2, 3)]
+        pool = Pool(hosts, session=None)
+        for host in hosts:
+            pool.status[host.name] = HostStatus(reachable=True, load1=1.0)
+        pool.status['vm1'].load1 = 8.0
+        pool.status['vm3'].projects = 1
+        assert [pool.pick()[0].name for _ in range(9)] == ['vm1'] * 4 + ['vm2'] * 4 + ['vm3']
+        # a project of vm1 ended: it is filled again before vm3 goes on
+        pool.status['vm1'].projects = 3
+        assert [pool.pick()[0].name for _ in range(2)] == ['vm1', 'vm3']
+        # the fill is a ratio inside a group: 3 of 10 is emptier than 2 of 4
         pool = Pool([HostConfig('big', 'http://big', TOKEN, 10), HostConfig('small', 'http://small', TOKEN, 4)],
-                    session=None, placement=PLACEMENT_PACK)
+                    session=None)
         pool.status['big'] = HostStatus(reachable=True, projects=3)
         pool.status['small'] = HostStatus(reachable=True, projects=2)
-        assert pool.pick()[0].name == 'small'
-        # the host of the user's session first, whatever its priority and its fill
-        pool.status['big'] = HostStatus(reachable=True, projects=0, occupied=True, occupied_by=['session:bob'])
-        host, reservation = pool.pick(Identity(login='bob'))
-        assert host.name == 'big' and reservation.placement == PLACEMENT_SESSION
-        # the default placement is unchanged: the least loaded
-        spread = Pool([HostConfig('a', 'http://a', TOKEN, 4), HostConfig('b', 'http://b', TOKEN, 4)], session=None)
-        spread.status['a'] = HostStatus(reachable=True, projects=1)
-        spread.status['b'] = HostStatus(reachable=True, projects=0)
-        assert spread.placement == PLACEMENT_SPREAD and spread.pick()[0].name == 'b'
+        assert pool.pick()[0].name == 'big'
+        assert not hasattr(pool, 'placement')
+        with pytest.raises(TypeError):
+            Pool(hosts, session=None, placement='pack')
 
     def test_pick_memory_room(self):
         """``project_memory_mb``: a host takes no more new projects than its available memory
@@ -728,7 +794,7 @@ class TestStates:
         mgr = PoolManager(pool, PoolConfig(project_memory_mb=1000))
         assert {v.name: v.memory_room for v in mgr.views()} == {'a': 0, 'b': None}
         status = mgr.status()
-        assert (status['placement'], status['project_memory_mb'], status['memory_full']) == ('spread', 1000, ['a'])
+        assert (status['project_memory_mb'], status['memory_full']) == (1000, ['a']) and 'placement' not in status
         # a host named by an instructor whose memory is full: 503
         prof = Identity(login='prof', role=ROLE_INSTRUCTOR)
         with pytest.raises(PoolError) as e:
@@ -866,9 +932,10 @@ class TestStates:
 
 class TestManager:
     def test_the_lowest_priority_is_woken_first(self):
-        """The policy reads the priorities of the pool, those set by hand included."""
+        """The policy reads the priorities of the pool, those set by hand included: the group,
+        then the order."""
         hosts = [HostConfig('a', 'http://a', TOKEN, 10, mac='0a:00:00:00:00:01'),
-                 HostConfig('b', 'http://b', TOKEN, 10, mac='0a:00:00:00:00:02', priority=-1),
+                 HostConfig('b', 'http://b', TOKEN, 10, mac='0a:00:00:00:00:02', priority=prio(-1)),
                  HostConfig('c', 'http://c', TOKEN, 10, mac='0a:00:00:00:00:03')]
         session = FakeSession()
         pool = Pool(hosts, session, wake_timeout=100.0)
@@ -878,11 +945,12 @@ class TestManager:
 
         async def go():
             await pool.refresh()
-            pool.set_priority('c', -7)
-            assert {v.name: v.priority for v in mgr.views(time.monotonic())} == {'a': 0, 'b': -1, 'c': -7}
+            pool.set_priority('c', prio('-1:7'))
+            assert {v.name: v.priority for v in mgr.views(time.monotonic())} == {'a': (0, 0), 'b': (0, -1),
+                                                                                 'c': (-1, 7)}
             await mgr.tick()
-            assert sent == ['0a:00:00:00:00:03'] and pool.state_of('c') == STATE_WAKING       # c, -7
-            await mgr.tick()                                    # 10 slots to come, 15 wanted: b, -1, before a
+            assert sent == ['0a:00:00:00:00:03'] and pool.state_of('c') == STATE_WAKING       # c, group -1
+            await mgr.tick()                                    # 10 slots to come, 15 wanted: b, 0:-1, before a
             assert sent[1:] == ['0a:00:00:00:00:02'] and pool.state_of('a') == STATE_OFF
         run(go())
 

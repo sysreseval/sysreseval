@@ -175,11 +175,6 @@ labs_cache_ttl = 60
 # / the Pool page): this many hosts download at the same time, the others wait for their turn,
 # the one that waited longest first; 0 = the portal gives no turn (nothing is preloaded).
 max_preloads = 2
-# Where a new project goes among the hosts up: "spread" = the least loaded one (workstations,
-# each with its own processors); "pack" = the one with the lowest priority that still has room,
-# the fullest first among equal priorities, so that the others empty and idle_host_timeout
-# powers them off (virtual machines sharing the processors of one server).
-placement = "spread"
 # The memory one project may need, in MiB (0 = not checked): a host takes no more new projects
 # than its available memory (MemAvailable, sent by its agent) holds of them, each start in flight
 # counting as one, and the spare capacity of the elastic pool counts the same slots.  Measure a
@@ -336,10 +331,14 @@ max_answer_bytes = 1048576
 # instructors_only = true reserves a host for the instructors' projects: never a student's, they
 # choose it on their Open page; it is outside the elastic pool (no spare capacity, no floor, never
 # woken by the portal; powered off when idle like the others).
-# priority (an integer from -9999 to 9999, 0 by default) says which hosts are used first: the one
-# with the lowest priority is woken first and gets a project first among the hosts without
-# project, the one with the highest is powered off first when idle; the instructors change it on
-# the Pool page.
+# priority = "group:order" (two integers from -9999 to 9999, "0:0" by default) says which hosts are
+# used first.  The group is strict: a new project goes to the lowest group that has an available
+# host (up, not full, not occupied), whatever the load of its hosts; inside the group it goes to
+# the least loaded host, the lowest order first among the hosts without project.  The hosts are
+# woken in that order and powered off, when idle, in the reverse one.  One host per group ("1:0",
+# "2:0", "3:0"...) fills the hosts one after the other and lets idle_host_timeout power the
+# others off: virtual machines sharing the processors of one server.  The instructors change it
+# on the Pool page.  (One integer N, the priority of before the groups, is read as "0:N".)
 # `sre-web-tool add / remove / enable / disable / priority` change the pool without a restart.
 [[hosts]]
 name = "a01"
@@ -357,4 +356,4 @@ max_projects = 25
 # wake_command = "ssh relay wakeonlan {mac}"
 # enabled = false                    # kept in the pool, no project placed there
 # instructors_only = true            # never a student's project; the instructors choose it on the Open page
-# priority = 5                       # used after the hosts left at 0 (a negative one: before them)
+# priority = "1:0"                   # group 1: used when no host of group 0 can take the project

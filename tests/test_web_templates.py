@@ -509,8 +509,9 @@ class TestTemplates:
         for action in ('enable', 'disable', 'wake', 'drain', 'poweroff', 'preload', 'priority',
                        'allow-local-drain', 'forbid-local-drain'):
             assert f'data-action="{action}"' in html, action
-        # the Priority column (the lowest is used first), before the flags
+        # the Priority column (group:order, the lowest is used first), before the flags
         assert html.index('data-sort="uptime"') < html.index('data-sort="priority"') < html.index('data-sort="sre_version"')
+        assert 'title="group:order: the lowest group is used first, then the lowest order"' in html
         assert 'colspan="14"' in html and len(re.findall(r'<th[ >]', html)) == 14
         assert 'Host name: one or several words' in html
 

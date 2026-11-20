@@ -67,7 +67,6 @@ class PoolOptions:
     extra_web_config: str = ''     # a TOML file appended to the portal's web.toml ([access_log.database], [archives]...)
     extra_agent_config: str = ''   # a TOML file appended to every agent.toml ([preload] at_start = true...)
     max_preloads: int | None = None    # [pool] max_preloads of the portal (None: its default)
-    placement: str = ''                # [pool] placement of the portal ('': its default, spread)
     project_memory_mb: int = 0         # [pool] project_memory_mb of the portal (0: the memory not checked)
     base_path: str = ''                # base_path of the portal ('/sre': the site under a sub-path; '': the root)
     command: list = field(default_factory=list)
@@ -160,7 +159,6 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
         'instructor_values = ["2000"]\n'
         f'[pool]\npoll_interval = {opts.poll_interval}\nactive_hours = ""\n'
         + (f'max_preloads = {opts.max_preloads}\n' if opts.max_preloads is not None else '')
-        + (f'placement = {toml_str(opts.placement)}\n' if opts.placement else '')
         + (f'project_memory_mb = {opts.project_memory_mb}\n' if opts.project_memory_mb else '')
         + f'[admin]\ntoken = {toml_str(admin_token)}\nstate_file = {toml_str(str(workdir / "pool.json"))}\n'
         f'[access_log]\nfile = {toml_str(str(workdir / "access.log"))}\njournal = false\n'
@@ -329,8 +327,6 @@ def parse_args(argv=None) -> PoolOptions:
                         "MOCK_PRELOAD_DELAY / MOCK_PRELOAD_IMAGES in the environment shape the fake pulls)")
     p.add_argument('--max-preloads', type=int, default=None,
                    help="[pool] max_preloads of the portal: the hosts preloading at the same time (its default: 2)")
-    p.add_argument('--placement', choices=('spread', 'pack'), default='',
-                   help="[pool] placement of the portal (its default: spread, the least loaded host)")
     p.add_argument('--project-memory-mb', type=int, default=0, metavar='MIB',
                    help="[pool] project_memory_mb of the portal (0: the memory is not checked); the fake agents "
                         "all report the available memory of this machine")
@@ -351,7 +347,7 @@ def parse_args(argv=None) -> PoolOptions:
                        keep_workdir=a.keep_workdir, debug=a.debug,
                        administrators=[x.strip() for x in a.administrators.split(',') if x.strip()],
                        extra_web_config=a.extra_web_config, extra_agent_config=a.extra_agent_config,
-                       max_preloads=a.max_preloads, placement=a.placement, project_memory_mb=a.project_memory_mb,
+                       max_preloads=a.max_preloads, project_memory_mb=a.project_memory_mb,
                        base_path='/' + a.base_path.strip('/') if a.base_path.strip('/') else '',
                        command=command)
 

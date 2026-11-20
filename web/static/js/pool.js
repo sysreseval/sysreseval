@@ -15,10 +15,12 @@
 // same commands on every selected host the action applies to, one call per host; Preload images
 // is one of them, in the bar only: the selected hosts wait for their turn to pull the images
 // (`sre-web-tool preload`), the portal letting a few of them download at a time.  The Priority
-// column is the priority of the host (the lowest one is woken first and gets a project first among
-// the hosts without project, the highest one is powered off first when idle; `sre-web-tool
-// priority`): its value opens a dialog to change it, and Priority… of the bar sets one value on
-// every selected host (POST /api/pool/hosts/{name}/priority with {priority}).
+// column is the priority of the host, group:order (a new project goes to the lowest group that
+// has an available host and, in it, to the lowest order among the hosts without project; the
+// lowest host is woken first, the highest one is powered off first when idle; `sre-web-tool
+// priority`): its value opens a dialog to change the two numbers, and Priority… of the bar sets
+// the group, the order or both on every selected host (POST /api/pool/hosts/{name}/priority
+// with {priority: "group:order"}).
 
 import './base.js';
 import * as api from './api.js';
@@ -30,7 +32,8 @@ const REFRESH_INTERVAL = 5000;
 const ERROR_WIDTH = 60;        // the Last error cell (the whole text in its tooltip), as the tool
 const STATE_ORDER = ['up', 'occupied', 'exam', 'draining', 'waking', 'off', 'disabled'];   // the sort of the State column
 const NUMERIC = ['projects', 'terminals', 'load1', 'mem_available_mb', 'uptime'];   // sorted descending first
-const PRIORITY_LIMIT = 9999;   // a priority: an integer from -9999 to 9999 (config.PRIORITY_LIMIT of the portal)
+// the group and the order of a priority: integers from -9999 to 9999 (config.PRIORITY_LIMIT of the portal)
+const PRIORITY_LIMIT = 9999;
 
 const table = document.getElementById('pool');
 const body = table.querySelector('tbody');
@@ -172,9 +175,16 @@ function errorText(row) {
   return text.length <= ERROR_WIDTH ? text : text.slice(0, ERROR_WIDTH - 1) + '…';
 }
 
-// the priority of a host (0 for an older portal, which says nothing)
+// the priority of a host, {group, order} (0:0 for a portal that says nothing; the single number
+// of a portal of before the groups is that order in group 0)
 function priorityOf(row) {
-  return Number(row.priority) || 0;
+  const former = Number.isInteger(row.priority) ? row.priority : 0;
+  return {group: Number(row.group) || 0, order: Number.isInteger(row.order) ? row.order : former};
+}
+
+// a priority as it is written and shown: "group:order"
+function priorityText(priority) {
+  return `${priority.group}:${priority.order}`;
 }
 
 // the value a column sorts on
@@ -190,7 +200,10 @@ function sortValue(row, key) {
     case 'mem_available_mb': return row.reachable && isNumber(row.mem_available_mb) ? row.mem_available_mb : -1;
     case 'uptime': return isNumber(row.uptime) ? row.uptime : -1;
     case 'occupied_by': return (row.occupied_by || []).join(',');
-    case 'priority': return priorityOf(row);
+    case 'priority': {      // the group, then the order: one number
+      const priority = priorityOf(row);
+      return priority.group * (2 * PRIORITY_LIMIT + 2) + priority.order;
+    }
     default: return row[key] || '';
   }
 }
@@ -303,30 +316,49 @@ async function postAction(row, action, body) {
   }
 }
 
-// the dialog asking for a priority: a modal outside the table, whose rows are built anew at
-// every poll (an input in a cell would lose its focus and what is typed).  Resolves with the
-// integer, or null when the dialog is cancelled; value: the number shown first ('' for none).
-function priorityDialog(title, value) {
+// the dialog asking for a priority, group:order: a modal outside the table, whose rows are built
+// anew at every poll (an input in a cell would lose its focus and what is typed).  value:
+// {group, order}, the numbers shown first ('' for none).  With options.partial (several hosts) a
+// field left empty leaves that number of each host as it is; without it both are required.
+// Resolves with {group, order} (null for a number left empty), or null when the dialog is
+// cancelled or asks for nothing.
+function priorityDialog(title, value, options = {}) {
   return new Promise((resolve) => {
     let result = null;
-    const input = el('input', {type: 'number', name: 'priority', required: true, step: '1',
-                               min: String(-PRIORITY_LIMIT), max: String(PRIORITY_LIMIT), value: String(value)});
+    const field = (name, shown) => el('input', {type: 'number', name, required: !options.partial, step: '1',
+                                              min: String(-PRIORITY_LIMIT), max: String(PRIORITY_LIMIT),
+                                              value: String(shown)});
+    const group = field('group', value.group);
+    const order = field('order', value.order);
+    // the number of a field: null when it is empty, undefined when it is no number of a priority
+    const read = (input) => {
+      const text = input.value.trim();
+      const number = Number(text);
+      if (text === '') {
+        return null;
+      }
+      return Number.isInteger(number) && Math.abs(number) <= PRIORITY_LIMIT ? number : undefined;
+    };
     const cancel = el('button', {type: 'button'}, _('Cancel'));
     const save = el('button', {type: 'submit', class: 'primary'}, _('Save'));
     const form = el('form', {},
-      el('label', {}, _('Priority'), input),
+      el('label', {}, _('Group'), group),
+      el('label', {}, _('Order'), order),
       el('p', {class: 'muted'},
-         _('The host with the lowest priority is woken first and gets a project first among the hosts without project; the one with the highest is powered off first when idle. 0 by default; a negative number comes before.')),
+         _('A new project goes to the lowest group that has an available host, and in that group to the least loaded host, the lowest order first among the hosts without project. The hosts are woken in that order and powered off, when idle, in the reverse one. 0:0 by default; a negative number comes before.')),
+      options.partial
+        ? el('p', {class: 'muted'}, _('A field left empty leaves that number of each host as it is.')) : null,
       el('div', {class: 'buttons'}, cancel, el('span', {class: 'spacer'}), save));
     const dialog = el('dialog', {class: 'modal pool-priority'}, el('h2', {}, title), form);
     cancel.addEventListener('click', () => dialog.close());
-    form.addEventListener('submit', (event) => {    // the browser checked the field: a whole number in the range
+    form.addEventListener('submit', (event) => {    // the browser checked the fields: whole numbers in the range
       event.preventDefault();
-      const number = Number(input.value);
-      if (input.value.trim() === '' || !Number.isInteger(number) || Math.abs(number) > PRIORITY_LIMIT) {
+      const asked = {group: read(group), order: read(order)};
+      if (asked.group === undefined || asked.order === undefined
+          || (!options.partial && (asked.group === null || asked.order === null))) {
         return;
       }
-      result = number;
+      result = asked.group === null && asked.order === null ? null : asked;    // nothing asked: nothing to change
       dialog.close();
     });
     dialog.addEventListener('close', () => {
@@ -335,8 +367,8 @@ function priorityDialog(title, value) {
     });
     document.body.append(dialog);
     dialog.showModal();
-    input.focus();
-    input.select();
+    group.focus();
+    group.select();
   });
 }
 
@@ -347,18 +379,22 @@ async function editPriority(name) {
   if (!before) {
     return;
   }
-  const value = await priorityDialog(format(_('Priority of {name}'), {name}), priorityOf(before));
+  const asked = await priorityDialog(format(_('Priority of {name}'), {name}), priorityOf(before));
   const row = state.rows.find((r) => r.name === name);
-  if (value === null || !row || pending.has(name) || value === priorityOf(row)) {
+  if (asked === null || !row || pending.has(name) || priorityText(asked) === priorityText(priorityOf(row))) {
     return;
   }
-  await act(row, 'priority', {priority: value});
+  await act(row, 'priority', {priority: priorityText(asked)});
 }
 
-// the priority the hosts share, '' when they do not have the same: what the dialog of the bar shows first
+// the group and the order the hosts share, each '' when they do not have the same: what the
+// dialog of the bar shows first
 function commonPriority(rows) {
-  const values = new Set(rows.map(priorityOf));
-  return values.size === 1 ? priorityOf(rows[0]) : '';
+  const common = (key) => {
+    const values = new Set(rows.map((row) => priorityOf(row)[key]));
+    return values.size === 1 ? priorityOf(rows[0])[key] : '';
+  };
+  return {group: common('group'), order: common('order')};
 }
 
 // one action on a host: the row's buttons disabled meanwhile, the answer (the updated row) shown
@@ -385,8 +421,8 @@ function targets(action) {
 // one action on every selected host it applies to: one call per host, run together (one admin
 // line of the connection log each), the rows' buttons disabled meanwhile, every answer shown at
 // once, the failures in one message, then a refresh; the selection is kept.  The priority is
-// asked first, in its dialog: one value for all of them (the targets are taken again afterwards,
-// the pool was polled meanwhile).
+// asked first, in its dialog: a group, an order or both for all of them, each host keeping the
+// number left empty (the targets are taken again afterwards, the pool was polled meanwhile).
 async function actMany(action) {
   let rows = targets(action);
   if (!rows.length) {
@@ -395,15 +431,19 @@ async function actMany(action) {
   if (action === 'poweroff' && !window.confirm(powerOffQuestion(rows.map((row) => row.name)))) {
     return;
   }
-  let body;
+  let bodyOf = () => undefined;      // what the action takes, per host: the priority alone has a body
   if (action === 'priority') {
-    const value = await priorityDialog(format(_('Priority of the {n} selected host(s)'), {n: rows.length}),
-                                       commonPriority(rows));
+    const asked = await priorityDialog(format(_('Priority of the {n} selected host(s)'), {n: rows.length}),
+                                       commonPriority(rows), {partial: true});
     rows = targets(action);
-    if (value === null || !rows.length) {
+    if (asked === null || !rows.length) {
       return;
     }
-    body = {priority: value};
+    bodyOf = (row) => {
+      const current = priorityOf(row);
+      return {priority: priorityText({group: asked.group === null ? current.group : asked.group,
+                                      order: asked.order === null ? current.order : asked.order})};
+    };
   }
   for (const row of rows) {
     pending.set(row.name, action);
@@ -412,7 +452,7 @@ async function actMany(action) {
   const failures = new Map();
   await Promise.all(rows.map(async (row) => {
     try {
-      await postAction(row, action, body);
+      await postAction(row, action, bodyOf(row));
     } catch (e) {
       failures.set(row.name, e.message);
     } finally {
@@ -471,8 +511,9 @@ function actions(row) {
 // the Priority cell: the value is a button opening the dialog that changes it (disabled while an
 // action runs on the host, like the buttons of the row)
 function priorityCell(row) {
-  const button = el('button', {type: 'button', title: _('Change the priority: the lowest one is used first')},
-                    String(priorityOf(row)));
+  const button = el('button', {type: 'button',
+                               title: _('Change the priority (group:order): the lowest group is used first, then the lowest order')},
+                    priorityText(priorityOf(row)));
   button.disabled = pending.has(row.name);
   button.addEventListener('click', () => editPriority(row.name));
   return el('td', {class: 'num priority'}, button);
@@ -536,9 +577,6 @@ function renderStatus() {
   ];
   if (s.active_now === false) {
     pieces.push(_('outside the active hours'));
-  }
-  if (s.placement === 'pack') {   // the default (spread) goes without saying
-    pieces.push(_('placement: pack'));
   }
   if (Array.isArray(s.memory_full) && s.memory_full.length) {
     pieces.push(format(_('memory full: {names}'), {names: s.memory_full.join(', ')}));

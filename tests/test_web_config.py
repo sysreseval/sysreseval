@@ -158,6 +158,15 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [dict(HOST, priority=1.5)]}, 'priority'),
         ({'secret': SECRET, 'hosts': [dict(HOST, priority=10000)]}, 'priority'),
         ({'secret': SECRET, 'hosts': [dict(HOST, priority=-10000)]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority='1:')]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority=':1')]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority='a:b')]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority='1:2:3')]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority=' 1:2')]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority='1.5:2')]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority='10000:0')]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority='0:-10000')]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority=[1, 2])]}, 'priority'),
         ({'secret': SECRET, 'hosts': [HOST], 'tls_cert': '/c.pem'}, 'tls'),
         ({'secret': SECRET, 'hosts': [HOST], 'listen': 'nowhere'}, 'listen'),
         ({'secret': SECRET, 'hosts': 'a01'}, 'hosts'),
@@ -465,13 +474,27 @@ class TestWebConfig:
             dict(HOST, mac='AA-BB-CC-DD-EE-01', power=True),
             dict(HOST, name='b', wake_command='ipmitool -H {name} power on'),
             dict(HOST, name='c', enabled=False), dict(HOST, name='d', instructors_only=True),
-            dict(HOST, name='e', priority=-3), dict(HOST, name='f', priority=9999)]})
-        a, b, c, d, e, f = cfg.hosts
+            dict(HOST, name='e', priority=-3), dict(HOST, name='f', priority=9999),
+            dict(HOST, name='g', priority='1:5'), dict(HOST, name='h', priority='-9999:-2'),
+            dict(HOST, name='i', priority='0:0')]})
+        a, b, c, d = cfg.hosts[:4]
         assert a.mac == 'aa:bb:cc:dd:ee:01' and a.power and a.can_wake and a.enabled and not a.instructors_only
         assert b.wake_command.startswith('ipmitool') and b.can_wake and not b.power
         assert not c.enabled and not c.can_wake
         assert d.instructors_only and d.enabled
-        assert [h.priority for h in cfg.hosts] == [0, 0, 0, 0, -3, 9999]      # 0 when the key is left out
+        # group:order, 0:0 when the key is left out; one integer (the priority of before the
+        # groups) is that order in group 0
+        assert [h.priority for h in cfg.hosts] == [(0, 0), (0, 0), (0, 0), (0, 0), (0, -3), (0, 9999), (1, 5),
+                                                   (-9999, -2), (0, 0)]
+        assert [str(h.priority) for h in cfg.hosts[4:8]] == ['0:-3', '0:9999', '1:5', '-9999:-2']
+        g = cfg.hosts[6]
+        assert isinstance(g.priority, config.Priority) and (g.priority.group, g.priority.order) == (1, 5)
+        # the lowest first: the group, then the order
+        assert [h.name for h in sorted(cfg.hosts, key=lambda h: h.priority)] == ['h', 'e', 'a01', 'b', 'c', 'd', 'i',
+                                                                                  'f', 'g']
+        # a host as an entry of [[hosts]] (what the state file of the pool keeps) reads back the same
+        assert config.host_entry(g)['priority'] == '1:5'
+        assert config.host_config_from_dict(config.host_entry(g), 'host') == g
         with pytest.raises(ConfigError, match='MAC'):
             web_config_from_dict({'secret': SECRET, 'hosts': [dict(HOST, mac='zz')]})
         with pytest.raises(ConfigError, match='host name'):
@@ -507,13 +530,18 @@ class TestWebConfig:
             web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'admin': {'token': 'short'}})
 
     def test_placement_and_project_memory(self):
-        """``placement`` (spread by default, or pack) and ``project_memory_mb`` (0 = the memory is
-        not checked): the old placement unless asked."""
+        """``project_memory_mb`` (0 = the memory is not checked); ``placement``, a key of 0.18
+        that is no longer used, is still read with its two values (a web.toml written then
+        loads), and ``pack`` is answered by a warning naming what gives that rule now."""
         defaults = web_config_from_dict({'secret': SECRET, 'hosts': [HOST]}).pool
-        assert (defaults.placement, defaults.project_memory_mb) == (config.PLACEMENT_SPREAD, 0)
+        assert defaults.project_memory_mb == 0 and config.placement_warning(defaults) == ''
         cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST],
                                     'pool': {'placement': 'pack', 'project_memory_mb': 2048}}).pool
-        assert (cfg.placement, cfg.project_memory_mb) == (config.PLACEMENT_PACK, 2048)
+        assert cfg.project_memory_mb == 2048
+        warning = config.placement_warning(cfg)
+        assert 'placement = "pack" is no longer used' in warning and 'its own group' in warning
+        spread = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'placement': 'spread'}}).pool
+        assert config.placement_warning(spread) == ''
         for bad in ('Pack', 'fill', '', 1):
             with pytest.raises(ConfigError, match='placement'):
                 web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'placement': bad}})

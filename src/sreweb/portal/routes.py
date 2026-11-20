@@ -739,7 +739,7 @@ class Routes:
         """``enable`` / ``disable`` / ``wake`` / ``poweroff`` / ``drain`` / ``restart`` a host, or
         ask for a ``preload`` of the Docker images on it (it then waits for its turn: the portal
         lets a few hosts preload at a time), or set its ``priority`` (a JSON body
-        ``{"priority": N}``; ``Pool.set_priority``: the lowest one is used first), or let it ask
+        ``{"priority": "group:order"}``; ``Pool.set_priority``: the lowest one is used first), or let it ask
         for its own drain or not (``allow-local-drain`` / ``forbid-local-drain``: ``sre set-drain``
         on the host; ``enable`` cancels that drain too): the commands
         of sre-web-tool and the buttons of the Pool page (which has no Restart button: the tool
@@ -758,7 +758,7 @@ class Routes:
             self.pool.set_priority(name, priority)
             logged = request.get(ACCESS_KEY)      # the admin line of the connection log: the value asked
             if logged is not None:
-                logged['priority'] = priority
+                logged['priority'] = str(priority)
         elif action == 'enable':
             self.pool.set_enabled(name, True)
             if self.manager is not None:

@@ -15,6 +15,7 @@ import tomllib
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NamedTuple
 
 #: Minimum length of the portal secret and of an agent token.
 MIN_SECRET_LENGTH = 16
@@ -26,6 +27,7 @@ _DURATION_UNITS = {'': 1, 's': 1, 'm': 60, 'h': 3600, 'd': 86400}
 # a sub-path of the portal: segments of unreserved URL characters, so that the path is the same
 # text in a URL, in a cookie attribute and in a page
 _BASE_PATH_RE = re.compile(r'^(/[A-Za-z0-9._~-]+)+$')
+_PRIORITY_RE = re.compile(r'^(-?\d+):(-?\d+)$')      # "group:order"
 _PUBLIC_URL_SCHEMES = ('http', 'https')
 
 
@@ -178,14 +180,48 @@ AUTH_PROXY = 'proxy'
 AUTH_MODES = (AUTH_ANONYMOUS, AUTH_LDAP, AUTH_PROXY)
 
 
+PRIORITY_LIMIT = 9999      # the group and the order of a priority: integers from -PRIORITY_LIMIT to PRIORITY_LIMIT
+
+
+class Priority(NamedTuple):
+    """The priority of a pool host, ``group:order``, the lowest first (a tuple: it sorts and
+    compares as it is).  The group is strict: a new project goes to the lowest group that has
+    an available host, whatever the load of its hosts, and inside the group to the least
+    loaded host, the order telling the hosts without project apart.  The hosts are woken in
+    that order and powered off, when idle, in the reverse one.  One host per group therefore
+    fills the hosts one after the other.  Written ``"1:5"``; ``0:0`` by default."""
+    group: int = 0
+    order: int = 0
+
+    def __str__(self) -> str:
+        return f"{self.group}:{self.order}"
+
+
+def check_priority(value, where: str) -> Priority:
+    """The priority of a pool host (``[[hosts]] priority``, the Pool page, ``sre-web-tool``, the
+    state file of the pool), checked: ``"group:order"``, or one integer, the order in group 0
+    (the priority of before the groups: a file written then reads the same)."""
+    numbers = None
+    if isinstance(value, int) and not isinstance(value, bool):
+        numbers = (0, value)
+    elif isinstance(value, str):
+        match = _PRIORITY_RE.match(value)
+        if match:
+            numbers = (int(match.group(1)), int(match.group(2)))
+    if numbers is None or any(abs(n) > PRIORITY_LIMIT for n in numbers):
+        raise ConfigError(f'{where} must be "group:order", two integers from -{PRIORITY_LIMIT} to {PRIORITY_LIMIT} '
+                          f'(or one integer: that order in group 0)')
+    return Priority(*numbers)
+
+
 @dataclass
 class HostConfig:
     """A host of the pool: the URL of its agent and the token of that agent; how to wake it
     (a MAC address for a Wake-on-LAN packet, or a command with ``{name}`` / ``{mac}``),
     whether the portal may power it off, whether it is reserved for the instructors'
     projects (``instructors_only``: never a student's project, outside the elastic pool), and
-    its ``priority``: the lowest one is woken first and gets a project first among the hosts
-    without project (the highest one is powered off first when idle)."""
+    its ``priority`` (``Priority``, group:order: the lowest group that has an available host
+    takes a new project; the lowest is woken first, the highest powered off first when idle)."""
     name: str
     url: str
     token: str
@@ -195,22 +231,17 @@ class HostConfig:
     power: bool = False
     enabled: bool = True              # placement allowed (``sre-web-tool disable`` flips it)
     instructors_only: bool = False    # only the instructors' projects are placed there (chosen on their Open page)
-    priority: int = 0                 # the lowest is used first (the Pool page, ``sre-web-tool priority`` change it)
+    priority: Priority = Priority()   # group:order, the lowest first (the Pool page, ``sre-web-tool priority`` change it)
 
     @property
     def can_wake(self) -> bool:
         return bool(self.mac or self.wake_command)
 
 
-PRIORITY_LIMIT = 9999      # the priority of a host: an integer from -PRIORITY_LIMIT to PRIORITY_LIMIT
-
-
-def check_priority(value, where: str) -> int:
-    """The priority of a pool host (``[[hosts]] priority``, the Pool page, ``sre-web-tool``, the
-    state file of the pool), checked."""
-    if isinstance(value, bool) or not isinstance(value, int) or abs(value) > PRIORITY_LIMIT:
-        raise ConfigError(f"{where} must be an integer from -{PRIORITY_LIMIT} to {PRIORITY_LIMIT}")
-    return value
+def host_entry(host: HostConfig) -> dict:
+    """*host* as a ``[[hosts]]`` entry, what ``host_config_from_dict`` reads back (the state
+    file of the pool keeps the hosts added by hand that way)."""
+    return dict(dataclasses.asdict(host), priority=str(host.priority))
 
 
 _ATTRIBUTE_RE = re.compile(r'^[A-Za-z][A-Za-z0-9;-]*$')
@@ -342,11 +373,11 @@ class AuthConfig:
     proxy: ProxyAuthConfig = field(default_factory=ProxyAuthConfig)
 
 
-#: ``[pool] placement``: where the automatic placement puts a new project among the hosts up.
-#: ``spread``: on the least loaded (projects / max_projects; workstations, each with its own
-#: processors); ``pack``: on the host with the lowest priority that still has room, the fullest
-#: first among equal priorities, so that the others empty and the policy can power them off
-#: (virtual machines sharing the processors of one server).
+#: ``[pool] placement``, a key of 0.18 that is **no longer used**: still accepted, with one of
+#: its two values, so that a web.toml written then loads.  ``spread`` (the least loaded host) is
+#: the rule inside a group; ``pack`` (the lowest priority until the host is full, for virtual
+#: machines sharing the processors of one server) is what one host per group gives
+#: (``Priority``): the portal says so at its start (``placement_warning``).
 PLACEMENT_SPREAD = 'spread'
 PLACEMENT_PACK = 'pack'
 PLACEMENT_MODES = (PLACEMENT_SPREAD, PLACEMENT_PACK)
@@ -388,7 +419,7 @@ class PoolConfig:
     # the portal lets this many hosts download at the same time, the others wait for their turn;
     # 0 = it lets none
     max_preloads: int = 2
-    # PLACEMENT_SPREAD or PLACEMENT_PACK (above)
+    # no longer used (PLACEMENT_MODES above): read so that an older web.toml loads
     placement: str = PLACEMENT_SPREAD
     # the memory one project may need, in MiB (0 = the memory is not checked): a host takes as
     # many new projects as its available memory (MemAvailable, in the status of its agent) holds
@@ -847,6 +878,8 @@ def host_config_from_dict(h: dict, where: str) -> HostConfig:
     converted = {}
     if h.get('mac'):
         converted['mac'] = parse_mac(h['mac'], f'{where}.mac')
+    if 'priority' in h:
+        converted['priority'] = check_priority(h['priority'], f"{where}.priority")
     host = _build(HostConfig, {'name': '', 'url': '', 'token': '', **{k: v for k, v in h.items() if k != 'mac' or not v}},
                   where, **converted)
     if not host.name or not host.url or not host.token:
@@ -858,8 +891,17 @@ def host_config_from_dict(h: dict, where: str) -> HostConfig:
     for key in ('power', 'enabled', 'instructors_only'):
         if not isinstance(getattr(host, key), bool):
             raise ConfigError(f"{where}.{key} must be true or false")
-    check_priority(host.priority, f"{where}.priority")
     return host
+
+
+def placement_warning(pool) -> str:
+    """What to tell the administrator about the ``placement`` of a ``[pool]`` (*pool*: a
+    ``PoolConfig``): the key is no longer used, and ``pack`` asked for a rule the priorities
+    give now; '' when there is nothing to say."""
+    if pool.placement != PLACEMENT_PACK:
+        return ''
+    return ('[pool] placement = "pack" is no longer used: to fill the hosts one after the other, give each of '
+            'them its own group (priority = "1:0", "2:0", "3:0"… in [[hosts]], or on the Pool page)')
 
 
 _LDAP_SCHEMES = ('ldap://', 'ldaps://')

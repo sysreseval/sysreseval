@@ -3,9 +3,9 @@ Google Chrome / Chromium, ``SRE_TEST_CHROME`` names one) on the real pages of ``
 the portal of test_web_portal.py (proxy mode behind an identity proxy, a real agent on the fake
 ``sre``): a host the configuration disables is enabled with its button and is still enabled on
 the page of a portal started again on the same state file; a state file that cannot be written
-is said in red in the status line, for as long as it lasts; the Priority column, the dialog that
-changes the priority of a host or of the selected hosts, the column sorted, the priorities back
-after a restart; Enable cancelling a drain, from the row (in place of Drain) and from the bar, and
+is said in red in the status line, for as long as it lasts; the Priority column (group:order), the
+dialog that changes the two numbers of a host, or the group, the order or both of the selected
+hosts, the column sorted, the priorities back after a restart; Enable cancelling a drain, from the row (in place of Drain) and from the bar, and
 not once the power off of the host is sent; a drain the host asked for itself, its flag, Enable
 cancelling it, the local drains forbidden and allowed from the bar."""
 import asyncio
@@ -40,12 +40,16 @@ STATUS = "document.getElementById('pool-status').textContent"
 UNSAVED = "document.getElementById('pool-status').classList.contains('unsaved')"
 STATUS_COLOR = "getComputedStyle(document.getElementById('pool-status')).color"
 MUTED_COLOR = "getComputedStyle(document.getElementById('pool-count')).color"
-# the priorities: the button of a row's cell, the dialog and its field, the rows in the order shown
+# the priorities: the button of a row's cell, the dialog and its two fields (the group, focused
+# first, and the order), the rows in the order shown
 DIALOG = "document.querySelector('dialog.pool-priority')"
 DIALOG_OPEN = f"Boolean({DIALOG} && {DIALOG}.open)"
 DIALOG_TITLE = f"{DIALOG}.querySelector('h2').textContent"
-FIELD = f"{DIALOG}.querySelector('input[type=\"number\"]')"
-FIELD_FOCUSED = f"document.activeElement === {FIELD}"
+GROUP_FIELD = f"{DIALOG}.querySelector('input[name=\"group\"]')"
+ORDER_FIELD = f"{DIALOG}.querySelector('input[name=\"order\"]')"
+FIELD_FOCUSED = f"document.activeElement === {GROUP_FIELD}"
+VALUES = f"[{GROUP_FIELD}.value, {ORDER_FIELD}.value]"
+CANCEL = 'dialog.pool-priority .buttons button[type="button"]'
 ORDER = "Array.from(document.querySelectorAll('#pool tbody tr[data-host]')).map((tr) => tr.dataset.host).join(' ')"
 BULK = '#pool-selection button[data-action="priority"]'
 BULK_DISABLED = f"document.querySelector('{BULK}').disabled"
@@ -146,84 +150,117 @@ class TestPoolPage:
         P.run(go())
 
     def test_priority_of_a_host_and_of_the_selection(self, tmp_path):
-        """The Priority cell opens a dialog that survives the table being drawn again; the
-        value typed is saved by the portal and shown; the column sorts; Priority… of the bar
-        sets one value on every selected host; a portal started again shows them."""
+        """The Priority cell (group:order) opens a dialog that survives the table being drawn
+        again; the two numbers typed are saved by the portal and shown; the column sorts on the
+        group, then the order; Priority… of the bar sets the group, the order or both on every
+        selected host, each keeping the number left empty; a portal started again shows them."""
         state = tmp_path / 'state' / 'pool.json'
         token = {'Authorization': f'Bearer {ADMIN}'}
 
-        async def set_in_dialog(page, value: str):
-            await page.wait_for(f"{DIALOG_OPEN} && {FIELD_FOCUSED}", what="the dialog, its field focused")
-            await page.insert_text(value)             # the field is selected: the text replaces what it showed
+        async def fill(page, field: str, value: str):
+            """*value* in a field of the dialog in place of what it shows ('' empties it)."""
+            await page.evaluate(f"({field}.focus(), {field}.select())")
+            if value:
+                await page.insert_text(value)         # the field is selected: the text replaces what it showed
+            else:
+                await page.evaluate(f"({field}.value = '')")
+
+        async def set_in_dialog(page, group, order):
+            """The group and the order typed in the open dialog (None: the field as it is), then Enter."""
+            await page.wait_for(f"{DIALOG_OPEN} && {FIELD_FOCUSED}", what="the dialog, its first field focused")
+            if group is not None:
+                await fill(page, GROUP_FIELD, group)
+            if order is not None:
+                await fill(page, ORDER_FIELD, order)
             await page.press_enter()
             await page.wait_for(f"{DIALOG} === null", what="the dialog closed")
 
         async def go():
-            async with browser_of(tmp_path / 'first', state, host_over={'priority': 1}) as (h, browser, url):
+            async with browser_of(tmp_path / 'first', state, host_over={'priority': '0:1'}) as (h, browser, url):
                 for name in ('b02', 'b03'):       # two more hosts, down: a priority is set on any host
                     body = {'name': name, 'url': 'http://127.0.0.1:9', 'token': P.TOKEN}
                     assert (await h.client.post('/api/pool/hosts', json=body, headers=token)).status == 201
                 page = await browser.page(f'{url}/pool')
-                await page.wait_for(f"{shown('b03')} === '0'", what="the rows of the three hosts")
-                assert await page.evaluate(shown('a01')) == '1' and await page.evaluate(shown('b02')) == '0'
+                await page.wait_for(f"{shown('b03')} === '0:0'", what="the rows of the three hosts")
+                assert await page.evaluate(shown('a01')) == '0:1' and await page.evaluate(shown('b02')) == '0:0'
                 assert await page.evaluate(BULK_DISABLED) is True
                 # every other row is lightly tinted, its State cell included, which keeps its colour
                 assert await page.evaluate(ORDER) == 'a01 b02 b03'
                 assert await page.evaluate(STRIPES) == [[False, False, True], [True, True, True], [False, False, True]]
-                # the dialog of a row: the present value, kept open and focused when the table is drawn again
+                # the dialog of a row: the two numbers of the host, kept open and focused when the table is drawn again
                 await page.click(cell('a01'))
                 await page.wait_for(f"{DIALOG_OPEN} && {FIELD_FOCUSED}", what="the dialog of a01")
-                assert 'a01' in await page.evaluate(DIALOG_TITLE) and await page.evaluate(f"{FIELD}.value") == '1'
+                assert 'a01' in await page.evaluate(DIALOG_TITLE) and await page.evaluate(VALUES) == ['0', '1']
                 await page.evaluate(RENDER)
                 assert await page.evaluate(f"{DIALOG_OPEN} && {FIELD_FOCUSED}") is True
-                await set_in_dialog(page, '4')
-                await page.wait_for(f"{shown('a01')} === '4'", what="the new priority of a01")
-                assert json.loads(state.read_text())['priority'] == {'a01': {'value': 4, 'configured': 1}}
-                # cancelled: nothing changes; a value out of the range is not taken
+                await set_in_dialog(page, '2', '4')
+                await page.wait_for(f"{shown('a01')} === '2:4'", what="the new priority of a01")
+                assert json.loads(state.read_text())['priority'] == {'a01': {'value': '2:4', 'configured': '0:1'}}
+                # cancelled: nothing changes; a number out of the range is not taken, nor a field left
+                # empty (one host: both numbers are asked)
                 await page.click(cell('b02'))
                 await page.wait_for(DIALOG_OPEN, what="the dialog of b02")
-                await page.click('dialog.pool-priority .buttons button[type="button"]')
+                await page.click(CANCEL)
                 await page.wait_for(f"{DIALOG} === null", what="the dialog cancelled")
                 await page.click(cell('b02'))
                 await page.wait_for(f"{DIALOG_OPEN} && {FIELD_FOCUSED}", what="the dialog of b02 again")
                 await page.insert_text('10000')
                 await page.press_enter()
-                assert await page.evaluate(DIALOG_OPEN) is True and await page.evaluate(shown('b02')) == '0'
-                await page.click('dialog.pool-priority .buttons button[type="button"]')
+                assert await page.evaluate(DIALOG_OPEN) is True and await page.evaluate(shown('b02')) == '0:0'
+                await fill(page, GROUP_FIELD, '1')
+                await fill(page, ORDER_FIELD, '')
+                await page.press_enter()
+                assert await page.evaluate(DIALOG_OPEN) is True and await page.evaluate(shown('b02')) == '0:0'
+                await page.click(CANCEL)
                 await page.wait_for(f"{DIALOG} === null", what="the dialog cancelled again")
-                assert h.portal.pool.runtime['b02'].priority == 0
-                # a negative priority; the column sorted, the lowest first then the highest first
+                assert h.portal.pool.runtime['b02'].priority == (0, 0)
+                # negative numbers; the order alone, the group kept
                 await page.click(cell('b03'))
-                await set_in_dialog(page, '-2')
-                await page.wait_for(f"{shown('b03')} === '-2'", what="the new priority of b03")
+                await set_in_dialog(page, '-1', '9')
+                await page.wait_for(f"{shown('b03')} === '-1:9'", what="the new priority of b03")
+                await page.click(cell('b02'))
+                await set_in_dialog(page, None, '-2')
+                await page.wait_for(f"{shown('b02')} === '0:-2'", what="the new priority of b02")
+                # the column sorted on the group, then the order: the lowest first, then the highest first
                 assert await page.evaluate(ORDER) == 'a01 b02 b03'                 # by name
                 await page.click('#pool th[data-sort="priority"]')
                 assert await page.evaluate(ORDER) == 'b03 b02 a01'
                 await page.click('#pool th[data-sort="priority"]')
                 assert await page.evaluate(ORDER) == 'a01 b02 b03'
-                # the bar: no value shown first when the selected hosts differ, one value for all of them
+                # the bar: a number is shown first only when the selected hosts share it, and a field
+                # left empty leaves that number of each host: the group alone for all of them
                 await page.click('#pool-select-all')
                 assert await page.evaluate(BULK_DISABLED) is False
                 await page.click(BULK)
                 await page.wait_for(f"{DIALOG_OPEN} && {FIELD_FOCUSED}", what="the dialog of the selection")
-                assert '3' in await page.evaluate(DIALOG_TITLE) and await page.evaluate(f"{FIELD}.value") == ''
-                await set_in_dialog(page, '7')
-                await page.wait_for(' && '.join(f"{shown(name)} === '7'" for name in ('a01', 'b02', 'b03')),
-                                    what="the priority of the three hosts")
+                assert '3' in await page.evaluate(DIALOG_TITLE) and await page.evaluate(VALUES) == ['', '']
+                await set_in_dialog(page, '5', None)
+                await page.wait_for(' && '.join(f"{shown(name)} === '{value}'" for name, value in
+                                                (('a01', '5:4'), ('b02', '5:-2'), ('b03', '5:9'))),
+                                    what="the group of the three hosts, their orders kept")
                 saved = json.loads(state.read_text())['priority']
-                assert saved == {'a01': {'value': 7, 'configured': 1}, 'b02': {'value': 7, 'configured': 0},
-                                 'b03': {'value': 7, 'configured': 0}}
-                # the selection again: the value they share is shown first
+                assert saved == {'a01': {'value': '5:4', 'configured': '0:1'},
+                                 'b02': {'value': '5:-2', 'configured': '0:0'},
+                                 'b03': {'value': '5:9', 'configured': '0:0'}}
+                # the selection again: the group they share is shown first, not the order; the order alone
                 await page.click(BULK)
                 await page.wait_for(f"{DIALOG_OPEN} && {FIELD_FOCUSED}", what="the dialog of the selection again")
-                assert await page.evaluate(f"{FIELD}.value") == '7'
-                await page.click('dialog.pool-priority .buttons button[type="button"]')
+                assert await page.evaluate(VALUES) == ['5', '']
+                await set_in_dialog(page, None, '7')
+                await page.wait_for(' && '.join(f"{shown(name)} === '5:7'" for name in ('a01', 'b02', 'b03')),
+                                    what="the priority of the three hosts")
+                # both numbers are shared now; nothing asked (both fields emptied) changes nothing
+                await page.click(BULK)
+                await page.wait_for(f"{DIALOG_OPEN} && {FIELD_FOCUSED}", what="the dialog of the selection, third time")
+                assert await page.evaluate(VALUES) == ['5', '7']
+                await set_in_dialog(page, '', '')
+                assert [str(h.portal.pool.runtime[name].priority) for name in ('a01', 'b02', 'b03')] == ['5:7'] * 3
                 assert page.errors == []
             # the portal started again on the same configuration and state file
-            async with browser_of(tmp_path / 'again', state, host_over={'priority': 1}) as (h, browser, url):
+            async with browser_of(tmp_path / 'again', state, host_over={'priority': '0:1'}) as (h, browser, url):
                 page = await browser.page(f'{url}/pool')
-                await page.wait_for(f"{shown('b03')} === '7'", what="the rows of the three hosts")
-                assert await page.evaluate(shown('a01')) == '7' and await page.evaluate(shown('b02')) == '7'
+                await page.wait_for(f"{shown('b03')} === '5:7'", what="the rows of the three hosts")
+                assert await page.evaluate(shown('a01')) == '5:7' and await page.evaluate(shown('b02')) == '5:7'
         P.run(go())
 
     def test_enable_cancels_a_drain(self, tmp_path):

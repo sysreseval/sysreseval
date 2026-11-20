@@ -9,7 +9,7 @@ from aiohttp import web
 
 from .app import Portal
 from .defaults import default_web_dir, default_config_file, default_locale_dirs, default_state_file
-from ..config import load_web_config, parse_listen, ConfigError, AUTH_PROXY
+from ..config import load_web_config, parse_listen, placement_warning, ConfigError, AUTH_PROXY
 
 MOVED_TO_TOOL = ('pool',)     # the former `sre-web pool ...`
 
@@ -50,6 +50,8 @@ def main(argv=None) -> int:
                     cfg.base_path)
     if cfg.auth.mode == AUTH_PROXY:
         logger.info("identity headers trusted from %s", ', '.join(str(n) for n in cfg.trusted_proxies))
+    if placement_warning(cfg.pool):
+        logger.warning("%s", placement_warning(cfg.pool))
     logger.info("connection log: %s", portal.access.describe())
     if portal.archives is not None:
         logger.info("evaluation archives: %s", portal.archives.describe())

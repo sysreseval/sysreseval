@@ -44,12 +44,15 @@
 #   INSTRUCTOR_MACHINES none             the machines ("s0 h3", names as in the file, any case) whose host
 #                                        gets instructors_only = true on its own, whatever its room; a name
 #                                        that is not one of the selected hosts is reported and ignored
-#   ROOM_PRIORITIES     none             the priority of the hosts of a room, "<room>=<integer>" pairs
-#                                        ("z=-1 h=5", from -9999 to 9999): priority = <integer> in [[hosts]].
-#                                        The portal wakes the lowest priority first and gives it a project
-#                                        first among the hosts without project; a room not named has 0, the
-#                                        default.  A priority changed since on the Pool page (or with
-#                                        `sre-web-tool priority`) holds until this value changes
+#   ROOM_PRIORITIES     none             the priority of the hosts of a room, "<room>=<group>:<order>" pairs
+#                                        ("z=0:1 h=1:0", each number from -9999 to 9999): priority =
+#                                        "<group>:<order>" in [[hosts]].  A new project goes to the lowest
+#                                        group that has an available host and, in it, to the lowest order
+#                                        among the hosts without project; the portal wakes the hosts in
+#                                        that order.  A room not named has 0:0, the default, and
+#                                        "<room>=<integer>" is that order in group 0.  A priority changed
+#                                        since on the Pool page (or with `sre-web-tool priority`) holds
+#                                        until this value changes
 #   DOMAIN              none             when set, DNS:<name>.<DOMAIN> is a SAN of the certificate too
 #   PORTAL_ADDRESS      none             when set, allowed_clients = ["<it>"] in agent-<name>.toml
 #   TLS_DIR_ON_HOSTS    /etc/sreweb/tls  where the hosts and the portal keep the files (the paths
@@ -98,18 +101,25 @@ in_list() {   # in_list WORD LIST: WORD is one of the space-separated LIST
     return 1
 }
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
-priority_of() {   # priority_of ROOM: the priority ROOM_PRIORITIES gives the hosts of ROOM, 0 when it does not name it
-    local pair
+priority_of() {   # priority_of ROOM: the priority ("group:order") ROOM_PRIORITIES gives the hosts of ROOM, 0:0 when
+                  # it does not name it; one integer there is that order in group 0
+    local pair value
     for pair in $ROOM_PRIORITIES; do
-        if [ "${pair%%=*}" = "$1" ]; then printf '%s' "${pair#*=}"; return 0; fi
+        if [ "${pair%%=*}" = "$1" ]; then
+            value="${pair#*=}"
+            case "$value" in *:*) ;; *) value="0:$value";; esac
+            printf '%s' "$value"; return 0
+        fi
     done
-    printf 0
+    printf '0:0'
 }
 entries_of() {   # entries_of FILE: the [[hosts]] entries of a hosts.toml, one line each, to compare two runs:
-                 # "name;url;token;max_projects;mac;power;enabled;instructors_only;priority" (the default of a key left out)
+                 # "name;url;token;max_projects;mac;power;enabled;instructors_only;priority" (the default of a key left
+                 # out; the priority as "group:order", the one integer of a file of before the groups being that
+                 # order in group 0)
     [ -f "$1" ] || return 0
     awk '
-        function reset() { split("", v); v["power"] = "false"; v["enabled"] = "true"; v["instructors_only"] = "false"; v["priority"] = "0" }
+        function reset() { split("", v); v["power"] = "false"; v["enabled"] = "true"; v["instructors_only"] = "false"; v["priority"] = "0:0" }
         function flush() {
             if (name != "")
                 print name ";" v["url"] ";" v["token"] ";" v["max_projects"] ";" v["mac"] ";" v["power"] ";" v["enabled"] ";" v["instructors_only"] ";" v["priority"]
@@ -120,6 +130,7 @@ entries_of() {   # entries_of FILE: the [[hosts]] entries of a hosts.toml, one l
         /^[a-z_]+ *= */ {
             key = $0; sub(/ *=.*$/, "", key)
             val = $0; sub(/^[a-z_]+ *= */, "", val); gsub(/^"|"$/, "", val)
+            if (key == "priority" && val !~ /:/) val = "0:" val
             if (key == "name") name = val; else v[key] = val
         }
         END { flush() }' "$1"
@@ -206,11 +217,13 @@ if [[ probe =~ $REGEXP ]]; then :; elif [ $? -eq 2 ]; then die "REGEXP '$REGEXP'
 ROOMS=$(lower "$ROOMS"); DISABLED_ROOMS=$(lower "$DISABLED_ROOMS")
 INSTRUCTOR_ROOMS=$(lower "$INSTRUCTOR_ROOMS"); INSTRUCTOR_MACHINES=$(lower "$INSTRUCTOR_MACHINES")
 ROOM_PRIORITIES=$(lower "$ROOM_PRIORITIES")
-# <room>=<integer>, an integer as TOML writes it (no leading zero) from -9999 to 9999, a room once
-priority_re='^[^=]+=(0|-?[1-9][0-9]{0,3})$'
+# <room>=<group>:<order> (or <room>=<order>, in group 0), integers written without a leading zero from
+# -9999 to 9999, a room once
+priority_int='(0|-?[1-9][0-9]{0,3})'
+priority_re="^[^=]+=($priority_int:)?$priority_int\$"
 priority_rooms=""
 for pair in $ROOM_PRIORITIES; do
-    [[ $pair =~ $priority_re ]] || die "ROOM_PRIORITIES: '$pair' is not <room>=<integer from -9999 to 9999>"
+    [[ $pair =~ $priority_re ]] || die "ROOM_PRIORITIES: '$pair' is not <room>=<group>:<order> (integers from -9999 to 9999)"
     ! in_list "${pair%%=*}" "$priority_rooms" || die "ROOM_PRIORITIES: the room '${pair%%=*}' is given twice"
     priority_rooms="$priority_rooms ${pair%%=*}"
 done
@@ -326,7 +339,7 @@ while IFS=';' read -r name ip mac room; do
         instructors_only=true; instructors=$((instructors + 1))
     fi
     power=false; [ "$POWER" != true ] || power=true
-    priority=0; [ -z "$room" ] || priority=$(priority_of "$room")
+    priority=0:0; [ -z "$room" ] || priority=$(priority_of "$room")
     entry="$name;https://$ip:$AGENT_PORT;$token;$MAX_PROJECTS;$mac;$power;$enabled;$instructors_only;$priority"
     new_entries="$new_entries$entry
 "
@@ -341,7 +354,7 @@ while IFS=';' read -r name ip mac room; do
         if [ "$POWER" = true ]; then echo "power = true"; fi
         if [ "$enabled" = false ]; then echo "enabled = false"; fi
         if [ "$instructors_only" = true ]; then echo "instructors_only = true"; fi
-        if [ "$priority" != 0 ]; then echo "priority = $priority"; fi
+        if [ "$priority" != 0:0 ]; then echo "priority = \"$priority\""; fi
     } >> "$tmp"
     agent_toml="$out/agent-$name.toml"
     (umask 077; {

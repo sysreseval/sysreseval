@@ -15,7 +15,7 @@ import aiohttp
 from .pool import (Pool, PoolError, preload_fields, STATE_UP, STATE_WAKING, STATE_OCCUPIED, STATE_EXAM,
                    STATE_DRAINING, STATE_OFF)
 from ..agent.runner import PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_FAILED
-from ..config import PoolConfig, HostConfig, parse_active_hours, in_active_hours
+from ..config import PoolConfig, HostConfig, Priority, parse_active_hours, in_active_hours
 
 log = logging.getLogger('sreweb.portal')
 
@@ -57,8 +57,8 @@ class HostView:
     # kept for an exam that lists the machine (``Pool.exam_hold``): no new web project there, so
     # it is no capacity of the pool, and the policy does not power it off
     held: bool = False
-    # the lowest priority is woken first, the highest powered off first when idle (``Pool.set_priority``)
-    priority: int = 0
+    # group:order: the lowest is woken first, the highest powered off first when idle (``Pool.set_priority``)
+    priority: Priority = Priority()
     # the new projects its free memory holds (``Pool.memory_room``; None: not checked or not told)
     memory_room: int | None = None
 
@@ -87,8 +87,8 @@ def spare_capacity(hosts) -> int:
 
 
 def wake_plan(hosts, cfg: PoolConfig, now: float, active: bool, last_wake_at: float) -> list:
-    """The names of the hosts to wake now, the lowest priority first and in configuration order
-    among equal ones: enough sleeping hosts to bring
+    """The names of the hosts to wake now, the lowest priority first (the group, then the
+    order) and in configuration order among equal ones: enough sleeping hosts to bring
     the spare capacity back to ``spare_projects`` and, during the active hours, the awake hosts
     up to ``min_hosts_up``; at most one wake per ``wake_interval``.  A host reserved for
     instructors is never woken by the policy (``sre-web-tool wake``, or its own boot)."""
@@ -112,8 +112,8 @@ def poweroff_plan(hosts, cfg: PoolConfig, active: bool) -> list:
     """The names of the hosts to power off now: a draining host as soon as it is empty; with
     ``idle_host_timeout``, one idle host that the floor and the spare capacity can spare (a
     host reserved for instructors counts for neither: idle long enough is enough), the one
-    with the highest priority first, then the longest idle: the hosts left awake are those the
-    placement prefers."""
+    with the highest priority first (the group, then the order), then the longest idle: the
+    hosts left awake are those the placement prefers."""
     empties = [h for h in hosts if h.state in (STATE_UP, STATE_DRAINING) and h.projects == 0 and h.power
                and h.power_off_allowed and not h.power_off_pending and not h.restart_pending]
     drained = [h.name for h in empties if h.drain]
@@ -123,7 +123,7 @@ def poweroff_plan(hosts, cfg: PoolConfig, active: bool) -> list:
         return []
     awake = awake_count(hosts)
     floor = cfg.min_hosts_up if active else 0
-    for h in sorted(empties, key=lambda h: (-h.priority, -(h.idle_for or 0))):
+    for h in sorted(empties, key=lambda h: (-h.priority.group, -h.priority.order, -(h.idle_for or 0))):
         if h.idle_for is None or h.idle_for < cfg.idle_host_timeout:
             continue
         if h.held:
@@ -221,7 +221,7 @@ class PoolManager:
                 'preloading': [h.name for h in views if is_preloading(h)],
                 'preload_queued': sum(1 for h in views if h.preload == PRELOAD_PENDING and not h.preload_granted),
                 'preload_failed': sum(1 for h in views if h.preload == PRELOAD_FAILED),
-                'placement': self.pool.placement, 'project_memory_mb': self.pool.project_memory_mb,
+                'project_memory_mb': self.pool.project_memory_mb,
                 'memory_full': [h.name for h in views if h.state == STATE_UP and h.memory_room == 0],
                 **self.pool.state_info()}
 

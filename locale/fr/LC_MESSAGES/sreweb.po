@@ -907,9 +907,6 @@ msgstr "en démarrage : {names}"
 msgid "outside the active hours"
 msgstr "hors des heures actives"
 
-msgid "placement: pack"
-msgstr "placement : regroupé"
-
 msgid "memory full: {names}"
 msgstr "mémoire pleine : {names}"
 
@@ -987,11 +984,14 @@ msgstr "Priorité"
 msgid "Priority…"
 msgstr "Priorité…"
 
-msgid "The lowest priority is used first"
-msgstr "La priorité la plus basse est utilisée en premier"
+msgid "group:order: the lowest group is used first, then the lowest order"
+msgstr "groupe:ordre : le groupe le plus bas est utilisé en premier, puis l'ordre le plus bas"
 
-msgid "Change the priority: the lowest one is used first"
-msgstr "Changer la priorité : la plus basse est utilisée en premier"
+msgid "Change the priority (group:order): the lowest group is used first, then the lowest order"
+msgstr "Changer la priorité (groupe:ordre) : le groupe le plus bas est utilisé en premier, puis l'ordre le plus bas"
+
+msgid "Order"
+msgstr "Ordre"
 
 msgid "Priority of {name}"
 msgstr "Priorité de {name}"
@@ -999,8 +999,11 @@ msgstr "Priorité de {name}"
 msgid "Priority of the {n} selected host(s)"
 msgstr "Priorité des {n} machine(s) sélectionnée(s)"
 
-msgid "The host with the lowest priority is woken first and gets a project first among the hosts without project; the one with the highest is powered off first when idle. 0 by default; a negative number comes before."
-msgstr "La machine de priorité la plus basse est réveillée en premier et reçoit un projet en premier parmi les machines sans projet ; celle de priorité la plus haute est éteinte en premier quand elle est inoccupée. 0 par défaut ; un nombre négatif passe avant."
+msgid "A new project goes to the lowest group that has an available host, and in that group to the least loaded host, the lowest order first among the hosts without project. The hosts are woken in that order and powered off, when idle, in the reverse one. 0:0 by default; a negative number comes before."
+msgstr "Un nouveau projet va dans le groupe le plus bas qui a une machine disponible et, dans ce groupe, sur la machine la moins chargée, l'ordre le plus bas d'abord parmi les machines sans projet. Les machines sont réveillées dans cet ordre et éteintes, quand elles sont inoccupées, dans l'ordre inverse. 0:0 par défaut ; un nombre négatif passe avant."
+
+msgid "A field left empty leaves that number of each host as it is."
+msgstr "Un champ laissé vide ne change pas ce nombre sur les machines."
 
 # --- the instructor role: tabs/evaluation.js, terminal.js, tabs/terminals.js -------------------
 

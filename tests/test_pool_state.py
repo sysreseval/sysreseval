@@ -43,18 +43,20 @@ def flags(pool) -> dict:
 
 
 def ranked(**priority) -> list:
-    """``ranked(s01=0, z01=3)``: the ``[[hosts]]`` of a configuration, with their ``priority``."""
-    return [HostConfig(name, f'http://{name}', TOKEN, 10, priority=value) for name, value in priority.items()]
+    """``ranked(s01=0, z01='1:3')``: the ``[[hosts]]`` of a configuration, with their ``priority``
+    (``"group:order"``, or one integer: that order in group 0)."""
+    return [HostConfig(name, f'http://{name}', TOKEN, 10, priority=M.prio(value)) for name, value in priority.items()]
 
 
 def priorities(pool) -> dict:
-    return {name: rt.priority for name, rt in pool.runtime.items()}
+    """host -> its priority as it is written, ``"group:order"``."""
+    return {name: str(rt.priority) for name, rt in pool.runtime.items()}
 
 
 def by_hand(value, configured) -> dict:
     """An entry of the ``priority`` table of the file: the value set by hand and the one of the
-    configuration it was set over."""
-    return {'value': value, 'configured': configured}
+    configuration it was set over, both written ``"group:order"`` (given as ``ranked`` takes them)."""
+    return {'value': str(M.prio(value)), 'configured': str(M.prio(configured))}
 
 
 class TestEnabledFlags:
@@ -195,83 +197,119 @@ class TestEnabledFlags:
 class TestPriority:
     def test_set_by_hand_is_kept(self, tmp_path):
         state = tmp_path / 'pool.json'
-        config = dict(s01=0, s02=0, z01=3)
+        config = dict(s01=0, s02='1:0', z01='0:3')
         pool = Pool(ranked(**config), None, state_file=str(state))
-        assert priorities(pool) == config and not state.exists()
-        pool.set_priority('s02', -2)
-        pool.set_priority('z01', 0)
+        assert priorities(pool) == {'s01': '0:0', 's02': '1:0', 'z01': '0:3'} and not state.exists()
+        pool.set_priority('s02', M.prio('2:-2'))
+        pool.set_priority('z01', M.prio('0:0'))
         file = saved(state)
-        assert file['priority'] == {'s02': by_hand(-2, 0), 'z01': by_hand(0, 3)}        # not s01: the configuration's
+        # not s01: the configuration's; both values as they are written
+        assert file['priority'] == {'s02': {'value': '2:-2', 'configured': '1:0'},
+                                    'z01': {'value': '0:0', 'configured': '0:3'}}
         assert file['version'] == STATE_VERSION and file['enabled'] == [] and file['disabled'] == []
         again = Pool(ranked(**config), None, state_file=str(state))
-        assert priorities(again) == {'s01': 0, 's02': -2, 'z01': 0}
-        assert {row['name']: row['priority'] for row in again.summary()} == {'s01': 0, 's02': -2, 'z01': 0}
+        assert priorities(again) == {'s01': '0:0', 's02': '2:-2', 'z01': '0:0'}
+        assert again.runtime['s02'].priority == (2, -2)
+        assert {row['name']: row['priority'] for row in again.summary()} == priorities(again)
         assert saved(state) == file                       # nothing to normalise: not written again
-        again.set_priority('s02', 0)                      # back to what the configuration says: no entry
-        assert saved(state)['priority'] == {'z01': by_hand(0, 3)}
-        assert priorities(Pool(ranked(**config), None, state_file=str(state))) == {'s01': 0, 's02': 0, 'z01': 0}
+        again.set_priority('s02', M.prio('1:0'))          # back to what the configuration says: no entry
+        assert saved(state)['priority'] == {'z01': by_hand('0:0', '0:3')}
+        assert priorities(Pool(ranked(**config), None, state_file=str(state))) == {'s01': '0:0', 's02': '1:0',
+                                                                                  'z01': '0:0'}
 
     def test_an_edit_of_the_configuration_wins(self, tmp_path, caplog):
         """A priority set by hand holds while the configuration gives the host the priority it
-        had then: once it gives another one, or the one set by hand, the entry is gone."""
+        had then: once it gives another one (the group, the order or both), or the one set by
+        hand, the entry is gone."""
         state = tmp_path / 'pool.json'
-        pool = Pool(ranked(s01=0, s02=0, z01=3), None, state_file=str(state))
-        for name, value in (('s01', 5), ('s02', 5), ('z01', 1)):
-            pool.set_priority(name, value)
+        pool = Pool(ranked(s01=0, s02=0, z01='0:3', z02='1:0'), None, state_file=str(state))
+        for name, value in (('s01', '0:5'), ('s02', '2:5'), ('z01', '0:1'), ('z02', '1:4')):
+            pool.set_priority(name, M.prio(value))
         with caplog.at_level(logging.INFO, logger='sreweb.portal'):
-            edited = Pool(ranked(s01=2, s02=5, z01=3), None, state_file=str(state))
-        # s01: another priority in the configuration, followed; s02: the configuration says 5 too; z01: untouched
-        assert priorities(edited) == {'s01': 2, 's02': 5, 'z01': 1}
-        assert saved(state)['priority'] == {'z01': by_hand(1, 3)}
-        assert 'the priority of s01 was set by hand to 5 over 0 and the configuration says 2 now' in caplog.text
+            edited = Pool(ranked(s01='0:2', s02='2:5', z01='0:3', z02='3:0'), None, state_file=str(state))
+        # s01: another priority in the configuration, followed; s02: the configuration says 2:5 too;
+        # z01: untouched; z02: another group in the configuration, followed
+        assert priorities(edited) == {'s01': '0:2', 's02': '2:5', 'z01': '0:1', 'z02': '3:0'}
+        assert saved(state)['priority'] == {'z01': by_hand('0:1', '0:3')}
+        assert 'the priority of s01 was set by hand to 0:5 over 0:0 and the configuration says 0:2 now' in caplog.text
+        assert 'the priority of z02 was set by hand to 1:4 over 1:0 and the configuration says 3:0 now' in caplog.text
         assert '1 priorities set by hand' in caplog.text
         # the configuration back to what it was: the entries dropped do not come back
-        back = Pool(ranked(s01=0, s02=0, z01=3), None, state_file=str(state))
-        assert priorities(back) == {'s01': 0, 's02': 0, 'z01': 1}
+        back = Pool(ranked(s01=0, s02=0, z01='0:3', z02='1:0'), None, state_file=str(state))
+        assert priorities(back) == {'s01': '0:0', 's02': '0:0', 'z01': '0:1', 'z02': '1:0'}
 
     def test_added_removed_and_gone_hosts(self, tmp_path, caplog):
         state = tmp_path / 'pool.json'
         config = dict(s01=0, z01=0)
         pool = Pool(ranked(**config), None, state_file=str(state))
-        pool.add_host(HostConfig('b02', 'http://b02', TOKEN, 2, priority=4))
-        assert priorities(pool)['b02'] == 4               # the one it was added with
-        pool.set_priority('b02', 9)
-        pool.set_priority('z01', 6)
+        pool.add_host(HostConfig('b02', 'http://b02', TOKEN, 2, priority=M.prio('1:4')))
+        assert priorities(pool)['b02'] == '1:4'           # the one it was added with
+        pool.set_priority('b02', M.prio('1:9'))
+        pool.set_priority('z01', M.prio('0:6'))
         file = saved(state)
-        assert file['added'][0]['priority'] == 4
-        assert file['priority'] == {'b02': by_hand(9, 4), 'z01': by_hand(6, 0)}
+        assert file['added'][0]['priority'] == '1:4'      # an entry of [[hosts]], as the configuration writes it
+        assert file['priority'] == {'b02': by_hand('1:9', '1:4'), 'z01': by_hand('0:6', 0)}
         again = Pool(ranked(**config), None, state_file=str(state))
-        assert priorities(again) == {'s01': 0, 'z01': 6, 'b02': 9} and saved(state) == file
+        assert priorities(again) == {'s01': '0:0', 'z01': '0:6', 'b02': '1:9'} and saved(state) == file
+        assert again.hosts['b02'].priority == (1, 4)
         # a host removed by hand loses what was set on it: `enable` brings it back as the configuration has it
         again.remove_host('z01')
-        assert saved(state)['priority'] == {'b02': by_hand(9, 4)}
+        assert saved(state)['priority'] == {'b02': by_hand('1:9', '1:4')}
         again.set_enabled('z01', True)
-        assert priorities(again)['z01'] == 0
+        assert priorities(again)['z01'] == '0:0'
         # a host that left the configuration is forgotten
         with caplog.at_level(logging.INFO, logger='sreweb.portal'):
             fewer = Pool(ranked(s01=0, z01=0), None, state_file=str(state))
             fewer.remove_host('b02')
-            state.write_text(json.dumps({**saved(state), 'priority': {'b02': by_hand(9, 4), 's01': by_hand(3, 0)}}))
+            state.write_text(json.dumps({**saved(state), 'priority': {'b02': by_hand('1:9', '1:4'),
+                                                                      's01': by_hand('2:3', 0)}}))
             last = Pool(ranked(s01=0, z01=0), None, state_file=str(state))
-        assert priorities(last) == {'s01': 3, 'z01': 0}
+        assert priorities(last) == {'s01': '2:3', 'z01': '0:0'}
         assert 'b02 (priority set by hand) is not in the pool any more' in caplog.text
-        assert saved(state)['priority'] == {'s01': by_hand(3, 0)}
+        assert saved(state)['priority'] == {'s01': by_hand('2:3', 0)}
 
     def test_hand_written_and_odd_values(self, tmp_path, caplog):
-        """A plain number written by hand holds (and is written back in full); a value that is
-        no priority is told and skipped, the others are read."""
+        """A plain value written by hand holds (and is written back in full); a value that is
+        no priority is told and skipped, as an entry whose configured value cannot be read;
+        the others are read."""
         state = tmp_path / 'pool.json'
         state.write_text(json.dumps({'version': STATE_VERSION, 'priority': {
-            's01': 7, 's02': 'first', 's03': True, 's04': 10000, 's05': by_hand(1.5, 0), 's06': {'configured': 0},
-            's07': None, 's08': [1], 's09': by_hand(-4, 0), 's10': {'value': 2}}}))
-        names = [f's{i:02d}' for i in range(1, 11)]
+            's01': '2:7', 's02': 'first', 's03': True, 's04': '0:10000', 's05': {'value': 1.5, 'configured': '0:0'},
+            's06': {'configured': '0:0'}, 's07': None, 's08': [1], 's09': {'value': '-1:-4', 'configured': '0:0'},
+            's10': {'value': '0:2'}, 's11': {'value': '1:1', 'configured': 'what'}, 's12': '3'}}))
+        names = [f's{i:02d}' for i in range(1, 13)]
         with caplog.at_level(logging.INFO, logger='sreweb.portal'):
             pool = Pool(ranked(**{name: 0 for name in names}), None, state_file=str(state))
         assert pool.state_error == ''
-        assert priorities(pool) == {**{name: 0 for name in names}, 's01': 7, 's09': -4, 's10': 2}
-        for name in names[1:8]:
-            assert f'the priority of {name} must be an integer from -9999 to 9999' in caplog.text, name
-        assert saved(state)['priority'] == {'s01': by_hand(7, 0), 's09': by_hand(-4, 0), 's10': by_hand(2, 0)}
+        assert priorities(pool) == {**{name: '0:0' for name in names}, 's01': '2:7', 's09': '-1:-4', 's10': '0:2'}
+        for name in names[1:8] + ['s12']:
+            assert f'the priority of {name} must be "group:order", two integers from -9999 to 9999' in caplog.text, name
+        assert 'the configured priority of s11 must be "group:order"' in caplog.text
+        assert saved(state)['priority'] == {'s01': by_hand('2:7', 0), 's09': by_hand('-1:-4', 0),
+                                            's10': by_hand('0:2', 0)}
+
+    def test_a_file_of_before_the_groups(self, tmp_path):
+        """A file written when a priority was one integer: each one is that order in group 0,
+        holding over the configuration it was set over as before, a host added then comes
+        back, and the file is written again once, in the new form."""
+        state = tmp_path / 'pool.json'
+        added = {'name': 'b02', 'url': 'http://b02', 'token': TOKEN, 'max_projects': 2, 'mac': '', 'wake_command': '',
+                 'power': False, 'enabled': True, 'instructors_only': False, 'priority': 4}
+        state.write_text(json.dumps({
+            'version': STATE_VERSION, 'saved_at': 1.0, 'removed': [], 'added': [added], 'enabled': [], 'disabled': [],
+            'drain': {}, 'clocks': {},
+            'priority': {'s01': {'value': -3, 'configured': 2}, 's02': {'value': 5, 'configured': 0},
+                         'z01': {'value': 1, 'configured': 7}, 'z02': 6}}))
+        # the configuration of then, integers too; the one of z01 was edited since (7 then, 3 now)
+        config = dict(s01=2, s02=0, z01=3, z02=0)
+        pool = Pool(ranked(**config), None, state_file=str(state))
+        assert priorities(pool) == {'s01': '0:-3', 's02': '0:5', 'z01': '0:3', 'z02': '0:6', 'b02': '0:4'}
+        file = saved(state)
+        assert file['priority'] == {'s01': by_hand('0:-3', '0:2'), 's02': by_hand('0:5', '0:0'),
+                                    'z02': by_hand('0:6', '0:0')}
+        assert file['added'][0]['priority'] == '0:4' and file['saved_at'] > 1.0
+        again = Pool(ranked(**config), None, state_file=str(state))
+        assert priorities(again) == priorities(pool) and saved(state) == file      # nothing more to normalise
 
     def test_a_file_written_before_the_priorities(self, tmp_path):
         """A version 2 file without the key (an older portal wrote it) is read as it is; the
@@ -280,13 +318,13 @@ class TestPriority:
         state.write_text(json.dumps({'version': STATE_VERSION, 'saved_at': 1.0, 'removed': [], 'added': [],
                                      'enabled': ['z01'], 'disabled': [], 'drain': {}, 'clocks': {}}))
         pool = Pool(hosts(s01=True, z01=False), None, state_file=str(state))
-        assert flags(pool) == {'s01': True, 'z01': True} and priorities(pool) == {'s01': 0, 'z01': 0}
+        assert flags(pool) == {'s01': True, 'z01': True} and priorities(pool) == {'s01': '0:0', 'z01': '0:0'}
         assert saved(state)['priority'] == {} and saved(state)['enabled'] == ['z01']
 
     def test_no_state_file(self):
         pool = Pool(ranked(s01=0, z01=2), None)
-        pool.set_priority('s01', 3)
-        assert priorities(pool) == {'s01': 3, 'z01': 2} and pool.state_error == ''
+        pool.set_priority('s01', M.prio('1:3'))
+        assert priorities(pool) == {'s01': '1:3', 'z01': '0:2'} and pool.state_error == ''
 
 
 class TestDrain:
