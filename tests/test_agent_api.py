@@ -71,14 +71,20 @@ class Harness:
     async def __aexit__(self, *exc):
         await self.client.close()
 
-    def entries(self) -> list:
-        """The calls of the fake sre: ``{'argv', 'env'}`` dicts."""
+    def entries(self, *, terminals: bool = True) -> list:
+        """The calls of the fake sre, ``{'argv', 'env'}`` dicts, in the order its processes
+        wrote them, which is not always the order they were launched in: the agent says
+        ``ready`` as soon as the pty of a terminal exists, and its ``sre connect`` child writes
+        its line once its interpreter has started, perhaps after the line of the call the
+        test makes next.  ``terminals=False`` leaves the ``connect`` calls out: how a test
+        that opened a terminal reads the last calls."""
         if not self.log.exists():
             return []
-        return [json.loads(line) for line in self.log.read_text().splitlines() if line.strip()]
+        entries = [json.loads(line) for line in self.log.read_text().splitlines() if line.strip()]
+        return entries if terminals else [entry for entry in entries if command_of(entry['argv']) != 'connect']
 
-    def calls(self) -> list:
-        return [entry['argv'] for entry in self.entries()]
+    def calls(self, *, terminals: bool = True) -> list:
+        return [entry['argv'] for entry in self.entries(terminals=terminals)]
 
     async def start(self, identity=ALICE, lab='sre/dhcp.py', **body) -> tuple:
         resp = await self.client.post('/v1/projects', json={'lab': lab, **body}, headers=headers(identity))
@@ -90,6 +96,12 @@ class Harness:
         _, result = await self.start(identity, **body)
         assert result['status'] == 'created', result
         return result['running_lab_name']
+
+
+def command_of(argv: list) -> str:
+    """The command of a call of the fake sre: its first argument that is not an option
+    (``--user`` comes before it in user mode)."""
+    return next((arg for arg in argv if not arg.startswith('-')), '')
 
 
 def run(coro):

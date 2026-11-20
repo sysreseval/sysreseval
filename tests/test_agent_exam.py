@@ -519,7 +519,8 @@ class TestExamApi:
                 # an instructor on it: the privileged evaluation and the states still run
                 resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers(PROF))
                 assert resp.status == 200 and (await resp.json())['result']['grades']
-                A.privileged_call(h.entries()[-1], ['eval', '--', rln], 'prof')
+                # (not the last line of the log: the `connect` of the terminal above may come after it)
+                A.privileged_call(h.entries(terminals=False)[-1], ['eval', '--', rln], 'prof')
                 assert (await h.client.post(f'/v1/projects/{rln}/states/final', headers=headers(PROF))).status == 200
         run(go())
 
@@ -574,7 +575,8 @@ class TestExamApi:
                 await term.close()
                 assert (await h.client.delete(f'/v1/projects/{rln}', headers=headers())).status == 409
                 assert (await h.client.delete(f'/v1/projects/{rln}', headers=headers(PROF))).status == 200
-                assert h.calls()[-1] == ['--user', 'stop', '--', rln] and h.calls()[-2] != ['--user', 'eval', '--', rln]
+                calls = h.calls(terminals=False)        # the `connect` of the instructor's terminal may come late
+                assert calls[-1] == ['--user', 'stop', '--', rln] and calls[-2] != ['--user', 'eval', '--', rln]
                 assert not (h.pub / 'projects' / rln).exists()
                 await ws.close()
         run(go())
