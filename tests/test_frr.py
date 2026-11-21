@@ -2041,3 +2041,294 @@ class TestFrrConfigVpn:
         vpn = parse_frr_config(text)['router_bgp_vrfs']['X']['vpn']
         assert vpn['rt_import'] == ['1:1'] and vpn['rt_export'] == ['1:1'] and vpn['label'] == '100'
         assert vpn['export_vpn'] is False and vpn['rd'] is None
+
+
+# ---------------------------------------------------------------------------
+# IS-IS and BFD (FRR 10.3 captures of an IS-IS probe on Debian 13: isis_*, bfd_*, config_isis_*,
+# iproute_isis_*, ip6route_isis_*, route_isis_*)
+# ---------------------------------------------------------------------------
+
+from frr import (  # noqa: E402
+    ISIS_DEFAULT_SRGB, bfd_detection_time, bfd_profile_value, get_bfd_peers, get_isis_database,
+    get_isis_interfaces, get_isis_neighbors, get_isis_routes, is_isis_protocol, isis_adjacencies,
+    isis_adjacency_levels, isis_adjacency_up, isis_interface_value, isis_lsp_node, isis_lsps_of, isis_net,
+    isis_srgb, isis_system_id_from_ipv4, normalize_system_id, parse_bfd_peers, parse_isis_database,
+    parse_isis_interfaces, parse_isis_neighbors, parse_isis_net, parse_isis_routes, _json_with_duplicates,
+)
+
+
+def load_isis(name: str):
+    return _json_with_duplicates(load(name))
+
+
+class TestIsisNames:
+    @pytest.mark.parametrize('address, sysid', [('10.0.31.2', '0100.0003.1002'), ('10.99.255.1', '0100.9925.5001'),
+                                                ('192.168.1.254/32', '1921.6800.1254')])
+    def test_system_id_from_ipv4(self, address, sysid):
+        assert isis_system_id_from_ipv4(address) == sysid
+
+    def test_net(self):
+        assert isis_net('49.0001', '0100.0003.1002') == '49.0001.0100.0003.1002.00'
+        assert parse_isis_net('49.0001.0100.0003.1002.00') == {'area': '49.0001', 'system_id': '0100.0003.1002',
+                                                               'nsel': '00'}
+        assert parse_isis_net('49.0001.0100.0003.1002') is None
+        assert parse_isis_net(' 49.ABCD.0100.0003.1002.00 ')['area'] == '49.abcd'
+        assert parse_isis_net('49.0001.0002.0100.0003.1002.00')['area'] == '49.0001.0002'
+        assert parse_isis_net(None) is None
+
+    @pytest.mark.parametrize('text, sysid', [('0100.0003.1002', '0100.0003.1002'), ('010000031002', '0100.0003.1002'),
+                                             ('0100.00031002 ', '0100.0003.1002'), ('ABCD.0000.0001', 'abcd.0000.0001'),
+                                             ('0100.0003.100', None), ('', None), (None, None), ('0100.0003.10g2', None)])
+    def test_normalize_system_id(self, text, sysid):
+        assert normalize_system_id(text) == sysid
+
+    def test_lsp_node(self):
+        assert isis_lsp_node('r3.4d-00') == ('r3', '4d', '00')
+        assert isis_lsp_node('lan_r3.00-01') == ('lan_r3', '00', '01')
+        assert isis_lsp_node('0100.9925.5005.42-00') == ('0100.9925.5005', '42', '00')
+        assert isis_lsp_node('nonsense') is None
+
+    def test_protocol(self):
+        assert is_isis_protocol('isis') and is_isis_protocol(187) and not is_isis_protocol('ospf')
+
+
+class TestIsisNeighbors:
+    def test_detail_lan_and_p2p(self):
+        n = parse_isis_neighbors(load('isis_neighbor_detail_lan.txt'))
+        assert [(x['name'], x['interface'], x['level']) for x in n] == [
+            ('a', 'eth0', 2), ('c', 'eth1', 2), ('c', 'eth2', 2), ('e', 'eth2', 2)]
+        a = n[0]
+        assert a['up'] and a['state'] == 'Up' and a['holdtime'] == 19 and a['circuit_type'] == 'L2'
+        assert a['speaks'] == ['IPv4', 'IPv6'] and a['topologies'] == ['standard', 'ipv6-unicast']
+        assert a['areas'] == ['49.0001'] and a['ipv4'] == ['10.99.1.1']
+        assert a['ipv6'] == ['fe80::f877:1dff:fe7b:4a86'] and a['ipv6_global'] == ['fd99:1::1']
+        assert a['lan_id'] is None and a['is_dis'] is None and a['bfd'] is None
+        dis = n[2]
+        assert dis['lan_id'] == 'c.4d' and dis['priority'] == 100 and dis['is_dis'] is True
+        assert n[3]['priority'] == 64 and n[3]['is_dis'] is False
+        assert n[1]['holdtime'] == 2   # hello 1 s x 3 on that link
+
+    def test_detail_both_levels_and_bfd(self):
+        n = parse_isis_neighbors(load('isis_neighbor_detail_l1l2.txt'))
+        assert [(x['name'], x['level'], x['circuit_type']) for x in n] == [('b', 3, 'L1L2'), ('d', 3, 'L1L2')]
+        assert n[1]['ipv4'] == ['10.99.4.2'] and n[1]['areas'] == ['49.0001']
+        b = parse_isis_neighbors(load('isis_neighbor_detail_bfd.txt'))
+        assert len(b) == 1 and b[0]['bfd'] == 'Up' and b[0]['ipv4'] == ['10.99.4.2']
+
+    def test_plain_table(self):
+        n = parse_isis_neighbors(load('isis_neighbor_lan_l1l2.txt'))
+        assert len(n) == 6 and n[2] == {'name': 'c', 'interface': 'eth2', 'level': 1, 'state': 'Up', 'up': True,
+                                        'holdtime': 28, 'snpa': '9e00.c1c1.0b8b'}
+        levels = parse_isis_neighbors(load('isis_neighbor_levels.txt'))
+        assert [(x['name'], x['level']) for x in levels] == [('b', 1), ('d', 3)]
+
+    def test_adjacency_filters(self):
+        n = parse_isis_neighbors(load('isis_neighbor_lan_l1l2.txt'))
+        # the two adjacencies of a broadcast circuit (one per level) count together
+        assert isis_adjacency_up(n, 'c', 'eth2', level=3) and isis_adjacency_levels(n, 'c', 'eth2') == 3
+        assert isis_adjacency_up(n, 'a', level=1) and isis_adjacency_up(n, 'a', level=2)
+        assert not isis_adjacency_up(n, 'a', 'eth1') and not isis_adjacency_up(n, 'z')
+        assert isis_adjacency_up(n, ['z', 'e'], 'eth2', level=2)
+        levels = parse_isis_neighbors(load('isis_neighbor_levels.txt'))
+        assert isis_adjacency_levels(levels, 'b') == 1 and not isis_adjacency_up(levels, 'b', level=2)
+        down = [dict(levels[0], state='Initializing', up=False)]
+        assert not isis_adjacency_up(down, 'b') and isis_adjacencies(down, 'b', up=False)
+
+    def test_placeholder_and_errors(self):
+        assert parse_isis_neighbors('') == [] and parse_isis_neighbors(None) == []
+        assert get_isis_neighbors(make_grade('', 1), 'r1') == []
+        assert get_isis_neighbors(make_grade(load('isis_neighbor_detail_bfd.txt')), 'r1')[0]['name'] == 'd'
+
+
+class TestIsisInterfaces:
+    def test_l1l2_lan_p2p_loopback(self):
+        i = parse_isis_interfaces(load_isis('isis_interface_detail_l1l2.json'))
+        assert set(i) == {'eth0', 'eth1', 'eth2', 'lo'}
+        assert i['eth0']['type'] == 'p2p' and i['eth0']['level'] == 3 and not i['eth0']['passive']
+        assert i['eth0']['levels'][1] == {'metric': 10, 'hello_interval': 3, 'hello_multiplier': 10, 'padding': True,
+                                          'csnp_interval': 10, 'neighbors': 1, 'priority': None, 'is_dis': None}
+        assert i['eth2']['type'] == 'lan' and i['eth2']['levels'][2]['priority'] == 64
+        assert i['eth2']['levels'][2]['is_dis'] is False and i['eth2']['circuit_id'] == '0x50'
+        assert i['lo']['passive'] and i['lo']['type'] == 'loopback' and i['lo']['ipv4'] == ['10.99.255.2/32']
+        assert i['eth0']['ipv6'] == ['fd99:1::2/64'] and i['eth0']['ipv6_link_local'][0].startswith('fe80::')
+
+    def test_dis_and_timers(self):
+        i = parse_isis_interfaces(load_isis('isis_interface_detail_dis.json'))
+        assert i['eth2']['levels'][2]['is_dis'] is True and i['eth2']['levels'][2]['priority'] == 100
+        assert set(i['eth2']['levels']) == {2} and i['eth2']['level'] == 2
+        assert i['eth0']['levels'][2]['hello_interval'] == 1 and i['eth0']['levels'][2]['hello_multiplier'] == 3
+        h = parse_isis_interfaces(load_isis('isis_interface_detail_hello.json'))
+        assert h['eth1']['levels'][2]['hello_multiplier'] == 3 and h['eth0']['levels'][2]['hello_multiplier'] == 10
+
+    def test_empty(self):
+        assert parse_isis_interfaces(None) == {} and parse_isis_interfaces({}) == {}
+        assert get_isis_interfaces(make_grade('', 1), 'r1') == {}
+        assert get_isis_interfaces(make_grade(load('isis_interface_detail_dis.json')), 'r1')['eth2']['type'] == 'lan'
+
+
+class TestIsisDatabase:
+    def test_levels_att_pseudonode(self):
+        db = parse_isis_database(load_isis('isis_database_detail_l1l2.json'))
+        assert set(db) == {1, 2}
+        a = db[1]['a.00-00']
+        assert a['node'] == 'a' and not a['pseudonode'] and a['att'] and not a['ol'] and a['areas'] == ['49.0001']
+        assert a['seq'] == 2 and a['hostname'] == 'a' and a['router_id'] == '10.99.255.1' and a['protocols'] == ['IPv4']
+        assert {r['id']: r['metric'] for r in a['is_reach']} == {'0100.9925.5002.00': 10, '0100.9925.5004.00': 10}
+        assert [r['prefix'] for r in a['ip_reach']] == ['10.99.1.0/24', '10.99.4.0/24', '10.99.7.0/24', '10.99.255.1/32']
+        assert db[1]['b.00-00']['own'] and not a['own']
+        pn = db[1]['e.42-00']
+        assert pn['pseudonode'] and pn['node'] == 'e'
+        assert [x['node'] for x in isis_lsps_of(db, 1, 'e', pseudonode=True)] == ['e']
+        assert len(isis_lsps_of(db, 2, ['a', 'b'], pseudonode=False)) == 2
+
+    def test_overload_and_dis(self):
+        db = parse_isis_database(load_isis('isis_database_detail_overload.json'))
+        assert db[2]['e.00-00']['ol'] and not db[2]['c.00-00']['ol']
+        assert db[2]['c.4d-00']['pseudonode'] and {r['metric'] for r in db[2]['c.4d-00']['is_reach']} == {0}
+        external = [r['prefix'] for r in db[2]['a.00-00']['ip_reach']]
+        assert '0.0.0.0/0' in external and '203.0.113.0/24' in external
+
+    def test_multi_topology(self):
+        a = parse_isis_database(load_isis('isis_database_detail_mt.json'))[2]['a.00-00']
+        assert a['topologies'] == [0, 2] and a['protocols'] == ['IPv4', 'IPv6']
+        assert [(r['id'], r['mt']) for r in a['is_reach']] == [
+            ('0100.9925.5002.00', None), ('0100.9925.5004.00', None), ('0100.9925.5002.00', 'ipv6-unicast')]
+        assert [(r['prefix'], r['mt']) for r in a['ipv6_reach']][0] == ('fd99:1::/64', 'ipv6-unicast')
+
+    def test_segment_routing(self):
+        db = parse_isis_database(load_isis('isis_database_detail_sr.json'))[2]
+        assert db['c.00-00']['srgb'] == (30000, 8000) and db['a.00-00']['srgb'] == (16000, 8000)
+        assert db['a.00-00']['srlb'] == (15000, 1000)
+        sids = {r['prefix']: r['sid'] for r in db['d.00-00']['ip_reach'] if r['sid']}
+        assert sids == {'10.99.255.4/32': {'index': 4, 'no_php': True, 'explicit_null': False}}
+        assert db['a.00-00']['is_reach'][0]['adj_sids']
+
+    def test_duplicate_keys_become_lists(self):
+        data = _json_with_duplicates('{"areas": [{"area": {"name": "CORE"}, "levels": [{"id": 1, "lsps": [{"lsp": '
+                                     '{"id": "x.00-00"}, "attPOl": "0/0/0", "areaAddr": "49.0001", '
+                                     '"areaAddr": "49.0002"}]}]}]}')
+        assert parse_isis_database(data)[1]['x.00-00']['areas'] == ['49.0001', '49.0002']
+
+    def test_empty(self):
+        assert parse_isis_database(None) == {} and parse_isis_database({'areas': []}) == {}
+        assert get_isis_database(make_grade('% isis not running', 0), 'r1') == {}
+
+
+class TestIsisRoutes:
+    def test_ecmp_and_levels(self):
+        rt = parse_isis_routes(load_isis('isis_route_l1l2.json'))
+        assert set(rt) == {1, 2}
+        assert rt[2]['10.99.255.3/32'] == {'metric': 30, 'nexthops': [('10.99.1.2', 'eth0'), ('10.99.4.2', 'eth1')],
+                                           'labels': [None, None]}
+        assert rt[1]['10.99.7.0/24'] == {'metric': 0, 'nexthops': [], 'labels': []}
+        assert rt[2]['10.99.8.0/24']['nexthops'] == [('10.99.4.2', 'eth1')]
+
+    def test_ipv6(self):
+        data = load_isis('isis_route_mt.json')
+        rt6 = parse_isis_routes(data, ipv6=True)
+        assert rt6[2]['fd99:8::/64'] == {'metric': 40, 'nexthops': [('fe80::e0c3:acff:fe6e:1cae', 'eth0')],
+                                         'labels': [None]}
+        assert '10.99.8.0/24' in parse_isis_routes(data)[2] and rt6.get(1) == {}
+
+    def test_empty(self):
+        assert parse_isis_routes(None) == {} and get_isis_routes(make_grade('', 1), 'r1') == {}
+
+
+class TestIsisKernelRoutes:
+    def test_isis_routes(self):
+        k = parse_kernel_routes(load('iproute_isis_ecmp.json'))
+        isis = {p for p, v in k.items() if is_isis_protocol(v['protocol'])}
+        assert '10.99.8.0/24' in isis and k['10.99.255.3/32']['nexthops'] == [('10.99.1.2', 'eth0'),
+                                                                             ('10.99.4.2', 'eth1')]
+        assert kernel_route_gateways(k, '10.99.8.0/24', protocols=('isis', '187')) == ['10.99.4.2']
+        k6 = parse_kernel_routes(load('ip6route_isis_mt.json'), ipv6=True)
+        assert is_isis_protocol(k6['fd99:8::/64']['protocol'])
+
+
+class TestBfdPeers:
+    def test_up(self):
+        p = parse_bfd_peers(load_isis('bfd_peers_up.json'))
+        assert list(p) == ['10.99.4.2']
+        s = p['10.99.4.2']
+        assert s['up'] and s['interface'] == 'eth1' and s['local'] == '10.99.4.1' and not s['multihop']
+        assert (s['receive_interval'], s['transmit_interval'], s['detect_multiplier']) == (100, 100, 3)
+        assert bfd_detection_time(s) == 300
+        assert bfd_detection_time(dict(s, remote_transmit_interval=250, remote_detect_multiplier=4)) == 1000
+
+    def test_none(self):
+        assert parse_bfd_peers(load_isis('bfd_peers_none.json')) == {} and parse_bfd_peers(None) == {}
+        assert get_bfd_peers(make_grade('', 1), 'r1') == {} and bfd_detection_time({}) is None
+
+
+class TestFrrConfigIsis:
+    def test_router_and_interfaces(self):
+        c = parse_frr_config(load('config_isis_sr_bfd.txt'))
+        ri = c['router_isis']
+        assert ri['present'] and ri['name'] == 'CORE' and ri['nets'] == ['49.0001.0100.9925.5001.00']
+        assert ri['is_type'] == 'level-2-only' and ri['topologies'] == ['ipv6-unicast'] and not ri['overload']
+        assert ri['redistribute'] == [('ipv4', 'static', 'level-2')]
+        assert ri['default_information'] == [{'afi': 'ipv4', 'level': 'level-2', 'always': False}]
+        assert ri['segment_routing']['prefixes'] == {'10.99.255.1/32': {'index': 1, 'no_php': False,
+                                                                        'explicit_null': False}}
+        assert isis_srgb(ri) == ISIS_DEFAULT_SRGB == (16000, 23999)
+        eth1 = c['interfaces']['eth1']['isis']
+        assert eth1['ipv4'] == 'CORE' and eth1['ipv6'] is None and eth1['network_type'] == 'point-to-point'
+        assert eth1['bfd'] and eth1['bfd_profile'] == 'FAST' and eth1['fast_reroute'] == {'level-2': 'node'}
+        assert c['interfaces']['lo']['isis']['passive'] and c['interfaces']['eth0']['isis']['ipv6'] == 'CORE'
+        fast = c['bfd']['profiles']['FAST']
+        assert fast == {'transmit_interval': 100, 'receive_interval': 100}
+        assert bfd_profile_value(fast, 'detect_multiplier') == 3 and bfd_profile_value(fast, 'receive_interval') == 100
+        assert bfd_profile_value(None, 'receive_interval') is None
+        assert c['static_routes'] == [('0.0.0.0/0', '10.99.7.2'), ('203.0.113.0/24', '10.99.7.2')]
+
+    def test_passwords_and_timers(self):
+        c = parse_frr_config(load('config_isis_auth.txt'))
+        assert c['router_isis']['domain_password'] == {'type': 'md5', 'key': 'DomKey2'}
+        assert c['router_isis']['area_password'] is None
+        assert c['interfaces']['eth0']['isis']['password'] == {'type': 'md5', 'key': 'HelloKey1'}
+        eth1 = c['interfaces']['eth1']['isis']
+        assert isis_interface_value(eth1, 'hello_interval', 2) == 1 and isis_interface_value(eth1, 'hello_multiplier', 1) == 3
+        assert isis_interface_value(c['interfaces']['eth2']['isis'], 'hello_interval', 2) is None
+
+    def test_srgb_and_no_php(self):
+        c = parse_frr_config(load('config_isis_srgb.txt'))['router_isis']
+        assert isis_srgb(c) == (30000, 37999) and c['segment_routing']['prefixes']['10.99.255.3/32']['index'] == 3
+        d = parse_frr_config(load('config_isis_sr_nophp.txt'))['router_isis']
+        assert d['segment_routing']['prefixes']['10.99.255.4/32']['no_php'] and isis_srgb(d) == (16000, 23999)
+        assert isis_srgb(parse_frr_config('router isis X\n net 49.0001.0000.0000.0001.00\nexit\n')['router_isis']) is None
+
+    def test_levels_metrics_overload(self):
+        # statements as FRR 10.3 writes them (seen in the probe), gathered in one configuration
+        text = ("interface eth0\n ip router isis CORE\n isis circuit-type level-1\n isis metric 200\n"
+                " isis priority 100 level-2\n isis password clear Secret\nexit\n"
+                "interface eth1\n ip router isis CORE\n isis metric 30 level-1\n isis hello-interval 1 level-2\n"
+                " no isis passive\nexit\n"
+                "router isis CORE\n is-type level-1\n net 49.0001.0100.0003.1002.00\n net 49.0002.0100.0003.1002.00\n"
+                " metric-style narrow\n set-overload-bit\n area-password md5 AreaKey\n no hostname dynamic\n"
+                " lsp-gen-interval 2\n log-adjacency-changes\nexit\n")
+        c = parse_frr_config(text)
+        ri = c['router_isis']
+        assert ri['is_type'] == 'level-1' and ri['metric_style'] == 'narrow' and ri['overload']
+        assert ri['nets'] == ['49.0001.0100.0003.1002.00', '49.0002.0100.0003.1002.00']
+        assert ri['area_password'] == {'type': 'md5', 'key': 'AreaKey'} and not ri['hostname_dynamic']
+        assert ri['lsp_gen_interval'] == 2 and ri['log_adjacency_changes']
+        e0 = c['interfaces']['eth0']['isis']
+        assert e0['circuit_type'] == 'level-1' and e0['metric'] == {'all': 200} and e0['priority'] == {'level-2': 100}
+        assert isis_interface_value(e0, 'metric', 1) == 200 and isis_interface_value(e0, 'priority', 1) is None
+        assert e0['password'] == {'type': 'clear', 'key': 'Secret'}
+        e1 = c['interfaces']['eth1']['isis']
+        assert isis_interface_value(e1, 'metric', 1) == 30 and isis_interface_value(e1, 'metric', 2) is None
+        assert e1['hello_interval'] == {'level-2': 1} and e1['passive'] is False
+
+    def test_negations(self):
+        text = ("interface eth0\n ip router isis CORE\n no ip router isis CORE\n isis bfd\n no isis bfd\nexit\n"
+                "router isis CORE\n net 49.0001.0000.0000.0001.00\n no net 49.0001.0000.0000.0001.00\n"
+                " set-overload-bit\n no set-overload-bit\n topology ipv6-unicast\n no topology ipv6-unicast\nexit\n")
+        c = parse_frr_config(text)
+        assert c['interfaces']['eth0']['isis']['ipv4'] is None and not c['interfaces']['eth0']['isis']['bfd']
+        assert c['router_isis']['nets'] == [] and not c['router_isis']['overload']
+        assert c['router_isis']['topologies'] == []
+
+    def test_no_isis(self):
+        c = parse_frr_config(load('config_isis_srgb.txt').replace('router isis', 'router ospf'))
+        assert not c['router_isis']['present'] and c['bfd'] == {'profiles': {}}

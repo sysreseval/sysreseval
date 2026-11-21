@@ -1,0 +1,14 @@
+Area CORE:
+ d                   
+    Interface: eth1, Level: 2, State: Up, Expires in 29s
+    Adjacency flaps: 1, Last: 7m31s ago
+    Circuit type: L2, Speaks: IPv4
+    SNPA: 2020.2020.2020
+    Area Address(es):
+      49.0001
+    IPv4 Address(es):
+      10.99.4.2
+    BFD is active, status Up
+    IPv4 Adjacency-SID: 15000
+    IPv4 Adjacency-SID (backup): 15003
+

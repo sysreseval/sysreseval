@@ -1472,6 +1472,31 @@ from frr import (get_ldp_neighbors, ldp_session_up, get_ldp_discovery, get_ldp_b
 
 What Linux does that a router of an operator does not: it **drops** an MPLS packet whose TTL expires without any ICMP error (a `*` per core router in traceroute), and it pops the label of a PHP hop with the TTL of the label when `ip_ttl_propagate` is 1 (with propagation off at the ingress, the whole LSP and the egress disappear from traceroute). Setting `platform_labels` to 0 empties the label table of the kernel while zebra still believes its labels installed; zebra installs them again only when its LSPs change (`clear mpls ldp neighbor`). The MPLS lab (`lab/sre/_DRAFT_misc/mpls.py`) and the MPLS VPN lab (`lab/sre/_DRAFT_misc/mpls-vpn.py`) use all of these.
 
+### IS-IS and BFD helpers (from `/opt/sre/lib/frr.py`)
+
+```python
+from frr import (get_isis_neighbors, isis_adjacency_up, isis_adjacency_levels, isis_adjacencies,
+                 get_isis_interfaces, isis_interface_value, get_isis_database, isis_lsps_of, isis_lsp_node,
+                 get_isis_routes, get_bfd_peers, bfd_detection_time, bfd_profile_value, isis_srgb,
+                 isis_system_id_from_ipv4, isis_net, parse_isis_net, normalize_system_id,
+                 is_isis_protocol, ISIS_ROUTE_PROTOCOLS)
+```
+
+Written on the `isisd` / `bfdd` of FRR 10.3 (Debian 13), with the two-pass contract of the other FRR helpers and `allow_error=True` by default: a router without IS-IS gives the empty shape.
+
+| Function | Returns |
+|----------|---------|
+| `get_isis_neighbors(grade, m)` | `show isis neighbor detail` (**text**: the json form keeps one adjacency per broadcast circuit and loses the others): one dict per adjacency, `name` (the hostname, or the system-id when the neighbour announces none), `interface`, `level` (1, 2 or 3 = both), `state` (`Up`, `Initializing`…), `up`, `holdtime`, `snpa`, `circuit_type`, `speaks`, `topologies`, `lan_id`, `priority`, `is_dis`, `areas`, `ipv4`, `ipv6` (link-local), `ipv6_global`, `bfd` (`'Up'`…) |
+| `isis_adjacency_up(neighbors, name=None, interface=None, level=None)` / `isis_adjacency_levels(...)` / `isis_adjacencies(...)` | `name` may be a list (hostname and system-id); the two adjacencies of a broadcast circuit (one per level) count together, so `level=3` asks for both levels and `isis_adjacency_levels(...) == 1` for level 1 only |
+| `get_isis_interfaces(grade, m)` | `show isis interface detail json`: `{ifname: {type ('p2p' / 'lan' / 'loopback'), passive, level, circuit_id, levels: {1 \| 2: {metric, hello_interval, hello_multiplier, padding, csnp_interval, neighbors, priority, is_dis}}, ipv4, ipv6, ipv6_link_local}}` |
+| `get_isis_database(grade, m)` | `show isis database detail json`: `{level: {lsp_id: {node, pseudonode, own, seq, att, p, ol, hostname, areas, protocols, topologies (MT ids), router_id, srgb, srlb, is_reach: [{id, metric, mt, adj_sids}], ip_reach: [{prefix, metric, down, sid: {index, no_php, explicit_null}}], ipv6_reach}}}`; `isis_lsps_of(db, level, node, pseudonode=False)` finds a router's own LSPs |
+| `get_isis_routes(grade, m, ipv6=False)` | `show isis route json`: `{level: {prefix: {metric, nexthops: [(address, ifname)], labels}}}`, the cost IS-IS computed (the kernel metric of an FRR route is always 20) |
+| `get_bfd_peers(grade, m)` | `show bfd peers json`: `{peer: {status, up, interface, local, receive_interval, transmit_interval, detect_multiplier, remote_*}}`; `bfd_detection_time(peer)` in ms |
+
+`parse_frr_config` also returns `router_isis` (`name`, `nets`, `is_type`, `metric_style`, `overload`, `area_password` / `domain_password` (`{type, key}`), `redistribute` (`[(afi, protocol, level)]`), `default_information`, `topologies`, `lsp_gen_interval`, `segment_routing` in the shape of OSPF's; `isis_srgb()` gives FRR's default block when segment routing is on without `global-block`, a line FRR does not write), per interface `isis` (`ipv4` / `ipv6` = the instance of `ip router isis` / `ipv6 router isis`, `circuit_type`, `network_type`, `passive`, per-level `metric` / `priority` / `hello_interval` / `hello_multiplier` read with `isis_interface_value(cfg, key, level)`, `password`, `bfd`, `bfd_profile`, `fast_reroute`) and `bfd` (`{profiles: {name: {...}}}`; `bfd_profile_value()` fills the defaults FRR leaves out: multiplier 3, intervals 300 ms). `isis_system_id_from_ipv4('10.0.31.2')` is `'0100.0003.1002'` (the usual convention), `normalize_system_id()` reads a typed one.
+
+Verified on FRR 10.3: wide metrics by default (`metric-style narrow` is refused while a metric exceeds 63); hello every 3 s, multiplier 10 (30 s); the DIS election is preemptive; FRR announces in level 2 **only the own networks** of a level 1-2 router, never the prefixes it learned in level 1 (no route leaking either way): the labs announce a level 1 area with a redistributed static route (a `blackhole` summary); an MTU mismatch shows the neighbour `Initializing` on the side with the large MTU and nothing on the other (hello padding); a router with `domain-password` drops unsigned LSPs while one without accepts signed ones; FRR waits up to 30 s between two generations of an LSP (`lsp-gen-interval`), which delays a reconvergence and the return to the primary path after a BFD-detected failure; in single topology an IPv4-only link makes IPv6 loop between two routers, the multi-topology (`topology ipv6-unicast`) avoids it. Examples: `lab/sre/_DRAFT_misc/isis.py` and `lab/sre/_DRAFT_misc/isis-ipv6-sr-bfd.py`.
+
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
 `machine_config(net_scheme, machine_name, config)` — concise helper for wiring a machine inside `NetScheme.build()` (or `initial()`). `config` is a `(interfaces, sysctls)` tuple:

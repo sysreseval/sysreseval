@@ -1,0 +1,21 @@
+Area CORE:
+ b                   
+    Interface: eth0, Level: 3, State: Up, Expires in 27s
+    Adjacency flaps: 2, Last: 7m4s ago
+    Circuit type: L1L2, Speaks: IPv4
+    SNPA: 2020.2020.2020
+    Area Address(es):
+      49.0001
+    IPv4 Address(es):
+      10.99.1.2
+
+ d                   
+    Interface: eth1, Level: 3, State: Up, Expires in 28s
+    Adjacency flaps: 2, Last: 7m3s ago
+    Circuit type: L1L2, Speaks: IPv4
+    SNPA: 2020.2020.2020
+    Area Address(es):
+      49.0001
+    IPv4 Address(es):
+      10.99.4.2
+

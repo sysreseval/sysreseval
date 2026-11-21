@@ -571,6 +571,7 @@ def _empty_interface_config() -> Dict[str, Any]:
         'area': None, 'bandwidth': None, 'passive': None, 'network_type': None,
         'addresses': [], 'pim': False, 'igmp': False, 'multicast_boundary': None,
         'addresses6': [], 'ospf6': _empty_ospf6_interface_config(),
+        'isis': _empty_isis_interface_config(),
     }
 
 
@@ -855,9 +856,14 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
         'mpls_ldp': {'present': False, 'router_id': None, 'transport_address': None, 'interfaces': [],
                      'label_allocate': None, 'label_advertise': [], 'explicit_null': False},
         'router_bgp_vrfs': {},
+        'router_isis': _empty_router_isis_config(),
+        'bfd': {'profiles': {}},
     }
-    # 'router_ospf' | 'router_ospf6' | 'router_bgp' | 'interface' | 'route_map' | 'mpls_ldp' | 'other' | None
+    # 'router_ospf' | 'router_ospf6' | 'router_bgp' | 'interface' | 'route_map' | 'mpls_ldp' |
+    # 'router_isis' | 'bfd' | 'other' | None
     section: Optional[str] = None
+    ri = cfg['router_isis']
+    bfd_profile: Dict[str, Any] | None = None   # the open ``profile NAME`` block of bfd
     iface: Dict[str, Any] | None = None
     rm_entry: Dict[str, Any] | None = None
     bgp_af: Optional[str] = None   # address family of the open ``address-family`` block of router bgp
@@ -947,6 +953,14 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 section, iface, ldp_af = 'mpls_ldp', None, None
                 ml['present'] = True
                 continue
+            if words[:2] == ['router', 'isis'] and len(words) >= 3:
+                section, iface = 'router_isis', None
+                ri['present'] = True
+                ri['name'] = words[2]
+                continue
+            if words == ['bfd']:
+                section, iface, bfd_profile = 'bfd', None, None
+                continue
             if words[0] == 'router' or words[0] in ('vrf', 'route-map', 'key', 'line', 'segment-routing'):
                 section, iface = 'other', None
                 continue
@@ -1027,6 +1041,23 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 _parse_ospf6_interface_line(iface['ospf6'], words[2:], negated=False)
             elif words[:3] == ['no', 'ipv6', 'ospf6'] and len(words) >= 4:
                 _parse_ospf6_interface_line(iface['ospf6'], words[3:], negated=True)
+            elif words[0] == 'isis' or words[1:3] == ['router', 'isis']:
+                _parse_isis_interface_line(iface['isis'], words, negated=False)
+            elif words[0] == 'no' and len(words) >= 2 and (words[1] == 'isis' or words[2:4] == ['router', 'isis']):
+                _parse_isis_interface_line(iface['isis'], words[1:], negated=True)
+            continue
+
+        if section == 'router_isis':
+            _parse_router_isis_line(ri, words)
+            continue
+
+        if section == 'bfd':
+            if words[0] in ('profile', 'peer') and len(words) >= 2:
+                bfd_profile = cfg['bfd']['profiles'].setdefault(words[1], {}) if words[0] == 'profile' else None
+            elif words == ['exit']:
+                bfd_profile = None
+            else:
+                _parse_bfd_line(cfg['bfd'], bfd_profile, words)
             continue
 
         if section == 'mpls_ldp':
@@ -2617,3 +2648,678 @@ def get_frr_routes(grade: Grade0, machine_name: str, vrf: str = None, step: int 
     """Zebra's IPv4 RIB of *machine_name*, of the VRF *vrf* if given (see :func:`parse_frr_routes`)."""
     command = f"show ip route vrf {vrf}" if vrf else "show ip route"
     return parse_frr_routes(_vtysh_json(grade, machine_name, command, step, allow_error))
+
+
+# ---------------------------------------------------------------------------
+# IS-IS (isisd) and BFD (bfdd), FRR 10.3 (fixtures isis_*, bfd_*, config_isis_* captured on Debian 13).
+# ``show isis neighbor [detail] json`` keeps one adjacency per broadcast circuit (the others are
+# lost), so the neighbours come from the text of ``show isis neighbor detail``; the interfaces,
+# the link-state database and the routes from the json output.  Segment routing over IS-IS is
+# read from the database (SRGB, prefix-SIDs) and from the label tables (MPLS section above).
+# ---------------------------------------------------------------------------
+
+#: kernel route protocol values that mean "installed by isisd"
+ISIS_ROUTE_PROTOCOLS = ('isis', '187')
+#: FRR defaults of an IS-IS interface: hello interval (s), hello multiplier, metric, priority
+ISIS_DEFAULT_HELLO_INTERVAL = 3
+ISIS_DEFAULT_HELLO_MULTIPLIER = 10
+ISIS_DEFAULT_METRIC = 10
+ISIS_DEFAULT_PRIORITY = 64
+#: FRR's default SRGB (``segment-routing global-block`` is not shown when it has this value)
+ISIS_DEFAULT_SRGB = (16000, 23999)
+#: FRR defaults of a BFD session: detect multiplier, receive and transmit intervals (ms)
+BFD_DEFAULT_DETECT_MULTIPLIER = 3
+BFD_DEFAULT_INTERVAL = 300
+
+_SYSTEM_ID_RE = re.compile(r'^[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}$')
+_NET_RE = re.compile(r'^(?P<area>[0-9a-f]{2}(?:\.[0-9a-f]{4}){0,6})\.(?P<sysid>[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})'
+                     r'\.(?P<nsel>[0-9a-f]{2})$')
+_LSP_ID_RE = re.compile(r'^(?P<node>.+)\.(?P<pseudonode>[0-9a-fA-F]{2})-(?P<fragment>[0-9a-fA-F]{2})$')
+_ISIS_LEVEL_KEYS = {'level-1': 1, 'level-2': 2, 'level-2-only': 2, 'level-1-2': 3}
+
+
+def is_isis_protocol(protocol) -> bool:
+    """True when a kernel route ``protocol`` field (``ip -j route``) denotes an IS-IS route."""
+    return str(protocol) in ISIS_ROUTE_PROTOCOLS
+
+
+def isis_system_id_from_ipv4(address) -> str:
+    """The system-id made from an IPv4 address by the usual convention: each byte on three
+    decimal digits, the twelve digits grouped by four (``10.0.31.2`` → ``0100.0003.1002``)."""
+    digits = "".join(f"{int(b):03d}" for b in str(ip_address(str(address).split('/')[0])).split('.'))
+    return f"{digits[0:4]}.{digits[4:8]}.{digits[8:12]}"
+
+
+def isis_net(area: str, system_id: str, nsel: str = '00') -> str:
+    """The NET of a router: ``isis_net('49.0001', '0100.0003.1002')`` → ``49.0001.0100.0003.1002.00``."""
+    return f"{area}.{system_id}.{nsel}"
+
+
+def parse_isis_net(net) -> Optional[Dict[str, str]]:
+    """``'49.0001.0100.0003.1002.00'`` → ``{'area': '49.0001', 'system_id': '0100.0003.1002',
+    'nsel': '00'}`` (lower case); ``None`` when *net* is not a NET."""
+    m = _NET_RE.match(str(net or '').strip().lower())
+    if not m:
+        return None
+    return {'area': m.group('area'), 'system_id': m.group('sysid'), 'nsel': m.group('nsel')}
+
+
+def normalize_system_id(text) -> Optional[str]:
+    """A system-id as typed (``0100.0003.1002``, ``010000031002``, upper case) in FRR's form, or
+    ``None``."""
+    word = str(text or '').strip().lower().replace('.', '')
+    if len(word) != 12 or any(c not in '0123456789abcdef' for c in word):
+        return None
+    return f"{word[0:4]}.{word[4:8]}.{word[8:12]}"
+
+
+def _isis_level(text) -> Optional[int]:
+    """``'1'`` / ``'L1'`` → 1, ``'2'`` / ``'L2'`` → 2, ``'3'`` / ``'L1L2'`` → 3 (both levels)."""
+    word = str(text or '').strip().upper()
+    return {'1': 1, 'L1': 1, '2': 2, 'L2': 2, '3': 3, 'L1L2': 3}.get(word)
+
+
+def _level_matches(level: Optional[int], wanted: Optional[int]) -> bool:
+    """True when an adjacency / circuit of *level* (1, 2 or 3 = both) covers *wanted*
+    (``None``: any level; 3: both levels required)."""
+    if level is None:
+        return False
+    if wanted is None:
+        return True
+    return (level & wanted) == wanted
+
+
+_NEIGHBOR_TABLE_RE = re.compile(r'^\s(?P<name>\S+)\s+(?P<ifname>\S+)\s+(?P<level>[123])\s+(?P<state>\S+)\s+'
+                                r'(?P<hold>\d+)\s+(?P<snpa>\S+)\s*$')
+_NEIGHBOR_ITEM_RE = re.compile(r'Interface:\s*(?P<ifname>[^,]+),\s*Level:\s*(?P<level>\d),\s*State:\s*(?P<state>[^,]+)'
+                               r'(?:,\s*Expires in\s*(?P<hold>\d+)s)?')
+
+
+def parse_isis_neighbors(output: str) -> List[Dict[str, Any]]:
+    """Parse ``show isis neighbor detail`` (or the plain ``show isis neighbor`` table).
+
+    Returns one dict per adjacency (a broadcast circuit lists one per neighbour and level):
+    ``{'name': hostname or system-id, 'interface': str, 'level': 1 | 2 | 3 (both), 'state': 'Up' |
+    'Initializing' | 'Down', 'up': bool, 'holdtime': int | None, 'snpa': str | None, and, from the
+    detail form only: 'circuit_type': 'L1' | 'L2' | 'L1L2' | None, 'speaks': ['IPv4', 'IPv6'],
+    'topologies': [str], 'lan_id': str | None, 'priority': int | None, 'is_dis': bool | None,
+    'areas': [str], 'ipv4': [str], 'ipv6': [str] (link-local), 'ipv6_global': [str],
+    'bfd': 'Up' | 'Down' | ... | None}``.  ``[]`` on an empty or placeholder output.
+    """
+    result: List[Dict[str, Any]] = []
+    lines = (output or '').splitlines()
+    if any(_NEIGHBOR_TABLE_RE.match(line) for line in lines) and not any('Interface:' in line for line in lines):
+        for line in lines:
+            m = _NEIGHBOR_TABLE_RE.match(line)
+            if m and m.group('name') != 'System':
+                state = m.group('state')
+                result.append({'name': m.group('name'), 'interface': m.group('ifname'),
+                               'level': int(m.group('level')), 'state': state, 'up': state == 'Up',
+                               'holdtime': int(m.group('hold')), 'snpa': m.group('snpa')})
+        return result
+
+    current: Optional[Dict[str, Any]] = None
+    pending_name: Optional[str] = None
+    list_key: Optional[str] = None
+    lists = {'Area Address(es):': 'areas', 'IPv4 Address(es):': 'ipv4', 'IPv6 Address(es):': 'ipv6',
+             'Global IPv6 Address(es):': 'ipv6_global', 'Topologies:': 'topologies'}
+    for raw in lines:
+        stripped = raw.strip()
+        indent = len(raw) - len(raw.lstrip())
+        if not stripped or indent == 0 and stripped.startswith('Area ') and stripped.endswith(':'):
+            list_key = None
+            continue
+        if indent <= 2 and ' ' not in stripped:
+            pending_name, current, list_key = stripped, None, None
+            continue
+        m = _NEIGHBOR_ITEM_RE.search(stripped)
+        if m and pending_name:
+            state = m.group('state').strip()
+            current = {'name': pending_name, 'interface': m.group('ifname').strip(),
+                       'level': int(m.group('level')), 'state': state, 'up': state == 'Up',
+                       'holdtime': _int_or_none(m.group('hold')), 'snpa': None, 'circuit_type': None,
+                       'speaks': [], 'topologies': [], 'lan_id': None, 'priority': None, 'is_dis': None,
+                       'areas': [], 'ipv4': [], 'ipv6': [], 'ipv6_global': [], 'bfd': None}
+            result.append(current)
+            list_key = None
+            continue
+        if current is None:
+            continue
+        if stripped in lists:
+            list_key = lists[stripped]
+            continue
+        if stripped.startswith('Circuit type:'):
+            list_key = None
+            ct, _, speaks = stripped.partition(',')
+            current['circuit_type'] = ct.split(':', 1)[1].strip()
+            if 'Speaks:' in speaks:
+                current['speaks'] = [s.strip() for s in speaks.split(':', 1)[1].split(',') if s.strip()]
+        elif stripped.startswith('SNPA:'):
+            list_key = None
+            snpa, _, lan = stripped.partition(',')
+            current['snpa'] = snpa.split(':', 1)[1].strip()
+            if 'LAN id:' in lan:
+                current['lan_id'] = lan.split(':', 1)[1].strip()
+        elif stripped.startswith('LAN Priority:'):
+            list_key = None
+            parts = [p.strip() for p in stripped.split(',')]
+            current['priority'] = _int_or_none(parts[0].split(':', 1)[1])
+            current['is_dis'] = any(p == 'is DIS' for p in parts)
+        elif stripped.startswith('BFD is'):
+            list_key = None
+            m = re.search(r'status\s+(\S+)', stripped)
+            current['bfd'] = m.group(1) if m else stripped
+        elif list_key and indent >= 6:
+            # the items of a list (areas, addresses, topologies) are the lines indented by six
+            current[list_key].append(stripped)
+        else:
+            list_key = None
+    return result
+
+
+def get_isis_neighbors(grade: Grade0, machine_name: str, step: int = 1,
+                       allow_error: bool = True) -> List[Dict[str, Any]]:
+    """The IS-IS adjacencies of *machine_name* (``show isis neighbor detail``, see
+    :func:`parse_isis_neighbors`)."""
+    output, code = _test(grade, machine_name, 'vtysh -c "show isis neighbor detail"', step, allow_error)
+    return parse_isis_neighbors(output) if code == 0 else []
+
+
+def isis_adjacencies(neighbors: List[Dict[str, Any]], name=None, interface: str = None,
+                     level: int = None, up: bool = True) -> List[Dict[str, Any]]:
+    """The adjacencies of :func:`parse_isis_neighbors` with neighbour *name* (its hostname or its
+    system-id), on *interface*, covering *level* (1, 2, or 3 for both), Up unless ``up=False``."""
+    names = {str(n) for n in (name if isinstance(name, (list, tuple, set)) else [name]) if n is not None}
+    result = []
+    for n in neighbors:
+        if names and n.get('name') not in names:
+            continue
+        if interface is not None and n.get('interface') != interface:
+            continue
+        if up and not n.get('up'):
+            continue
+        result.append(n)
+    if level is None:
+        return result
+    # a broadcast circuit lists one adjacency per level: combine them before testing *level*
+    by_key: Dict[tuple, int] = {}
+    for n in result:
+        key = (n.get('name'), n.get('interface'))
+        by_key[key] = by_key.get(key, 0) | (n.get('level') or 0)
+    return [n for n in result if _level_matches(by_key[(n.get('name'), n.get('interface'))], level)]
+
+
+def isis_adjacency_up(neighbors: List[Dict[str, Any]], name=None, interface: str = None,
+                      level: int = None) -> bool:
+    """True when :func:`isis_adjacencies` finds an Up adjacency (see there for the filters)."""
+    return bool(isis_adjacencies(neighbors, name=name, interface=interface, level=level))
+
+
+def isis_adjacency_levels(neighbors: List[Dict[str, Any]], name=None, interface: str = None) -> int:
+    """The levels of the Up adjacencies with *name* (on *interface*): 0, 1, 2 or 3 (both)."""
+    levels = 0
+    for n in isis_adjacencies(neighbors, name=name, interface=interface):
+        levels |= n.get('level') or 0
+    return levels
+
+
+def _json_with_duplicates(output: str) -> Any:
+    """Decode FRR json in which an object may repeat a key (several area addresses, several
+    prefixes of an interface): a repeated key holds the list of its values."""
+    def hook(pairs):
+        obj: Dict[str, Any] = {}
+        for key, value in pairs:
+            if key in obj:
+                if not isinstance(obj[key], list) or not getattr(obj[key], '_dup', False):
+                    obj[key] = _DupList([obj[key]])
+                obj[key].append(value)
+            else:
+                obj[key] = value
+        return obj
+    start = min([i for i in (output.find('{'), output.find('[')) if i >= 0], default=-1)
+    if start < 0:
+        return None
+    try:
+        return json.loads(output[start:], object_pairs_hook=hook)
+    except (ValueError, TypeError):
+        return None
+
+
+class _DupList(list):
+    """The values of a key repeated in a json object (see :func:`_json_with_duplicates`)."""
+    _dup = True
+
+
+def _as_list(value) -> List[Any]:
+    if value is None:
+        return []
+    return list(value) if isinstance(value, list) else [value]
+
+
+def _vtysh_json_any(grade: Grade0, machine_name: str, command: str, step: int, allow_error: bool) -> Any:
+    """Run ``vtysh -c "<command> json"`` and decode it with :func:`_json_with_duplicates`
+    (``None`` on an error, a placeholder or a text answer)."""
+    output, code = _test(grade, machine_name, f'vtysh -c "{command} json"', step, allow_error)
+    if code != 0 or not output:
+        return None
+    return _json_with_duplicates(output)
+
+
+def _isis_circuits(data: Any) -> List[Dict[str, Any]]:
+    circuits = []
+    if isinstance(data, dict):
+        for area in _as_list(data.get('areas')):
+            if isinstance(area, dict):
+                for c in _as_list(area.get('circuits')):
+                    if isinstance(c, dict):
+                        circuits.append((area.get('area'), c))
+    return circuits
+
+
+def parse_isis_interfaces(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show isis interface detail json`` → ``{ifname: {'area': str, 'state': str, 'passive': bool,
+    'type': 'p2p' | 'lan' | 'loopback', 'level': 1 | 2 | 3, 'circuit_id': str, 'levels': {1 | 2:
+    {'metric': int, 'hello_interval': int | None, 'hello_multiplier': int | None, 'padding': bool,
+    'csnp_interval': int | None, 'neighbors': int | None, 'priority': int | None, 'is_dis': bool |
+    None}}, 'ipv4': [prefix], 'ipv6': [prefix], 'ipv6_link_local': [prefix]}}``; ``{}`` when IS-IS
+    does not run.  ``priority`` / ``is_dis`` are those of a broadcast circuit (``None`` on a point
+    to point one)."""
+    result: Dict[str, Dict[str, Any]] = {}
+    for area, c in _isis_circuits(data):
+        i = c.get('interface')
+        if not isinstance(i, dict) or not i.get('name'):
+            continue
+        levels: Dict[int, Dict[str, Any]] = {}
+        for lv in _as_list(i.get('levels')):
+            if not isinstance(lv, dict):
+                continue
+            number = _isis_level(lv.get('level'))
+            if number not in (1, 2):
+                continue
+            hold = lv.get('holddown') if isinstance(lv.get('holddown'), dict) else {}
+            lan = lv.get('lan') if isinstance(lv.get('lan'), dict) else {}
+            levels[number] = {
+                'metric': _int_or_none(lv.get('metric')), 'hello_interval': _int_or_none(lv.get('hello-interval')),
+                'hello_multiplier': _int_or_none(hold.get('count')), 'padding': hold.get('pad') == 'yes',
+                'csnp_interval': _int_or_none(lv.get('cnsp-interval', lv.get('csnp-interval'))),
+                'neighbors': _int_or_none(lv.get('active-neighbors')),
+                'priority': _int_or_none(lan.get('priority')) if lan else None,
+                'is_dis': (lan.get('is-dis') == 'yes') if lan else None,
+            }
+
+        def prefixes(key, sub):
+            value = i.get(key)
+            if not isinstance(value, dict):
+                return []
+            return [str(x) for x in _as_list(value.get(sub))]
+        result[i['name']] = {
+            'area': area, 'state': i.get('state'), 'passive': i.get('is-passive') == 'passive',
+            'type': i.get('type'), 'level': _isis_level(i.get('level')), 'circuit_id': i.get('circuit-id'),
+            'levels': levels, 'ipv4': prefixes('ip-prefix', 'ip'), 'ipv6': prefixes('ipv6-prefixes', 'ipv6'),
+            'ipv6_link_local': prefixes('ipv6-link-locals', 'ipv6'),
+        }
+    return result
+
+
+def get_isis_interfaces(grade: Grade0, machine_name: str, step: int = 1,
+                        allow_error: bool = True) -> Dict[str, Dict[str, Any]]:
+    """The IS-IS circuits of *machine_name* (see :func:`parse_isis_interfaces`)."""
+    return parse_isis_interfaces(_vtysh_json_any(grade, machine_name, "show isis interface detail", step,
+                                                 allow_error))
+
+
+def isis_lsp_node(lsp_id: str):
+    """``'r3.4d-00'`` → ``('r3', '4d', '00')`` (node = hostname or system-id, pseudonode id,
+    fragment); ``None`` when *lsp_id* is not an LSP-ID."""
+    m = _LSP_ID_RE.match(str(lsp_id or ''))
+    if not m:
+        return None
+    return m.group('node'), m.group('pseudonode').lower(), m.group('fragment').lower()
+
+
+def _flags_att_p_ol(text) -> tuple:
+    parts = str(text or '').split('/')
+    if len(parts) != 3:
+        return False, False, False
+    return tuple(p.strip() == '1' for p in parts)
+
+
+def _mt_name(entry: Dict[str, Any]) -> Optional[str]:
+    """``None`` for the standard topology, ``'ipv6-unicast'`` for a multi-topology entry."""
+    name = entry.get('mtName') or entry.get('mt-name')
+    if name:
+        return str(name)
+    return None if str(entry.get('mtId', '')).lower() in ('', 'extended', 'standard') else str(entry.get('mtId'))
+
+
+def parse_isis_database(data: Any) -> Dict[int, Dict[str, Dict[str, Any]]]:
+    """``show isis database detail json`` (or the plain form, with fewer keys) → ``{level: {lsp_id:
+    {'node': hostname or system-id, 'pseudonode': bool, 'own': bool, 'seq': int | None,
+    'holdtime': int | None, 'att': bool, 'p': bool, 'ol': bool, 'hostname': str | None, 'areas':
+    [str], 'protocols': [str], 'topologies': [int], 'router_id': str | None, 'srgb': (base, size) |
+    None, 'srlb': (base, size) | None, 'is_reach': [{'id': system-id.pseudonode, 'metric': int,
+    'mt': None | 'ipv6-unicast', 'adj_sids': [int]}], 'ip_reach': [{'prefix', 'metric', 'down',
+    'sid': {'index', 'no_php', 'explicit_null'} | None}], 'ipv6_reach': [{'prefix', 'metric', 'mt',
+    'external', 'down'}]}}}``; ``{}`` when IS-IS does not run."""
+    result: Dict[int, Dict[str, Dict[str, Any]]] = {}
+    if not isinstance(data, dict):
+        return result
+    for area in _as_list(data.get('areas')):
+        if not isinstance(area, dict):
+            continue
+        for lv in _as_list(area.get('levels')):
+            if not isinstance(lv, dict):
+                continue
+            level = _int_or_none(lv.get('id'))
+            if level not in (1, 2):
+                continue
+            db = result.setdefault(level, {})
+            for e in _as_list(lv.get('lsps')):
+                if not isinstance(e, dict) or not isinstance(e.get('lsp'), dict):
+                    continue
+                lsp_id = e['lsp'].get('id')
+                parts = isis_lsp_node(lsp_id)
+                if not parts:
+                    continue
+                att, p, ol = _flags_att_p_ol(e.get('attPOl'))
+                gb = e.get('segmentRoutingGb') if isinstance(e.get('segmentRoutingGb'), dict) else None
+                lb = e.get('segmentRoutingLb') if isinstance(e.get('segmentRoutingLb'), dict) else None
+                protocols = e.get('supportedProtocols')
+                is_reach = []
+                for r in _as_list(e.get('extReach')) + _as_list(e.get('isReach')):
+                    if isinstance(r, dict) and r.get('id'):
+                        is_reach.append({'id': str(r['id']), 'metric': _int_or_none(r.get('metric')), 'mt': _mt_name(r),
+                                         'adj_sids': [_int_or_none(s.get('sid')) for s in _as_list(r.get('adjSid'))
+                                                      if isinstance(s, dict)]})
+                ip_reach = []
+                for r in _as_list(e.get('extIpReach')) + _as_list(e.get('ipReach')):
+                    if not isinstance(r, dict):
+                        continue
+                    prefix = r.get('ipReach') if isinstance(r.get('ipReach'), str) else r.get('prefix')
+                    if not prefix:
+                        continue
+                    sid = None
+                    subtlvs = r.get('subtlvs') if isinstance(r.get('subtlvs'), dict) else {}
+                    for s in _as_list(subtlvs.get('sr')):
+                        if isinstance(s, dict) and s.get('index') is not None:
+                            flags = s.get('flags') if isinstance(s.get('flags'), dict) else {}
+                            sid = {'index': _int_or_none(s.get('index')), 'no_php': bool(flags.get('noPHP')),
+                                   'explicit_null': bool(flags.get('explicitNull'))}
+                    ip_reach.append({'prefix': str(prefix), 'metric': _int_or_none(r.get('ipReachMetric', r.get('metric'))),
+                                     'down': bool(r.get('down')), 'sid': sid})
+                ipv6_reach = []
+                for r in _as_list(e.get('ipv6Reach')):
+                    if isinstance(r, dict) and r.get('prefix'):
+                        ipv6_reach.append({'prefix': str(r['prefix']), 'metric': _int_or_none(r.get('metric')),
+                                           'mt': _mt_name(r), 'external': bool(r.get('external')),
+                                           'down': bool(r.get('down'))})
+                db[lsp_id] = {
+                    'node': parts[0], 'pseudonode': parts[1] != '00', 'own': bool(e['lsp'].get('ownLSP')),
+                    'seq': int(e['seqNumber'], 16) if isinstance(e.get('seqNumber'), str)
+                    and e['seqNumber'].startswith('0x') else _int_or_none(e.get('seqNumber')),
+                    'holdtime': _int_or_none(e.get('holdtime')), 'att': att, 'p': p, 'ol': ol,
+                    'hostname': e.get('hostname'), 'areas': [str(a) for a in _as_list(e.get('areaAddr'))],
+                    'protocols': [str(v) for v in protocols.values()] if isinstance(protocols, dict) else [],
+                    'topologies': [_int_or_none(t.get('mtid')) for t in _as_list(e.get('mt')) if isinstance(t, dict)],
+                    'router_id': e.get('teRouterId'),
+                    'srgb': (_int_or_none(gb.get('globalBlockBase')), _int_or_none(gb.get('globalBlockRange')))
+                    if gb else None,
+                    'srlb': (_int_or_none(lb.get('globalBlockBase')), _int_or_none(lb.get('globalBlockRange')))
+                    if lb else None,
+                    'is_reach': is_reach, 'ip_reach': ip_reach, 'ipv6_reach': ipv6_reach,
+                }
+    return result
+
+
+def get_isis_database(grade: Grade0, machine_name: str, step: int = 1,
+                      allow_error: bool = True) -> Dict[int, Dict[str, Dict[str, Any]]]:
+    """The IS-IS link-state database of *machine_name* (see :func:`parse_isis_database`)."""
+    return parse_isis_database(_vtysh_json_any(grade, machine_name, "show isis database detail", step,
+                                               allow_error))
+
+
+def isis_lsps_of(database: Dict[int, Dict[str, Dict[str, Any]]], level: int, node,
+                 pseudonode: bool = None) -> List[Dict[str, Any]]:
+    """The LSPs of *level* whose node is *node* (a hostname or a system-id, or a list of them);
+    ``pseudonode=False`` keeps the router's own LSPs, ``True`` its pseudonode LSPs."""
+    nodes = {str(n) for n in (node if isinstance(node, (list, tuple, set)) else [node])}
+    return [lsp for lsp in (database.get(level) or {}).values()
+            if lsp['node'] in nodes and (pseudonode is None or lsp['pseudonode'] == pseudonode)]
+
+
+def parse_isis_routes(data: Any, ipv6: bool = False) -> Dict[int, Dict[str, Dict[str, Any]]]:
+    """``show isis route json`` → ``{level: {prefix: {'metric': int | None, 'nexthops': [(address |
+    None, ifname | None)], 'labels': [str | None]}}}`` for IPv4, or IPv6 with ``ipv6=True``.  An
+    ECMP route lists every next hop; the router's own prefixes have no next hop."""
+    result: Dict[int, Dict[str, Dict[str, Any]]] = {}
+    family = 'ipv6' if ipv6 else 'ipv4'
+    for area in _as_list(data):
+        if not isinstance(area, dict):
+            continue
+        for key, level in (('level-1', 1), ('level-2', 2)):
+            block = area.get(key)
+            if not isinstance(block, dict):
+                continue
+            table = result.setdefault(level, {})
+            for r in _as_list(block.get(family)):
+                if not isinstance(r, dict) or not r.get('prefix'):
+                    continue
+                entry = table.setdefault(str(r['prefix']), {'metric': _int_or_none(r.get('metric')),
+                                                            'nexthops': [], 'labels': []})
+                hop = r.get('nextHop')
+                ifname = r.get('interface')
+                if hop and hop != '-':
+                    entry['nexthops'].append((str(hop), ifname if ifname and ifname != '-' else None))
+                    label = r.get('label(s)')
+                    entry['labels'].append(None if label in (None, '-') else str(label))
+    return result
+
+
+def get_isis_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = True,
+                    ipv6: bool = False) -> Dict[int, Dict[str, Dict[str, Any]]]:
+    """The routes IS-IS computed on *machine_name*, per level (see :func:`parse_isis_routes`)."""
+    return parse_isis_routes(_vtysh_json_any(grade, machine_name, "show isis route", step, allow_error),
+                             ipv6=ipv6)
+
+
+def parse_bfd_peers(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show bfd peers json`` → ``{peer address: {'status': 'up' | 'down' | 'init' | ...,
+    'up': bool, 'local': str | None, 'interface': str | None, 'multihop': bool, 'receive_interval':
+    int, 'transmit_interval': int, 'detect_multiplier': int, 'remote_receive_interval': int,
+    'remote_transmit_interval': int, 'remote_detect_multiplier': int, 'uptime': int | None}}``
+    (intervals in ms); ``{}`` without session."""
+    result: Dict[str, Dict[str, Any]] = {}
+    for p in _as_list(data):
+        if not isinstance(p, dict) or not p.get('peer'):
+            continue
+        status = str(p.get('status') or '')
+        result[str(p['peer'])] = {
+            'status': status, 'up': status == 'up', 'local': p.get('local'), 'interface': p.get('interface'),
+            'multihop': bool(p.get('multihop')),
+            'receive_interval': _int_or_none(p.get('receive-interval')),
+            'transmit_interval': _int_or_none(p.get('transmit-interval')),
+            'detect_multiplier': _int_or_none(p.get('detect-multiplier')),
+            'remote_receive_interval': _int_or_none(p.get('remote-receive-interval')),
+            'remote_transmit_interval': _int_or_none(p.get('remote-transmit-interval')),
+            'remote_detect_multiplier': _int_or_none(p.get('remote-detect-multiplier')),
+            'uptime': _int_or_none(p.get('uptime')),
+        }
+    return result
+
+
+def get_bfd_peers(grade: Grade0, machine_name: str, step: int = 1,
+                  allow_error: bool = True) -> Dict[str, Dict[str, Any]]:
+    """The BFD sessions of *machine_name* (see :func:`parse_bfd_peers`)."""
+    return parse_bfd_peers(_vtysh_json_any(grade, machine_name, "show bfd peers", step, allow_error))
+
+
+def bfd_detection_time(peer: Dict[str, Any]) -> Optional[int]:
+    """The detection time (ms) of the local end of a session of :func:`parse_bfd_peers`: the
+    remote multiplier times the interval at which the packets really arrive (the larger of our
+    receive interval and the peer's transmit interval)."""
+    try:
+        return peer['remote_detect_multiplier'] * max(peer['receive_interval'], peer['remote_transmit_interval'])
+    except (KeyError, TypeError):
+        return None
+
+
+# -- configuration (parse_frr_config) --------------------------------------------------
+
+def _empty_isis_interface_config() -> Dict[str, Any]:
+    return {'ipv4': None, 'ipv6': None, 'circuit_type': None, 'network_type': None, 'passive': False,
+            'metric': {}, 'priority': {}, 'hello_interval': {}, 'hello_multiplier': {}, 'password': None,
+            'bfd': False, 'bfd_profile': None, 'fast_reroute': {}}
+
+
+def _empty_router_isis_config() -> Dict[str, Any]:
+    return {'present': False, 'name': None, 'nets': [], 'is_type': None, 'metric_style': None,
+            'overload': False, 'area_password': None, 'domain_password': None, 'redistribute': [],
+            'default_information': [], 'topologies': [], 'hostname_dynamic': True,
+            'lsp_gen_interval': None, 'log_adjacency_changes': False,
+            'segment_routing': {'enabled': False, 'srgb': None, 'srlb': None, 'node_msd': None, 'prefixes': {}}}
+
+
+def _isis_level_key(words: List[str]) -> str:
+    """``'level-1'`` / ``'level-2'`` when the statement names one, else ``'all'``."""
+    for w in words:
+        if w in ('level-1', 'level-2'):
+            return w
+    return 'all'
+
+
+def isis_interface_value(isis_cfg: Dict[str, Any], key: str, level: int):
+    """The value of a per-level interface statement (``metric``, ``priority``,
+    ``hello_interval``, ``hello_multiplier``) of *isis_cfg* for *level*: the level's own
+    statement, else the statement for both levels, else ``None``."""
+    values = isis_cfg.get(key) or {}
+    return values.get(f'level-{level}', values.get('all'))
+
+
+def _parse_isis_interface_line(ic: Dict[str, Any], w: List[str], negated: bool) -> None:
+    """``ip router isis X`` / ``ipv6 router isis X`` / ``isis <w...>`` of an interface block."""
+    if w[:3] == ['ip', 'router', 'isis']:
+        ic['ipv4'] = None if negated else (w[3] if len(w) >= 4 else '')
+        return
+    if w[:3] == ['ipv6', 'router', 'isis']:
+        ic['ipv6'] = None if negated else (w[3] if len(w) >= 4 else '')
+        return
+    if not w or w[0] != 'isis' or len(w) < 2:
+        return
+    sub, args = w[1], w[2:]
+    if sub == 'circuit-type':
+        ic['circuit_type'] = None if negated or not args else args[0]
+    elif sub == 'network':
+        ic['network_type'] = None if negated or not args else args[0]
+    elif sub == 'passive':
+        ic['passive'] = not negated
+    elif sub in ('metric', 'priority', 'hello-interval', 'hello-multiplier'):
+        key = sub.replace('-', '_')
+        level = _isis_level_key(args)
+        if negated:
+            ic[key].pop(level, None)
+        elif args and args[0].isdigit():
+            ic[key][level] = int(args[0])
+    elif sub == 'password':
+        ic['password'] = None if negated or len(args) < 2 else {'type': args[0], 'key': args[1]}
+    elif sub == 'bfd':
+        if args[:1] == ['profile']:
+            ic['bfd_profile'] = None if negated or len(args) < 2 else args[1]
+        else:
+            ic['bfd'] = not negated
+    elif sub == 'fast-reroute' and args[:1] == ['ti-lfa']:
+        level = _isis_level_key(args)
+        if negated:
+            ic['fast_reroute'].pop(level, None)
+        else:
+            ic['fast_reroute'][level] = 'node' if 'node-protection' in args else 'link'
+
+
+def _parse_router_isis_line(ri: Dict[str, Any], w: List[str]) -> None:
+    """A statement of a ``router isis NAME`` block applied to *ri*."""
+    negated = w[0] == 'no'
+    if negated:
+        w = w[1:]
+    if not w:
+        return
+    kw = w[0]
+    if kw == 'net' and len(w) >= 2:
+        if negated:
+            if w[1] in ri['nets']:
+                ri['nets'].remove(w[1])
+        elif w[1] not in ri['nets']:
+            ri['nets'].append(w[1])
+    elif kw == 'is-type':
+        ri['is_type'] = None if negated or len(w) < 2 else w[1]
+    elif kw == 'metric-style':
+        ri['metric_style'] = None if negated or len(w) < 2 else w[1]
+    elif kw == 'set-overload-bit':
+        ri['overload'] = not negated
+    elif kw in ('area-password', 'domain-password'):
+        key = kw.replace('-', '_')
+        ri[key] = None if negated or len(w) < 3 else {'type': w[1], 'key': w[2]}
+    elif kw == 'redistribute' and len(w) >= 4:
+        entry = (w[1], w[2], w[3])
+        if negated:
+            ri['redistribute'] = [r for r in ri['redistribute'] if r != entry]
+        elif entry not in ri['redistribute']:
+            ri['redistribute'].append(entry)
+    elif w[:2] == ['default-information', 'originate'] and len(w) >= 4:
+        if negated:
+            ri['default_information'] = [d for d in ri['default_information']
+                                         if (d['afi'], d['level']) != (w[2], w[3])]
+        else:
+            ri['default_information'].append({'afi': w[2], 'level': w[3], 'always': 'always' in w[4:]})
+    elif kw == 'topology' and len(w) >= 2:
+        if negated:
+            if w[1] in ri['topologies']:
+                ri['topologies'].remove(w[1])
+        elif w[1] not in ri['topologies']:
+            ri['topologies'].append(w[1])
+    elif w[:2] == ['hostname', 'dynamic']:
+        ri['hostname_dynamic'] = not negated
+    elif kw == 'lsp-gen-interval':
+        values = [int(x) for x in w[1:] if x.isdigit()]
+        ri['lsp_gen_interval'] = None if negated or not values else values[-1]
+    elif kw == 'log-adjacency-changes':
+        ri['log_adjacency_changes'] = not negated
+    elif kw == 'segment-routing' and len(w) >= 2:
+        if negated and w[1] == 'on':
+            ri['segment_routing']['enabled'] = False
+        elif not negated:
+            _parse_ospf_sr_line(ri['segment_routing'], w[1:])
+
+
+def _parse_bfd_line(bfd: Dict[str, Any], profile: Optional[Dict[str, Any]], w: List[str]) -> None:
+    """A statement of a ``profile NAME`` (or ``peer X``) block of ``bfd``."""
+    if profile is None or not w:
+        return
+    if w[0] in ('detect-multiplier', 'receive-interval', 'transmit-interval', 'echo-interval',
+                'echo-receive-interval', 'echo-transmit-interval') and len(w) >= 2 and w[1].isdigit():
+        profile[w[0].replace('-', '_')] = int(w[1])
+    elif w[0] == 'echo-mode':
+        profile['echo_mode'] = True
+    elif w[0] == 'passive-mode':
+        profile['passive_mode'] = True
+    elif w[0] == 'shutdown':
+        profile['shutdown'] = True
+
+
+def bfd_profile_value(profile: Optional[Dict[str, Any]], key: str):
+    """A setting of a BFD profile of ``parse_frr_config(...)['bfd']['profiles']`` with FRR's
+    default when the profile does not set it (``show running-config`` leaves the defaults out):
+    ``detect_multiplier`` 3, ``receive_interval`` / ``transmit_interval`` 300 ms."""
+    if profile is None:
+        return None
+    if profile.get(key) is not None:
+        return profile[key]
+    return {'detect_multiplier': BFD_DEFAULT_DETECT_MULTIPLIER, 'receive_interval': BFD_DEFAULT_INTERVAL,
+            'transmit_interval': BFD_DEFAULT_INTERVAL}.get(key)
+
+
+def isis_srgb(router_isis: Dict[str, Any]) -> Optional[tuple]:
+    """The SRGB of ``parse_frr_config(...)['router_isis']``: the configured block, FRR's default
+    (16000, 23999) when segment routing is on without ``global-block``, ``None`` when it is off."""
+    sr = (router_isis or {}).get('segment_routing') or {}
+    if not sr.get('enabled'):
+        return None
+    return sr.get('srgb') or ISIS_DEFAULT_SRGB

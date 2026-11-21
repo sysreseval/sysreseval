@@ -1,0 +1,46 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname b
+log file /var/log/frr/frr.log
+service integrated-vtysh-config
+!
+interface eth0
+ ip router isis CORE
+ ipv6 router isis CORE
+ isis network point-to-point
+ isis password md5 HelloKey1
+exit
+!
+interface eth1
+ ip router isis CORE
+ ipv6 router isis CORE
+ isis hello-interval 1
+ isis hello-multiplier 3
+ isis network point-to-point
+exit
+!
+interface eth2
+ ip router isis CORE
+ ipv6 router isis CORE
+exit
+!
+interface lo
+ ip router isis CORE
+ ipv6 router isis CORE
+ isis passive
+exit
+!
+router isis CORE
+ is-type level-2-only
+ net 49.0001.0100.9925.5002.00
+ domain-password md5 DomKey2
+ topology ipv6-unicast
+ segment-routing on
+ segment-routing prefix 10.99.255.2/32 index 2
+exit
+!
+end

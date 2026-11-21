@@ -6,6 +6,8 @@
     "dns2.py": 65,
     "ipsec.py": 53,
     "ipv6.py": 22,
+    "isis-ipv6-sr-bfd.py": 101,
+    "isis.py": 138,
     "lan-attacks.py": 7,
     "ldap.py": 25,
     "mail.py": 36,
@@ -41,6 +43,14 @@
   "aaa.py": {
     "en": "AAA: RADIUS, 802.1X, two-factor authentication and Kerberos",
     "fr": "AAA : RADIUS, 802.1X, double authentification et Kerberos"
+  },
+  "isis-ipv6-sr-bfd.py": {
+    "en": "IS-IS: IPv6 multi-topology, segment routing and BFD",
+    "fr": "IS-IS : IPv6 multi-topologie, segment routing et BFD"
+  },
+  "isis.py": {
+    "en": "Dynamic routing: IS-IS",
+    "fr": "Routage dynamique : IS-IS"
   },
   "lan-attacks.py": {
     "en": "LAN layer-2 attacks and defences (ARP, MITM, rogue DHCP, ICMP redirect)",

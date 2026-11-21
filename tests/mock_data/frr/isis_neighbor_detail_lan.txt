@@ -1,0 +1,79 @@
+Area CORE:
+ a                   
+    Interface: eth0, Level: 2, State: Up, Expires in 19s
+    Adjacency flaps: 1, Last: 18m2s ago
+    Circuit type: L2, Speaks: IPv4, IPv6
+    Topologies:
+      standard
+      ipv6-unicast
+    SNPA: 2020.2020.2020
+    Area Address(es):
+      49.0001
+    IPv4 Address(es):
+      10.99.1.1
+    IPv6 Address(es):
+      fe80::f877:1dff:fe7b:4a86
+    Global IPv6 Address(es):
+      fd99:1::1
+    IPv4 Adjacency-SID: 15000
+    IPv6 Adjacency-SID: 15001
+
+ c                   
+    Interface: eth1, Level: 2, State: Up, Expires in 2s
+    Adjacency flaps: 1, Last: 18m1s ago
+    Circuit type: L2, Speaks: IPv4, IPv6
+    Topologies:
+      standard
+      ipv6-unicast
+    SNPA: 2020.2020.2020
+    Area Address(es):
+      49.0001
+    IPv4 Address(es):
+      10.99.2.2
+    IPv6 Address(es):
+      fe80::1019:7ff:fe76:4538
+    Global IPv6 Address(es):
+      fd99:2::2
+    IPv4 Adjacency-SID: 15006
+    IPv6 Adjacency-SID: 15007
+
+ c                   
+    Interface: eth2, Level: 2, State: Up, Expires in 29s
+    Adjacency flaps: 1, Last: 17m59s ago
+    Circuit type: L2, Speaks: IPv4, IPv6
+    Topologies:
+      standard
+      ipv6-unicast
+    SNPA: 9e00.c1c1.0b8b, LAN id: c.4d
+    LAN Priority: 100, is DIS, DIS flaps: 3, Last: 9s ago
+    Area Address(es):
+      49.0001
+    IPv4 Address(es):
+      10.99.6.2
+    IPv6 Address(es):
+      fe80::9c00:c1ff:fec1:b8b
+    Global IPv6 Address(es):
+      fd99:6::2
+    IPv4 LAN Adjacency-SID: 15002
+    IPv6 LAN Adjacency-SID: 15003
+
+ e                   
+    Interface: eth2, Level: 2, State: Up, Expires in 29s
+    Adjacency flaps: 2, Last: 17m56s ago
+    Circuit type: L2, Speaks: IPv4, IPv6
+    Topologies:
+      standard
+      ipv6-unicast
+    SNPA: ba42.6049.bd76, LAN id: c.4d
+    LAN Priority: 64, is not DIS, DIS flaps: 2, Last: 9s ago
+    Area Address(es):
+      49.0001
+    IPv4 Address(es):
+      10.99.6.3
+    IPv6 Address(es):
+      fe80::b842:60ff:fe49:bd76
+    Global IPv6 Address(es):
+      fd99:6::3
+    IPv4 LAN Adjacency-SID: 15004
+    IPv6 LAN Adjacency-SID: 15005
+
