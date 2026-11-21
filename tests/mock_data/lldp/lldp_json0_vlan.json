@@ -1,0 +1,101 @@
+{
+  "lldp": [
+    {
+      "interface": [
+        {
+          "name": "eth0",
+          "via": "LLDP",
+          "rid": "1",
+          "age": "0 day, 00:00:34",
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "3e:db:c1:51:e2:de"
+                }
+              ],
+              "name": [
+                {
+                  "value": "dc2-core-a"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Core switch rack B7"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "192.0.2.2"
+                }
+              ],
+              "mgmt-iface": [
+                {
+                  "value": "3"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": true
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "da:c2:43:f4:06:b8"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "eth3"
+                }
+              ],
+              "ttl": [
+                {
+                  "value": "120"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": false,
+                  "enabled": false,
+                  "current": [
+                    {
+                      "value": "10GbaseT - Four-pair Category 6A or better, full duplex mode only"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "vlan": [
+            {
+              "vlan-id": "42",
+              "pvid": false,
+              "value": "vlan42"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

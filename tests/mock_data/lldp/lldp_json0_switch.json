@@ -1,0 +1,259 @@
+{
+  "lldp": [
+    {
+      "interface": [
+        {
+          "name": "eth0",
+          "via": "LLDP",
+          "rid": "1",
+          "age": "0 day, 00:02:46",
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "f2:0f:b0:1b:92:a1"
+                }
+              ],
+              "name": [
+                {
+                  "value": "a"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "web server rack B7"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "10.77.0.1"
+                }
+              ],
+              "mgmt-iface": [
+                {
+                  "value": "4"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": false
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "f2:0f:b0:1b:92:a1"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "eth0"
+                }
+              ],
+              "ttl": [
+                {
+                  "value": "120"
+                }
+              ],
+              "aggregation": [
+                {
+                  "value": "4"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": false,
+                  "enabled": false,
+                  "current": [
+                    {
+                      "value": "10GbaseT - Four-pair Category 6A or better, full duplex mode only"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "eth2",
+          "via": "LLDP",
+          "rid": "2",
+          "age": "0 day, 00:04:19",
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "0a:17:51:ee:bd:5f"
+                }
+              ],
+              "name": [
+                {
+                  "value": "c"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Debian GNU/Linux 13 (trixie) Linux 6.12.116+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.116-1 (2026-11-07) x86_64"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "10.77.0.3"
+                }
+              ],
+              "mgmt-iface": [
+                {
+                  "value": "938"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": false
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "0a:17:51:ee:bd:5f"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "eth0"
+                }
+              ],
+              "ttl": [
+                {
+                  "value": "120"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": false,
+                  "enabled": false,
+                  "current": [
+                    {
+                      "value": "10GbaseT - Four-pair Category 6A or better, full duplex mode only"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "eth3",
+          "via": "LLDP",
+          "rid": "3",
+          "age": "0 day, 00:02:29",
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "7e:a4:c4:76:90:1c"
+                }
+              ],
+              "name": [
+                {
+                  "value": "v"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Debian GNU/Linux 13 (trixie) Linux 6.12.116+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.116-1 (2026-11-07) x86_64"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": false
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "7e:a4:c4:76:90:1c"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "eth0"
+                }
+              ],
+              "ttl": [
+                {
+                  "value": "120"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": false,
+                  "enabled": false,
+                  "current": [
+                    {
+                      "value": "10GbaseT - Four-pair Category 6A or better, full duplex mode only"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

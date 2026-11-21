@@ -1,0 +1,15 @@
+17:11:15.608448 f2:0f:b0:1b:92:a1 > 01:80:c2:00:00:02, ethertype Slow Protocols (0x8809), length 124: LACPv1, length 110
+	Actor Information TLV (0x01), length 20
+	  System f2:0f:b0:1b:92:a1, System Priority 65535, Key 15, Port 1, Port Priority 255
+	  State Flags [Activity, Timeout, Aggregation, Synchronization, Collecting, Distributing]
+	  0x0000:  ffff f20f b01b 92a1 000f 00ff 0001 3f00
+	  0x0010:  0000
+	Partner Information TLV (0x02), length 20
+	  System 3e:db:c1:51:e2:de, System Priority 65535, Key 15, Port 1, Port Priority 255
+	  State Flags [Activity, Timeout, Aggregation, Synchronization, Collecting, Distributing]
+	  0x0000:  ffff 3edb c151 e2de 000f 00ff 0001 3f00
+	  0x0010:  0000
+	Collector Information TLV (0x03), length 16
+	  Max Delay 0
+	  0x0000:  0000 0000 0000 0000 0000 0000 0000
+	Terminator TLV (0x00), length 0

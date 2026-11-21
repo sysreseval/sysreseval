@@ -8,6 +8,7 @@
     "ipv6.py": 22,
     "isis-ipv6-sr-bfd.py": 101,
     "isis.py": 138,
+    "lacp-lldp.py": 18,
     "lan-attacks.py": 7,
     "ldap.py": 25,
     "mail.py": 36,
@@ -51,6 +52,10 @@
   "isis.py": {
     "en": "Dynamic routing: IS-IS",
     "fr": "Routage dynamique : IS-IS"
+  },
+  "lacp-lldp.py": {
+    "en": "Link aggregation (bonding, LACP) and LLDP",
+    "fr": "Agrégation de liens (bonding, LACP) et LLDP"
   },
   "lan-attacks.py": {
     "en": "LAN layer-2 attacks and defences (ARP, MITM, rogue DHCP, ICMP redirect)",

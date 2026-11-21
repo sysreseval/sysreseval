@@ -1,0 +1,30 @@
+Ethernet Channel Bonding Driver: v6.12.116+deb13-amd64
+
+Bonding Mode: fault-tolerance (active-backup)
+Primary Slave: eth0 (primary_reselect always)
+Currently Active Slave: eth0
+MII Status: up
+MII Polling Interval (ms): 0
+Up Delay (ms): 0
+Down Delay (ms): 0
+Peer Notification Delay (ms): 0
+ARP Polling Interval (ms): 1000
+ARP Missed Max: 2
+ARP IP target/s (n.n.n.n form): 10.78.0.1
+NS IPv6 target/s (xx::xx form):
+
+Slave Interface: eth0
+MII Status: up
+Speed: 10000 Mbps
+Duplex: full
+Link Failure Count: 4
+Permanent HW addr: 4a:9e:17:04:85:36
+Slave queue ID: 0
+
+Slave Interface: eth1
+MII Status: up
+Speed: 10000 Mbps
+Duplex: full
+Link Failure Count: 2
+Permanent HW addr: 3a:5c:a5:1c:26:e5
+Slave queue ID: 0

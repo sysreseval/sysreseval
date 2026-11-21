@@ -25,6 +25,11 @@ RUN sed -i -e 's/service/no service/' /etc/frr/vtysh.conf \
 RUN apt update && apt install -y iperf ssmping smcroute \
     && rm -f /etc/systemd/system/multi-user.target.wants/smcroute.service /etc/rc*.d/S*smcroute*
 
+# LLDP (the link aggregation / LLDP lab): lldpd and lldpcli.  lldpd is a daemon: nothing starts
+# it, a lab runs `lldpd` itself (its dependencies are already in base13: about 0.6 MB).
+RUN apt update && apt install -y lldpd \
+    && rm -f /etc/systemd/system/multi-user.target.wants/lldpd.service /etc/rc*.d/S*lldpd*
+
 RUN apt clean && \
     rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 

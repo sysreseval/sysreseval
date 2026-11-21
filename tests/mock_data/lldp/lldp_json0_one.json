@@ -1,0 +1,94 @@
+{
+  "lldp": [
+    {
+      "interface": [
+        {
+          "name": "eth0",
+          "via": "LLDP",
+          "rid": "2",
+          "age": "0 day, 00:04:02",
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "3e:db:c1:51:e2:de"
+                }
+              ],
+              "name": [
+                {
+                  "value": "dc2-core-a"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Core switch rack B7"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "192.0.2.2"
+                }
+              ],
+              "mgmt-iface": [
+                {
+                  "value": "3"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": true
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "local",
+                  "value": "Gi1/0/17"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "to server c"
+                }
+              ],
+              "ttl": [
+                {
+                  "value": "120"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": false,
+                  "enabled": false,
+                  "current": [
+                    {
+                      "value": "10GbaseT - Four-pair Category 6A or better, full duplex mode only"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
