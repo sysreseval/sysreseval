@@ -28,10 +28,11 @@ _sre() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="start stop save restore wipe connect eval state exec \
+    local commands="start stop stop-all save restore wipe status set-drain \
+remove-drain connect eval state exec \
 set-instructor-mode remove-instructor-mode eval-all check \
 watch preload-images make-titles update set-exam del-exam save-records cat \
-check-eval re-eval sheet outline list export eval-exam end-exam \
+check-eval re-eval sheet outline report list export eval-exam end-exam \
 pre-start-exam start-exam"
 
     local global_opts="--user --debug --version --help -h"
@@ -224,7 +225,7 @@ pre-start-exam start-exam"
         watch)
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "--timeout --interval -H --hostname-filter \
--S --starting-time -L --only-last-instances --help" -- "$cur"))
+-S --starting-time -L --only-last-instances --bonus-in-prefix --help" -- "$cur"))
             else
                 _filedir -d
             fi
@@ -283,7 +284,7 @@ pre-start-exam start-exam"
         sheet)
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "-o --output -r --recursive -S --start \
--F --finish --separate-instances --help" -- "$cur"))
+-F --finish --separate-instances --bonus-in-prefix --help" -- "$cur"))
             else
                 _sre_archives "$cur"
             fi
@@ -292,13 +293,36 @@ pre-start-exam start-exam"
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "-o --output-file -d --pdf-directory --lang \
 -r --recursive -S --start -F --finish --no-timeline --remaining-time --no-parts \
---separate-instances --users-file --help" -- "$cur"))
+--separate-instances --bonus-in-prefix --users-file --help" -- "$cur"))
             else
                 _sre_archives "$cur"
             fi
             ;;
+        report)
+            # Internal (web front-end): the archive records are read as JSON on stdin.
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--lang --separate-instances --bonus-in-prefix \
+--no-timeline --remaining-time --no-parts -o --output --help" -- "$cur"))
+            else
+                local pos=0
+                for ((i = 1; i < cword; i++)); do
+                    case "${words[i]}" in
+                        --lang|-o|--output) ((i++)) ;;
+                        -*) ;;
+                        *) [[ "${words[i]}" != "$cmd" ]] && ((pos++)) ;;
+                    esac
+                done
+                if [[ $pos -eq 0 ]]; then
+                    COMPREPLY=($(compgen -W "sheet outline summary" -- "$cur"))
+                fi
+            fi
+            ;;
         list)
-            COMPREPLY=($(compgen -W "--with-titles --with-readmes --help" -- "$cur"))
+            COMPREPLY=($(compgen -W "--with-titles --with-readmes --include-exam-only \
+--help" -- "$cur"))
+            ;;
+        status)
+            COMPREPLY=($(compgen -W "--json --help" -- "$cur"))
             ;;
         export)
             if [[ "$cur" == -* ]]; then
@@ -307,7 +331,7 @@ pre-start-exam start-exam"
                 COMPREPLY=($(_sre_running_labs "$cur"))
             fi
             ;;
-        wipe|del-exam|eval-exam|end-exam|pre-start-exam|start-exam)
+        wipe|stop-all|set-drain|remove-drain|del-exam|eval-exam|end-exam|pre-start-exam|start-exam)
             COMPREPLY=($(compgen -W "--help" -- "$cur"))
             ;;
     esac
