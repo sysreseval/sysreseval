@@ -2359,7 +2359,8 @@ class TestJavaScript:
             assert rule and f'button.{cls}' in [s.strip() for s in rule.group(1).split(',')], f"no rule for button.{cls}"
             assert css.index('button:hover') < css.index(f'button.{cls} ')
         pool = (JS / 'pool.js').read_text(encoding='utf-8')
-        assert "actionButton(row, 'enable', _('Enable'), {tone: 'ok'})" in pool
+        # the Enable of a disabled host (with a tooltip when it drains: it cancels the drain)
+        assert "actionButton(row, 'enable', _('Enable'), {tone: 'ok'," in pool
         assert "actionButton(row, 'wake', _('Wake'), {tone: 'ok-light'," in pool
         assert "actionButton(row, 'disable', _('Disable'), {tone: 'danger'})" in pool
         html = render('pool.html', instructor=True)

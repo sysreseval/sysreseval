@@ -647,6 +647,19 @@ class TestAgentConfig:
             with pytest.raises(ConfigError, match='allow_local_drain must be true or false'):
                 agent_config_from_dict({'token': 't' * 32, 'allow_local_drain': bad}, sre_exe='/x', state_dir='/y')
 
+    def test_power_off_when_disabled(self):
+        """``allow_power_off_when_disabled``: a drain powers the host off even while the portal
+        has it disabled; off by default, and accepted without ``allow_power_off``."""
+        assert agent_config_from_dict({'token': 't' * 32}, sre_exe='/x',
+                                      state_dir='/y').allow_power_off_when_disabled is False
+        cfg = agent_config_from_dict({'token': 't' * 32, 'allow_power_off_when_disabled': True},
+                                     sre_exe='/x', state_dir='/y')
+        assert cfg.allow_power_off_when_disabled is True and cfg.allow_power_off is False
+        for bad in ('true', 'false', 1, 0, []):
+            with pytest.raises(ConfigError, match='allow_power_off_when_disabled must be true or false'):
+                agent_config_from_dict({'token': 't' * 32, 'allow_power_off_when_disabled': bad},
+                                       sre_exe='/x', state_dir='/y')
+
     def test_tls_and_allowed_clients(self):
         import ipaddress
         cfg = agent_config_from_dict({'token': 't' * 32, 'tls_cert': '/x/a.crt', 'tls_key': '/x/a.key',

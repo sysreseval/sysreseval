@@ -150,6 +150,9 @@ class HostStatus:
     gui_users: list = field(default_factory=list)
     uptime: int | None = None
     power_off_allowed: bool = False
+    # ``allow_power_off_when_disabled`` of the agent: a drain powers the host off even while it
+    # is disabled here (``manager.poweroff_plan``); an agent older than the key says nothing
+    power_off_when_disabled_allowed: bool = False
     agent_uptime: int | None = None     # seconds since the agent started: a restart resets it
     restart_allowed: bool = False       # the agent can restart itself (its unit, or restart_command)
     restarting: bool = False            # a restart is pending on the agent (sre commands in flight)
@@ -350,6 +353,7 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       gui_users=gui_user_fields(data.get('gui_users')),
                       uptime=_seconds(data.get('uptime')),
                       power_off_allowed=data.get('power_off_allowed') is True,
+                      power_off_when_disabled_allowed=data.get('power_off_when_disabled_allowed') is True,
                       agent_uptime=_seconds(data.get('agent_uptime')),
                       restart_allowed=data.get('restart_allowed') is True,
                       restarting=data.get('restarting') is True,
@@ -955,10 +959,15 @@ class Pool:
     # -- states -----------------------------------------------------------------------------------
 
     def state_of(self, name: str, now: float | None = None) -> str:
+        if not self.runtime[name].enabled:
+            return STATE_DISABLED
+        return self.live_state(name, now)
+
+    def live_state(self, name: str, now: float | None = None) -> str:
+        """The state of *name* whatever its ``enabled``: the one a disabled host would have
+        were it enabled (what a drain of a disabled host is judged on, ``manager.poweroff_plan``)."""
         st, rt = self.status[name], self.runtime[name]
         now = time.monotonic() if now is None else now
-        if not rt.enabled:
-            return STATE_DISABLED
         if not st.reachable:
             return STATE_WAKING if rt.woken_at is not None and now - rt.woken_at < self.wake_timeout else STATE_OFF
         if st.exam_mode:

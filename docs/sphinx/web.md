@@ -185,6 +185,7 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `close_projects_on_stop` | `shutdown` | what the agent does with the projects it manages when its unit stops: `shutdown` closes them (last evaluation, `sre stop`) only when the system is going down, `always`, `never`; within `shutdown_timeout` (`240` s, the unit's `TimeoutStopSec` is 300) |
 | `allow_power_off` | `false` | the portal may power the host off (`POST /v1/power/off`, refused when occupied or with any project) with `power_off_command` (`systemctl poweroff`) |
 | `allow_local_drain` | `false` | the host may ask for its own drain: `sre set-drain` run by root on the host (*A drain asked on the host* below); the default of the host, which the Pool page or `sre-web-tool` changes until its next boot |
+| `allow_power_off_when_disabled` | `false` | a drain powers the host off even while the portal has it disabled: the one asked on the host (`sre set-drain`) and the portal's (`sre-web-tool drain`, *Drain* of the Pool page, then available on a disabled host). A disabled host is otherwise never powered off by the portal (*A drain asked on the host* below). The agent only tells the portal, which applies it; the power off itself still needs `allow_power_off` here and `power = true` on the host in `web.toml` |
 | `restart_command` | none | how the agent restarts itself on `sre-web-tool restart` (`POST /v1/restart`): by default `systemctl restart` of its own unit, read from `/proc/self/cgroup`; a command for an agent run otherwise (refused, 409, when neither applies) |
 | `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30`, `report = 600` | seconds, per `sre` command (`report`: the spreadsheet / PDF reports of the Archives page, built by `sre report` on this host; `export`, the timeout of the former Kathara export, is still accepted) |
 | `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
@@ -1198,7 +1199,9 @@ machine) and `DISABLED_ROOMS` those whose hosts start with `enabled = false` (po
 placed there until `sre-web-tool enable`). These five variables are required and have no
 default; `AGENT_PORT` (8451), `MAX_PROJECTS` (25), `POWER` (`power = true` in the entries and
 `allow_power_off = true` on the agents), `LOCAL_DRAIN` (`allow_local_drain = true` on the
-agents: *A drain asked on the host* below), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
+agents: *A drain asked on the host* below), `POWER_OFF_WHEN_DISABLED`
+(`allow_power_off_when_disabled = true` on the agents: a drain powers a host off even while
+the portal has it disabled, as the rooms of `DISABLED_ROOMS` are), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
 `PORTAL_ADDRESS` (`allowed_clients` of the agents), `INSTRUCTOR_ROOMS` (the rooms whose hosts
 get `instructors_only = true`) and `INSTRUCTOR_MACHINES` (the names of the hosts that get it on
 their own, whatever their room), `ROOM_PRIORITIES` (`"z=0:1 h=1:0"`: the `priority`, `group:order`, of
@@ -1247,7 +1250,7 @@ the *Pool* page of the instructors) shows it:
 | `occupied` | the agent answers, the host is used locally (`occupied_check`) | only the new projects of the users logged in there (`follow_local_sessions`); the web projects already running there go on |
 | `exam` | the agent answers, `exam.json` is on the host: set by hand with `sre set-exam`, or written by the agent for an exam of the web site that lists the machine (*Exams*, *On the workstations*) | no |
 | `draining` | the portal asked the host to power off, `sre-web-tool drain`, or `sre set-drain` on the host itself (*A drain asked on the host* below) | no; powered off once it is empty (`sre-web-tool enable`, or *Enable* on the Pool page, cancels the drain) |
-| `disabled` | `sre-web-tool disable`, or `enabled = false` | no; the projects already running there go on (listed, usable, evaluated and closed as usual), the host stays polled and is never powered off by the portal — `drain` is the way to empty a host and shut it down |
+| `disabled` | `sre-web-tool disable`, or `enabled = false` | no; the projects already running there go on (listed, usable, evaluated and closed as usual), the host stays polled and is never powered off by the portal, not even when it drains (the state stays `disabled`, with `(drain)` or `(local drain)` in `sre-web-tool list`): enable the host for `drain` to empty it and shut it down, or set `allow_power_off_when_disabled = true` in its `agent.toml`, with which a drain powers a disabled host off as it does an enabled one |
 
 **Placement.** A new project (`POST /api/projects`) goes to one host, chosen by the portal from
 the last status poll of every agent (`poll_interval`) without asking them again. The candidates
@@ -1384,6 +1387,16 @@ its next status (within `poll_interval`). The host then drains as if an instruct
 powers it off once nobody is logged in and no project is left (so `power = true` on the host and
 `allow_power_off = true` on its agent, as for any drain; without them the host only stops taking
 projects). The Pool page shows the flag *local drain*, `sre-web-tool list` shows `(local drain)`.
+
+A host the portal has **disabled** (`sre-web-tool disable`, `enabled = false`, a room of
+`DISABLED_ROOMS`) is never powered off by the portal, so its drain never ends: `sre set-drain`
+succeeds there all the same, since the host does not know that it is disabled, and the
+workstation stays on (`sre-web-tool list` shows `disabled (local drain)`). With
+`allow_power_off_when_disabled = true` in the `agent.toml` of the host, a drain powers it off
+whether it is disabled or not: the one asked on the host and the portal's alike, under the
+same conditions (nobody logged in, no project left, `power` and `allow_power_off`). Nothing
+else changes for a disabled host: no project is placed there, and it is never powered off for
+idleness nor woken by the portal.
 
 ```
 sre set-drain       # on the host, as root: ask for the drain (privileged only)
@@ -2008,9 +2021,11 @@ What an instructor gets:
   of the tool: *Enable* (green) / *Disable* (red), *Wake* (light green; a host with a `mac` or a `wake_command`, while it
   is off), *Drain*, *Power off* (asked to confirm; allowed by the agent's `allow_power_off`,
   refused while the host has a project or a local session), each disabled with the reason as
-  its tooltip when it does not apply. *Enable* also cancels a drain: the row of a draining
+  its tooltip when it does not apply. *Drain* does not apply to a disabled host, which the portal
+  never powers off, unless its agent has `allow_power_off_when_disabled`. *Enable* also cancels a drain: the row of a draining
   host shows it in place of *Drain*, and the one of the bar applies to the draining hosts
-  selected (not once the power off is sent: the host is going down). A checkbox per row (the one of the header ticks the hosts
+  selected (not once the power off is sent: the host is going down); the *Enable* of a disabled
+  host that drains says so in its tooltip. A checkbox per row (the one of the header ticks the hosts
   shown by the filter) selects hosts for the bar above the table: the count of the selected
   hosts (and how many the filter hides), the same five buttons, *Preload images* (the bar
   only: the selected hosts wait for their turn to pull the Docker images of the labs, see

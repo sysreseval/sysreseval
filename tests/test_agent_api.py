@@ -160,6 +160,7 @@ class TestOccupancyAndPower:
                 st = await (await h.client.get('/v1/status', headers=headers())).json()
                 assert st['occupied'] is False and st['occupied_by'] == [] and st['managed_projects'] == 0
                 assert st['power_off_allowed'] is True and 'agent_uptime' in st
+                assert st['power_off_when_disabled_allowed'] is False       # off by default
                 # a local session: occupied, no power off
                 h.agent.run_command = lambda argv, **kw: subprocess.CompletedProcess(
                     argv, 0, "     2 1000 alice seat0 tty2\n" if argv[1] == 'list-sessions'
@@ -182,6 +183,12 @@ class TestOccupancyAndPower:
                 resp = await h.client.post('/v1/power/off', headers=headers())
                 assert resp.status == 200 and (await resp.json()) == {'ok': True}
             async with Harness(tmp_path / 'b') as h:   # not allowed by default
+                assert (await h.client.post('/v1/power/off', headers=headers())).status == 403
+            # allow_power_off_when_disabled: only told to the portal, which alone knows that the
+            # host is disabled; the power off itself still needs allow_power_off
+            async with Harness(tmp_path / 'c', allow_power_off_when_disabled=True) as h:
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['power_off_when_disabled_allowed'] is True and st['power_off_allowed'] is False
                 assert (await h.client.post('/v1/power/off', headers=headers())).status == 403
         run(go())
 

@@ -1293,6 +1293,12 @@ class AgentConfig:
     # powered off by the portal once empty); the default of the host, which the portal may change
     # until the next boot (POST /v1/local-drain/allow | forbid)
     allow_local_drain: bool = False
+    # whether a drain ends with the power off of the host while the portal has it disabled (a
+    # disabled host is otherwise never powered off by the portal): the drain asked on the host
+    # (`sre set-drain`) as well as the portal's (`sre-web-tool drain`, Drain of the Pool page).
+    # The agent only tells it in its status, the portal applies it; the power off itself still
+    # needs allow_power_off above (and power = true on the host in web.toml)
+    allow_power_off_when_disabled: bool = False
     # POST /v1/restart (sre-web-tool restart: the agent restarts itself, e.g. for new code after
     # an update): the command run; '' = `systemctl restart` of the unit the agent runs in (read
     # from /proc/self/cgroup); refused (409) when neither applies (an agent run by hand)
@@ -1357,6 +1363,8 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
         raise ConfigError(f"{path}: tls_ca needs tls_cert and tls_key")
     if not isinstance(cfg.allow_local_drain, bool):
         raise ConfigError(f"{path}: allow_local_drain must be true or false")
+    if not isinstance(cfg.allow_power_off_when_disabled, bool):
+        raise ConfigError(f"{path}: allow_power_off_when_disabled must be true or false")
     if cfg.occupied_check not in ('sessions', 'projects', 'both', 'never'):
         raise ConfigError(f"{path}: occupied_check must be sessions, projects, both or never")
     if cfg.close_projects_on_stop not in ('shutdown', 'always', 'never'):

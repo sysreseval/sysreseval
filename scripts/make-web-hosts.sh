@@ -38,6 +38,9 @@
 #   LOCAL_DRAIN         false            true: allow_local_drain = true in agent-<name>.toml (the host may
 #                                        ask for its own drain: `sre set-drain` there; with POWER = true,
 #                                        since a drain ends with the power off of the host)
+#   POWER_OFF_WHEN_DISABLED false        true: allow_power_off_when_disabled = true in agent-<name>.toml
+#                                        (a drain powers the host off even while the portal has it
+#                                        disabled: a room of DISABLED_ROOMS; with POWER = true)
 #   INSTRUCTOR_ROOMS    none             the rooms whose hosts get instructors_only = true (only the
 #                                        instructors' projects are placed there, they choose them on their
 #                                        Open page); a room may be in DISABLED_ROOMS too
@@ -77,15 +80,16 @@
 #                                         [pool] TLS lines in its header
 #   agent-<name>.toml                     the host-specific lines of the agent.toml of that host (listen =
 #                                         "<ip>:AGENT_PORT", token, tls_*, allowed_clients, allow_power_off,
-#                                         allow_local_drain;
+#                                         allow_local_drain, allow_power_off_when_disabled;
 #                                         the shared agent.toml must then have no listen line)
 # Every run computes hosts.toml and every agent-<name>.toml from the variables of the moment (REGEXP /
-# ROOMS / DISABLED_ROOMS / INSTRUCTOR_ROOMS / INSTRUCTOR_MACHINES / ROOM_PRIORITIES / POWER / LOCAL_DRAIN... may
-# change at any time)
+# ROOMS / DISABLED_ROOMS / INSTRUCTOR_ROOMS / INSTRUCTOR_MACHINES / ROOM_PRIORITIES / POWER / LOCAL_DRAIN /
+# POWER_OFF_WHEN_DISABLED... may change at any time)
 # and compares them with the files of the previous run: a file whose content did not change is left
 # as it is (its date too), the others are replaced, and what changed is printed per host (hosts.toml:
 # enabled, instructors_only, priority, url, max_projects, mac, power; agent-<name>.toml: listen, tls_*,
-# allowed_clients, allow_power_off, allow_local_drain), with the new hosts and those no longer selected (their entry is
+# allowed_clients, allow_power_off, allow_local_drain, allow_power_off_when_disabled), with the new hosts
+# and those no longer selected (their entry is
 # dropped, their files are left in OUT_DIR); the last line says whether hosts.toml and which
 # agent-<name>.toml are to deploy again.  The CA and the portal's certificate are made once and kept.
 # The hosts' keys, certificates and tokens are made anew on every run unless --keep is given: the
@@ -157,7 +161,8 @@ agent_changes() {   # agent_changes OLD NEW [ignore_token]: the keys whose line 
                     # "comments" when only the comments do, "" when nothing (a token change is ignored when asked)
     local key o n changes="" token_differs=false
     cmp -s "$1" "$2" && return 0
-    for key in listen token tls_cert tls_key tls_ca allowed_clients allow_power_off allow_local_drain; do
+    for key in listen token tls_cert tls_key tls_ca allowed_clients allow_power_off allow_local_drain \
+               allow_power_off_when_disabled; do
         o=$(grep "^$key = " "$1" || true); n=$(grep "^$key = " "$2" || true)
         [ "$o" != "$n" ] || continue
         if [ "$key" = token ]; then
@@ -190,6 +195,7 @@ AGENT_PORT="${AGENT_PORT:-8451}"
 MAX_PROJECTS="${MAX_PROJECTS:-25}"
 POWER="${POWER:-false}"
 LOCAL_DRAIN="${LOCAL_DRAIN:-false}"
+POWER_OFF_WHEN_DISABLED="${POWER_OFF_WHEN_DISABLED:-false}"
 INSTRUCTOR_ROOMS="${INSTRUCTOR_ROOMS:-}"
 INSTRUCTOR_MACHINES="${INSTRUCTOR_MACHINES:-}"
 ROOM_PRIORITIES="${ROOM_PRIORITIES:-}"
@@ -370,6 +376,7 @@ while IFS=';' read -r name ip mac room; do
         if [ -n "$PORTAL_ADDRESS" ]; then echo "allowed_clients = [\"$PORTAL_ADDRESS\"]"; fi
         if [ "$POWER" = true ]; then echo "allow_power_off = true"; fi
         if [ "$LOCAL_DRAIN" = true ]; then echo "allow_local_drain = true"; fi
+        if [ "$POWER_OFF_WHEN_DISABLED" = true ]; then echo "allow_power_off_when_disabled = true"; fi
     } > "$agent_toml.tmp")
     # the agent file is replaced only when its content changed; what changed since the previous run
     # is reported per host (nothing on the first run, when everything is new)

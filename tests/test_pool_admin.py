@@ -368,6 +368,63 @@ class TestInstructorPage:
                 assert (await h.client.post('/api/pool/hosts/nope/allow-local-drain', headers=prof)).status == 404
         run(go())
 
+    def test_drain_of_a_disabled_host(self, tmp_path):
+        """A host the portal has disabled (a room of DISABLED_ROOMS) is never powered off, so a
+        drain there never ends, unless its agent says ``allow_power_off_when_disabled``: the
+        drain asked on the host (`sre set-drain`) and the portal's then both end with the power
+        off, the real agent running its command."""
+        from SRE import local_drain
+        over = {**P.PROXY_OVER, 'admin': {'token': ADMIN}, 'pool': QUIET_POOL}
+        prof = {**P.who('prof', groups=P.TEACHERS), **CSRF}
+        a01 = '/api/pool/hosts/a01/'
+
+        class Off:      # the power off command of the agent, never run for real
+            returncode = 0
+
+            async def wait(self):
+                return 0
+
+        async def scenario(directory, says: bool, local: bool) -> tuple:
+            """One disabled host that drains: its row once the power off was sent (or after a
+            while without it), and what its agent ran."""
+            agent = {'allow_local_drain': True, 'allow_power_off': True, 'power_off_command': '/usr/bin/true',
+                     'allow_power_off_when_disabled': says}
+            async with P.Harness(directory, auth_mode='proxy', web_over=over, agent_over=agent,
+                                 host_over={'enabled': False, 'power': True}) as h:
+                ran = []
+
+                async def spawn(*argv):
+                    ran.append(list(argv))
+                    return Off()
+                h.agent.spawn = spawn
+                row = await pool_row(h, lambda row: row['reachable'])
+                assert (row['state'], row['power_off_when_disabled_allowed'], row['drain']) == ('disabled', says, False)
+                if local:
+                    local_drain.write_request(local_drain.request_path(str(h.pub)), local_drain.boot_id())
+                    row = await pool_row(h, lambda row: row['local_drain'])
+                else:
+                    row = await (await h.client.post(a01 + 'drain', headers=prof)).json()
+                assert (row['state'], row['drain']) == ('disabled', True)
+                if says:
+                    row = await pool_row(h, lambda row: row['power_off_sent'])
+                    async with asyncio.timeout(10):
+                        while not ran:      # the agent runs its command one second after its answer
+                            await asyncio.sleep(0.05)
+                else:
+                    await asyncio.sleep(1.5)        # fifteen polls of the policy
+                    row = await pool_row(h, lambda row: True)
+                return row, ran
+
+        async def go():
+            for local in (True, False):
+                where = 'local' if local else 'portal'
+                row, ran = await scenario(tmp_path / f'{where}-no', False, local)
+                assert (row['state'], row['drain'], row['power_off_sent']) == ('disabled', True, False) and ran == []
+                row, ran = await scenario(tmp_path / f'{where}-yes', True, local)
+                assert (row['state'], row['drain'], row['power_off_sent']) == ('disabled', True, True)
+                assert ran == [['/usr/bin/true']]
+        run(go())
+
     def test_actions_are_kept_across_a_restart(self, tmp_path):
         """A host the configuration disables (the DISABLED_ROOMS of make-web-hosts.sh), enabled
         then drained by an instructor on the Pool page: a new portal on the same configuration

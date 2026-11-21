@@ -586,6 +586,8 @@ class Agent:
             'gui_users': gui_users,
             'uptime': _uptime_seconds(), 'agent_uptime': round(time.monotonic() - self._started_at),
             'power_off_allowed': self.cfg.allow_power_off,
+            # a drain powers this host off even while the portal has it disabled
+            'power_off_when_disabled_allowed': self.cfg.allow_power_off_when_disabled,
             'restart_allowed': bool(self.restart_argvs()), 'restarting': self.restarting is not None,
             'preload': self.preloader.to_dict(),
             # the drain asked on this host (`sre set-drain`) and whether the host may ask for one

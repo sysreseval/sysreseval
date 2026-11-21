@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import aiohttp
 
 from .pool import (Pool, PoolError, preload_fields, STATE_UP, STATE_WAKING, STATE_OCCUPIED, STATE_EXAM,
-                   STATE_DRAINING, STATE_OFF)
+                   STATE_DRAINING, STATE_DISABLED, STATE_OFF)
 from ..agent.runner import PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_FAILED
 from ..config import PoolConfig, HostConfig, Priority, parse_active_hours, in_active_hours, CAPACITY_RESOURCES
 
@@ -64,6 +64,11 @@ class HostView:
     # the new projects its processors hold (``Pool.cpu_room``, ``capacity = "resources"``; None:
     # the host is judged by its number of projects)
     cpu_room: int | None = None
+    # a drain of a disabled host: its agent says a drain powers it off all the same
+    # (``allow_power_off_when_disabled`` of agent.toml), and the state it would have were it
+    # enabled (``Pool.live_state``), which is what such a drain is judged on
+    power_off_when_disabled: bool = False
+    live_state: str = ''
 
 
 def free_slots(host) -> int:
@@ -115,15 +120,27 @@ def wake_plan(hosts, cfg: PoolConfig, now: float, active: bool, last_wake_at: fl
     return wanted[:1]
 
 
+def _may_go_down(host) -> bool:
+    """Whether nothing but its state keeps the policy from powering *host* off: no project, the
+    power off allowed on both sides, none sent lately, its agent not restarting."""
+    return (host.projects == 0 and host.power and host.power_off_allowed and not host.power_off_pending
+            and not host.restart_pending)
+
+
 def poweroff_plan(hosts, cfg: PoolConfig, active: bool) -> list:
     """The names of the hosts to power off now: a draining host as soon as it is empty; with
     ``idle_host_timeout``, one idle host that the floor and the spare capacity can spare (a
     host reserved for instructors counts for neither: idle long enough is enough), the one
     with the highest priority first (the group, then the order), then the longest idle: the
-    hosts left awake are those the placement prefers."""
-    empties = [h for h in hosts if h.state in (STATE_UP, STATE_DRAINING) and h.projects == 0 and h.power
-               and h.power_off_allowed and not h.power_off_pending and not h.restart_pending]
-    drained = [h.name for h in empties if h.drain]
+    hosts left awake are those the placement prefers.  A disabled host is never powered off,
+    unless it drains and its agent says a drain powers it off all the same
+    (``allow_power_off_when_disabled``): it then goes as soon as it would be ``draining``
+    were it enabled (reachable, nobody at its keyboard, no exam) and empty."""
+    empties = [h for h in hosts if h.state in (STATE_UP, STATE_DRAINING) and _may_go_down(h)]
+    drained = [h.name for h in hosts
+               if h.drain and _may_go_down(h)
+               and (h.state in (STATE_UP, STATE_DRAINING)
+                    or (h.state == STATE_DISABLED and h.power_off_when_disabled and h.live_state == STATE_DRAINING))]
     if drained:
         return drained[:1]
     if cfg.idle_host_timeout <= 0:
@@ -215,7 +232,9 @@ class PoolManager:
                                   preload_hold=now < rt.next_preload_at, exam_projects=st.exam_projects,
                                   held=self.pool.held_for_exam(host.name), priority=rt.priority,
                                   memory_room=self.pool.memory_room(host.name, reference),
-                                  cpu_room=self.pool.cpu_room(host.name, reference)))
+                                  cpu_room=self.pool.cpu_room(host.name, reference),
+                                  power_off_when_disabled=st.power_off_when_disabled_allowed,
+                                  live_state=state if rt.enabled else self.pool.live_state(host.name, now)))
         return views
 
     def status(self) -> dict:

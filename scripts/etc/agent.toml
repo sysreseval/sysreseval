@@ -69,6 +69,14 @@ power_off_command = "systemctl poweroff"
 # cancels it. This is the default of the host: the Pool page can allow or forbid it until the
 # next boot.
 allow_local_drain = false
+# Whether a drain powers this host off even while the portal has it disabled (`sre-web-tool
+# disable`, or enabled = false in web.toml). A disabled host is otherwise never powered off by
+# the portal: a drain there never ends, although `sre set-drain` succeeds (the host does not
+# know that it is disabled). With true, both drains end with the power off once the host is
+# empty: the one asked here (`sre set-drain`) and the portal's (`sre-web-tool drain`, Drain on
+# the Pool page, then available on a disabled host). The power off itself still needs
+# allow_power_off = true above and power = true in web.toml.
+allow_power_off_when_disabled = false
 # How the agent restarts itself on `sre-web-tool restart` (POST /v1/restart: new code after an
 # update; the projects stay, the open terminals and desktops are lost): by default
 # `systemctl restart` of its own unit, found in /proc/self/cgroup; a command for an agent

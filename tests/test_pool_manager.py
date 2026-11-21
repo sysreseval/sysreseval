@@ -195,6 +195,34 @@ class TestPowerOffPlan:
         hosts[0].power_off_allowed, hosts[0].restart_pending = True, True       # its agent is restarting
         assert poweroff_plan(hosts, cfg, active=True) == []
 
+    def test_drained_disabled_host(self):
+        """A disabled host is never powered off, drained or not, unless its agent says a drain
+        powers it off all the same (``allow_power_off_when_disabled`` of agent.toml): it is then
+        judged on the state it would have were it enabled."""
+        cfg = PoolConfig(idle_host_timeout=0)
+
+        def disabled(name='a', **more):
+            return view(name, STATE_DISABLED, enabled=False,
+                        **{'power': True, 'power_off_allowed': True, 'drain': True, 'live_state': STATE_DRAINING, **more})
+        assert poweroff_plan([disabled()], cfg, active=True) == []                  # the agent does not say so
+        assert poweroff_plan([disabled(power_off_when_disabled=True)], cfg, active=True) == ['a']
+        for over in ({'live_state': STATE_OCCUPIED}, {'live_state': STATE_EXAM}, {'live_state': STATE_OFF},
+                     {'live_state': STATE_WAKING}, {'live_state': ''}, {'drain': False, 'live_state': STATE_UP},
+                     {'projects': 1}, {'power': False}, {'power_off_allowed': False}, {'power_off_pending': True},
+                     {'restart_pending': True}):
+            assert poweroff_plan([disabled(power_off_when_disabled=True, **over)], cfg, active=True) == [], over
+        # one host per poll, in the order of the pool, enabled or not
+        both = [disabled(power_off_when_disabled=True),
+                view('b', STATE_DRAINING, power=True, power_off_allowed=True, drain=True)]
+        assert poweroff_plan(both, cfg, active=True) == ['a']
+        assert poweroff_plan(both[::-1], cfg, active=True) == ['b']
+        # never for idleness: only a drain powers a disabled host off
+        cfg = PoolConfig(idle_host_timeout=600, spare_projects=0, min_hosts_up=0)
+        idle = disabled(power_off_when_disabled=True, drain=False, live_state=STATE_UP, idle_for=5000)
+        assert poweroff_plan([idle], cfg, active=False) == []
+        assert poweroff_plan([idle, view('b', STATE_UP, power=True, power_off_allowed=True, idle_for=700)],
+                             cfg, active=False) == ['b']
+
     def test_idle_hosts_above_the_floor(self):
         cfg = PoolConfig(idle_host_timeout=600, spare_projects=5, min_hosts_up=1)
         hosts = [view('a', STATE_UP, power=True, power_off_allowed=True, idle_for=700),
@@ -521,6 +549,65 @@ class TestLocalDrain:
             assert pool.status['a'].local_drain_allowed is True and len(session.posts) == 2 + 2
         run(go())
 
+    def test_disabled_host(self, caplog):
+        """A disabled host that drains (the drain it asked for, or the portal's) is powered off
+        only when its agent says a drain powers it off all the same
+        (``allow_power_off_when_disabled``), and then as an enabled one: once it is empty and
+        nobody is at its keyboard.  It is never powered off for idleness, nor woken again."""
+        hosts = [HostConfig(n, f'http://{n}', TOKEN, 10, mac='aa:bb:cc:dd:ee:0' + str(i), power=True, enabled=False)
+                 for i, n in enumerate('abcd')]
+        session = FakeSession()
+        says = {'power_off_when_disabled_allowed': True}
+        session.answers = {'http://a': up(local_drain=asking(True)),                        # asks; its agent does not say so
+                           'http://b': up(projects=1, local_drain=asking(True), **says),    # asks, a project left
+                           'http://c': up(occupied=True, occupied_by=['session:bob'], **says),  # drained here, bob at the keyboard
+                           'http://d': up(**says)}                                          # no drain
+        pool = Pool(hosts, session, wake_timeout=100.0)
+        woken = []
+        mgr = PoolManager(pool, PoolConfig(spare_projects=0, min_hosts_up=0, active_hours='', idle_host_timeout=50),
+                          wol=lambda mac, broadcast: woken.append(mac))
+        off = 'http://{}/v1/power/off'.format
+
+        async def go():
+            await pool.refresh()
+            pool.set_drain('c')
+            assert [pool.state_of(n) for n in 'abcd'] == [STATE_DISABLED] * 4
+            assert [pool.live_state(n) for n in 'abcd'] == [STATE_DRAINING, STATE_DRAINING, STATE_OCCUPIED, STATE_UP]
+            assert [pool.draining(n) for n in 'abcd'] == [True, True, True, False]
+            views = {v.name: v for v in mgr.views()}
+            assert [views[n].power_off_when_disabled for n in 'abcd'] == [False, True, True, True]
+            assert [views[n].live_state for n in 'abcd'] == [STATE_DRAINING, STATE_DRAINING, STATE_OCCUPIED, STATE_UP]
+            await mgr.tick()
+            for name in 'abcd':
+                pool.runtime[name].idle_since = time.monotonic() - 5000     # idle for long, where there is no project
+            await mgr.tick()
+            assert session.posts == []
+            # the project of b is closed, bob logs out of c: one host per poll, in the order of the pool
+            session.answers['http://b'] = up(local_drain=asking(True), **says)
+            session.answers['http://c'] = up(**says)
+            await pool.refresh()
+            with caplog.at_level(logging.INFO, logger='sreweb.portal'):
+                await mgr.tick()
+            assert session.posts == [off('b')] and 'powering off host b (draining)' in caplog.text
+            await mgr.tick()
+            assert session.posts == [off('b'), off('c')]
+            await mgr.tick()
+            assert len(session.posts) == 2      # not sent again; a (no setting) and d (no drain) stay on
+            rows = {r['name']: r for r in pool.summary()}
+            assert [rows[n]['state'] for n in 'abcd'] == [STATE_DISABLED] * 4
+            assert [rows[n]['power_off_when_disabled_allowed'] for n in 'abcd'] == [False, True, True, True]
+            assert [rows[n]['power_off_sent'] for n in 'abcd'] == [False, True, True, False]
+            # b and c are gone: their drain is over, they stay disabled and are not woken again
+            session.answers['http://b'] = session.answers['http://c'] = None
+            await pool.refresh()
+            assert [pool.runtime[n].drain for n in 'bc'] == [False, False]
+            assert [pool.runtime[n].power_off_sent for n in 'bc'] == [None, None]
+            pool.runtime['b'].next_wake_at = pool.runtime['c'].next_wake_at = 0.0
+            await mgr.tick()
+            assert woken == [] and len(session.posts) == 2
+            assert [pool.state_of(n) for n in 'abcd'] == [STATE_DISABLED] * 4
+        run(go())
+
 
 class TestStatusCoercion:
     def test_status_json_is_coerced(self):
@@ -542,6 +629,13 @@ class TestStatusCoercion:
             (0, 0, 2, None, False, False, [], None, False, None, True, False, '', '')
         assert status_from_json({'load1': float('inf')}).load1 is None
         assert status_from_json({'load1': True}).load1 is None and status_from_json({'load1': 2}).load1 == 2.0
+        # a drain powers the host off while it is disabled: only when its agent says true (an
+        # older agent says nothing, an unreachable host neither)
+        assert st.power_off_when_disabled_allowed is False and HostStatus().power_off_when_disabled_allowed is False
+        assert status_from_json(up(power_off_when_disabled_allowed=True)).power_off_when_disabled_allowed is True
+        for odd_value in ('true', 1, [True], None, False):
+            assert status_from_json(
+                up(power_off_when_disabled_allowed=odd_value)).power_off_when_disabled_allowed is False, odd_value
         # the available memory of the host, in MiB: a whole number, 0 or more, or None
         for value, expected in ((2048, 2048), (2048.9, 2048), (-5, 0), ('2048', None), (True, None),
                                 (float('nan'), None), (None, None)):
@@ -653,6 +747,16 @@ class TestStates:
         pool.runtime['f'].woken_at = now
         assert [pool.state_of(n, now=now + 50) for n in 'abcdefg'] == [
             STATE_UP, STATE_OCCUPIED, STATE_EXAM, STATE_DRAINING, STATE_DISABLED, STATE_WAKING, STATE_OFF]
+        # the state whatever `enabled`: the same for an enabled host, what a disabled one hides
+        assert [pool.live_state(n, now=now + 50) for n in 'abcdefg'] == [
+            STATE_UP, STATE_OCCUPIED, STATE_EXAM, STATE_DRAINING, STATE_UP, STATE_WAKING, STATE_OFF]
+        for name in 'bcdfg':
+            pool.runtime[name].enabled = False
+        assert [pool.state_of(n, now=now + 50) for n in 'bcdfg'] == [STATE_DISABLED] * 5
+        assert [pool.live_state(n, now=now + 50) for n in 'bcdfg'] == [
+            STATE_OCCUPIED, STATE_EXAM, STATE_DRAINING, STATE_WAKING, STATE_OFF]
+        for name in 'bcdfg':
+            pool.runtime[name].enabled = True
         assert pool.state_of('f', now=now + 100) == STATE_OFF    # wake_timeout over
         assert pool.pick()[0].name == 'a'
         pool.status['a'] = HostStatus(reachable=True, projects=10)

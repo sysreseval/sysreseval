@@ -276,7 +276,9 @@ function actionReason(row, action) {
       if (unreachable) {
         return unreachable;
       }
-      if (!row.enabled) {
+      // a disabled host is never powered off, so a drain there would never end: unless its
+      // agent says a drain powers it off all the same (allow_power_off_when_disabled)
+      if (!row.enabled && row.power_off_when_disabled_allowed !== true) {
         return _('the host is disabled');
       }
       return row.drain ? _('already draining') : '';
@@ -507,11 +509,14 @@ function actionButton(row, action, label, options = {}) {
 }
 
 // the buttons of a row, always there (a stable layout), each with the reason it is disabled; an
-// enabled host that drains has Enable in place of Drain: it cancels the drain
+// enabled host that drains has Enable in place of Drain: it cancels the drain, as the Enable of
+// a disabled host that drains does (its tooltip says so)
 function actions(row) {
   const cancelsDrain = row.enabled && row.drain;
   return [
-    row.enabled ? actionButton(row, 'disable', _('Disable'), {tone: 'danger'}) : actionButton(row, 'enable', _('Enable'), {tone: 'ok'}),
+    row.enabled
+      ? actionButton(row, 'disable', _('Disable'), {tone: 'danger'})
+      : actionButton(row, 'enable', _('Enable'), {tone: 'ok', title: row.drain ? _('cancels the drain') : ''}),
     actionButton(row, 'wake', _('Wake'), {tone: 'ok-light', reason: actionReason(row, 'wake')}),
     cancelsDrain
       ? actionButton(row, 'enable', _('Enable'),

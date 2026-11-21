@@ -167,6 +167,8 @@ local drain removed
 - `the sre-agent of this host does not handle local drains` (an agent older than this command);
 - `local drains are forbidden on this host`: `allow_local_drain` of `agent.toml` is false, or an instructor forbade it from the Pool page (which holds until the next boot).
 
+It does not know whether the portal has the host **disabled**: there it succeeds too, but the portal never powers a disabled host off, so the machine stays on unless its `agent.toml` has `allow_power_off_when_disabled = true` (a drain then powers the host off whether it is disabled or not).
+
 `sre remove-drain` removes the request, whatever the agent says (`no local drain was asked on this host` when there was none). It only removes the drain asked on the host: a drain an instructor set from the portal is cancelled there (*Enable*), and an instructor can cancel the one of the host too. The request does not survive a reboot. `sre status` shows where the host stands.
 
 ### `sre eval-all [--display-grades / --no-display-grades]`

@@ -294,6 +294,19 @@ class TestReruns:
         assert 'allow_local_drain' not in site.agent('a01')
         assert 'make-web-hosts: a01: agent-a01.toml: allow_local_drain' in result.stdout.splitlines()
 
+    def test_power_off_when_disabled(self, site):
+        """POWER_OFF_WHEN_DISABLED: a drain powers the hosts off even while the portal has them
+        disabled (the rooms of DISABLED_ROOMS)."""
+        site.run()
+        assert 'allow_power_off_when_disabled' not in site.agent('a01')
+        result = site.run('--keep', env={'POWER_OFF_WHEN_DISABLED': 'true'})
+        assert site.agent('a01')['allow_power_off_when_disabled'] is True
+        assert 'allow_power_off' not in site.agent('a01')       # POWER is another variable
+        assert 'make-web-hosts: a01: agent-a01.toml: allow_power_off_when_disabled' in result.stdout.splitlines()
+        result = site.run('--keep')
+        assert 'allow_power_off_when_disabled' not in site.agent('a01')
+        assert 'make-web-hosts: a01: agent-a01.toml: allow_power_off_when_disabled' in result.stdout.splitlines()
+
     def test_changes_of_the_variables_are_reported(self, site):
         site.run()
         before = site.snapshot('S0.key', 'S0.crt', 'S0.token', 'agent-S0.toml', 'agent-a02.toml')

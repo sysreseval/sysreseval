@@ -336,6 +336,55 @@ class TestPoolPage:
                 assert page.errors == []
         P.run(go())
 
+    def test_drain_of_a_disabled_host(self, tmp_path):
+        """A disabled host is never powered off, so Drain does not apply to it: unless its agent
+        says a drain powers it off all the same (``allow_power_off_when_disabled``); the Enable
+        of a disabled host that drains says that it cancels the drain."""
+        async def go():
+            # the agent does not say so: as before
+            async with browser_of(tmp_path / 'first', tmp_path / 'state1' / 'pool.json') as (h, browser, url):
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(f"{STATE} === 'disabled'", what="the host disabled")
+                await page.wait_for(is_button(action(4), 'Power off', disabled=True,
+                                              title='the agent does not allow it (allow_power_off)'),
+                                    what="the status of the agent on the page")
+                assert await page.evaluate(button(action(1))) == ['Enable', False, '']
+                assert await page.evaluate(button(action(3))) == ['Drain', True, 'the host is disabled']
+                await page.click(CHECKBOX)
+                await page.wait_for(f"!document.querySelector('{BAR_ENABLE}').disabled", what="Enable of the bar")
+                assert await page.evaluate(button(BAR_DRAIN)) == ['Drain', True, 'applies to none of the selected hosts']
+                assert page.errors == []
+            # it does: Drain applies to the disabled host, from the row and from the bar
+            state = tmp_path / 'state2' / 'pool.json'
+            async with browser_of(tmp_path / 'second', state,
+                                  agent_over={'allow_power_off_when_disabled': True}) as (h, browser, url):
+                runtime = h.portal.pool.runtime['a01']
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(is_button(action(3), 'Drain'), what="Drain of the disabled host")
+                assert await page.evaluate(STATE) == 'disabled'
+                assert await page.evaluate(button(action(1))) == ['Enable', False, '']
+                await page.click(action(3))
+                await page.wait_for(is_button(action(3), 'Drain', disabled=True, title='already draining'),
+                                    what="the disabled host draining")
+                assert await page.evaluate(STATE) == 'disabled' and await page.evaluate(FLAGS) == 'drain'
+                assert runtime.drain is True and runtime.enabled is False
+                assert list(json.loads(state.read_text())['drain']) == ['a01']
+                # its Enable cancels the drain (and enables the host): the tooltip says so
+                assert await page.evaluate(button(action(1))) == ['Enable', False, 'cancels the drain']
+                await page.click(action(1))
+                await page.wait_for(f"{STATE} === 'up'", what="the host enabled")
+                assert runtime.drain is False and await page.evaluate(button(action(3))) == ['Drain', False, '']
+                # disabled again: the Drain of the bar applies to it
+                await page.click(action(1))
+                await page.wait_for(f"{STATE} === 'disabled'", what="the host disabled again")
+                await page.click(CHECKBOX)
+                await page.wait_for(f"!document.querySelector('{BAR_DRAIN}').disabled", what="Drain of the bar")
+                await page.click(BAR_DRAIN)
+                await page.wait_for(f"{FLAGS} === 'drain'", what="the disabled host drained from the bar")
+                assert await page.evaluate(STATE) == 'disabled' and runtime.drain is True
+                assert page.errors == []
+        P.run(go())
+
     def test_local_drain(self, tmp_path):
         """A drain the host asked for itself (`sre set-drain` there, here its request file): the
         flag, Enable in place of Drain, which cancels it on the agent, and the two buttons of the
