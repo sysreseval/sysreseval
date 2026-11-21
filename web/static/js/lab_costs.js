@@ -1,7 +1,8 @@
 // What a project of a lab is counted for on a host, as GET /api/pool/costs tells it ({default,
 // weight_unit, measured_unit, error, labs: [{lab, title, weight, containers, mem_mb, cpu, samples,
-// source}]}): the texts of the Lab costs box of the Pool page (pool.js) and of the columns the
-// instructors may show beside the labs of the Open page (open.js).  One definition for both.
+// source}]}): the titles and the texts of the two displays the Open page gives an instructor, the
+// columns beside the labs of the tree (open.js) and the table of every lab the pool heard of
+// (lab_costs_dialog.js).  One definition for both.
 // Pure (no document): tests/test_web_templates.py runs it under node or bun.
 
 import {_, format} from './i18n.js';
@@ -38,6 +39,20 @@ export function costNote(costs) {
     pieces.push(format(_('the costs are NOT saved: {error}'), {error: answer.error}));
   }
   return pieces;
+}
+
+// The six columns of a lab after its name, in the order of costCells(): {title, tip, numeric}
+// (built here: the catalog is loaded by the page, nothing at module level).
+export function costColumns() {
+  return [
+    {title: _('Weight'), tip: _('The weight the lab declares: 1 is one plain idle container'), numeric: true},
+    {title: _('Containers'), tip: _('The most containers a project of the lab had'), numeric: true},
+    {title: _('Memory'), tip: _('The memory one more project of the lab is counted for'), numeric: true},
+    {title: _('CPU'), tip: _('The cores one more project of the lab is counted for'), numeric: true},
+    {title: _('Measured projects'), tip: _('The projects of the lab that were measured'), numeric: true},
+    {title: _('Source'), numeric: false,
+     tip: _('Where the cost comes from: measured on the projects, the weight the lab declares, or the default')},
+  ];
 }
 
 // The six texts of a lab after its name, in the order of the columns: the weight it declares,

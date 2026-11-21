@@ -22,16 +22,13 @@
 // lowest host is woken first, the highest one is powered off first when idle; `sre-web-tool
 // priority`): its value opens a dialog to change the two numbers, and Priority… of the bar sets
 // the group, the order or both on every selected host (POST /api/pool/hosts/{name}/priority
-// with {priority: "group:order"}).  Under the table, the folded Lab costs box lists what a
-// project of each lab is counted for on a host (GET /api/pool/costs, asked while it is open):
-// measured on the running projects, else from the weight the lab declares.
+// with {priority: "group:order"}).
 
 import './base.js';
 import * as api from './api.js';
 import * as i18n from './i18n.js';
 import {_, format} from './i18n.js';
 import {el, clear, toast} from './ui.js';
-import {costCells, costNote, NOTE_SEPARATOR} from './lab_costs.js';
 
 const REFRESH_INTERVAL = 5000;
 const ERROR_WIDTH = 60;        // the Last error cell (the whole text in its tooltip), as the tool
@@ -48,9 +45,6 @@ const statusElement = document.getElementById('pool-status');
 const selectAll = document.getElementById('pool-select-all');
 const selectedElement = document.getElementById('pool-selected');
 const bulkButtons = Array.from(document.querySelectorAll('#pool-selection button[data-action]'));
-const costsBox = document.getElementById('pool-costs-box');
-const costsBody = document.querySelector('#pool-costs tbody');
-const costsNote = document.getElementById('pool-costs-note');
 const pending = new Map();     // host name -> the action in progress: its buttons stay disabled across re-renders
 const selected = new Set();    // the names of the selected hosts, kept across re-renders
 
@@ -663,44 +657,7 @@ function renderRow(row) {
     el('td', {class: 'actions'}, ...actions(row)));
 }
 
-// the Lab costs box: one row per lab the pool heard of, and above the table what a lab never
-// seen costs and what one unit of weight stands for (the texts: lab_costs.js, shared with the
-// columns of the Open page)
-function renderCosts(costs) {
-  clear(costsBody);
-  costsNote.textContent = costNote(costs).join(NOTE_SEPARATOR);
-  const labs = Array.isArray(costs.labs) ? costs.labs : [];
-  if (!labs.length) {
-    costsBody.append(el('tr', {}, el('td', {colspan: 7, class: 'muted'}, _('No lab measured or declared yet.'))));
-    return;
-  }
-  for (const lab of labs) {
-    const title = i18n.resolveText(lab.title) || '';
-    const cells = costCells(lab);
-    const source = cells.pop();
-    costsBody.append(el('tr', {dataset: {lab: lab.lab}},
-      el('td', {title}, lab.lab || ''),
-      ...cells.map((text) => el('td', {class: 'num'}, text)),
-      el('td', {class: `source ${lab.source || ''}`}, source)));
-  }
-}
-
-// asked only while the box is open: at its opening, then with every poll of the page
-async function refreshCosts() {
-  if (!costsBox.open) {
-    return;
-  }
-  try {
-    const costs = await api.get('/api/pool/costs');
-    renderCosts(costs && typeof costs === 'object' ? costs : {});
-  } catch (e) {
-    clear(costsBody);
-    costsBody.append(el('tr', {}, el('td', {colspan: 7, class: 'error'}, e.message)));
-  }
-}
-
 async function refresh() {
-  refreshCosts();
   let rows;
   let status;
   try {
@@ -751,7 +708,6 @@ function setupControls() {
   for (const button of bulkButtons) {
     button.addEventListener('click', () => actMany(button.dataset.action));
   }
-  costsBox.addEventListener('toggle', refreshCosts);
 }
 
 async function main() {

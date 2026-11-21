@@ -6,6 +6,7 @@ students have none), the lab tree listing every lab of the host in debug mode an
 catalog otherwise, the selection kept across the reload while the lab is still listed, a
 debug project started from the page, and the Projects page saying the mode of each project of
 an instructor (the Mode line of the cards, the suffix of the title)."""
+import asyncio
 import contextlib
 import json
 import time
@@ -450,14 +451,31 @@ def costs_of(name: str) -> str:
 }})()"""
 
 
+#: the costs table (the dialog of the Costs table… button): open or not, the titles of its columns,
+#: its rows as lists of cell texts, the note above it, the text of its body
+COSTS_TABLE = '#costs-table'
+DIALOG = "document.querySelector('dialog.lab-costs-table[open]')"
+DIALOG_OPEN = f"({DIALOG} !== null)"
+DIALOG_GONE = "(document.querySelector('dialog.lab-costs-table') === null)"
+DIALOG_TITLES = f"[...{DIALOG}.querySelectorAll('thead th')].map((th) => [th.textContent, th.title !== ''])"
+DIALOG_ROWS = (f"JSON.stringify([...{DIALOG}.querySelectorAll('tbody tr[data-lab]')]"
+               ".map((tr) => [...tr.children].map((td) => td.textContent)))")
+DIALOG_NOTE = f"{DIALOG}.querySelector('.lab-costs-note').textContent"
+DIALOG_BODY = f"[{DIALOG}.querySelector('tbody').textContent.trim(), {DIALOG}.querySelector('tbody td').className]"
+DIALOG_CLOSE = 'dialog.lab-costs-table[open] .buttons button'
+TABLE_POLL = 15.0                                             # the dialog asks the costs every 5 s
+
+
 def shows(name: str, cells: list) -> str:
     return f"JSON.stringify({costs_of(name)}) === {json.dumps(json.dumps(cells, separators=(',', ':')))}"
 
 
 class TestLabCosts:
-    """The Lab costs button of the instructors: not pressed at first, it shows beside each lab the
-    six figures of the Lab costs box of the Pool page (``GET /api/pool/costs``, never asked while
-    they are hidden), under their titles; hidden again by a second click, and by a reload."""
+    """The two buttons of the instructors.  Lab costs: not pressed at first, it shows beside each
+    lab what one of its projects is counted for on a host (``GET /api/pool/costs``, never asked
+    while the columns are hidden), under their titles; hidden again by a second click, and by a
+    reload.  Costs table…: the dialog of every lab the pool heard of, with the same six columns,
+    refreshed while it is open."""
 
     def test_costs_shown_and_hidden(self, tmp_path):
         from sreweb.portal.costs import Usage
@@ -551,12 +569,82 @@ class TestLabCosts:
                 assert await page.evaluate(COSTS_NOTE) is None and len(asked) == before
         P.run(go())
 
+    def test_costs_table(self, tmp_path):
+        """The Costs table… button opens a dialog listing the labs the pool heard of (those of
+        the lab list that declare a weight, those a project was measured for): the lab, then the
+        six columns of the tree, under the same titles; asked when it opens and every 5 s while it
+        is open, never once closed; it is apart from the columns of the tree."""
+        from sreweb.portal.costs import Usage
+        from sreweb.portal.pool import PoolError
+        asked = []
+
+        async def go():
+            async with browser_of(tmp_path, PROF, mock_env=COSTS_ENV) as (h, browser, url):
+                pool = h.portal.pool
+                costs_view = pool.costs_view
+                failing = []
+
+                def counted():
+                    asked.append(1)
+                    if failing:
+                        raise PoolError(503, "the costs are away")
+                    return costs_view()
+                pool.costs_view = counted
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                assert await page.evaluate(DIALOG_GONE) and asked == []
+                await page.click(COSTS_TABLE)
+                await page.wait_for(f"{DIALOG_OPEN} && {DIALOG_ROWS} !== '[]'", what="the costs table")
+                # the two labs of the list that declare a weight, by name (4 x 0.001 core is below
+                # the least cost); a lab without weight and never measured is not listed
+                assert json.loads(await page.evaluate(DIALOG_ROWS)) == [
+                    [DEEP, '4', '', '20 MiB', '0.010', '0', 'declared'],
+                    [DHCP, '15', '', '75 MiB', '0.015', '0', 'declared']]
+                assert await page.evaluate(DIALOG_TITLES) == [
+                    ['Lab', False], ['Weight', True], ['Containers', True], ['Memory', True], ['CPU', True],
+                    ['Measured projects', True], ['Source', True]]
+                assert await page.evaluate(f"{DIALOG}.querySelector('h2').textContent") == 'Lab costs'
+                note = await page.evaluate(DIALOG_NOTE)
+                assert note == ('a lab never seen, without weight: 512 MiB, 0.2 core'
+                                ' — one unit of weight: 5 MiB, 0.001 core')
+                # apart from the columns of the tree: the Lab costs button is not pressed, no cell there
+                assert await page.evaluate(COSTS_PRESSED) == 'false' and await page.evaluate(COSTS_COUNT) == 0
+                # three projects of a lab measured: their figures replace its weight at the next poll
+                pool.costs.observe([Usage(name=f'p{i}', lab=DHCP, containers=15, mem_mb=400.0, cpu=0.3, settled=True)
+                                    for i in range(3)], time.time())
+                await page.wait_for(f"{DIALOG_ROWS}.includes('measured')", timeout=TABLE_POLL, what="the measured cost")
+                assert json.loads(await page.evaluate(DIALOG_ROWS))[1] == [DHCP, '15', '15', '400 MiB', '0.300', '3', 'measured']
+                assert 'measured on this pool: 26.7 MiB, 0.02 core' in await page.evaluate(DIALOG_NOTE)
+                # closed: the dialog is gone, and the costs are no longer asked
+                await page.click(DIALOG_CLOSE)
+                await page.wait_for(DIALOG_GONE, what="the dialog closed")
+                before = len(asked)
+                await asyncio.sleep(6.0)                      # more than one period of the dialog
+                assert len(asked) == before
+                # opened again while the costs cannot be read: the reason in place of the rows
+                failing.append(1)
+                await page.click(COSTS_TABLE)
+                await page.wait_for(f"{DIALOG_OPEN} && {DIALOG_BODY}[1] === 'error'", what="the error of the costs")
+                assert 'the costs are away' in (await page.evaluate(DIALOG_BODY))[0]
+                assert await page.evaluate(DIALOG_ROWS) == '[]'
+                await page.click(DIALOG_CLOSE)
+                await page.wait_for(DIALOG_GONE, what="the dialog closed again")
+            # a pool that heard of no lab with a weight: the table says so
+            async with browser_of(tmp_path / 'empty', PROF) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                await page.click(COSTS_TABLE)
+                await page.wait_for(f"{DIALOG_OPEN} && {DIALOG_BODY}[0] !== 'Loading…'", what="the empty costs table")
+                assert await page.evaluate(DIALOG_BODY) == ['No lab measured or declared yet.', 'muted']
+        P.run(go())
+
     def test_students_have_no_costs(self, tmp_path):
         async def go():
             async with browser_of(tmp_path, ALICE, mock_env=COSTS_ENV) as (h, browser, url):
                 page = await browser.page(f'{url}/open')
                 await page.wait_for(has_lab(DHCP), what="the lab tree")
                 assert await page.evaluate("document.getElementById('costs-toggle')") is None
+                assert await page.evaluate("document.getElementById('costs-table')") is None
                 assert await page.evaluate("document.querySelector('#lab-costs-note, #lab-costs-head, .lab-costs')") is None
                 assert (await h.client.get('/api/pool/costs', headers=ALICE)).status == 403
         P.run(go())

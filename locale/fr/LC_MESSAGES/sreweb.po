@@ -778,6 +778,12 @@ msgstr "Coût des TP"
 msgid "Show or hide, beside each lab, what one of its projects is counted for on a host"
 msgstr "Afficher ou masquer, à côté de chaque TP, ce pour quoi compte un de ses projets sur une machine"
 
+msgid "Costs table…"
+msgstr "Tableau des coûts…"
+
+msgid "The costs of every lab the pool heard of, in a table"
+msgstr "Les coûts de tous les TP dont le parc a connaissance, dans un tableau"
+
 msgid "Weight"
 msgstr "Poids"
 

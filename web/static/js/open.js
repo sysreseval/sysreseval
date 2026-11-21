@@ -6,8 +6,9 @@
 // Under the tree, the README of the directory being browsed (README.md / README.<lang>.md of
 // the lab directory, rendered by the agent: tree.js), hidden when that directory has none.
 // The Lab costs button of the instructors (not pressed at first, and never remembered) shows
-// beside each lab what one of its projects is counted for on a host: the columns of the Lab
-// costs box of the Pool page (GET /api/pool/costs, asked while they are shown; lab_costs.js).
+// beside each lab what one of its projects is counted for on a host (GET /api/pool/costs, asked
+// while they are shown; lab_costs.js); the Costs table… button next to it opens the table of
+// every lab the pool heard of, in a dialog (lab_costs_dialog.js).
 
 import './base.js';
 import * as api from './api.js';
@@ -16,7 +17,8 @@ import {_} from './i18n.js';
 import {el, clear} from './ui.js';
 import {buildTree} from './tree.js';
 import {ProgressBox, runCreation, projectUrl, flavorDialog} from './creation.js';
-import {costCells, costNote, costRowOf, NOTE_SEPARATOR} from './lab_costs.js';
+import {costColumns, costCells, costNote, costRowOf, NOTE_SEPARATOR} from './lab_costs.js';
+import {createCostsDialog} from './lab_costs_dialog.js';
 
 const treeElement = document.getElementById('labs');
 const readmeElement = document.getElementById('lab-readme');
@@ -26,7 +28,7 @@ const progress = new ProgressBox(document.getElementById('progress'));
 // the lab costs: the three elements of an instructor's page (a student's has none)
 const costsToggle = document.getElementById('costs-toggle');
 const costsNoteElement = document.getElementById('lab-costs-note');
-const costsHead = document.getElementById('lab-costs-head');   // a <template>: the titles of the columns
+const costsTableButton = document.getElementById('costs-table');
 
 let selectedLab = null;
 let starting = false;
@@ -161,15 +163,17 @@ function clearCosts() {
 }
 
 // Draw the answer of GET /api/pool/costs on the tree: the titles of the columns at its top (they
-// stay there while it scrolls) and, after the button of each lab, the six cells of the Lab costs
-// box of the Pool page.  A lab the pool knows nothing of has the default cost (costRowOf).
+// stay there while it scrolls) and, after the button of each lab, its six cells, the columns of
+// the costs table (lab_costs.js).  A lab the pool knows nothing of has the default cost (costRowOf).
 function drawCosts(data) {
   clearCosts();
   const leaves = treeElement.querySelectorAll('li.leaf');
   if (!leaves.length) {
     return;   // no tree: a message
   }
-  treeElement.prepend(costsHead.content.firstElementChild.cloneNode(true));   // the row alone, not the blanks around it
+  treeElement.prepend(el('div', {class: 'lab-costs-head'}, el('span', {class: 'lab-costs'},
+    ...costColumns().map((column) => el('span', {class: column.numeric ? 'num' : 'source', title: column.tip},
+                                        column.title)))));
   for (const leaf of leaves) {
     const button = leaf.querySelector('button.lab');
     const row = costRowOf(data, button ? button.dataset.lab : '');
@@ -208,11 +212,15 @@ async function refreshCosts() {
   }
 }
 
-// The Lab costs button of the instructors; a student's page has none, and never asks the costs.
+// The two buttons of the instructors: Lab costs (the columns beside the labs) and Costs table…
+// (the dialog of every lab the pool heard of); a student's page has neither, and never asks the
+// costs.
 function setupCosts() {
-  if (!costsToggle || !costsNoteElement || !costsHead) {
+  if (!costsToggle || !costsNoteElement || !costsTableButton) {
     return;
   }
+  const table = createCostsDialog();
+  costsTableButton.addEventListener('click', () => table.open());
   costsToggle.addEventListener('click', () => {
     costs.shown = !costs.shown;
     costsToggle.setAttribute('aria-pressed', String(costs.shown));

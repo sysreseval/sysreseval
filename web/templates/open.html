@@ -6,23 +6,12 @@
   <h1>{{ _("Open a lab") }}</h1>
   {% if instructor %}
   <button type="button" id="costs-toggle" class="toggle" aria-pressed="false" title="{{ _("Show or hide, beside each lab, what one of its projects is counted for on a host") }}">{{ _("Lab costs") }}</button>
+  <button type="button" id="costs-table" title="{{ _("The costs of every lab the pool heard of, in a table") }}">{{ _("Costs table…") }}</button>
   {% endif %}
   <a class="button" href="{{ base_path }}/projects">{{ _("Back to the projects") }}</a>
 </div>
 {% if instructor %}
 <p id="lab-costs-note" class="lab-costs-note muted" hidden></p>
-<template id="lab-costs-head">
-  <div class="lab-costs-head">
-    <span class="lab-costs">
-      <span class="num" title="{{ _("The weight the lab declares: 1 is one plain idle container") }}">{{ _("Weight") }}</span>
-      <span class="num" title="{{ _("The most containers a project of the lab had") }}">{{ _("Containers") }}</span>
-      <span class="num" title="{{ _("The memory one more project of the lab is counted for") }}">{{ _("Memory") }}</span>
-      <span class="num" title="{{ _("The cores one more project of the lab is counted for") }}">{{ _("CPU") }}</span>
-      <span class="num" title="{{ _("The projects of the lab that were measured") }}">{{ _("Measured projects") }}</span>
-      <span class="source" title="{{ _("Where the cost comes from: measured on the projects, the weight the lab declares, or the default") }}">{{ _("Source") }}</span>
-    </span>
-  </div>
-</template>
 {% endif %}
 <div id="labs" class="lab-tree"><p class="muted">{{ _("Loading available labs…") }}</p></div>
 <div id="lab-readme" class="lab-readme content" hidden></div>

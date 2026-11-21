@@ -1688,10 +1688,11 @@ processors hold no such project is *memory full* / *cpu full* in `sre-web-tool l
 Pool page, and counts for no spare capacity; it may still take a lighter project.
 
 The measures, the costs and their display do not wait for the key: they are on in both modes.
-`sre-web-tool costs` and the *Lab costs* box of the Pool page list every lab the pool heard of
-with its declared weight, the containers its projects had, its cost and where it comes from
-(`measured`, `declared`, `default`); the *Lab costs* button of the Open page shows the same
-columns to an instructor beside each lab they may start; `sre-web-tool list` and the Pool page have a CPU column
+`sre-web-tool costs` and, for an instructor, the *Costs table…* button of the Open page list
+every lab the pool heard of with its declared weight, the containers its projects had, its cost
+and where it comes from (`measured`, `declared`, `default`); the *Lab costs* button next to it
+shows the same columns beside each lab they may start; `sre-web-tool list` and the Pool page
+have a CPU column
 (the cores the projects of the host are counted for / those they may use). So: leave
 `capacity = "projects"`, let a few classes run, read the costs, set `weight_memory_mb` and
 `weight_cpu` from the line `one unit of weight: … (measured on this pool: …)`, then switch. The
@@ -2122,13 +2123,16 @@ What an instructor gets:
   its state and its projects (greyed when off or full), or leaves the automatic placement: the
   least loaded host the instructor may use, reserved or shared. `POST /api/projects` takes the
   optional `host`; a student sending one gets 403.
-- **The cost of a lab**: the *Lab costs* button of the Open page shows, beside each lab of the
-  tree, what one of its projects is counted for on a host — the columns of the *Lab costs* box
-  of the Pool page: the weight the lab declares, the containers its projects had, the memory and
-  the cores, the projects measured and where the cost comes from (*The load of a host* in *A
-  pool of workstations*). A lab the pool has never seen, without weight, shows the default
-  cost. Hidden when the page opens, every time; a second click hides the columns again. The
-  students have no such button, and `GET /api/pool/costs` answers 403 to them.
+- **The cost of a lab**: two buttons of the Open page. *Lab costs* shows, beside each lab of
+  the tree, what one of its projects is counted for on a host: the weight the lab declares, the
+  containers its projects had, the memory and the cores, the projects measured and where the
+  cost comes from (*The load of a host* in *A pool of workstations*). A lab the pool has never
+  seen, without weight, shows the default cost. Hidden when the page opens, every time; a second
+  click hides the columns again. *Costs table…*, next to it, opens the table of every lab the
+  pool heard of, with the same columns: also the labs that are not in the tree shown (the
+  drafts and the exam-only labs outside the debug mode, a lab started by its path), kept up to
+  date while it is open. The students have neither button, and `GET /api/pool/costs` answers
+  403 to them.
 - **Present**: the *Present* button of a project page (the instructor's own project, or a
   student's) opens the list of the users connected to the site (a text filter, the groups of
   every kind with the number of their members connected: the departments, the directory groups

@@ -719,7 +719,8 @@ class Routes:
 
     async def api_pool_costs(self, request):
         """What a project of each lab costs a host, as the pool learned it (``Pool.costs_view``):
-        the *Lab costs* table of the Pool page, ``sre-web-tool costs``."""
+        the lab costs of the Open page (the columns beside the labs, the costs table),
+        ``sre-web-tool costs``."""
         self._require_pool_access(request)
         return web.json_response(self.pool.costs_view())
 

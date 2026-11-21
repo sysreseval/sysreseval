@@ -254,8 +254,9 @@ class TestTemplates:
         assert html.index('id="labs"') < html.index('id="lab-readme"') < html.index('id="start-button"')
         assert 'name="mode"' not in html and 'href="/watch"' not in html and 'id="host"' not in html
         assert 'href="/pool"' not in html
-        # a student has nothing of the lab costs: no button, no note, no titles of columns
+        # a student has nothing of the lab costs: neither button, no note
         assert 'costs-toggle' not in html and 'lab-costs' not in html and 'Lab costs' not in html
+        assert 'costs-table' not in html and 'Costs table' not in html
         # the instructor's extras: the project mode radios (standard, instructor mode, debug mode) and
         # the Host select of the Open page, the Watch and Pool links of every page
         html = render('open.html', instructor=True)
@@ -264,20 +265,18 @@ class TestTemplates:
         assert 'href="/watch"' in html
         assert 'id="host"' in html and 'Automatic placement' in html and 'id="host-option" hidden' in html
         assert 'href="/pool"' in html
-        # ... and the Lab costs button of the toolbar, not pressed, with the note hidden and the
-        # titles of the six columns kept in a <template> (open.js puts them at the top of the tree):
-        # the titles and tooltips of the Lab costs box of the Pool page
+        # ... and the two buttons of the lab costs in the toolbar: Lab costs, a toggle not pressed
+        # (the columns beside the labs, with the note hidden above the tree), and next to it Costs
+        # table… (the dialog of every lab the pool heard of).  The titles of the columns and the
+        # dialog are built by the scripts (lab_costs.js, lab_costs_dialog.js): none in the page
         assert re.search(r'<button type="button" id="costs-toggle" class="toggle" aria-pressed="false" '
                          r'title="[^"]+">Lab costs</button>', html)
-        assert html.index('<h1>') < html.index('id="costs-toggle"') < html.index('Back to the projects')
+        assert re.search(r'<button type="button" id="costs-table" title="[^"]+">Costs table…</button>', html)
+        assert html.index('<h1>') < html.index('id="costs-toggle"') < html.index('id="costs-table"') \
+            < html.index('Back to the projects')
         assert '<p id="lab-costs-note" class="lab-costs-note muted" hidden></p>' in html
-        head = html[html.index('<template id="lab-costs-head">'):html.index('</template>')]
-        assert html.index('id="lab-costs-note"') < html.index('<template id="lab-costs-head">') < html.index('id="labs"')
-        assert re.findall(r'<span class="(?:num|source)" title="[^"]+">([^<]+)</span>', head) == [
-            'Weight', 'Containers', 'Memory', 'CPU', 'Measured projects', 'Source']
-        costs_box = render('pool.html', instructor=True).split('<details id="pool-costs-box"')[1]
-        for title in re.findall(r'title="([^"]+)"', head):
-            assert f'title="{title}"' in costs_box, title
+        assert html.index('id="lab-costs-note"') < html.index('id="labs"')
+        assert 'lab-costs-head' not in html and 'lab-costs-table' not in html and 'Measured projects' not in html
         html = render('projects.html', instructor=True)
         assert 'href="/watch"' in html and 'href="/pool"' in html and 'href="/history"' not in html
         assert 'href="/archives"' in html                  # the Archives link of every instructor
@@ -529,14 +528,11 @@ class TestTemplates:
         # the Priority column (group:order, the lowest is used first), before the flags
         assert html.index('data-sort="uptime"') < html.index('data-sort="priority"') < html.index('data-sort="sre_version"')
         assert 'title="group:order: the lowest group is used first, then the lowest order"' in html
-        hosts, costs = html.split('<details id="pool-costs-box"')
-        assert 'colspan="15"' in hosts and len(re.findall(r'<th[ >]', hosts)) == 15
+        assert 'colspan="15"' in html and len(re.findall(r'<th[ >]', html)) == 15
         assert 'Host name: one or several words' in html
-        # the Lab costs box, folded under the table: what a project of each lab is counted for
-        assert 'class="pool-costs">' in costs and '<summary>Lab costs</summary>' in costs
-        assert 'id="pool-costs-note"' in costs and '<table id="pool-costs" class="grid watch">' in costs
-        assert 'colspan="7"' in costs and len(re.findall(r'<th[ >]', costs)) == 7
-        assert ' open' not in costs.split('>')[0]                 # folded: nothing is asked until it is opened
+        # the costs of the labs are no longer listed here: the Costs table… button of the Open page
+        assert 'pool-costs' not in html and 'Lab costs' not in html and html.count('<table') == 1
+        assert 'lab_costs' not in (JS / 'pool.js').read_text(encoding='utf-8')
 
     def test_project_page(self):
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True)
@@ -1226,7 +1222,7 @@ class TestLabKey:
 
 
 LAB_COSTS_RUNNER = """\
-import {costCells, costRowOf, costNote, costPair, sourceLabel} from './lab_costs.js';
+import {costCells, costColumns, costRowOf, costNote, costPair, sourceLabel} from './lab_costs.js';
 
 const input = JSON.parse(process.argv[2]);
 process.stdout.write(JSON.stringify({
@@ -1237,15 +1233,16 @@ process.stdout.write(JSON.stringify({
   notes: input.answers.map(costNote),
   pairs: input.pairs.map(costPair),
   sources: input.sources.map(sourceLabel),
+  columns: costColumns().map((column) => [column.title, column.numeric, typeof column.tip === 'string' && column.tip !== '']),
 }));
 """
 
 
 class TestLabCosts:
-    """The pure helpers of lab_costs.js, the one definition of what the Lab costs box of the Pool
-    page and the columns of the Open page show of ``GET /api/pool/costs``: the six texts of a
-    lab, the row of a lab the pool knows nothing of (the default cost), the note above; run by
-    the ``js`` runtime, skipped without one."""
+    """The pure helpers of lab_costs.js, the one definition of what the Open page shows an
+    instructor of ``GET /api/pool/costs``, in the columns beside the labs of the tree and in the
+    costs table: the six columns, the six texts of a lab, the row of a lab the pool knows nothing
+    of (the default cost), the note above; run by the ``js`` runtime, skipped without one."""
 
     def test_cells_rows_and_note(self, tmp_path, js):
         runner = js_project(tmp_path, LAB_COSTS_RUNNER, 'lab_costs.js', 'i18n.js')
@@ -1286,14 +1283,18 @@ class TestLabCosts:
             ['a lab never seen, without weight: ?', 'one unit of weight: ?']]
         assert out['pairs'] == ['16 MiB, 0.005 core', '?', '?']
         assert out['sources'] == ['measured', 'declared', 'default', 'toString', '', '']   # never an inherited property
+        # the six columns, in the order of the cells: every one with a tooltip, the last one alone is text
+        assert out['columns'] == [['Weight', True, True], ['Containers', True, True], ['Memory', True, True],
+                                  ['CPU', True, True], ['Measured projects', True, True], ['Source', False, True]]
 
-    def test_one_definition_for_both_pages(self):
-        """The Pool page and the Open page take the texts from lab_costs.js: neither formats a
-        cost itself."""
-        for name in ('pool.js', 'open.js'):
+    def test_one_definition_for_both_displays(self):
+        """The columns of the tree (open.js) and the costs table (lab_costs_dialog.js) take their
+        titles and their texts from lab_costs.js: neither names a column nor formats a cost itself."""
+        for name in ('open.js', 'lab_costs_dialog.js'):
             source = (JS / name).read_text(encoding='utf-8')
-            assert "from './lab_costs.js'" in source and 'costCells(' in source, name
-            assert "_('measured')" not in source and "_('{n} MiB')" not in source, name
+            assert "from './lab_costs.js'" in source and 'costCells(' in source and 'costColumns(' in source, name
+            assert "_('measured')" not in source and "_('{n} MiB')" not in source and "_('Weight')" not in source, name
+        assert "createCostsDialog" in (JS / 'open.js').read_text(encoding='utf-8')
 
 
 WATCH_CLIENTS_RUNNER = """\

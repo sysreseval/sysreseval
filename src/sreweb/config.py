@@ -440,7 +440,7 @@ class PoolConfig:
     project_memory_mb: int = 0
     # the load of a host in memory and processors (portal/costs.py): the agents tell the size of
     # their host and what each running project uses, the portal learns from it what a project of
-    # each lab costs (shown by `sre-web-tool costs` and on the Pool page).  memory_reserve_mb:
+    # each lab costs (shown by `sre-web-tool costs` and on the Open page).  memory_reserve_mb:
     # the memory kept free on every host, in MiB; cpu_target: the share of the processors of a
     # host its projects may use on average (the rest absorbs the bursts: starts, evaluations);
     # weight_memory_mb / weight_cpu: what one unit of the weight a lab declares (`sre

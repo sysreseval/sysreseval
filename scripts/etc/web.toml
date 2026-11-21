@@ -184,12 +184,12 @@ project_memory_mb = 0
 # (and project_memory_mb), every project counting the same.  "resources": its free memory and its
 # processors against what a project of each lab costs: a project of thirty routers weighs more
 # than one of four idle machines.  The agents measure their running projects ([usage] of
-# agent.toml) and the portal learns the cost of each lab from them (`sre-web-tool costs`, the Lab
-# costs box of the Pool page); until three projects of a lab have been measured, its cost comes
-# from the weight the lab declares (`sre make-titles`).  A host takes a project while its free
-# memory and its processors hold the cost of the lab; a host without project always takes one;
-# max_projects stays a ceiling.  The costs are learned and shown in both modes: try "resources"
-# once they look right.
+# agent.toml) and the portal learns the cost of each lab from them (`sre-web-tool costs`, the
+# Costs table… button of the Open page); until three projects of a lab have been measured, its
+# cost comes from the weight the lab declares (`sre make-titles`).  A host takes a project while
+# its free memory and its processors hold the cost of the lab; a host without project always
+# takes one; max_projects stays a ceiling.  The costs are learned and shown in both modes: try
+# "resources" once they look right.
 capacity = "projects"
 # The memory kept free on every host, in MiB, and the share of the processors of a host its
 # projects may use on average (the rest absorbs the bursts: starts, evaluations).
