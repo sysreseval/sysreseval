@@ -8,6 +8,7 @@ debug project started from the page, and the Projects page saying the mode of ea
 an instructor (the Mode line of the cards, the suffix of the title)."""
 import contextlib
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -387,4 +388,175 @@ class TestReadmes:
                 await page.click(lab_button(DHCP))
                 assert await page.evaluate(README) is None and await page.evaluate(SELECTED) == DHCP
                 assert await page.evaluate("getComputedStyle(document.getElementById('lab-readme')).display") == 'none'
+        P.run(go())
+
+
+# -- the lab costs beside the labs (instructors) -------------------------------------------------
+
+#: a lab at the top of the tree, the two of the fake sre one directory down, one three down, and
+#: the exam-only lab the debug mode adds; a weight for three of them
+TOP, SSH, DEEP = 'top.py', 's4/tp_ssh', 'a/b/c/deep.py'
+COSTS_ENV = {'MOCK_LAB_LIST': json.dumps([TOP, DHCP, SSH, DEEP, EXAM_ONLY]),
+             'MOCK_LAB_WEIGHTS': json.dumps({DHCP: 15, DEEP: 4, EXAM_ONLY: 30})}
+COSTS_TOGGLE = '#costs-toggle'
+COSTS_PRESSED = "document.getElementById('costs-toggle').getAttribute('aria-pressed')"
+#: the note above the tree: null while hidden, else its class and its text
+COSTS_NOTE = """(() => {
+  const note = document.getElementById('lab-costs-note');
+  return note.hidden ? null : [note.className, note.textContent];
+})()"""
+COSTS_HEAD = "[...document.querySelectorAll('#labs .lab-costs-head .lab-costs > span')].map((s) => s.textContent)"
+COSTS_COUNT = "document.querySelectorAll('#labs li.leaf > .lab-costs').length"
+WITH_COSTS = "document.getElementById('labs').classList.contains('with-costs')"
+#: the left and right edges of the six titles, then of the six cells of every lab shown, the box
+#: of the tree, and whether the name of each lab stays on one line left of its cells
+COSTS_LAYOUT = """(() => {
+  const edges = (e) => { const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)]; };
+  const tree = document.getElementById('labs');
+  const rows = {};
+  for (const leaf of tree.querySelectorAll('li.leaf')) {
+    const button = leaf.querySelector('button.lab');
+    const cells = leaf.querySelector('.lab-costs');
+    const b = button.getBoundingClientRect();
+    const c = cells.getBoundingClientRect();
+    rows[button.dataset.lab] = {cells: [...cells.children].map(edges), beside: b.right <= c.left + 1,
+                                line: Math.abs(b.top - c.top) < b.height && b.height < 40};
+  }
+  return {head: [...tree.querySelectorAll('.lab-costs-head .lab-costs > span')].map(edges), rows,
+          tree: edges(tree), headTop: Math.round(tree.querySelector('.lab-costs-head').getBoundingClientRect().top
+                                                 - tree.getBoundingClientRect().top)};
+})()"""
+#: the tree made lower than its content and scrolled: how far it scrolled, where the titles are
+#: below its top, and where the first lab is (the tree is as it was afterwards)
+COSTS_SCROLLED = """(() => {
+  const tree = document.getElementById('labs');
+  const top = (e) => Math.round(e.getBoundingClientRect().top - tree.getBoundingClientRect().top);
+  Object.assign(tree.style, {flex: 'none', minHeight: '0', height: '70px'});
+  tree.scrollTop = 40;
+  const out = {scrolled: tree.scrollTop, head: top(tree.querySelector('.lab-costs-head')),
+               first: top(tree.querySelector('li'))};
+  Object.assign(tree.style, {flex: '', minHeight: '', height: ''});
+  tree.scrollTop = 0;
+  return out;
+})()"""
+
+
+def costs_of(name: str) -> str:
+    """The texts of the six cells beside the lab *name* (null without cells), as a JavaScript expression."""
+    return f"""(() => {{
+  const button = document.querySelector({json.dumps(lab_button(name))});
+  const cells = button && button.parentElement.querySelector(':scope > .lab-costs');
+  return cells ? [...cells.children].map((s) => s.textContent) : null;
+}})()"""
+
+
+def shows(name: str, cells: list) -> str:
+    return f"JSON.stringify({costs_of(name)}) === {json.dumps(json.dumps(cells, separators=(',', ':')))}"
+
+
+class TestLabCosts:
+    """The Lab costs button of the instructors: not pressed at first, it shows beside each lab the
+    six figures of the Lab costs box of the Pool page (``GET /api/pool/costs``, never asked while
+    they are hidden), under their titles; hidden again by a second click, and by a reload."""
+
+    def test_costs_shown_and_hidden(self, tmp_path):
+        from sreweb.portal.costs import Usage
+        from sreweb.portal.pool import PoolError
+        asked = []
+
+        async def go():
+            async with browser_of(tmp_path, PROF, mock_env=COSTS_ENV) as (h, browser, url):
+                pool = h.portal.pool
+                costs_view = pool.costs_view
+                failing = []
+
+                def counted():
+                    asked.append(1)
+                    if failing:
+                        raise PoolError(503, "the costs are away")
+                    return costs_view()
+                pool.costs_view = counted
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                # hidden by default: the button not pressed, no note, no cell, and nothing asked
+                assert await page.evaluate(COSTS_PRESSED) == 'false'
+                assert await page.evaluate(COSTS_NOTE) is None and await page.evaluate(COSTS_COUNT) == 0
+                assert await page.evaluate(WITH_COSTS) is False and await page.evaluate(COSTS_HEAD) == []
+                assert asked == []
+                # pressed: the weight each lab declares and what a project of it is counted for
+                # (15 x 5 MiB and 15 x 0.001 core), the default cost for a lab the pool knows nothing of
+                await page.click(COSTS_TOGGLE)
+                await page.wait_for(shows(DHCP, ['15', '', '75 MiB', '0.015', '0', 'declared']), what="the costs of the labs")
+                assert await page.evaluate(costs_of(DEEP)) == ['4', '', '20 MiB', '0.010', '0', 'declared']
+                for lab in (TOP, SSH):
+                    assert await page.evaluate(costs_of(lab)) == ['', '', '512 MiB', '0.200', '0', 'default'], lab
+                assert await page.evaluate(COSTS_PRESSED) == 'true' and await page.evaluate(WITH_COSTS) is True
+                assert await page.evaluate(COSTS_HEAD) == ['Weight', 'Containers', 'Memory', 'CPU', 'Measured projects', 'Source']
+                cls, note = await page.evaluate(COSTS_NOTE)
+                assert 'muted' in cls and 'error' not in cls
+                assert note == ('a lab never seen, without weight: 512 MiB, 0.2 core'
+                                ' — one unit of weight: 5 MiB, 0.001 core')
+                assert len(asked) == 1 and await page.evaluate(COSTS_COUNT) == 4
+                # the columns line up, the titles above them, at every depth of the tree; the name
+                # of a lab stays on its line, left of its cells; the titles are the first line of the tree
+                for name in ('sre', 's4', 'a', 'b', 'c'):
+                    await toggle(page, name)
+                layout = await page.evaluate(COSTS_LAYOUT)
+                assert sorted(layout['rows']) == sorted([TOP, DHCP, SSH, DEEP])
+                for lab, row in layout['rows'].items():
+                    assert row['beside'] and row['line'], (lab, row)
+                    for (left, right), (head_left, head_right) in zip(row['cells'], layout['head']):
+                        assert abs(left - head_left) <= 1 and abs(right - head_right) <= 1, (lab, row, layout['head'])
+                    assert row['cells'][-1][1] <= layout['tree'][1]
+                assert 0 <= layout['headTop'] <= 12
+                # ... and stay at the top of the tree while it scrolls, the labs going under them
+                scrolled = await page.evaluate(COSTS_SCROLLED)
+                assert scrolled['scrolled'] == 40 and 0 <= scrolled['head'] <= 2 and scrolled['first'] < 0, scrolled
+                # a lab is still selected by a click, with its costs beside it
+                await page.click(lab_button(DHCP))
+                assert await page.evaluate(SELECTED) == DHCP and await page.evaluate(COSTS_COUNT) == 4
+                # hidden again: nothing left on the tree, and nothing asked
+                await page.click(COSTS_TOGGLE)
+                assert await page.evaluate(COSTS_PRESSED) == 'false' and await page.evaluate(COSTS_COUNT) == 0
+                assert await page.evaluate(COSTS_NOTE) is None and await page.evaluate(COSTS_HEAD) == []
+                assert await page.evaluate(WITH_COSTS) is False and len(asked) == 1
+                # three projects of the lab measured meanwhile: shown again, the costs are asked again
+                pool.costs.observe([Usage(name=f'p{i}', lab=DHCP, containers=15, mem_mb=400.0, cpu=0.3, settled=True)
+                                    for i in range(3)], time.time())
+                await page.click(COSTS_TOGGLE)
+                await page.wait_for(shows(DHCP, ['15', '15', '400 MiB', '0.300', '3', 'measured']), what="the measured cost")
+                assert 'measured on this pool: 26.7 MiB, 0.02 core' in (await page.evaluate(COSTS_NOTE))[1]
+                assert len(asked) == 2
+                # the debug mode builds the tree again, with the exam-only lab: every lab has its cells
+                await page.click('#mode-debug')
+                await page.wait_for(has_lab(EXAM_ONLY), what="the exam-only lab in debug mode")
+                await page.wait_for(shows(EXAM_ONLY, ['30', '', '150 MiB', '0.030', '0', 'declared']),
+                                    what="the costs of the lab the debug mode lists")
+                assert await page.evaluate(COSTS_COUNT) == 5 and await page.evaluate(SELECTED) == DHCP
+                assert await page.evaluate(costs_of(DHCP)) == ['15', '15', '400 MiB', '0.300', '3', 'measured']
+                assert len(await page.evaluate(COSTS_HEAD)) == 6 and len(asked) == 3
+                # the costs cannot be read: the reason in place of the note, no cell left
+                failing.append(1)
+                await page.click('#mode-standard')
+                await page.wait_for(f"({COSTS_NOTE} || ['', ''])[0].includes('error')", what="the error of the costs")
+                assert 'the costs are away' in (await page.evaluate(COSTS_NOTE))[1]
+                assert await page.evaluate(COSTS_COUNT) == 0 and await page.evaluate(COSTS_HEAD) == []
+                assert await page.evaluate(has_lab(DHCP)) and not await page.evaluate(has_lab(EXAM_ONLY))
+                failing.clear()
+                # never remembered: the page loaded again has them hidden, and asks nothing
+                before = len(asked)
+                await page.goto(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree again")
+                assert await page.evaluate(COSTS_PRESSED) == 'false' and await page.evaluate(COSTS_COUNT) == 0
+                assert await page.evaluate(COSTS_NOTE) is None and len(asked) == before
+        P.run(go())
+
+    def test_students_have_no_costs(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, ALICE, mock_env=COSTS_ENV) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                assert await page.evaluate("document.getElementById('costs-toggle')") is None
+                assert await page.evaluate("document.querySelector('#lab-costs-note, #lab-costs-head, .lab-costs')") is None
+                assert (await h.client.get('/api/pool/costs', headers=ALICE)).status == 403
         P.run(go())

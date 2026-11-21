@@ -1690,7 +1690,8 @@ Pool page, and counts for no spare capacity; it may still take a lighter project
 The measures, the costs and their display do not wait for the key: they are on in both modes.
 `sre-web-tool costs` and the *Lab costs* box of the Pool page list every lab the pool heard of
 with its declared weight, the containers its projects had, its cost and where it comes from
-(`measured`, `declared`, `default`); `sre-web-tool list` and the Pool page have a CPU column
+(`measured`, `declared`, `default`); the *Lab costs* button of the Open page shows the same
+columns to an instructor beside each lab they may start; `sre-web-tool list` and the Pool page have a CPU column
 (the cores the projects of the host are counted for / those they may use). So: leave
 `capacity = "projects"`, let a few classes run, read the costs, set `weight_memory_mb` and
 `weight_cpu` from the line `one unit of weight: … (measured on this pool: …)`, then switch. The
@@ -2121,6 +2122,13 @@ What an instructor gets:
   its state and its projects (greyed when off or full), or leaves the automatic placement: the
   least loaded host the instructor may use, reserved or shared. `POST /api/projects` takes the
   optional `host`; a student sending one gets 403.
+- **The cost of a lab**: the *Lab costs* button of the Open page shows, beside each lab of the
+  tree, what one of its projects is counted for on a host — the columns of the *Lab costs* box
+  of the Pool page: the weight the lab declares, the containers its projects had, the memory and
+  the cores, the projects measured and where the cost comes from (*The load of a host* in *A
+  pool of workstations*). A lab the pool has never seen, without weight, shows the default
+  cost. Hidden when the page opens, every time; a second click hides the columns again. The
+  students have no such button, and `GET /api/pool/costs` answers 403 to them.
 - **Present**: the *Present* button of a project page (the instructor's own project, or a
   student's) opens the list of the users connected to the site (a text filter, the groups of
   every kind with the number of their members connected: the departments, the directory groups
@@ -2459,8 +2467,8 @@ the whole site works without Docker. The catalogs are `locale/fr/LC_MESSAGES/sre
 `locale/de/LC_MESSAGES/sreweb.po` (hand-maintained, `make web-translations`: a string of a template
 is added by hand to both).
 
-The pure JavaScript modules (the lab tree of the Open page, the group keys, the exam form, the
-floating terminal windows) are tested under `node` or `bun`; on a machine with neither, `make
+The pure JavaScript modules (the lab tree of the Open page, the lab costs, the group keys, the
+exam form, the floating terminal windows) are tested under `node` or `bun`; on a machine with neither, `make
 tests` runs them under bun in a throwaway container of the `oven/bun` image instead
 (`SRE_TEST_JS=docker`, what the Makefile passes then: the image is pulled once, the tests skip
 without a reachable Docker daemon, root or the `docker` group; `SRE_TEST_JS=docker:<image>` names

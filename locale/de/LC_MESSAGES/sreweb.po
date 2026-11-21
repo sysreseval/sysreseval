@@ -790,6 +790,9 @@ msgstr "Die Kerne, mit denen die Projekte des Rechners angerechnet werden / die 
 msgid "Lab costs"
 msgstr "Kosten der Labore"
 
+msgid "Show or hide, beside each lab, what one of its projects is counted for on a host"
+msgstr "Neben jedem Labor ein- oder ausblenden, womit eines seiner Projekte auf einem Rechner angerechnet wird"
+
 msgid "Weight"
 msgstr "Gewicht"
 

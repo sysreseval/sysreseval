@@ -254,6 +254,8 @@ class TestTemplates:
         assert html.index('id="labs"') < html.index('id="lab-readme"') < html.index('id="start-button"')
         assert 'name="mode"' not in html and 'href="/watch"' not in html and 'id="host"' not in html
         assert 'href="/pool"' not in html
+        # a student has nothing of the lab costs: no button, no note, no titles of columns
+        assert 'costs-toggle' not in html and 'lab-costs' not in html and 'Lab costs' not in html
         # the instructor's extras: the project mode radios (standard, instructor mode, debug mode) and
         # the Host select of the Open page, the Watch and Pool links of every page
         html = render('open.html', instructor=True)
@@ -262,6 +264,20 @@ class TestTemplates:
         assert 'href="/watch"' in html
         assert 'id="host"' in html and 'Automatic placement' in html and 'id="host-option" hidden' in html
         assert 'href="/pool"' in html
+        # ... and the Lab costs button of the toolbar, not pressed, with the note hidden and the
+        # titles of the six columns kept in a <template> (open.js puts them at the top of the tree):
+        # the titles and tooltips of the Lab costs box of the Pool page
+        assert re.search(r'<button type="button" id="costs-toggle" class="toggle" aria-pressed="false" '
+                         r'title="[^"]+">Lab costs</button>', html)
+        assert html.index('<h1>') < html.index('id="costs-toggle"') < html.index('Back to the projects')
+        assert '<p id="lab-costs-note" class="lab-costs-note muted" hidden></p>' in html
+        head = html[html.index('<template id="lab-costs-head">'):html.index('</template>')]
+        assert html.index('id="lab-costs-note"') < html.index('<template id="lab-costs-head">') < html.index('id="labs"')
+        assert re.findall(r'<span class="(?:num|source)" title="[^"]+">([^<]+)</span>', head) == [
+            'Weight', 'Containers', 'Memory', 'CPU', 'Measured projects', 'Source']
+        costs_box = render('pool.html', instructor=True).split('<details id="pool-costs-box"')[1]
+        for title in re.findall(r'title="([^"]+)"', head):
+            assert f'title="{title}"' in costs_box, title
         html = render('projects.html', instructor=True)
         assert 'href="/watch"' in html and 'href="/pool"' in html and 'href="/history"' not in html
         assert 'href="/archives"' in html                  # the Archives link of every instructor
@@ -1207,6 +1223,77 @@ class TestLabKey:
                 {'lab': 's3/r306/dns1.py'}, {'canonical_lab': ''}, {}, None]
         assert json.loads(js.run(tmp_path, runner, json.dumps(rows))) == \
             ['sre@dns1.py', 's3@r306@dns1.py', 'sre/dns1.py', 's3/r306/dns1.py', '', '', '']
+
+
+LAB_COSTS_RUNNER = """\
+import {costCells, costRowOf, costNote, costPair, sourceLabel} from './lab_costs.js';
+
+const input = JSON.parse(process.argv[2]);
+process.stdout.write(JSON.stringify({
+  cells: input.rows.map(costCells),
+  found: input.labs.map((lab) => costRowOf(input.costs, lab)),
+  shown: input.labs.map((lab) => costCells(costRowOf(input.costs, lab))),
+  nothing: [costRowOf(null, 'x.py'), costCells(costRowOf({}, 'x.py'))],
+  notes: input.answers.map(costNote),
+  pairs: input.pairs.map(costPair),
+  sources: input.sources.map(sourceLabel),
+}));
+"""
+
+
+class TestLabCosts:
+    """The pure helpers of lab_costs.js, the one definition of what the Lab costs box of the Pool
+    page and the columns of the Open page show of ``GET /api/pool/costs``: the six texts of a
+    lab, the row of a lab the pool knows nothing of (the default cost), the note above; run by
+    the ``js`` runtime, skipped without one."""
+
+    def test_cells_rows_and_note(self, tmp_path, js):
+        runner = js_project(tmp_path, LAB_COSTS_RUNNER, 'lab_costs.js', 'i18n.js')
+        measured = {'lab': 'sre/ospf.py', 'title': {'en': 'OSPF'}, 'weight': 78, 'containers': 13, 'mem_mb': 253.6,
+                    'cpu': 0.0312, 'samples': 3, 'source': 'measured'}
+        declared = {'lab': 'sre/dhcp.py', 'title': None, 'weight': 4.5, 'containers': None, 'mem_mb': 22.5,
+                    'cpu': 0.01, 'samples': 0, 'source': 'declared'}
+        costs = {'default': {'mem_mb': 512.0, 'cpu': 0.2}, 'weight_unit': {'mem_mb': 5.0, 'cpu': 0.001},
+                 'measured_unit': None, 'error': '', 'labs': [declared, measured, None, 'junk']}
+        hostile = {'lab': 'x.py', 'weight': '12', 'containers': True, 'mem_mb': None, 'cpu': 'NaN', 'samples': [],
+                   'source': '<b>'}
+        out = json.loads(js.run(tmp_path, runner, json.dumps({
+            'rows': [measured, declared, hostile, {}, None],
+            'labs': ['sre/ospf.py', 'sre/dhcp.py', 'sre/new.py'],
+            'costs': costs,
+            'answers': [costs, dict(costs, measured_unit={'mem_mb': 3.9, 'cpu': 0.0004}, error='Read-only file system'),
+                        {}, None],
+            'pairs': [{'mem_mb': 16, 'cpu': 0.005}, {'mem_mb': '16', 'cpu': 0.005}, None],
+            'sources': ['measured', 'declared', 'default', 'toString', '', None]})))
+        # weight, containers, memory (whole MiB), CPU (three decimals), measured projects, source
+        assert out['cells'] == [['78', '13', '254 MiB', '0.031', '3', 'measured'],
+                                ['4.5', '', '23 MiB', '0.010', '0', 'declared'],
+                                ['', '', '', '', '', '<b>'],             # no figure but a finite number
+                                ['', '', '', '', '', ''], ['', '', '', '', '', '']]
+        # the row of the answer, else the default cost: what the placement counts for a lab never seen
+        assert out['found'] == [measured, declared, {'lab': 'sre/new.py', 'title': None, 'weight': None,
+                                                     'containers': None, 'mem_mb': 512.0, 'cpu': 0.2, 'samples': 0,
+                                                     'source': 'default'}]
+        assert out['shown'][2] == ['', '', '512 MiB', '0.200', '0', 'default']
+        # no answer, or one without a default: a default row without figures
+        assert out['nothing'][0]['source'] == 'default' and 'mem_mb' not in out['nothing'][0]
+        assert out['nothing'][1] == ['', '', '', '', '0', 'default']
+        assert out['notes'] == [
+            ['a lab never seen, without weight: 512 MiB, 0.2 core', 'one unit of weight: 5 MiB, 0.001 core'],
+            ['a lab never seen, without weight: 512 MiB, 0.2 core', 'one unit of weight: 5 MiB, 0.001 core',
+             'measured on this pool: 3.9 MiB, 0.0004 core', 'the costs are NOT saved: Read-only file system'],
+            ['a lab never seen, without weight: ?', 'one unit of weight: ?'],
+            ['a lab never seen, without weight: ?', 'one unit of weight: ?']]
+        assert out['pairs'] == ['16 MiB, 0.005 core', '?', '?']
+        assert out['sources'] == ['measured', 'declared', 'default', 'toString', '', '']   # never an inherited property
+
+    def test_one_definition_for_both_pages(self):
+        """The Pool page and the Open page take the texts from lab_costs.js: neither formats a
+        cost itself."""
+        for name in ('pool.js', 'open.js'):
+            source = (JS / name).read_text(encoding='utf-8')
+            assert "from './lab_costs.js'" in source and 'costCells(' in source, name
+            assert "_('measured')" not in source and "_('{n} MiB')" not in source, name
 
 
 WATCH_CLIENTS_RUNNER = """\

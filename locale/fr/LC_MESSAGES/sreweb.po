@@ -775,6 +775,9 @@ msgstr "Les cœurs pour lesquels comptent les projets de la machine / ceux qu'il
 msgid "Lab costs"
 msgstr "Coût des TP"
 
+msgid "Show or hide, beside each lab, what one of its projects is counted for on a host"
+msgstr "Afficher ou masquer, à côté de chaque TP, ce pour quoi compte un de ses projets sur une machine"
+
 msgid "Weight"
 msgstr "Poids"
 

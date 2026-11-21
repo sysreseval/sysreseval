@@ -208,6 +208,47 @@ input:invalid { border-color: var(--danger); }
 .lab-tree button.lab:hover { background: #eef3fa; }
 .lab-tree button.lab[aria-selected="true"] { background: #d6e4f7; border-color: #90a4ae; }
 .lab-tree button.lab small, .lab-tree summary small { color: var(--muted); }
+/* the lab costs an instructor shows beside the labs (the Lab costs button of the Open page): six
+   columns of a fixed width at the right of each lab, the same for the row of their titles, which
+   stays at the top of the tree while it scrolls.  The lists are indented on the left only, so
+   the columns line up at every depth; the name of a lab takes the room left and is cut */
+.lab-costs-note { margin: 0 0 6px; }
+.lab-tree .lab-costs {
+  display: grid;
+  grid-template-columns: 4.5em 6.5em 6em 4.5em 6.5em 7em;
+  flex: none;
+  column-gap: 8px;
+  align-items: end;
+}
+.lab-tree .lab-costs .num { text-align: right; }
+.lab-tree .lab-costs .source { padding-left: 8px; }
+/* a sticky box stops at the padding of the box that scrolls: the row is drawn over that padding
+   (the margins) and sticks that much higher, so that no lab shows above it */
+.lab-tree .lab-costs-head {
+  position: sticky;
+  top: -6px;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px -6px 0;
+  padding: 6px 6px 2px;
+  background: var(--pane-bg);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+/* the titles smaller, on the cells: the grid keeps the font size of the rows, hence their widths */
+.lab-tree .lab-costs-head .lab-costs > span { font-size: 0.9em; }
+/* centred, not on the baseline: a grid whose first cell is empty (a lab without weight) has none */
+.lab-tree.with-costs li.leaf { display: flex; align-items: center; }
+.lab-tree.with-costs li.leaf > button.lab {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lab-tree.with-costs li.leaf > .lab-costs { white-space: nowrap; }
 /* the README of the directory being browsed, under the lab tree (markdown: .content): as high as
    its text up to a part of the window, then it scrolls; the tree keeps the rest */
 .lab-readme {

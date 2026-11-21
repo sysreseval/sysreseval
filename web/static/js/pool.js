@@ -31,6 +31,7 @@ import * as api from './api.js';
 import * as i18n from './i18n.js';
 import {_, format} from './i18n.js';
 import {el, clear, toast} from './ui.js';
+import {costCells, costNote, NOTE_SEPARATOR} from './lab_costs.js';
 
 const REFRESH_INTERVAL = 5000;
 const ERROR_WIDTH = 60;        // the Last error cell (the whole text in its tooltip), as the tool
@@ -662,30 +663,12 @@ function renderRow(row) {
     el('td', {class: 'actions'}, ...actions(row)));
 }
 
-// where the cost of a lab comes from, translated (the map is built here, as stateLabel)
-function sourceLabel(raw) {
-  const labels = {measured: _('measured'), declared: _('declared'), 'default': _('default')};
-  return Object.hasOwn(labels, raw) ? labels[raw] : String(raw || '');
-}
-
-function costPair(value) {   // "16 MiB, 0.005 core"
-  return value && isNumber(value.mem_mb) && isNumber(value.cpu)
-    ? format(_('{memory} MiB, {cpu} core'), {memory: value.mem_mb, cpu: value.cpu}) : '?';
-}
-
 // the Lab costs box: one row per lab the pool heard of, and above the table what a lab never
-// seen costs and what one unit of weight stands for
+// seen costs and what one unit of weight stands for (the texts: lab_costs.js, shared with the
+// columns of the Open page)
 function renderCosts(costs) {
   clear(costsBody);
-  const pieces = [format(_('a lab never seen, without weight: {cost}'), {cost: costPair(costs.default)}),
-                  format(_('one unit of weight: {cost}'), {cost: costPair(costs.weight_unit)})];
-  if (costs.measured_unit) {
-    pieces.push(format(_('measured on this pool: {cost}'), {cost: costPair(costs.measured_unit)}));
-  }
-  if (typeof costs.error === 'string' && costs.error !== '') {
-    pieces.push(format(_('the costs are NOT saved: {error}'), {error: costs.error}));
-  }
-  costsNote.textContent = pieces.join(' — ');
+  costsNote.textContent = costNote(costs).join(NOTE_SEPARATOR);
   const labs = Array.isArray(costs.labs) ? costs.labs : [];
   if (!labs.length) {
     costsBody.append(el('tr', {}, el('td', {colspan: 7, class: 'muted'}, _('No lab measured or declared yet.'))));
@@ -693,14 +676,12 @@ function renderCosts(costs) {
   }
   for (const lab of labs) {
     const title = i18n.resolveText(lab.title) || '';
+    const cells = costCells(lab);
+    const source = cells.pop();
     costsBody.append(el('tr', {dataset: {lab: lab.lab}},
       el('td', {title}, lab.lab || ''),
-      el('td', {class: 'num'}, isNumber(lab.weight) ? String(lab.weight) : ''),
-      el('td', {class: 'num'}, isNumber(lab.containers) ? String(lab.containers) : ''),
-      el('td', {class: 'num'}, isNumber(lab.mem_mb) ? format(_('{n} MiB'), {n: Math.round(lab.mem_mb)}) : ''),
-      el('td', {class: 'num'}, isNumber(lab.cpu) ? lab.cpu.toFixed(3) : ''),
-      el('td', {class: 'num'}, isNumber(lab.samples) ? String(lab.samples) : ''),
-      el('td', {class: `source ${lab.source || ''}`}, sourceLabel(lab.source))));
+      ...cells.map((text) => el('td', {class: 'num'}, text)),
+      el('td', {class: `source ${lab.source || ''}`}, source)));
   }
 }
 

@@ -5,6 +5,9 @@
 // mode) and the Host select (a host reserved for them, or the automatic placement).
 // Under the tree, the README of the directory being browsed (README.md / README.<lang>.md of
 // the lab directory, rendered by the agent: tree.js), hidden when that directory has none.
+// The Lab costs button of the instructors (not pressed at first, and never remembered) shows
+// beside each lab what one of its projects is counted for on a host: the columns of the Lab
+// costs box of the Pool page (GET /api/pool/costs, asked while they are shown; lab_costs.js).
 
 import './base.js';
 import * as api from './api.js';
@@ -13,17 +16,25 @@ import {_} from './i18n.js';
 import {el, clear} from './ui.js';
 import {buildTree} from './tree.js';
 import {ProgressBox, runCreation, projectUrl, flavorDialog} from './creation.js';
+import {costCells, costNote, costRowOf, NOTE_SEPARATOR} from './lab_costs.js';
 
 const treeElement = document.getElementById('labs');
 const readmeElement = document.getElementById('lab-readme');
 const selectedElement = document.getElementById('selected-lab');
 const startButton = document.getElementById('start-button');
 const progress = new ProgressBox(document.getElementById('progress'));
+// the lab costs: the three elements of an instructor's page (a student's has none)
+const costsToggle = document.getElementById('costs-toggle');
+const costsNoteElement = document.getElementById('lab-costs-note');
+const costsHead = document.getElementById('lab-costs-head');   // a <template>: the titles of the columns
 
 let selectedLab = null;
 let starting = false;
 let flavor = null;   // {lab, dialog} of the Flavor form being filled (creation.js flavorDialog)
 let labsRequest = 0; // the number of the last request of the lab list: an older answer is dropped
+// the costs beside the labs: shown or not, and the number of the last request of the costs (an
+// older answer is dropped)
+const costs = {shown: false, request: 0};
 
 // The project mode an instructor chose: 'standard', 'instructor' or 'debug' (the students have no
 // radios: 'standard').
@@ -142,6 +153,80 @@ async function fillHosts() {
   }
 }
 
+// Take the costs off the tree: the row of the titles and the cells of every lab.
+function clearCosts() {
+  for (const old of treeElement.querySelectorAll('.lab-costs-head, li.leaf > .lab-costs')) {
+    old.remove();
+  }
+}
+
+// Draw the answer of GET /api/pool/costs on the tree: the titles of the columns at its top (they
+// stay there while it scrolls) and, after the button of each lab, the six cells of the Lab costs
+// box of the Pool page.  A lab the pool knows nothing of has the default cost (costRowOf).
+function drawCosts(data) {
+  clearCosts();
+  const leaves = treeElement.querySelectorAll('li.leaf');
+  if (!leaves.length) {
+    return;   // no tree: a message
+  }
+  treeElement.prepend(costsHead.content.firstElementChild.cloneNode(true));   // the row alone, not the blanks around it
+  for (const leaf of leaves) {
+    const button = leaf.querySelector('button.lab');
+    const row = costRowOf(data, button ? button.dataset.lab : '');
+    const cells = costCells(row);
+    const source = cells.pop();
+    leaf.append(el('span', {class: 'lab-costs'},
+                   ...cells.map((text) => el('span', {class: 'num'}, text)),
+                   el('span', {class: `source ${row.source || ''}`}, source)));
+  }
+}
+
+// Ask the costs and draw them, while they are shown: when the button is pressed, and after
+// every build of the tree (which drops the cells; and the lab list it was built from has just
+// told the pool the weights of its labs).  Never drawn from an older answer.
+async function refreshCosts() {
+  if (!costs.shown) {
+    return;
+  }
+  const request = ++costs.request;
+  let data = null;
+  let error = '';
+  try {
+    data = await api.get('/api/pool/costs');
+  } catch (e) {
+    error = e.message;
+  }
+  if (request !== costs.request || !costs.shown) {
+    return;   // a newer request is on its way, or the costs were hidden meanwhile
+  }
+  costsNoteElement.className = error ? 'lab-costs-note error' : 'lab-costs-note muted';
+  costsNoteElement.textContent = error || costNote(data).join(NOTE_SEPARATOR);
+  if (error) {
+    clearCosts();
+  } else {
+    drawCosts(data);
+  }
+}
+
+// The Lab costs button of the instructors; a student's page has none, and never asks the costs.
+function setupCosts() {
+  if (!costsToggle || !costsNoteElement || !costsHead) {
+    return;
+  }
+  costsToggle.addEventListener('click', () => {
+    costs.shown = !costs.shown;
+    costsToggle.setAttribute('aria-pressed', String(costs.shown));
+    treeElement.classList.toggle('with-costs', costs.shown);
+    costsNoteElement.hidden = !costs.shown;
+    if (costs.shown) {
+      costsNoteElement.textContent = '';
+      refreshCosts();
+    } else {
+      clearCosts();
+    }
+  });
+}
+
 // The lab tree: the student catalog, or every lab of the host (the exam-only and draft ones too)
 // in debug mode; the lab selected stays selected when the new list holds it.
 async function loadLabs() {
@@ -186,11 +271,13 @@ async function loadLabs() {
       start(name);
     },
   });
+  refreshCosts();   // the new tree has no cell
 }
 
 async function main() {
   await i18n.init();
   fillHosts();
+  setupCosts();
   startButton.addEventListener('click', () => {
     if (selectedLab) {
       start(selectedLab);

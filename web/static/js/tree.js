@@ -99,6 +99,8 @@ function orderNodes(node, lang) {
 // labs: [{name, title, kind, sort, readme_html?}]; onSelect(name) on a click, onOpen(name) on a
 // double click; selected: the name of the lab drawn selected from the start (the selection kept
 // across a rebuild of the tree), its directories opened, when the list holds it.
+// A lab is `li.leaf > button.lab[data-lab=<its name>]`: what the Open page hangs the costs of
+// the lab on (open.js).
 // onDirectory(node) (optional) follows the directory being browsed, node being its node of
 // labTree (node.readme: the html of its README, '' without one): the root when the tree is
 // built (the directory of the lab drawn selected when there is one), a directory when it is
@@ -123,8 +125,8 @@ export function buildTree(container, labs, {onSelect, onOpen, selected: initial 
       list.append(el('li', {class: 'dir'}, details));
     }
     for (const leaf of node.leaves) {
-      const button = el('button', {type: 'button', class: 'lab', title: leaf.name}, leaf.label,
-                        leaf.titled ? el('small', {}, ' ' + leaf.segment.replace(/\.py$/, '')) : null);
+      const button = el('button', {type: 'button', class: 'lab', title: leaf.name, dataset: {lab: leaf.name}},
+                        leaf.label, leaf.titled ? el('small', {}, ' ' + leaf.segment.replace(/\.py$/, '')) : null);
       if (initial !== null && leaf.name === initial) {
         selected = button;
         browsed = node;
