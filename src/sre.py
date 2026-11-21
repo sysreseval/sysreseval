@@ -36,6 +36,7 @@ from SRE.command.list import action_list
 from SRE.command.make_titles import action_make_titles
 from SRE.command.start import action_start
 from SRE.command.wipe import action_wipe
+from SRE.command.wipe_local import action_wipe_local
 from SRE.command.status import action_status
 from SRE.command.drain import action_set_drain, action_remove_drain
 from SRE.command.stop import action_stop
@@ -183,6 +184,8 @@ def parse_args():
     parser_exec.add_argument('command', nargs=argparse.REMAINDER, help=_('command to execute'))
 
     subparsers.add_parser('wipe', help=_('Remove all files and stop kathara (privileged only)'))
+    subparsers.add_parser('wipe-local', help=_('Stop every local project, the web projects are left running '
+                                               '(privileged only)'))
 
     parser_status = subparsers.add_parser('status', help=_('Show the version, the state of sre-agent and the '
                                                            'running projects (privileged only)'))
@@ -482,7 +485,8 @@ if uid == 0:
 if SRE.args.action == 'update' or (
         params.allow_privileged_machines and SRE.args.action in ('start', 'start-exam', 'pre-start-exam', 'connect', 'exec',
                                                                  'eval', 'eval-all',
-                                                                 'eval-exam', 'state', 'stop', 'stop-all', 'wipe', 'del-exam',
+                                                                 'eval-exam', 'state', 'stop', 'stop-all', 'wipe',
+                                                                 'wipe-local', 'del-exam',
                                                                  'save', 'restore',
                                                                  'set-instructor-mode', 'remove-instructor-mode')):
     drop_privileges_temporarily()
@@ -495,6 +499,8 @@ logger.setLevel(logging.ERROR)
 match SRE.args.action:
     case 'wipe':
         action_wipe()
+    case 'wipe-local':
+        action_wipe_local()
     case 'status':
         action_status(as_json=SRE.args.json)
     case 'set-drain':

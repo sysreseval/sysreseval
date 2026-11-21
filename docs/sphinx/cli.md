@@ -68,7 +68,22 @@ Restores a save file as a **new** running project (fresh timestamp, current user
 
 ### `sre wipe`
 
-Stops every running Kathara lab and removes everything under `/var/lib/sre/projects/` and the user public directories. Privileged only: the user-mode form is `sre stop-all`.
+Stops every running Kathara lab and removes everything under `/var/lib/sre/projects/` and the user public directories. Privileged only: the user-mode form is `sre stop-all`. On a pool host of the web site it also stops the projects of the web users placed there: `sre wipe-local` leaves those running.
+
+### `sre wipe-local`
+
+Closes every **local** project of the machine and leaves the **web** ones running. A local project was started on the machine itself (the GUI of the user logged in, or `sre start` run by root); a web project was started by the web agent for a user of the [web front-end](web.md) placed on this host. The origin is the one [`sre status`](#sre-status) shows. Privileged only.
+
+```
+# sre wipe-local
+local projects closed: 2
+```
+
+It is the command for a pool workstation where `sre wipe` and `sre stop-all` run by root would close what the web users do there: the script of a session-end button runs it before `sre set-drain`, without having to act as the student who leaves.
+
+Each local project is stopped as `sre stop-all` does, and like it nothing else is touched: no Kathara wipe, the stray entries of the projects directory stay, and a project without `info.json` (a start in progress or failed) is left alone. `local projects closed: none` when there was none. When the directories of a project cannot be removed they are listed (`cannot remove: …`) and the exit status is 1; the other projects are closed all the same.
+
+A project **without an origin file** (started by a version older than the file, the `?` of `sre status`) cannot be told from a web project: it is left running, and named in a warning on stderr (`warning: <project>: unknown origin (no origin file), left running`). Close it by name with `sre stop`.
 
 ### `sre connect [--shell <shell>] [--exec <argument…>] [--no-records] <running_lab> <device>`
 

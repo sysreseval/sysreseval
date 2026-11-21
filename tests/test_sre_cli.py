@@ -124,6 +124,13 @@ class TestParsing:
         assert result.code == 2 and result.events == []
         assert 'unrecognized arguments' in capsys.readouterr().err
 
+    def test_wipe_local_takes_no_argument(self, sre_cli, capsys):
+        result = sre_cli(['wipe-local'])
+        assert result.code == 0 and result.events == ['temporary drop', 'action_wipe_local']
+        result = sre_cli(['wipe-local', 'PROJECT'])
+        assert result.code == 2 and result.events == []
+        assert 'unrecognized arguments' in capsys.readouterr().err
+
     def test_status_takes_no_argument(self, sre_cli, capsys):
         """Read-only: root is dropped for good (the origin files are the sre user's)."""
         result = sre_cli(['status'])
@@ -329,13 +336,18 @@ class TestPrivilegeList:
     @pytest.mark.parametrize('argv', [[SET, 'PROJECT'], [REMOVE, 'PROJECT'],
                                       ['start', '--instructor-mode', 'mylab'],
                                       ['restore', '--instructor-mode', '-'],
-                                      ['eval', 'PROJECT'], ['state', 'PROJECT', 'final'], ['stop-all']])
+                                      ['eval', 'PROJECT'], ['state', 'PROJECT', 'final'], ['stop-all'],
+                                      ['wipe-local']])
     def test_temporary_drop(self, sre_cli, argv):
         assert sre_cli(argv).events[0] == 'temporary drop'
 
     def test_stop_all_drops_for_good_without_privileged_machines(self, sre_cli, monkeypatch):
         monkeypatch.setattr(params, 'allow_privileged_machines', False)
         assert sre_cli(['stop-all']).events == ['permanent drop', 'action_stop_all']
+
+    def test_wipe_local_drops_for_good_without_privileged_machines(self, sre_cli, monkeypatch):
+        monkeypatch.setattr(params, 'allow_privileged_machines', False)
+        assert sre_cli(['wipe-local']).events == ['permanent drop', 'action_wipe_local']
 
     @pytest.mark.parametrize('argv', [['list'], ['export', 'PROJECT'], ['status'], ['set-drain'], ['remove-drain']])
     def test_other_actions_drop_for_good(self, sre_cli, argv):
@@ -362,12 +374,12 @@ class TestPrivilegeList:
 
 
 class TestRefusals:
-    @pytest.mark.parametrize('command', [SET, REMOVE, UPDATE])
+    @pytest.mark.parametrize('command', [SET, REMOVE, UPDATE, 'wipe-local'])
     def test_admin_users_are_refused(self, sre_cli, capsys, monkeypatch, command):
         """Admins only run the read-only archive tools (access.ADMIN_ACTIONS)."""
         monkeypatch.setattr(params, 'admin_uids', [4242])
         assert sre_cli(['cat', 'x.zst'], uid=4242).events == ['permanent drop', 'action_cat']
-        result = sre_cli([command] + ([] if command == UPDATE else ['PROJECT']), uid=4242)
+        result = sre_cli([command] + ([] if command in (UPDATE, 'wipe-local') else ['PROJECT']), uid=4242)
         assert result.code == 1 and result.events == []
         assert 'illegal userid' in capsys.readouterr().err
 
@@ -387,6 +399,7 @@ class TestRefusals:
          '--instructor-mode is not available in user mode'),
         ([UPDATE], 'action_update', "you're not allowed to run this command"),
         (['wipe'], 'action_wipe', "you're not allowed to run this command"),
+        (['wipe-local'], 'action_wipe_local', "you're not allowed to run this command"),
     ])
     def test_user_mode_is_refused_by_the_action(self, sre_cli, capsys, monkeypatch, tmp_pub_dir,
                                                 argv, action, message):

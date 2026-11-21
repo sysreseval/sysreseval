@@ -100,7 +100,7 @@ The agent enforces what the `sre` CLI does not check: the exact running lab name
 resolves substrings) and its owner (a user only reaches their own projects, an instructor every
 project; the CLI's own check, `params.check_project_owner`, lets a `--user` caller reach their
 own projects and root's only, which is why an instructor is served by privileged calls; the
-`wipe`, `stop-all` and `exec` have no endpoint: an exam of the web site is a `POST /v1/projects`
+`wipe`, `wipe-local`, `stop-all` and `exec` have no endpoint: an exam of the web site is a `POST /v1/projects`
 with an `exam` object, adjusted with `PUT` / `DELETE …/exam`, and, on the machines it is taken
 at with the Qt GUI, the exam file of the host, `PUT` / `DELETE /v1/exam`),
 `allow_connection` of the
@@ -1421,9 +1421,9 @@ Logging the user out is left to the site. The script of a session-end button can
 site's own steps around it:
 
 ```sh
-# as the student, first: their projects of the Qt GUI would keep the host "occupied"
-sre-wrapper stop-all
-# as root
+# as root; first the local projects (those of the Qt GUI), which would keep the host "occupied":
+# the web projects of the other users stay
+/opt/sre/sbin/sre wipe-local
 if /opt/sre/sbin/sre set-drain; then
     loginctl terminate-user "$student"      # the portal powers the host off once it is empty
 else

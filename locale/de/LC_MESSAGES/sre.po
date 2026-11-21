@@ -31,6 +31,9 @@ msgstr "Laborverzeichnis"
 msgid "Remove all files and stop kathara (privileged only)"
 msgstr "Alle Dateien entfernen und Kathara stoppen (nur privilegierte Benutzer)"
 
+msgid "Stop every local project, the web projects are left running (privileged only)"
+msgstr "Alle lokalen Projekte stoppen, die Web-Projekte laufen weiter (nur privilegierte Benutzer)"
+
 msgid "Show the version, the state of sre-agent and the running projects (privileged only)"
 msgstr "Version, Zustand von sre-agent und laufende Projekte anzeigen (nur privilegierte Benutzer)"
 

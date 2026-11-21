@@ -28,7 +28,7 @@ _sre() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="start stop stop-all save restore wipe status set-drain \
+    local commands="start stop stop-all save restore wipe wipe-local status set-drain \
 remove-drain connect eval state exec \
 set-instructor-mode remove-instructor-mode eval-all check \
 watch preload-images make-titles update set-exam del-exam save-records cat \
@@ -331,7 +331,7 @@ pre-start-exam start-exam"
                 COMPREPLY=($(_sre_running_labs "$cur"))
             fi
             ;;
-        wipe|stop-all|set-drain|remove-drain|del-exam|eval-exam|end-exam|pre-start-exam|start-exam)
+        wipe|wipe-local|stop-all|set-drain|remove-drain|del-exam|eval-exam|end-exam|pre-start-exam|start-exam)
             COMPREPLY=($(compgen -W "--help" -- "$cur"))
             ;;
     esac

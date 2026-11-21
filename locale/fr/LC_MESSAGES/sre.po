@@ -32,6 +32,9 @@ msgstr "répertoire du lab"
 msgid "Remove all files and stop kathara (privileged only)"
 msgstr "Supprimer tous les fichiers et arrêter kathara (privilégiés uniquement)"
 
+msgid "Stop every local project, the web projects are left running (privileged only)"
+msgstr "Arrêter tous les projets locaux, les projets web continuent de tourner (privilégiés uniquement)"
+
 msgid "Show the version, the state of sre-agent and the running projects (privileged only)"
 msgstr "Afficher la version, l'état de sre-agent et les projets en cours (privilégiés uniquement)"
 
