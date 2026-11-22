@@ -321,10 +321,15 @@ default_docker_image_version = "1.34"
 # default_docker_image_version.  Both lines are written by `make images` from images/Makefile
 # (VERSION and its VERSION_<image> lines): keep this one on a single line.
 docker_image_versions = {}
+# The last version of the images renamed since: base → base12 and init → init12 (2026-11-18), frr →
+# routing-frr.  They are never built again but stay on Docker Hub under that version, so a lab that
+# still names them (sre_docker_image("base")) keeps running.  Not written by `make images`.
+legacy_docker_image_versions = {"base": "1.33", "init": "1.33", "frr": "1.33"}
 sre_docker_namespace = "sysreseval"
 
 def sre_docker_image(image_name: str = "base13") -> str:
-    version = docker_image_versions.get(image_name, default_docker_image_version)
+    version = docker_image_versions.get(
+        image_name, legacy_docker_image_versions.get(image_name, default_docker_image_version))
     return f"{sre_docker_namespace}/{image_name}:{version}"
 
 def docker_image_short_name(image: str) -> str:
@@ -341,7 +346,7 @@ update_state_file_name = ".sre-update.json"
 update_lock_file_name = ".sre-update.lock"
 update_tmp_prefix = ".sre-update-"
 update_params_follow_new = ("sre_version", "default_docker_image_version",
-                            "docker_image_versions")  # always take the new value
+                            "docker_image_versions", "legacy_docker_image_versions")  # always take the new value
 update_params_backup_suffix = ".bak."   # params.py.bak.<YYYYmmdd-HHMMSS>, like scripts/install.sh
 update_system_templates_dir = "scripts/etc"   # files installed by hand on every host (sudoers, .desktop...)
 # keys of the state file

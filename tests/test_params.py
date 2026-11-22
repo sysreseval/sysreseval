@@ -205,6 +205,25 @@ class TestDockerImages:
         assert params.sre_docker_image('init13') == f'{params.sre_docker_namespace}/init13:1.34'
         assert params.sre_docker_image() == f'{params.sre_docker_namespace}/base13:1.34'
 
+    def test_legacy_version(self, monkeypatch):
+        """The images renamed since (base, init, frr) keep their last published tag."""
+        monkeypatch.setattr(params, 'default_docker_image_version', '1.35')
+        monkeypatch.setattr(params, 'docker_image_versions', {})
+        ns = params.sre_docker_namespace
+        for legacy in ('base', 'init', 'frr'):
+            assert params.sre_docker_image(legacy) == f'{ns}/{legacy}:1.33'
+        assert params.sre_docker_image('base12') == f'{ns}/base12:1.35'
+        assert params.sre_docker_image('routing-frr') == f'{ns}/routing-frr:1.35'
+        assert params.sre_docker_image() == f'{ns}/base13:1.35'
+
+    def test_legacy_names_are_not_images_of_the_tree(self):
+        """A legacy name reused by a new image of images/ would be pinned to the old tag."""
+        if not IMAGES_DIR.is_dir():
+            pytest.skip(f"no {IMAGES_DIR} in this tree")
+        for name in params.legacy_docker_image_versions:
+            assert not (IMAGES_DIR / name).exists(), name
+            assert name not in params.docker_image_versions, name
+
     @pytest.mark.parametrize('image, short', [
         ('sysreseval/routing-frr:1.34', 'routing-frr'),
         ('routing-frr', 'routing-frr'),
