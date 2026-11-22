@@ -513,8 +513,8 @@ class TestTemplates:
         html = render('pool.html', instructor=True)
         assert 'id="pool"' in html and 'id="pool-filter"' in html and 'id="pool-count"' in html
         assert 'id="pool-status"' in html and '/static/js/pool.js' in html and 'href="/pool"' in html
-        for key in ('name', 'state', 'projects', 'terminals', 'load1', 'mem_available_mb', 'cpu_used', 'occupied_by',
-                    'uptime', 'priority', 'sre_version'):
+        for key in ('name', 'state', 'projects', 'terminals', 'load1', 'mem_available_mb', 'cpu_used', 'capacity',
+                    'total_usable_capacity', 'occupied_by', 'uptime', 'priority', 'sre_version'):
             assert f'data-sort="{key}"' in html, key
         # the Free memory column, after the load, then the CPU one (the cores counted / usable)
         assert (html.index('data-sort="load1"') < html.index('data-sort="mem_available_mb"')
@@ -522,19 +522,26 @@ class TestTemplates:
         assert 'data-login="alice"' in html and 'class="grid watch pool striped"' in html
         # the selection: the header checkbox, the bar of bulk buttons, one more column
         assert 'id="pool-select-all"' in html and 'id="pool-selection"' in html and 'id="pool-selected"' in html
-        for action in ('enable', 'disable', 'wake', 'drain', 'poweroff', 'preload', 'priority',
+        for action in ('enable', 'disable', 'wake', 'drain', 'poweroff', 'preload', 'priority', 'usable-capacity',
                        'allow-local-drain', 'forbid-local-drain'):
             assert f'data-action="{action}"' in html, action
         # the Priority column (group:order, the lowest is used first), before the flags
         assert html.index('data-sort="uptime"') < html.index('data-sort="priority"') < html.index('data-sort="sre_version"')
         assert 'title="group:order: the lowest group is used first, then the lowest order"' in html
-        assert 'colspan="15"' in html and len(re.findall(r'<th[ >]', html)) == 15
+        assert 'colspan="17"' in html and len(re.findall(r'<th[ >]', html)) == 17
         assert 'Host name: one or several words' in html
         # the costs of the labs are no longer listed here: the Costs table… button of the Open page
         assert 'pool-costs' not in html and 'Lab costs' not in html and html.count('<table') == 1
         assert 'lab_costs' not in (JS / 'pool.js').read_text(encoding='utf-8')
-        # the share of a host its projects may fill: a flag of its row, no column
-        assert "_('capacity {percent}%')" in (JS / 'pool.js').read_text(encoding='utf-8')
+        # the capacity of the whole host, then the share of it its projects may fill (its value opens a
+        # dialog, Usable capacity… of the bar sets the selected hosts): two columns after the CPU one,
+        # and no flag; Reset to initial settings puts the priorities and the shares back
+        assert (html.index('data-sort="cpu_used"') < html.index('data-sort="capacity"')
+                < html.index('data-sort="total_usable_capacity"') < html.index('data-sort="occupied_by"'))
+        assert '>Capacity</th>' in html and '>Usable capacity</th>' in html
+        assert '<button type="button" id="pool-reset" disabled>Reset to initial settings</button>' in html
+        pool_js = (JS / 'pool.js').read_text(encoding='utf-8')
+        assert 'capacity {percent}%' not in pool_js and "'/api/pool/reset-settings'" in pool_js
 
     def test_project_page(self):
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True)

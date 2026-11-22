@@ -781,8 +781,65 @@ msgstr "Speicher voll"
 msgid "cpu full"
 msgstr "Prozessoren voll"
 
-msgid "capacity {percent}%"
-msgstr "Kapazität {percent} %"
+msgid "Reset to initial settings"
+msgstr "Auf Anfangseinstellungen zurücksetzen"
+
+msgid "Usable capacity…"
+msgstr "Nutzbare Kapazität…"
+
+msgid "Capacity"
+msgstr "Kapazität"
+
+msgid "What the whole host holds for projects: its memory less the reserve, its processors by the share projects may use"
+msgstr "Was der ganze Rechner für Projekte bietet: sein Arbeitsspeicher abzüglich der Reserve, seine Prozessoren mal dem Anteil, den Projekte nutzen dürfen"
+
+msgid "Usable capacity"
+msgstr "Nutzbare Kapazität"
+
+msgid "The share of the capacity of the host its projects may fill"
+msgstr "Der Anteil der Kapazität des Rechners, den seine Projekte belegen dürfen"
+
+msgid "{memory} GiB · {cores} cores"
+msgstr "{memory} GiB · {cores} Kerne"
+
+msgid "{percent} %"
+msgstr "{percent} %"
+
+msgid "{percent} % usable: {figures}"
+msgstr "{percent} % nutzbar: {figures}"
+
+msgid "priority {from} → {to}"
+msgstr "Priorität {from} → {to}"
+
+msgid "usable capacity {from} → {to}"
+msgstr "nutzbare Kapazität {from} → {to}"
+
+msgid "Share (%)"
+msgstr "Anteil (%)"
+
+msgid "The share of the capacity of the host (its memory less the reserve, its processors) its projects may fill, from 1 to 100: at 50 the host counts as a machine half its size, and what is in use there counts against it. 100 by default: the whole host. It counts when the pool places the projects by the load of the hosts."
+msgstr "Der Anteil der Kapazität des Rechners (sein Arbeitsspeicher abzüglich der Reserve, seine Prozessoren), den seine Projekte belegen dürfen, von 1 bis 100: bei 50 zählt der Rechner wie ein halb so großer Rechner, und was dort belegt ist, wird auf diesen Anteil angerechnet. Standard ist 100: der ganze Rechner. Er zählt, wenn der Pool die Projekte nach der Last der Rechner verteilt."
+
+msgid "Usable capacity of {name}"
+msgstr "Nutzbare Kapazität von {name}"
+
+msgid "Usable capacity of the {n} selected host(s)"
+msgstr "Nutzbare Kapazität der {n} ausgewählten Rechner"
+
+msgid "Change the share of the capacity of the host its projects may fill"
+msgstr "Den Anteil der Kapazität des Rechners ändern, den seine Projekte belegen dürfen"
+
+msgid "set by hand, the configuration says {value}"
+msgstr "von Hand gesetzt, die Konfiguration sagt {value}"
+
+msgid "The priority and the usable capacity of {n} host(s) go back to the values of the configuration:"
+msgstr "Die Priorität und die nutzbare Kapazität von {n} Rechner(n) werden auf die Werte der Konfiguration zurückgesetzt:"
+
+msgid "The priority or the usable capacity of {n} host(s) was changed: back to the values of the configuration"
+msgstr "Die Priorität oder die nutzbare Kapazität von {n} Rechner(n) wurde geändert: zurück zu den Werten der Konfiguration"
+
+msgid "Every host has the priority and the usable capacity of the configuration"
+msgstr "Alle Rechner haben die Priorität und die nutzbare Kapazität der Konfiguration"
 
 msgid "CPU"
 msgstr "CPU"

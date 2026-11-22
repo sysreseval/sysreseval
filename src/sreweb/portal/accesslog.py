@@ -62,6 +62,7 @@ EVENTS = {
     ('POST', '/api/pool/hosts'): 'admin',
     ('DELETE', '/api/pool/hosts/{name}'): 'admin',
     ('POST', '/api/pool/hosts/{name}/{action}'): 'admin',
+    ('POST', '/api/pool/reset-settings'): 'admin',
     # presentations: the start, the audience changes and the end by the presenter, the page
     # opened by a spectator (the project calls of a spectator keep their own events, with
     # ``spectator=1`` on the close lines of their sockets)

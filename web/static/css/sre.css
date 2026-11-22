@@ -478,15 +478,22 @@ table.grid.pool td.state.disabled { background-color: var(--bar-bg); color: var(
 .pool-status { margin: 0 8px 8px; }
 
 .pool-status.unsaved { color: var(--danger); font-weight: bold; }   /* the state file cannot be written */
-/* the Priority cell: its value (group:order) is a button, drawn as the clickable cells of the
-   other tables, opening the dialog that changes it: two number fields, one under the other */
-table.grid.pool td.priority button { border: none; background: none; padding: 0 2px; color: inherit; font: inherit;
-                                     text-decoration: underline dotted; cursor: pointer; }
-table.grid.pool td.priority button:disabled { color: var(--muted); cursor: default; }
-dialog.pool-priority { width: 440px; }
-dialog.pool-priority h2 { margin: 0 0 6px; font-size: 1.2em; }
-dialog.pool-priority label { display: grid; grid-template-columns: 110px 90px; align-items: center; margin: 8px 0; }
-dialog.pool-priority input[type="number"] { width: 90px; }
+/* the Priority cell and the Usable capacity one: the value (group:order, a percentage) is a
+   button, drawn as the clickable cells of the other tables, opening the dialog that changes it:
+   number fields, one under the other.  A value that is not the one of the configuration (set
+   here, or with sre-web-tool) is in bold: Reset to initial settings puts it back */
+table.grid.pool td.priority button, table.grid.pool td.usable button {
+  border: none; background: none; padding: 0 2px; color: inherit; font: inherit;
+  text-decoration: underline dotted; cursor: pointer; }
+table.grid.pool td.priority button:disabled, table.grid.pool td.usable button:disabled { color: var(--muted); cursor: default; }
+table.grid.pool td.priority button.by-hand, table.grid.pool td.usable button.by-hand { font-weight: bold; }
+dialog.pool-priority, dialog.pool-usable { width: 440px; }
+dialog.pool-priority h2, dialog.pool-usable h2, dialog.pool-reset h2 { margin: 0 0 6px; font-size: 1.2em; }
+dialog.pool-priority label, dialog.pool-usable label { display: grid; grid-template-columns: 110px 90px; align-items: center; margin: 8px 0; }
+dialog.pool-priority input[type="number"], dialog.pool-usable input[type="number"] { width: 90px; }
+/* the confirmation of Reset to initial settings: the hosts that change, a long list scrolls */
+dialog.pool-reset { width: 520px; }
+dialog.pool-reset ul { max-height: 50vh; overflow: auto; margin: 8px 0; padding-left: 20px; }
 /* the History page of the administrators: the connection log read from its database */
 table.grid.history td.ts, table.grid.history td.num { white-space: nowrap; }
 table.grid.history td.details { font-family: var(--mono); font-size: 11px; white-space: pre-wrap; word-break: break-word; }

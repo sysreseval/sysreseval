@@ -17,7 +17,8 @@ from sreweb.config import HostConfig, PoolConfig, check_priority  # noqa: E402
 from sreweb.identity import Identity, ROLE_INSTRUCTOR  # noqa: E402
 from sreweb.portal.manager import PoolManager, free_slots, spare_capacity, wake_plan  # noqa: E402
 from sreweb.portal import costs as C  # noqa: E402
-from sreweb.portal.costs import (Cost, CostBook, HostLoad, Usage, host_load, quantile, lab_key, figure,  # noqa: E402
+from sreweb.portal.costs import (Cost, CostBook, HostLoad, Usage, host_capacity, host_load, quantile,  # noqa: E402
+                                 lab_key, figure,
                                  SOURCE_MEASURED, SOURCE_DECLARED, SOURCE_DEFAULT, MIN_SAMPLES, MAX_SAMPLES)
 from sreweb.portal.pool import (Pool, HostStatus, PoolError, usage_fields, status_from_json, MAX_USAGE,  # noqa: E402
                                 PLACEMENT_NAMED, STATE_UP, STATE_OFF)
@@ -297,6 +298,18 @@ class TestHostLoad:
         load = self.load(reserve_mb=99999)
         assert load.mem_free_mb == 0 and load.mem_capacity_mb == 1.0 and load.fill == 1.0
 
+    def test_the_capacity_of_the_whole_host(self):
+        """What a whole host holds for projects: its memory less the reserve, its processors by
+        the share projects may use; nothing without its size."""
+        size = dict(cpus=8, mem_total_mb=16000, reserve_mb=1000, cpu_target=0.75)
+        assert host_capacity(**size) == Cost(15000.0, 6.0)
+        assert host_capacity(**{**size, 'reserve_mb': 99999}) == Cost(0.0, 6.0)
+        for over in ({'cpus': None}, {'cpus': 0}, {'mem_total_mb': None}, {'mem_total_mb': 0}):
+            assert host_capacity(**{**size, **over}) is None
+        # the load of the host is counted on it
+        load = self.load()
+        assert (load.mem_capacity_mb, load.cpu_capacity) == host_capacity(**size)
+
     def test_a_share_of_the_host(self):
         """``share`` (``[[hosts]] total_usable_capacity``): the host counts as a machine that
         share of its size, and what is in use there counts against it, whoever uses it."""
@@ -416,6 +429,10 @@ class TestPoolLearns:
         rows = {row['name']: row for row in pool.summary()}
         assert (rows['a']['cpu_used'], rows['a']['cpu_capacity'], rows['a']['fill']) == (1.0, 4.0, 0.267)
         assert (rows['b']['cpu_used'], rows['b']['cpu_capacity'], rows['b']['fill']) == (None, None, None)
+        # what the whole host holds: its memory less the reserve, its processors by cpu_target
+        assert (rows['a']['full_mem_capacity_mb'], rows['a']['full_cpu_capacity']) == (15000, 4.0)
+        assert (rows['b']['full_mem_capacity_mb'], rows['b']['full_cpu_capacity']) == (None, None)
+        assert pool.capacity_of('a') == Cost(15000.0, 4.0) and pool.capacity_of('b') is None
         # a start in flight counts for the cost of its lab until a status asked after its end
         host, reservation = pool.pick(lab='sre/dhcp.py')
         assert host.name == 'a' and reservation.cost == Cost(800.0, 0.5)
@@ -605,6 +622,10 @@ class TestResourcesPlacement:
         rows = {row['name']: row for row in pool.summary()}
         assert (rows['a']['total_usable_capacity'], rows['a']['cpu_capacity']) == (50, 2.0)
         assert (rows['b']['total_usable_capacity'], rows['b']['cpu_capacity']) == (100, 4.0)
+        # the capacity of the whole host does not move with its share; the configured share is told
+        for name in ('a', 'b'):
+            assert (rows[name]['full_mem_capacity_mb'], rows[name]['full_cpu_capacity']) == (15000, 4.0)
+            assert (rows[name]['total_usable_capacity_configured'], rows[name]['priority_configured']) == (100, '0:0')
         # its processors: two heavy projects are the two cores of half the host
         whole, half = resources(['a']), resources(['a'])
         half.set_total_usable_capacity('a', 50)

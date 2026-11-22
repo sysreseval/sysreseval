@@ -1354,8 +1354,9 @@ The priority is changed without a restart on the **Pool** page (the *Priority* c
 *Priority…* for the selected hosts) and with `sre-web-tool priority a03 1:0`; `list` shows
 `(priority 1:0)` after the state of a host whose priority is not `0:0`. A change made by hand is
 kept across the restarts of the portal and holds until the `priority` of the host in `web.toml`
-changes (*Restarting the portal* below). `ROOM_PRIORITIES` of `make-web-hosts.sh` writes the
-priorities of whole rooms into `hosts.toml`.
+changes (*Restarting the portal* below); *Reset to initial settings* of the Pool page and
+`sre-web-tool reset-settings` put every host back to the priority of the configuration at once.
+`ROOM_PRIORITIES` of `make-web-hosts.sh` writes the priorities of whole rooms into `hosts.toml`.
 
 The priority used to be one integer: `priority = 5` in a `[[hosts]]` entry, a state file,
 `ROOM_PRIORITIES` or `sre-web-tool priority a03 5` is still read, as `0:5` (that order in group
@@ -1512,6 +1513,7 @@ sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powe
 sre-web-tool allow-local-drain a03 | forbid-local-drain a03   # whether the host may ask for its own drain (sre set-drain there), until its next boot
 sre-web-tool priority a03 1:0     # group:order: a new project goes to the lowest group that has an available host, then to the lowest order among its hosts without project
 sre-web-tool usable-capacity a03 50   # the share of the memory and processors of the host its projects may fill, in percent (capacity = "resources")
+sre-web-tool reset-settings       # the priority and the usable capacity of every host back to the values of the configuration
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 sre-web-tool preload a03 | --all | --failed   # the hosts pull the Docker images of the labs, max_preloads of them at a time
 ```
@@ -1543,7 +1545,11 @@ the entry of a host that is no longer in the pool (one line of the journal each)
 set by hand follows the same rule: it holds for as long as the `priority` of that host in
 `web.toml` is the one it was set over, and is dropped once `web.toml` gives the host another
 priority (which is then used) or the same one; so does a usable capacity set by hand
-(`sre-web-tool usable-capacity`). The start logs
+(`sre-web-tool usable-capacity`, the Pool page). `sre-web-tool reset-settings` and *Reset to
+initial settings* of the Pool page drop both kinds of entries for every host at once: each host
+is back to the priority and the usable capacity of its `[[hosts]]` entry (of the entry it was
+added with, for a host added by hand); what else was changed by hand stays (a host enabled or
+disabled, a drain, the hosts added and removed). The start logs
 `pool state read from …: 0 removed, 0 added, 21 enabled and 1 disabled by hand, 0 draining, 12
 priorities set by hand, 0 usable capacities set by hand`.
 
@@ -1717,11 +1723,14 @@ with 4000 MiB in use, 3488 MiB free for new projects, where the whole host has 1
 else is as above: the same test for one more project, the same `fill` (a host at 50 is twice as
 full at the same load, so the others of its group are preferred), the same free slots for the
 elastic pool; a host without project always takes one, and `max_projects` stays a ceiling.
-`sre-web-tool list` and the Pool page show `capacity 50%` for a host that is not at 100, and
-their CPU column the cores of the share. The key counts for nothing with `capacity =
-"projects"`, where `max_projects` is what a host holds. It is changed without a restart with
-`sre-web-tool usable-capacity a03 50`: kept across the restarts of the portal, until the
-`total_usable_capacity` of the host in `web.toml` changes (*Restarting the portal* above);
+`sre-web-tool list` shows `(capacity 50%)` for a host that is not at 100, the Pool page has a
+*Capacity* column (the whole host) and a *Usable capacity* one (the share), and the CPU column
+of both tells the cores of the share. The key counts for nothing with `capacity =
+"projects"`, where `max_projects` is what a host holds. It is changed without a restart on the
+Pool page (the value of the *Usable capacity* column, or *Usable capacity…* for the selected
+hosts) and with `sre-web-tool usable-capacity a03 50`: kept across the restarts of the portal,
+until the `total_usable_capacity` of the host in `web.toml` changes (*Restarting the portal*
+above), or until *Reset to initial settings* of the page (`sre-web-tool reset-settings`);
 `ROOM_USABLE_CAPACITIES` of `make-web-hosts.sh` writes the shares of whole rooms into
 `hosts.toml`.
 
@@ -2034,7 +2043,11 @@ What an instructor gets:
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
   projects and terminals, its load, its free memory, the cores its projects are counted for
-  and those they may use (*CPU*; *The load of a host* above), who occupies it, its uptime, its priority
+  and those they may use (*CPU*; *The load of a host* above), what the whole host holds for
+  projects (*Capacity*: its memory less `memory_reserve_mb` and its processors by `cpu_target`,
+  as `14.6 GiB · 5.6 cores`, whatever its share) and the share of it its projects may fill
+  (*Usable capacity*: its `total_usable_capacity`, as `50 %`; the tooltip of the capacity then
+  tells the usable part), who occupies it, its uptime, its priority
   (`group:order`, *Priorities* above: the lowest is used first), its flags (reserved for
   instructors, power, drain, *local drain* for a drain the host asked for itself and *local drain
   allowed* for a host that may ask for one (*local drain forbidden* when it was forbidden from
@@ -2069,7 +2082,16 @@ What an instructor gets:
   dialog to change the group and the order of that host, and *Priority…* of the bar sets the
   group, the order or both on every selected host, each keeping the number left empty (a whole
   room into another group: filter on its letter, tick the header's checkbox, give the group); the
-  change applies at once and is kept across the restarts of the portal. Adding and removing hosts, and restarting the
+  change applies at once and is kept across the restarts of the portal. The value of the
+  *Usable capacity* column opens a dialog in the same way, to change the share of that host (a
+  percentage from 1 to 100), and *Usable capacity…* of the bar gives one share to every selected
+  host. A priority or a share that is not the one of the configuration is in bold, its tooltip
+  naming the configured value. *Reset to initial settings*, next to the filter, puts the priority
+  and the usable capacity of **every** host back to the values of the configuration (`web.toml`;
+  the entry it was added with for a host added by hand): it first lists, in a dialog, the hosts
+  that change and what changes on each (`a01: priority 2:3 → 0:0, usable capacity 50 % → 100 %`),
+  and is disabled when no host differs; nothing else is touched (a host enabled or disabled, a
+  drain). Adding and removing hosts, and restarting the
   agents (`restart`, shown as the flag *restart sent* while it lasts), stay with
   `sre-web-tool`. Every action, of a row or of the bar, is an `admin` line of the connection
   log with the instructor's login.

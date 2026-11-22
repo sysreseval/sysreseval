@@ -22,7 +22,15 @@
 // lowest host is woken first, the highest one is powered off first when idle; `sre-web-tool
 // priority`): its value opens a dialog to change the two numbers, and Priority… of the bar sets
 // the group, the order or both on every selected host (POST /api/pool/hosts/{name}/priority
-// with {priority: "group:order"}).
+// with {priority: "group:order"}).  The Capacity column is what the whole host holds for
+// projects (its memory less the reserve, its processors by the share projects may use), and the
+// Usable capacity one the share of it the projects of this host may fill ([[hosts]]
+// total_usable_capacity, a percentage; `sre-web-tool usable-capacity`): its value opens a dialog
+// to change it, and Usable capacity… of the bar sets it on every selected host (POST
+// /api/pool/hosts/{name}/usable-capacity with {total_usable_capacity: N}).  A priority or a share
+// that is not the one of the configuration is in bold, its tooltip naming the configured value,
+// and Reset to initial settings puts both back on every host (POST /api/pool/reset-settings)
+// once its dialog, which lists what changes, is confirmed.
 
 import './base.js';
 import * as api from './api.js';
@@ -33,7 +41,7 @@ import {el, clear, toast} from './ui.js';
 const REFRESH_INTERVAL = 5000;
 const ERROR_WIDTH = 60;        // the Last error cell (the whole text in its tooltip), as the tool
 const STATE_ORDER = ['up', 'occupied', 'exam', 'draining', 'waking', 'off', 'disabled'];   // the sort of the State column
-const NUMERIC = ['projects', 'terminals', 'load1', 'mem_available_mb', 'cpu_used', 'uptime'];   // sorted descending first
+const NUMERIC = ['projects', 'terminals', 'load1', 'mem_available_mb', 'cpu_used', 'capacity', 'uptime'];   // sorted descending first
 // the group and the order of a priority: integers from -9999 to 9999 (config.PRIORITY_LIMIT of the portal)
 const PRIORITY_LIMIT = 9999;
 // total_usable_capacity of a host its projects may fill entirely (config.DEFAULT_USABLE_CAPACITY of the portal)
@@ -47,10 +55,11 @@ const statusElement = document.getElementById('pool-status');
 const selectAll = document.getElementById('pool-select-all');
 const selectedElement = document.getElementById('pool-selected');
 const bulkButtons = Array.from(document.querySelectorAll('#pool-selection button[data-action]'));
+const resetButton = document.getElementById('pool-reset');
 const pending = new Map();     // host name -> the action in progress: its buttons stay disabled across re-renders
 const selected = new Set();    // the names of the selected hosts, kept across re-renders
 
-const state = {rows: [], status: {}, sortKey: 'name', sortAsc: true, filter: ''};
+const state = {rows: [], status: {}, sortKey: 'name', sortAsc: true, filter: '', resetting: false};
 
 function columnCount() {
   return table.querySelectorAll('thead th').length;
@@ -83,10 +92,6 @@ function flagsText(row) {
   const flags = [];
   if (row.instructors_only) {
     flags.push(_('instructors'));
-  }
-  if (Number.isInteger(row.total_usable_capacity) && row.total_usable_capacity !== WHOLE_HOST) {
-    // [[hosts]] total_usable_capacity: the share of the host its projects may fill
-    flags.push(format(_('capacity {percent}%'), {percent: row.total_usable_capacity}));
   }
   if (row.power) {
     flags.push(_('power'));
@@ -181,6 +186,39 @@ function cpuText(row) {
     ? `${row.cpu_used.toFixed(1)} / ${row.cpu_capacity.toFixed(1)}` : '';
 }
 
+// "14.6 GiB · 9.8 cores": a memory in MiB and a number of cores
+function capacityFigures(memoryMb, cores) {
+  return format(_('{memory} GiB · {cores} cores'), {memory: (memoryMb / 1024).toFixed(1), cores: cores.toFixed(1)});
+}
+
+// what the whole host holds for projects, whatever its share (an unreachable host, an older
+// agent or an older portal say nothing)
+function capacityText(row) {
+  return row.reachable && isNumber(row.full_mem_capacity_mb) && isNumber(row.full_cpu_capacity)
+    ? capacityFigures(row.full_mem_capacity_mb, row.full_cpu_capacity) : '';
+}
+
+// the share of the capacity of a host its projects may fill, in percent (a portal that says
+// nothing: the whole host)
+function usableOf(row) {
+  return Number.isInteger(row.total_usable_capacity) ? row.total_usable_capacity : WHOLE_HOST;
+}
+
+function percentText(percent) {
+  return format(_('{percent} %'), {percent});
+}
+
+// the tooltip of the Capacity cell: the part of it the projects may fill, when it is not all of it
+function capacityTitle(row) {
+  const share = usableOf(row);
+  if (!capacityText(row) || share === WHOLE_HOST) {
+    return '';
+  }
+  return format(_('{percent} % usable: {figures}'),
+                {percent: share, figures: capacityFigures(row.full_mem_capacity_mb * share / WHOLE_HOST,
+                                                          row.full_cpu_capacity * share / WHOLE_HOST)});
+}
+
 function uptimeText(seconds) {   // 1h02, as the tool
   if (!isNumber(seconds)) {
     return '';
@@ -206,6 +244,40 @@ function priorityText(priority) {
   return `${priority.group}:${priority.order}`;
 }
 
+// the priority the configuration gives a host whose priority was set by hand (here, or with
+// sre-web-tool); null when they are the same, or for a portal that does not tell the configured one
+function configuredPriority(row) {
+  const configured = row.priority_configured;
+  return typeof configured === 'string' && configured !== priorityText(priorityOf(row)) ? configured : null;
+}
+
+// the same for the share of the host its projects may fill
+function configuredUsable(row) {
+  const configured = row.total_usable_capacity_configured;
+  return Number.isInteger(configured) && configured !== usableOf(row) ? configured : null;
+}
+
+// what Reset to initial settings changes: the hosts whose priority or share is not the one of the
+// configuration, each with the texts of its changes ("priority 1:0 → 0:0")
+function resetChanges() {
+  const hosts = [];
+  for (const row of state.rows) {
+    const changes = [];
+    const priority = configuredPriority(row);
+    if (priority !== null) {
+      changes.push(format(_('priority {from} → {to}'), {from: priorityText(priorityOf(row)), to: priority}));
+    }
+    const usable = configuredUsable(row);
+    if (usable !== null) {
+      changes.push(format(_('usable capacity {from} → {to}'), {from: percentText(usableOf(row)), to: percentText(usable)}));
+    }
+    if (changes.length) {
+      hosts.push({name: row.name, changes});
+    }
+  }
+  return hosts.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // the value a column sorts on
 function sortValue(row, key) {
   switch (key) {
@@ -218,6 +290,8 @@ function sortValue(row, key) {
     case 'load1': return isNumber(row.load1) ? row.load1 : -1;
     case 'mem_available_mb': return row.reachable && isNumber(row.mem_available_mb) ? row.mem_available_mb : -1;
     case 'cpu_used': return row.reachable && isNumber(row.cpu_used) ? row.cpu_used : -1;
+    case 'capacity': return row.reachable && isNumber(row.full_mem_capacity_mb) ? row.full_mem_capacity_mb : -1;
+    case 'total_usable_capacity': return usableOf(row);
     case 'uptime': return isNumber(row.uptime) ? row.uptime : -1;
     case 'occupied_by': return (row.occupied_by || []).join(',');
     case 'priority': {      // the group, then the order: one number
@@ -394,6 +468,112 @@ function priorityDialog(title, value, options = {}) {
   });
 }
 
+// the dialog asking for the share of a host its projects may fill, a percentage: built as the
+// one of the priority.  value: the percentage shown first ('' for none: the selected hosts do
+// not have the same).  Resolves with the percentage, or null when the dialog is cancelled.
+function usableCapacityDialog(title, value) {
+  return new Promise((resolve) => {
+    let result = null;
+    const percent = el('input', {type: 'number', name: 'percent', required: true, step: '1', min: '1',
+                                 max: String(WHOLE_HOST), value: String(value)});
+    const cancel = el('button', {type: 'button'}, _('Cancel'));
+    const save = el('button', {type: 'submit', class: 'primary'}, _('Save'));
+    const form = el('form', {},
+      el('label', {}, _('Share (%)'), percent),
+      el('p', {class: 'muted'},
+         _('The share of the capacity of the host (its memory less the reserve, its processors) its projects may fill, from 1 to 100: at 50 the host counts as a machine half its size, and what is in use there counts against it. 100 by default: the whole host. It counts when the pool places the projects by the load of the hosts.')),
+      el('div', {class: 'buttons'}, cancel, el('span', {class: 'spacer'}), save));
+    const dialog = el('dialog', {class: 'modal pool-usable'}, el('h2', {}, title), form);
+    cancel.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', (event) => {    // the browser checked the field: a whole number in the range
+      event.preventDefault();
+      const number = Number(percent.value.trim());
+      if (percent.value.trim() === '' || !Number.isInteger(number) || number < 1 || number > WHOLE_HOST) {
+        return;
+      }
+      result = number;
+      dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      resolve(result);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    percent.focus();
+    percent.select();
+  });
+}
+
+// the share of one host, asked in the dialog (the row is read again afterwards, as for a priority)
+async function editUsableCapacity(name) {
+  const before = state.rows.find((row) => row.name === name);
+  if (!before) {
+    return;
+  }
+  const asked = await usableCapacityDialog(format(_('Usable capacity of {name}'), {name}), usableOf(before));
+  const row = state.rows.find((r) => r.name === name);
+  if (asked === null || !row || pending.has(name) || asked === usableOf(row)) {
+    return;
+  }
+  await act(row, 'usable-capacity', {total_usable_capacity: asked});
+}
+
+// the share the hosts have in common, '' when they do not have the same: what the dialog of the
+// bar shows first
+function commonUsable(rows) {
+  const values = new Set(rows.map(usableOf));
+  return values.size === 1 ? usableOf(rows[0]) : '';
+}
+
+// the confirmation of Reset to initial settings: the hosts that change and what changes on each.
+// Resolves with true when it is confirmed.
+function resetDialog(hosts) {
+  return new Promise((resolve) => {
+    let confirmed = false;
+    const cancel = el('button', {type: 'button'}, _('Cancel'));
+    const reset = el('button', {type: 'button', class: 'primary'}, _('Reset'));
+    const dialog = el('dialog', {class: 'modal pool-reset'},
+      el('h2', {}, _('Reset to initial settings')),
+      el('p', {}, format(_('The priority and the usable capacity of {n} host(s) go back to the values of the configuration:'),
+                         {n: hosts.length})),
+      el('ul', {}, ...hosts.map((host) => el('li', {dataset: {host: host.name}},
+                                             `${host.name}: ${host.changes.join(', ')}`))),
+      el('div', {class: 'buttons'}, cancel, el('span', {class: 'spacer'}), reset));
+    cancel.addEventListener('click', () => dialog.close());
+    reset.addEventListener('click', () => {
+      confirmed = true;
+      dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      resolve(confirmed);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    cancel.focus();
+  });
+}
+
+// Reset to initial settings: the priority and the share of every host back to the values of the
+// configuration, once the dialog is confirmed (one call for the whole pool)
+async function resetSettings() {
+  const hosts = resetChanges();
+  if (!hosts.length || state.resetting || !(await resetDialog(hosts))) {
+    return;
+  }
+  state.resetting = true;
+  render();
+  try {
+    await api.post('/api/pool/reset-settings');
+  } catch (e) {
+    toast(e.message, {error: true});
+  } finally {
+    state.resetting = false;
+  }
+  await refresh();
+}
+
 // the priority of one host, asked in the dialog (the row is read again afterwards: the pool was
 // polled meanwhile, the host may be gone or have got that priority)
 async function editPriority(name) {
@@ -444,7 +624,8 @@ function targets(action) {
 // line of the connection log each), the rows' buttons disabled meanwhile, every answer shown at
 // once, the failures in one message, then a refresh; the selection is kept.  The priority is
 // asked first, in its dialog: a group, an order or both for all of them, each host keeping the
-// number left empty (the targets are taken again afterwards, the pool was polled meanwhile).
+// number left empty (the targets are taken again afterwards, the pool was polled meanwhile); the
+// usable capacity too: one percentage for all of them.
 async function actMany(action) {
   let rows = targets(action);
   if (!rows.length) {
@@ -466,6 +647,14 @@ async function actMany(action) {
       return {priority: priorityText({group: asked.group === null ? current.group : asked.group,
                                       order: asked.order === null ? current.order : asked.order})};
     };
+  } else if (action === 'usable-capacity') {
+    const asked = await usableCapacityDialog(format(_('Usable capacity of the {n} selected host(s)'), {n: rows.length}),
+                                             commonUsable(rows));
+    rows = targets(action);
+    if (asked === null || !rows.length) {
+      return;
+    }
+    bodyOf = () => ({total_usable_capacity: asked});
   }
   for (const row of rows) {
     pending.set(row.name, action);
@@ -533,15 +722,37 @@ function actions(row) {
   ];
 }
 
-// the Priority cell: the value is a button opening the dialog that changes it (disabled while an
-// action runs on the host, like the buttons of the row)
-function priorityCell(row) {
-  const button = el('button', {type: 'button',
-                               title: _('Change the priority (group:order): the lowest group is used first, then the lowest order')},
-                    priorityText(priorityOf(row)));
+// the button of a setting of a host (its priority, its usable capacity): its value, opening the
+// dialog that changes it (disabled while an action runs on the host, like the buttons of the
+// row); configured: the value of the configuration when this one was set by hand (null
+// otherwise), told in the tooltip, the value then in bold
+function settingButton(row, text, title, configured) {
+  const byHand = configured !== null;
+  const button = el('button', {type: 'button', class: byHand ? 'by-hand' : undefined,
+                               title: byHand ? `${title} — ${format(_('set by hand, the configuration says {value}'), {value: configured})}`
+                                             : title},
+                    text);
   button.disabled = pending.has(row.name);
+  return button;
+}
+
+// the Priority cell
+function priorityCell(row) {
+  const button = settingButton(row, priorityText(priorityOf(row)),
+                               _('Change the priority (group:order): the lowest group is used first, then the lowest order'),
+                               configuredPriority(row));
   button.addEventListener('click', () => editPriority(row.name));
   return el('td', {class: 'num priority'}, button);
+}
+
+// the Usable capacity cell
+function usableCell(row) {
+  const configured = configuredUsable(row);
+  const button = settingButton(row, percentText(usableOf(row)),
+                               _('Change the share of the capacity of the host its projects may fill'),
+                               configured === null ? null : percentText(configured));
+  button.addEventListener('click', () => editUsableCapacity(row.name));
+  return el('td', {class: 'num usable'}, button);
 }
 
 // the checkbox of a row
@@ -587,6 +798,16 @@ function renderSelection() {
   }
 }
 
+// the Reset to initial settings button: enabled when the priority or the share of a host is not
+// the one of the configuration, its tooltip saying how many hosts
+function renderReset() {
+  const n = resetChanges().length;
+  resetButton.disabled = !n || state.resetting;
+  resetButton.title = n
+    ? format(_('The priority or the usable capacity of {n} host(s) was changed: back to the values of the configuration'), {n})
+    : _('Every host has the priority and the usable capacity of the configuration');
+}
+
 // the line of `sre-web-tool status`
 function renderStatus() {
   const s = state.status;
@@ -630,6 +851,7 @@ function render() {
   clear(body);
   renderStatus();
   renderSelection();
+  renderReset();
   const rows = shownRows().sort(compare);
   countElement.textContent = state.rows.length === rows.length
     ? format(_('{n} host(s)'), {n: rows.length})
@@ -659,6 +881,8 @@ function renderRow(row) {
     el('td', {class: 'num'}, isNumber(row.load1) ? row.load1.toFixed(2) : ''),
     el('td', {class: 'num memory'}, memoryText(row)),
     el('td', {class: 'num cpu'}, cpuText(row)),
+    el('td', {class: 'num capacity', title: capacityTitle(row)}, capacityText(row)),
+    usableCell(row),
     el('td', {}, (row.occupied_by || []).join(', ')),
     el('td', {class: 'num'}, uptimeText(row.uptime)),
     priorityCell(row),
@@ -719,6 +943,7 @@ function setupControls() {
   for (const button of bulkButtons) {
     button.addEventListener('click', () => actMany(button.dataset.action));
   }
+  resetButton.addEventListener('click', resetSettings);
 }
 
 async function main() {

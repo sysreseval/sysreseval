@@ -8,7 +8,9 @@ dialog that changes the two numbers of a host, or the group, the order or both o
 hosts, the column sorted, the priorities back after a restart; Enable cancelling a drain, from the row (in place of Drain) and from the bar, and
 not once the power off of the host is sent; a drain the host asked for itself, its flag, Enable
 cancelling it, the local drains forbidden and allowed from the bar; the CPU column (the cores the
-projects of a host are counted for / those they may use); the costs of the labs are no longer on
+projects of a host are counted for / those they may use); the Capacity column (the whole host) and
+the Usable capacity one, its dialog for a host and for the selection, the values set by hand in
+bold, Reset to initial settings and its dialog; the costs of the labs are no longer on
 this page (the Costs table… button of the Open page: test_web_open_browser.py)."""
 import asyncio
 import contextlib
@@ -89,6 +91,43 @@ FLAGS = f"({ROW} ? {ROW}.querySelector('td.flags').textContent : null)"
 FLAGS_TITLE = f"{ROW}.querySelector('td.flags').title"
 
 
+# the capacity of the whole host and the share of it its projects may fill: the cells of a row, the
+# dialog of the share and its field, the button of the bar, Reset to initial settings and its dialog
+CAPACITY = f"({ROW} ? {ROW}.querySelector('td.capacity').textContent : null)"
+CAPACITY_TITLE = f"{ROW}.querySelector('td.capacity').title"
+USABLE_DIALOG = "document.querySelector('dialog.pool-usable')"
+USABLE_OPEN = f"Boolean({USABLE_DIALOG} && {USABLE_DIALOG}.open)"
+USABLE_TITLE = f"{USABLE_DIALOG}.querySelector('h2').textContent"
+PERCENT_FIELD = f"{USABLE_DIALOG}.querySelector('input[name=\"percent\"]')"
+PERCENT_FOCUSED = f"document.activeElement === {PERCENT_FIELD}"
+USABLE_CANCEL = 'dialog.pool-usable .buttons button[type="button"]'
+BULK_USABLE = '#pool-selection button[data-action="usable-capacity"]'
+RESET = '#pool-reset'
+RESET_DISABLED = "document.getElementById('pool-reset').disabled"
+RESET_TOOLTIP = "document.getElementById('pool-reset').title"
+RESET_DIALOG = "document.querySelector('dialog.pool-reset')"
+RESET_OPEN = f"Boolean({RESET_DIALOG} && {RESET_DIALOG}.open)"
+RESET_LINES = f"Array.from({RESET_DIALOG}.querySelectorAll('li')).map((li) => li.textContent)"
+RESET_CANCEL = 'dialog.pool-reset .buttons button:not(.primary)'
+RESET_CONFIRM = 'dialog.pool-reset .buttons button.primary'
+
+
+def usable_cell(name: str) -> str:
+    """The selector of the button of the Usable capacity cell of host *name*."""
+    return f'#pool tbody tr[data-host="{name}"] td.usable button'
+
+
+def usable(name: str) -> str:
+    """The share the row of host *name* shows, as a JavaScript expression ('' without row)."""
+    return f"(document.querySelector('{usable_cell(name)}') || {{textContent: ''}}).textContent"
+
+
+def by_hand(selector: str) -> str:
+    """``[marked as set by hand, drawn in bold, tooltip]`` of the button of a setting."""
+    return (f"(() => {{ const b = document.querySelector('{selector}'); "
+            f"return [b.classList.contains('by-hand'), getComputedStyle(b).fontWeight === '700', b.title]; }})()")
+
+
 def action(n: int) -> str:
     """The selector of the *n*-th button of the Actions cell of a01."""
     return f'#pool tbody tr[data-host="a01"] td.actions button:nth-child({n})'
@@ -153,9 +192,9 @@ class TestPoolPage:
         P.run(go())
 
     def test_usable_capacity_of_a_host(self, tmp_path, monkeypatch):
-        """The share of a host its projects may fill (``total_usable_capacity``): a flag of its
-        row when it is not the whole host, and the cores of the CPU cell are those of the
-        share; changed with ``sre-web-tool usable-capacity``, the row follows at the next poll."""
+        """The share of a host its projects may fill (``total_usable_capacity``): its Usable
+        capacity cell, no flag, and the cores of the CPU cell are those of the share; changed
+        with ``sre-web-tool usable-capacity``, the row follows at the next poll."""
         from sreweb.agent import app as agent_app
         monkeypatch.setattr(agent_app, '_mem_available_mb', lambda path=None: 12000)
         monkeypatch.setattr(agent_app, '_mem_total_mb', lambda path=None: 16000)
@@ -166,10 +205,146 @@ class TestPoolPage:
                                   host_over={'total_usable_capacity': 50}) as (h, browser, url):
                 page = await browser.page(f'{url}/pool')
                 await page.wait_for(f"{CPU} === '0.0 / 2.8'", what="the CPU cell of half the host")   # 8 cores, 70 %
-                assert 'capacity 50%' in await page.evaluate(FLAGS)
+                assert await page.evaluate(usable('a01')) == '50 %' and 'capacity' not in await page.evaluate(FLAGS)
                 h.portal.pool.set_total_usable_capacity('a01', 100)
                 await page.wait_for(f"{CPU} === '0.0 / 5.6'", timeout=POLL, what="the CPU cell of the whole host")
-                assert 'capacity' not in await page.evaluate(FLAGS)
+                assert await page.evaluate(usable('a01')) == '100 %'
+        P.run(go())
+
+    def test_capacity_usable_share_and_reset(self, tmp_path, monkeypatch):
+        """The Capacity cell is what the whole host holds, whatever its share; the Usable
+        capacity cell opens a dialog that changes the share (a percentage from 1 to 100); a
+        value that is not the one of the configuration is in bold, its tooltip naming the
+        configured one; Usable capacity… of the bar sets the selected hosts; Reset to initial
+        settings lists what changes, and puts the priority and the share of every host back."""
+        from sreweb.agent import app as agent_app
+        from sreweb.config import check_priority
+        monkeypatch.setattr(agent_app, '_mem_available_mb', lambda path=None: 12000)
+        monkeypatch.setattr(agent_app, '_mem_total_mb', lambda path=None: 16000)
+        monkeypatch.setattr(agent_app.os, 'cpu_count', lambda: 8)
+        state = tmp_path / 'state' / 'pool.json'
+        token = {'Authorization': f'Bearer {ADMIN}'}
+
+        async def fill(page, value: str):
+            """*value* in the field of the dialog in place of what it shows ('' empties it)."""
+            await page.evaluate(f"({PERCENT_FIELD}.focus(), {PERCENT_FIELD}.select())")
+            if value:
+                await page.insert_text(value)
+            else:
+                await page.evaluate(f"({PERCENT_FIELD}.value = '')")
+
+        async def shares(page, **wanted):
+            await page.wait_for(' && '.join(f"{usable(name)} === '{value} %'" for name, value in wanted.items()),
+                                timeout=POLL, what=f"the shares {wanted}")
+
+        async def go():
+            over = {'priority': '0:1', 'total_usable_capacity': 80}
+            async with browser_of(tmp_path, state, host_over=over) as (h, browser, url):
+                for name in ('b02', 'b03'):       # two more hosts, down: a share is set on any host
+                    body = {'name': name, 'url': 'http://127.0.0.1:9', 'token': P.TOKEN}
+                    assert (await h.client.post('/api/pool/hosts', json=body, headers=token)).status == 201
+                page = await browser.page(f'{url}/pool')
+                await shares(page, a01=80, b02=100, b03=100)
+                # the whole host: 16000 MiB less the 1024 of the reserve, 8 processors by 70 %; the
+                # tooltip tells the part its projects may fill; a host that is down tells nothing
+                await page.wait_for(f"{CAPACITY} === '14.6 GiB · 5.6 cores'", what="the capacity of the host")
+                assert await page.evaluate(CAPACITY_TITLE) == '80 % usable: 11.7 GiB · 4.5 cores'
+                assert await page.evaluate("document.querySelector('#pool tbody tr[data-host=\"b02\"] td.capacity').textContent") == ''
+                # nothing was set by hand: nothing in bold, nothing to reset
+                marked, bold, tooltip = await page.evaluate(by_hand(usable_cell('a01')))
+                assert (marked, bold) == (False, False) and 'set by hand' not in tooltip
+                assert await page.evaluate(RESET_DISABLED) is True
+                assert await page.evaluate(RESET_TOOLTIP) == 'Every host has the priority and the usable capacity of the configuration'
+                assert await page.evaluate(f"document.querySelector('{BULK_USABLE}').disabled") is True
+                # the dialog of a row: the share of the host, kept open and focused when the table is drawn again
+                await page.click(usable_cell('a01'))
+                await page.wait_for(f"{USABLE_OPEN} && {PERCENT_FOCUSED}", what="the dialog of a01")
+                assert 'a01' in await page.evaluate(USABLE_TITLE) and await page.evaluate(f"{PERCENT_FIELD}.value") == '80'
+                assert await page.evaluate(f"getComputedStyle({USABLE_DIALOG}).width") == '440px'
+                await page.evaluate(RENDER)
+                assert await page.evaluate(f"{USABLE_OPEN} && {PERCENT_FOCUSED}") is True
+                # what is no percentage from 1 to 100 is not taken
+                for bad in ('101', '0', '-5', '12.5', ''):
+                    await fill(page, bad)
+                    await page.press_enter()
+                    assert await page.evaluate(USABLE_OPEN) is True, bad
+                assert h.portal.pool.runtime['a01'].total_usable_capacity == 80
+                await fill(page, '50')
+                await page.press_enter()
+                await page.wait_for(f"{USABLE_DIALOG} === null", what="the dialog closed")
+                await shares(page, a01=50)
+                assert json.loads(state.read_text())['total_usable_capacity'] == {'a01': {'value': 50, 'configured': 80}}
+                # the capacity is still the whole host's, its tooltip and the CPU cell follow the share
+                assert await page.evaluate(CAPACITY) == '14.6 GiB · 5.6 cores'
+                assert await page.evaluate(CAPACITY_TITLE) == '50 % usable: 7.3 GiB · 2.8 cores'
+                assert await page.evaluate(CPU) == '0.0 / 2.8' and 'capacity' not in await page.evaluate(FLAGS)
+                # set by hand: in bold, the tooltip names the value of the configuration; not the priority
+                marked, bold, tooltip = await page.evaluate(by_hand(usable_cell('a01')))
+                assert (marked, bold) == (True, True) and tooltip.endswith('set by hand, the configuration says 80 %')
+                assert (await page.evaluate(by_hand(cell('a01'))))[:2] == [False, False]
+                assert (await page.evaluate(by_hand(usable_cell('b02'))))[:2] == [False, False]
+                # cancelled: nothing changes
+                await page.click(usable_cell('b02'))
+                await page.wait_for(f"{USABLE_OPEN} && {PERCENT_FOCUSED}", what="the dialog of b02")
+                await page.insert_text('7')
+                await page.click(USABLE_CANCEL)
+                await page.wait_for(f"{USABLE_DIALOG} === null", what="the dialog cancelled")
+                assert h.portal.pool.runtime['b02'].total_usable_capacity == 100
+                # the column sorted: the smallest share first, then the largest
+                await page.click('#pool th[data-sort="total_usable_capacity"]')
+                assert await page.evaluate(ORDER) == 'a01 b02 b03'
+                await page.click('#pool th[data-sort="total_usable_capacity"]')
+                assert await page.evaluate(ORDER) == 'b03 b02 a01'
+                await page.click('#pool th[data-sort="name"]')
+                # the bar: the share is shown first only when the selected hosts have the same
+                await page.click('#pool-select-all')
+                await page.click(BULK_USABLE)
+                await page.wait_for(f"{USABLE_OPEN} && {PERCENT_FOCUSED}", what="the dialog of the selection")
+                assert '3' in await page.evaluate(USABLE_TITLE) and await page.evaluate(f"{PERCENT_FIELD}.value") == ''
+                await page.insert_text('60')
+                await page.press_enter()
+                await page.wait_for(f"{USABLE_DIALOG} === null", what="the dialog of the selection closed")
+                await shares(page, a01=60, b02=60, b03=60)
+                assert json.loads(state.read_text())['total_usable_capacity'] == {
+                    'a01': {'value': 60, 'configured': 80}, 'b02': {'value': 60, 'configured': 100},
+                    'b03': {'value': 60, 'configured': 100}}
+                await page.click(BULK_USABLE)
+                await page.wait_for(f"{USABLE_OPEN} && {PERCENT_FOCUSED}", what="the dialog of the selection again")
+                assert await page.evaluate(f"{PERCENT_FIELD}.value") == '60'
+                await page.click(USABLE_CANCEL)
+                await page.wait_for(f"{USABLE_DIALOG} === null", what="the dialog of the selection cancelled")
+                # a priority set by hand too (as sre-web-tool priority does): in bold at the next poll
+                h.portal.pool.set_priority('b02', check_priority('2:3', 'priority'))
+                await page.wait_for(f"{shown('b02')} === '2:3'", timeout=POLL, what="the priority of b02")
+                marked, bold, tooltip = await page.evaluate(by_hand(cell('b02')))
+                assert (marked, bold) == (True, True) and tooltip.endswith('set by hand, the configuration says 0:0')
+                # Reset to initial settings: its dialog lists what changes on each host; Cancel changes nothing
+                assert await page.evaluate(RESET_DISABLED) is False
+                assert await page.evaluate(RESET_TOOLTIP) == ('The priority or the usable capacity of 3 host(s) was changed: '
+                                                              'back to the values of the configuration')
+                await page.click(RESET)
+                await page.wait_for(RESET_OPEN, what="the dialog of the reset")
+                assert await page.evaluate(RESET_LINES) == [
+                    'a01: usable capacity 60 % → 80 %',
+                    'b02: priority 2:3 → 0:0, usable capacity 60 % → 100 %',
+                    'b03: usable capacity 60 % → 100 %']
+                assert await page.evaluate(f"getComputedStyle({RESET_DIALOG}).width") == '520px'
+                await page.click(RESET_CANCEL)
+                await page.wait_for(f"{RESET_DIALOG} === null", what="the dialog of the reset cancelled")
+                assert h.portal.pool.runtime['b02'].priority == (2, 3) and h.portal.pool.runtime['a01'].total_usable_capacity == 60
+                # confirmed: every host has the values of the configuration again, nothing is left in the file
+                await page.click(RESET)
+                await page.wait_for(RESET_OPEN, what="the dialog of the reset again")
+                await page.click(RESET_CONFIRM)
+                await page.wait_for(f"{RESET_DIALOG} === null", what="the dialog of the reset closed")
+                await shares(page, a01=80, b02=100, b03=100)
+                await page.wait_for(f"{shown('b02')} === '0:0' && {shown('a01')} === '0:1'", what="the priorities back")
+                saved = json.loads(state.read_text())
+                assert saved['priority'] == {} and saved['total_usable_capacity'] == {}
+                assert await page.evaluate(RESET_DISABLED) is True
+                for selector in (usable_cell('a01'), usable_cell('b02'), cell('b02')):
+                    assert (await page.evaluate(by_hand(selector)))[:2] == [False, False], selector
+                assert page.errors == []
         P.run(go())
 
     def test_enabled_host_kept_and_unsaved_state_told(self, tmp_path):

@@ -23,8 +23,8 @@ from ..config import (HostConfig, Priority, host_config_from_dict, host_entry, c
                       check_usable_capacity, ConfigError, CAPACITY_PROJECTS, CAPACITY_RESOURCES,
                       DEFAULT_USABLE_CAPACITY, USABLE_CAPACITY_KEY)
 from ..identity import Identity, is_valid_login
-from .costs import (Cost, CostBook, HostLoad, Usage, host_load, lab_key, figure, DEFAULT_MEMORY_MB, DEFAULT_CPU,
-                    MAX_NAME)
+from .costs import (Cost, CostBook, HostLoad, Usage, host_capacity, host_load, lab_key, figure, DEFAULT_MEMORY_MB,
+                    DEFAULT_CPU, MAX_NAME)
 
 log = logging.getLogger('sreweb.portal')
 
@@ -553,6 +553,23 @@ class Pool:
         self.save_state()
         log.info("host %s: total usable capacity %d %%", name, percent)
 
+    def reset_settings(self) -> list:
+        """The priority and the ``total_usable_capacity`` of every host back to those of the
+        configuration (its ``[[hosts]]`` entry; the entry it was added with for a host added
+        by hand): what ``set_priority`` and ``set_total_usable_capacity`` changed is
+        forgotten, the state file written once.  The names of the hosts that changed."""
+        changed = []
+        for name, runtime in self.runtime.items():
+            host = self.hosts[name]
+            if (runtime.priority, runtime.total_usable_capacity) != (host.priority, host.total_usable_capacity):
+                runtime.priority, runtime.total_usable_capacity = host.priority, host.total_usable_capacity
+                changed.append(name)
+        if changed:
+            self.save_state()
+            log.info("pool: priority and total usable capacity of %d host(s) back to the configuration: %s",
+                     len(changed), ', '.join(changed))
+        return changed
+
     # -- the state file -------------------------------------------------------------------------
 
     def _forget(self, name: str):
@@ -1022,6 +1039,9 @@ class Pool:
                 'priority': str(rt.priority), 'group': rt.priority.group, 'order': rt.priority.order,
                 # percent of the host its projects may fill (100: the whole host)
                 USABLE_CAPACITY_KEY: rt.total_usable_capacity,
+                # both as the configuration has them: what differs was set by hand (``reset_settings``)
+                'priority_configured': str(h.priority),
+                'total_usable_capacity_configured': h.total_usable_capacity,
                 # a drain is wanted: the portal's, or the one asked on the host (``local_drain``, below)
                 'drain': self.draining(h.name), 'power_off_sent': rt.power_off_sent is not None,
                 'restart_sent': rt.restart_sent is not None,
@@ -1056,15 +1076,30 @@ class Pool:
                          reserve_mb=self.memory_reserve_mb, cpu_target=self.cpu_target,
                          share=self.runtime[name].total_usable_capacity / DEFAULT_USABLE_CAPACITY)
 
+    def capacity_of(self, name: str) -> Cost | None:
+        """What the whole host *name* holds for projects (``costs.host_capacity``): its memory
+        less the reserve and its processors by ``cpu_target``, whatever its
+        ``total_usable_capacity``.  ``None`` for a host that is unreachable or whose agent does
+        not tell its size."""
+        st = self.status[name]
+        if not st.reachable:
+            return None
+        return host_capacity(cpus=st.cpus, mem_total_mb=st.mem_total_mb, reserve_mb=self.memory_reserve_mb,
+                             cpu_target=self.cpu_target)
+
     def _load_fields(self, name: str) -> dict:
         """The load of a host in a row of ``summary()``: the cores its projects are counted for
         and those they may use, how full it is (the larger of its memory and of its
-        processors); ``None`` each without the figures."""
+        processors), and what the whole host holds (``capacity_of``: its memory in MiB, its
+        cores); ``None`` each without the figures."""
+        whole = self.capacity_of(name)
+        fields = {'full_mem_capacity_mb': round(whole.mem_mb) if whole is not None else None,
+                  'full_cpu_capacity': round(whole.cpu, 2) if whole is not None else None}
         load = self.load_of(name)
         if load is None:
-            return {'cpu_used': None, 'cpu_capacity': None, 'fill': None}
+            return {'cpu_used': None, 'cpu_capacity': None, 'fill': None, **fields}
         return {'cpu_used': round(load.cpu_used, 2), 'cpu_capacity': round(load.cpu_capacity, 2),
-                'fill': round(load.fill, 3)}
+                'fill': round(load.fill, 3), **fields}
 
     def costs_view(self) -> dict:
         """What the pool knows of the cost of each lab (``GET /api/pool/costs``): the default

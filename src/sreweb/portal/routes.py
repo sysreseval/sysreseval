@@ -197,6 +197,7 @@ class Routes:
         r.add_get('/api/pool/status', self.api_pool_status)
         r.add_get('/api/pool/costs', self.api_pool_costs)
         r.add_post('/api/pool/hosts', self.api_pool_add)
+        r.add_post('/api/pool/reset-settings', self.api_pool_reset_settings)
         r.add_delete('/api/pool/hosts/{name}', self.api_pool_remove)
         r.add_post('/api/pool/hosts/{name}/{action}', self.api_pool_action)
         r.add_get('/api/projects', self.api_projects)
@@ -807,6 +808,19 @@ class Routes:
             return json_error(404, f"unknown action {action}")
         log.info("pool: %s %s by %s", action, name, identity.login if identity else "the admin token")
         return web.json_response(self._host_row(name))
+
+    async def api_pool_reset_settings(self, request):
+        """The priority and the ``total_usable_capacity`` of every host back to the values of
+        the configuration (``Pool.reset_settings``): the *Reset to initial settings* button of
+        the Pool page, ``sre-web-tool reset-settings``.  The answer names the hosts that
+        changed; their number is in the ``admin`` line of the connection log."""
+        identity = self._require_pool_access(request)
+        changed = self.pool.reset_settings()
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged['hosts'] = len(changed)
+        log.info("pool: settings reset by %s", identity.login if identity else "the admin token")
+        return web.json_response({'reset': changed})
 
     def _host_row(self, name: str) -> dict:
         return next((row for row in self.pool.summary() if row['name'] == name), {'name': name})

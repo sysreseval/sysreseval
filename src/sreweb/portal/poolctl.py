@@ -11,6 +11,8 @@ through its administration API (``[admin] token`` of web.toml; stdlib ``urllib``
                                     in it to the lowest order among the hosts without project (0:0 by default)
   sre-web-tool usable-capacity NAME PERCENT   the share of the memory and processors of the host its projects
                                     may fill (100 by default; with [pool] capacity = "resources")
+  sre-web-tool reset-settings       the priority and the usable capacity of every host back to the values of
+                                    the configuration
   sre-web-tool restart NAME | --all [--wait] [--timeout S]   the agents restart themselves (new code after an update)
   sre-web-tool preload NAME | --all | --failed   the hosts pull the Docker images of the labs, a few at a time
 """
@@ -356,6 +358,9 @@ def main(argv, default_config: str) -> int:
                             parents=[common])
     usable.add_argument('name')
     usable.add_argument('value', type=_usable_capacity, metavar='PERCENT', help="an integer from 1 to 100")
+    sub.add_parser('reset-settings', help="the priority and the usable capacity of every host back to the values "
+                                          "of the configuration (web.toml; the entry it was added with for a "
+                                          "host added by hand)", parents=[common])
     for parser_with_priority in (add, priority):      # "-1:5" is a value there, as "-2" is everywhere
         parser_with_priority._negative_number_matcher = _NEGATIVE_VALUE_RE
     restart = sub.add_parser('restart', help="the agent of a host restarts itself (new code after an update; "
@@ -467,6 +472,13 @@ def _dispatch(client: PoolClient, args) -> int:
         row = client.call('POST', f"/api/pool/hosts/{args.name}/usable-capacity",
                           {USABLE_CAPACITY_KEY: args.value})
         print(json.dumps(row, indent=2) if args.json else table([row]))
+    elif args.command == 'reset-settings':
+        answer = client.call('POST', '/api/pool/reset-settings')
+        names = (answer or {}).get('reset') or []
+        if args.json:
+            print(json.dumps(answer, indent=2))
+        else:
+            print(f"settings reset on {len(names)} host(s): {', '.join(names)}" if names else "nothing to reset")
     elif args.command == 'remove':
         client.call('DELETE', f"/api/pool/hosts/{args.name}" + ('?force=1' if args.force else ''))
         print(f"{args.name} removed")

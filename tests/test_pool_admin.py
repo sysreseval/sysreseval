@@ -583,6 +583,75 @@ class TestInstructorPage:
             assert len(refused) == 12 and all(key not in l for l in refused)
         run(go())
 
+    def test_reset_settings(self, tmp_path):
+        """``POST /api/pool/reset-settings``: the priority and the usable capacity of every
+        host back to the values of the configuration, for an instructor (the button of the
+        Pool page) or the token (``sre-web-tool reset-settings``).  The rows tell the
+        configured values, the state file forgets what was set by hand, the ``admin`` line of
+        the connection log counts the hosts."""
+        state = tmp_path / 'state' / 'pool.json'
+        over = {**P.PROXY_OVER, 'admin': {'token': ADMIN, 'state_file': str(state)}, 'pool': QUIET_POOL,
+                'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False}}
+        teacher = P.who('prof', groups=P.TEACHERS)
+        bob, prof = {**P.who('bob'), **CSRF}, {**teacher, **CSRF}
+        url = '/api/pool/reset-settings'
+
+        async def rows(h):
+            return {row['name']: row for row in await (await h.client.get('/api/pool', headers=prof)).json()}
+
+        def settings(row):
+            return row['priority'], row['total_usable_capacity']
+
+        def configured(row):
+            return row['priority_configured'], row['total_usable_capacity_configured']
+
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over,
+                                 host_over={'priority': '1:2', 'total_usable_capacity': 80}) as h:
+                added = {'name': 'b02', 'url': 'http://127.0.0.1:9', 'token': TOKEN, 'priority': '3:0',
+                         'total_usable_capacity': 40}
+                assert (await h.client.post('/api/pool/hosts', json=added, headers=auth(ADMIN))).status == 201
+                seen = await rows(h)
+                assert configured(seen['a01']) == settings(seen['a01']) == ('1:2', 80)
+                assert configured(seen['b02']) == settings(seen['b02']) == ('3:0', 40)
+                # nothing set by hand: nothing to reset
+                resp = await h.client.post(url, headers=prof)
+                assert resp.status == 200 and await resp.json() == {'reset': []}
+                for name, action, body in (('a01', 'priority', {'priority': '0:9'}),
+                                           ('a01', 'usable-capacity', {'total_usable_capacity': 10}),
+                                           ('b02', 'usable-capacity', {'total_usable_capacity': 100})):
+                    resp = await h.client.post(f'/api/pool/hosts/{name}/{action}', json=body, headers=prof)
+                    assert resp.status == 200, await resp.text()
+                seen = await rows(h)
+                assert settings(seen['a01']) == ('0:9', 10) and settings(seen['b02']) == ('3:0', 100)
+                assert configured(seen['a01']) == ('1:2', 80) and configured(seen['b02']) == ('3:0', 40)
+                saved = json.loads(state.read_text())
+                assert set(saved['priority']) == {'a01'} and set(saved['total_usable_capacity']) == {'a01', 'b02'}
+                # a student, an instructor's call without the CSRF header: refused, nothing changes
+                assert (await h.client.post(url, headers=bob)).status == 403
+                resp = await h.client.post(url, headers=teacher)
+                assert resp.status == 403 and 'X-Requested-With' in (await resp.json())['error']
+                assert settings((await rows(h))['a01']) == ('0:9', 10)
+                resp = await h.client.post(url, headers=prof)
+                assert resp.status == 200 and await resp.json() == {'reset': ['a01', 'b02']}
+                seen = await rows(h)
+                assert settings(seen['a01']) == ('1:2', 80)
+                assert settings(seen['b02']) == ('3:0', 40)         # the entry it was added with
+                saved = json.loads(state.read_text())
+                assert saved['priority'] == {} and saved['total_usable_capacity'] == {}
+                assert [entry['name'] for entry in saved['added']] == ['b02']
+                # the token (sre-web-tool reset-settings)
+                resp = await h.client.post('/api/pool/hosts/a01/priority', json={'priority': '5:5'}, headers=auth(ADMIN))
+                assert resp.status == 200
+                resp = await h.client.post(url, headers=auth(ADMIN))
+                assert resp.status == 200 and await resp.json() == {'reset': ['a01']}
+                assert settings((await rows(h))['a01']) == ('1:2', 80)
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            done = [(l['login'], l['hosts']) for l in lines
+                    if l['event'] == 'admin' and l['path'] == url and l['status'] == '200']
+            assert done == [('prof', '0'), ('prof', '2'), ('', '1')]
+        run(go())
+
     def test_bulk_actions(self, tmp_path):
         """The bar of the Pool page sends one call per selected host, all at once: the per-host
         route serves them together, each answer being the row of its host, a failure (the wake
@@ -710,6 +779,21 @@ class TestCli:
                 assert [e['total_usable_capacity'] for e in json.loads(state.read_text())['added']] == [100, 100, 40]
                 r = await loop.run_in_executor(None, cli, 'remove', 'd04')
                 assert r.returncode == 0, r.stderr
+                # reset-settings: the priority and the usable capacity of every host back to the
+                # configuration (b02: 0:5 and 25 % set above, over the 0:0 and 100 it was added with)
+                saved = json.loads(state.read_text())
+                assert set(saved['priority']) == {'b02'} and set(saved['total_usable_capacity']) == {'b02'}
+                r = await loop.run_in_executor(None, cli, 'reset-settings')
+                assert r.returncode == 0 and r.stdout.strip() == 'settings reset on 1 host(s): b02', r.stderr
+                saved = json.loads(state.read_text())
+                assert saved['priority'] == {} and saved['total_usable_capacity'] == {}
+                r = await loop.run_in_executor(None, cli, 'list')
+                assert 'capacity' not in r.stdout and '(instructors)' in r.stdout.splitlines()[2]
+                assert '(priority -4:1)' in r.stdout.splitlines()[3]       # c03: the priority it was added with
+                r = await loop.run_in_executor(None, cli, 'reset-settings')
+                assert r.returncode == 0 and r.stdout.strip() == 'nothing to reset'
+                r = await loop.run_in_executor(None, lambda: cli('reset-settings', '--json'))
+                assert r.returncode == 0 and json.loads(r.stdout) == {'reset': []}
                 r = await loop.run_in_executor(None, cli, 'remove', 'c03')
                 assert r.returncode == 0, r.stderr
                 r = await loop.run_in_executor(None, cli, 'disable', 'b02')

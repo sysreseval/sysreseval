@@ -294,6 +294,16 @@ class HostLoad(NamedTuple):
                 max(0, int((self.cpu_capacity - self.cpu_used) // reference.cpu)))
 
 
+def host_capacity(*, cpus, mem_total_mb, reserve_mb: float, cpu_target: float) -> Cost | None:
+    """What a whole host holds for projects, from the size its agent tells: its memory less
+    the reserve, and its processors by the share projects may use (``cpu_target``) — the
+    figures its ``total_usable_capacity`` is a percentage of.  ``None`` when the agent does
+    not tell the size of its host."""
+    if not cpus or not mem_total_mb:
+        return None
+    return Cost(max(0.0, mem_total_mb - reserve_mb), cpus * cpu_target)
+
+
 def host_load(*, cpus, mem_total_mb, mem_available_mb, cpu_busy, committed_cpu: float, in_flight,
               reserve_mb: float, cpu_target: float, share: float = 1.0) -> HostLoad | None:
     """The load of a host from its status: *cpus*, *mem_total_mb*, *mem_available_mb* and
@@ -307,11 +317,12 @@ def host_load(*, cpus, mem_total_mb, mem_available_mb, cpu_busy, committed_cpu: 
     ``cpu_target`` are both multiplied by it, and what is in use there counts against that,
     whoever uses it.  ``None`` when the agent does not tell the size of its host (older than
     these figures, unreachable): the host is judged by its number of projects."""
-    if not cpus or not mem_total_mb or mem_available_mb is None:
+    whole = host_capacity(cpus=cpus, mem_total_mb=mem_total_mb, reserve_mb=reserve_mb, cpu_target=cpu_target)
+    if whole is None or mem_available_mb is None:
         return None
-    full = max(0.0, mem_total_mb - reserve_mb)      # what the whole host holds
+    full = whole.mem_mb
     capacity = max(1.0, full * share)
     free = max(0.0, mem_available_mb - reserve_mb - full * (1.0 - share) - sum(c.mem_mb for c in in_flight))
     used = max(committed_cpu, cpu_busy or 0.0) + sum(c.cpu for c in in_flight)
     return HostLoad(mem_free_mb=free, mem_capacity_mb=capacity, cpu_used=used,
-                    cpu_capacity=max(MIN_COST.cpu, cpus * cpu_target * share))
+                    cpu_capacity=max(MIN_COST.cpu, whole.cpu * share))

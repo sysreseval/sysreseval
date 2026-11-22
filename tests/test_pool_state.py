@@ -453,6 +453,52 @@ class TestUsableCapacity:
         assert shares(pool) == {'s01': 10, 'z01': 50} and pool.state_error == ''
 
 
+class TestResetSettings:
+    """``Pool.reset_settings()``: the priority and the usable capacity of every host back to
+    those of the configuration (``sre-web-tool reset-settings``, the button of the Pool page)."""
+
+    @staticmethod
+    def configured() -> list:
+        return [HostConfig('s01', 'http://s01', TOKEN, 10),
+                HostConfig('s02', 'http://s02', TOKEN, 10, priority=M.prio('1:0'), total_usable_capacity=80),
+                HostConfig('z01', 'http://z01', TOKEN, 10, enabled=False)]
+
+    def test_both_settings_back(self, tmp_path, caplog):
+        state = tmp_path / 'pool.json'
+        pool = Pool(self.configured(), None, state_file=str(state))
+        assert pool.reset_settings() == [] and not state.exists()     # nothing set by hand: nothing written
+        pool.add_host(HostConfig('b02', 'http://b02', TOKEN, 2, priority=M.prio('2:2'), total_usable_capacity=30))
+        pool.set_priority('s01', M.prio('0:7'))
+        pool.set_total_usable_capacity('s02', 10)
+        pool.set_priority('b02', M.prio('0:0'))
+        pool.set_total_usable_capacity('b02', 100)
+        pool.set_enabled('z01', True)
+        pool.set_drain('s01', True)
+        assert set(saved(state)['priority']) == {'s01', 'b02'}
+        assert set(saved(state)['total_usable_capacity']) == {'s02', 'b02'}
+        with caplog.at_level(logging.INFO, logger='sreweb.portal'):
+            assert pool.reset_settings() == ['s01', 's02', 'b02']     # z01 had nothing of the two changed
+        assert 'priority and total usable capacity of 3 host(s) back to the configuration: s01, s02, b02' in caplog.text
+        # a host of the configuration: its [[hosts]] entry; a host added by hand: the entry it was added with
+        assert priorities(pool) == {'s01': '0:0', 's02': '1:0', 'z01': '0:0', 'b02': '2:2'}
+        assert shares(pool) == {'s01': 100, 's02': 80, 'z01': 100, 'b02': 30}
+        file = saved(state)
+        assert file['priority'] == {} and file['total_usable_capacity'] == {}
+        # what else was changed by hand is kept: a host enabled, a drain, a host added
+        assert file['enabled'] == ['z01'] and list(file['drain']) == ['s01'] and file['added'][0]['name'] == 'b02'
+        assert pool.reset_settings() == [] and saved(state) == file   # nothing left: not written again
+        again = Pool(self.configured(), None, state_file=str(state))
+        assert priorities(again) == priorities(pool) and shares(again) == shares(pool)
+        assert flags(again)['z01'] is True and again.runtime['s01'].drain
+
+    def test_no_state_file(self):
+        pool = Pool(self.configured(), None)
+        pool.set_priority('s02', M.prio('0:0'))
+        pool.set_total_usable_capacity('z01', 5)
+        assert pool.reset_settings() == ['s02', 'z01'] and pool.state_error == ''
+        assert priorities(pool)['s02'] == '1:0' and shares(pool)['z01'] == 100
+
+
 class TestDrain:
     def test_kept_cancelled_and_over(self, tmp_path):
         state = tmp_path / 'pool.json'

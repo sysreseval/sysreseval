@@ -766,8 +766,65 @@ msgstr "mémoire pleine"
 msgid "cpu full"
 msgstr "processeurs pleins"
 
-msgid "capacity {percent}%"
-msgstr "capacité {percent} %"
+msgid "Reset to initial settings"
+msgstr "Réinitialiser les réglages"
+
+msgid "Usable capacity…"
+msgstr "Capacité utilisable…"
+
+msgid "Capacity"
+msgstr "Capacité"
+
+msgid "What the whole host holds for projects: its memory less the reserve, its processors by the share projects may use"
+msgstr "Ce que la machine entière offre aux projets : sa mémoire moins la réserve, ses processeurs multipliés par la part que les projets peuvent utiliser"
+
+msgid "Usable capacity"
+msgstr "Capacité utilisable"
+
+msgid "The share of the capacity of the host its projects may fill"
+msgstr "La part de la capacité de la machine que ses projets peuvent occuper"
+
+msgid "{memory} GiB · {cores} cores"
+msgstr "{memory} Gio · {cores} cœurs"
+
+msgid "{percent} %"
+msgstr "{percent} %"
+
+msgid "{percent} % usable: {figures}"
+msgstr "{percent} % utilisables : {figures}"
+
+msgid "priority {from} → {to}"
+msgstr "priorité {from} → {to}"
+
+msgid "usable capacity {from} → {to}"
+msgstr "capacité utilisable {from} → {to}"
+
+msgid "Share (%)"
+msgstr "Part (%)"
+
+msgid "The share of the capacity of the host (its memory less the reserve, its processors) its projects may fill, from 1 to 100: at 50 the host counts as a machine half its size, and what is in use there counts against it. 100 by default: the whole host. It counts when the pool places the projects by the load of the hosts."
+msgstr "La part de la capacité de la machine (sa mémoire moins la réserve, ses processeurs) que ses projets peuvent occuper, de 1 à 100 : à 50 la machine compte comme une machine deux fois plus petite, et ce qui y est utilisé est compté dans cette part. 100 par défaut : la machine entière. Elle compte lorsque le parc place les projets selon la charge des machines."
+
+msgid "Usable capacity of {name}"
+msgstr "Capacité utilisable de {name}"
+
+msgid "Usable capacity of the {n} selected host(s)"
+msgstr "Capacité utilisable des {n} machine(s) sélectionnée(s)"
+
+msgid "Change the share of the capacity of the host its projects may fill"
+msgstr "Changer la part de la capacité de la machine que ses projets peuvent occuper"
+
+msgid "set by hand, the configuration says {value}"
+msgstr "réglé à la main, la configuration indique {value}"
+
+msgid "The priority and the usable capacity of {n} host(s) go back to the values of the configuration:"
+msgstr "La priorité et la capacité utilisable de {n} machine(s) reviennent aux valeurs de la configuration :"
+
+msgid "The priority or the usable capacity of {n} host(s) was changed: back to the values of the configuration"
+msgstr "La priorité ou la capacité utilisable de {n} machine(s) a été modifiée : retour aux valeurs de la configuration"
+
+msgid "Every host has the priority and the usable capacity of the configuration"
+msgstr "Toutes les machines ont la priorité et la capacité utilisable de la configuration"
 
 msgid "CPU"
 msgstr "CPU"
