@@ -205,8 +205,13 @@ class NetScheme(NetScheme0):
             + tr("""
 
 Un **pare-feu** (*firewall*) examine les paquets qui **entrent** dans une machine, en **sortent**
-ou la **traversent**, et applique à chacun une **politique** : le laisser passer (*accept*), le
-détruire en silence (*drop*) ou le refuser en prévenant l'émetteur (*reject*), selon des critères
+ou la **traversent**, et applique à chacun une **politique** : 
+
+- soit le laisser passer (*accept*) ;
+- soit le détruire en silence (*drop*) ; 
+- soit le refuser en prévenant l'émetteur (*reject*) ;
+
+selon des critères
 comme l'interface, les adresses, le protocole, les ports ou l'état de la connexion. Un pare-feu
 *de machine* (*host firewall*) protège la machine sur laquelle il tourne : c'est le sujet de ce
 TP, qui filtre ce qui **entre** dans `m1`, puis ce qui en **sort**. Un pare-feu *de réseau* tourne
@@ -1899,21 +1904,69 @@ Règles valables pour tout le TP :
   filtrez jamais `forward`) ;
 - les questions 10 à 14 **complètent** le pare-feu des questions 2 à 9 sans rien en défaire : à la
   fin du TP, tout ce que les questions précédentes demandent doit encore fonctionner ;
-- travaillez dans **votre** table (`nft add table inet filter`) ; les règles sont volatiles
-  (`nft`) : elles ne survivent pas à un redémarrage de la machine ;
+- travaillez dans **votre** table, `inet filter`, créée à la main (`nft add table inet filter`)
+  ou déclarée dans un fichier (méthode conseillée plus bas) ; les règles tapées avec `nft` sont
+  volatiles : elles ne survivent pas à un redémarrage de la machine ;
 - l'évaluation lit le jeu de règles de `m1` (`nft list ruleset`) et le **recopie sur une machine
   cachée identique** à `m1` (mêmes adresses, mêmes serveurs de test), qu'elle sonde depuis des
   copies cachées des autres machines : seul ce que dit **le jeu de règles chargé sur `m1`**
   compte, pas l'état de ses serveurs ni ce que vous faites sur les autres machines ;
 - pour tester sans attendre, utilisez des délais courts : `curl -m 3 …`, `ping -c 2 -W 1 …`,
   `nc -u -w 1 …`.
+
+**Méthode conseillée : le pare-feu dans un fichier.** Plutôt que de taper les règles une à une,
+écrivez le pare-feu de `m1` dans **`/etc/nftables.conf`**, complétez-le de question en question et
+rechargez-le d'un bloc (section @@ref:nft-files@@ des Informations) : plus de guillemets pour le
+shell, ni de handle à chercher pour placer une règle (on l'écrit à sa place), et des commentaires
+(`#`) pour s'y retrouver. Le fichier existe déjà : le paquet Debian y a mis un squelette, une table
+`inet filter` aux chaînes vides `input`, `forward` et `output`. Remplacez-le à partir de la
+question 2 (la question 1 observe `m1` sans pare-feu) en gardant cette forme :
+
+```
+#!/usr/sbin/nft -f
+flush ruleset
+
+table inet filter {
+        chain input {
+                # la déclaration de la chaîne de base (question 2), puis ses règles,
+                # dans l'ordre où les paquets doivent les rencontrer
+        }
+        # à partir de la question 10 : chain output { … } ; questions 11 à 14 : les ensembles
+}
+```
+
+Après chaque modification (`nano /etc/nftables.conf`, ou `vim`) :
+
+```
+nft -c -f /etc/nftables.conf      # vérifie sans rien changer ; aucun message : correct
+nft -f /etc/nftables.conf         # remplace tout le jeu de règles par celui du fichier
+nft -a list ruleset               # ce qui est réellement chargé (avec les handles)
+```
+
+- chaque erreur est signalée par le nom du fichier, les numéros de ligne et de colonne, et des
+  `^^^` sous le mot fautif. Le chargement est atomique : en cas d'erreur, **rien** ne change et l'ancien
+  jeu de règles reste en place ;
+- **l'évaluation ne lit pas le fichier**, seulement le jeu de règles chargé sur `m1` : un fichier
+  modifié mais pas rechargé ne compte pas, et aucun service ne le charge dans les machines du TP ;
+- `flush ruleset` en tête : recharger le fichier remplace tout, sans doublon (aucune autre table
+  n'est à garder sur `m1`). Cela remet aussi à zéro les compteurs et vide les ensembles remplis par
+  les règles (question 14) ;
+- les questions qui font pratiquer une commande (`nft insert rule`, `nft replace rule … handle`,
+  `nft add element`, un changement de politique) se font dans le fichier par la modification
+  correspondante : la règle écrite à sa place, l'élément ajouté à la liste, la politique changée.
+  Essayez la commande si vous voulez, mais reportez **toute** modification dans le fichier : le
+  prochain `nft -f` efface ce qu'il ne contient pas ;
+- déjà commencé à la main ? `{ echo 'flush ruleset'; nft -s list ruleset; } > /etc/nftables.conf`
+  transforme le jeu de règles en place en fichier.
 """)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
 projet. L'état `final` (onglet *Appliquer une configuration*) vide le jeu de règles de `m1` puis
 applique toute la solution et remplit les formulaires ; il est ré-applicable et une évaluation
 lancée juste après donne 140/140 et les 6 points de bonus (questions 1 à 9 : 100 points ; questions
-10 à 13 : 40 points ; question 14 : bonus).
+10 à 13 : 40 points ; question 14 : bonus). Le fichier `/etc/nftables.conf` n'est qu'une méthode
+conseillée aux étudiants : l'évaluation ne le lit pas (seul compte le jeu de règles chargé), et
+l'état `final` passe par des commandes `nft`.
 
 **Aucune question n'en pénalise une autre.** La chaîne `output` de la question 10 autorise tout ce
 que les sondes des questions 1 à 9 font émettre à `m1` (`lo`, `ping`, TCP {closed}, UDP {udp_port} et
