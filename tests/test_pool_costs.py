@@ -297,6 +297,25 @@ class TestHostLoad:
         load = self.load(reserve_mb=99999)
         assert load.mem_free_mb == 0 and load.mem_capacity_mb == 1.0 and load.fill == 1.0
 
+    def test_a_share_of_the_host(self):
+        """``share`` (``[[hosts]] total_usable_capacity``): the host counts as a machine that
+        share of its size, and what is in use there counts against it, whoever uses it."""
+        assert self.load(share=1.0) == self.load()                  # the whole host: the figures of before
+        load = self.load(share=0.5)                                 # 7500 of its 15000 MiB, 3 of its 6 cores
+        assert load == HostLoad(mem_free_mb=3500.0, mem_capacity_mb=7500.0, cpu_used=2.0, cpu_capacity=3.0)
+        assert load.fill == pytest.approx(2 / 3)                    # the processors: 2 of 3; the memory 4000 of 7500
+        assert load.fits(Cost(3500, 1.0)) and not load.fits(Cost(3501, 0.1)) and not load.fits(Cost(10, 1.01))
+        assert load.rooms(Cost(1000, 0.5)) == (3, 2)
+        assert self.load(share=0.5, in_flight=[Cost(2000, 0.5)]).mem_free_mb == 1500.0
+        # more in use than the share holds: full, and over it
+        load = self.load(share=0.25)                                # 3750 MiB (4000 in use), 1.5 cores (2 counted)
+        assert (load.mem_free_mb, load.mem_capacity_mb, load.cpu_capacity) == (0.0, 3750.0, 1.5)
+        assert load.fill == pytest.approx(2.0 / 1.5) and load.rooms(Cost(100, 0.1)) == (0, 0)
+        assert self.load(share=0.25, committed_cpu=0.0, cpu_busy=0.0).fill == pytest.approx(1.0)
+        # a reserve larger than the host: nothing, at any share
+        load = self.load(share=0.5, reserve_mb=99999)
+        assert load.mem_free_mb == 0 and load.mem_capacity_mb == 1.0 and load.fill == 1.0
+
 
 # ---------------------------------------------------------------------------------------------
 # the pool feeds the book
@@ -569,6 +588,70 @@ class TestResourcesPlacement:
         with pytest.raises(PoolError):
             pool.pick(lab='sre/huge.py')
 
+    def test_the_usable_share_of_a_host(self):
+        """``total_usable_capacity``: a host counts as a machine that share of its size.  At the
+        same load it is the fuller one, it refuses what the whole host takes, and it still takes
+        a project when it has none."""
+        pool = resources()
+        pool.set_total_usable_capacity('a', 50)
+        pool.status.update({'a': host([HEAVY]), 'b': host([HEAVY])})        # the same load on both
+        assert pool.load_of('a') == HostLoad(mem_free_mb=3500.0, mem_capacity_mb=7500.0, cpu_used=1.0,
+                                             cpu_capacity=2.0)
+        assert pool.load_of('b') == HostLoad(mem_free_mb=11000.0, mem_capacity_mb=15000.0, cpu_used=1.0,
+                                             cpu_capacity=4.0)
+        assert pool._fill(pool.hosts['a']) == pytest.approx(4000 / 7500)    # its memory: 4000 of 7500 MiB
+        assert pool._fill(pool.hosts['b']) == pytest.approx(4000 / 15000)
+        assert pool.pick(lab=HEAVY)[0].name == 'b'
+        rows = {row['name']: row for row in pool.summary()}
+        assert (rows['a']['total_usable_capacity'], rows['a']['cpu_capacity']) == (50, 2.0)
+        assert (rows['b']['total_usable_capacity'], rows['b']['cpu_capacity']) == (100, 4.0)
+        # its processors: two heavy projects are the two cores of half the host
+        whole, half = resources(['a']), resources(['a'])
+        half.set_total_usable_capacity('a', 50)
+        for one in (whole, half):
+            one.status['a'] = host([HEAVY] * 2, available=8800)
+        assert whole.pick(lab=HEAVY)[0].name == 'a'
+        for lab in (HEAVY, LIGHT):
+            with pytest.raises(PoolError) as e:
+                half.pick(lab=lab)
+            assert e.value.status == 503
+        # its memory: 500 MiB of its 7500 left, where the whole host has 8000
+        whole, half = resources(['a']), resources(['a'])
+        half.set_total_usable_capacity('a', 50)
+        for one in (whole, half):
+            one.status['a'] = host([LIGHT], available=9000)
+        assert whole.pick(lab=HEAVY)[0].name == 'a'
+        with pytest.raises(PoolError):
+            half.pick(lab=HEAVY)
+        assert half.pick(lab=LIGHT)[0].name == 'a'                          # a light one still fits
+        # a host without project always takes one, whatever its share
+        empty = resources(['a'])
+        empty.set_total_usable_capacity('a', 1)
+        empty.status['a'] = host(available=3000)
+        assert empty._fill(empty.hosts['a']) == 0.0 and empty._rooms('a') == (1, 1)
+        assert empty.pick(lab=HEAVY)[0].name == 'a'
+
+    def test_the_usable_share_of_the_configuration(self):
+        """The share of ``[[hosts]]`` is the one of the host until it is set by hand."""
+        from sreweb.config import HostConfig as Host
+        pool = Pool([Host('a', 'http://a', TOKEN, 25, total_usable_capacity=25)], session=None,
+                    capacity='resources', memory_reserve_mb=1000, cpu_target=0.5)
+        pool.status['a'] = host()
+        assert (pool.load_of('a').mem_capacity_mb, pool.load_of('a').cpu_capacity) == (3750.0, 1.0)
+        pool.set_total_usable_capacity('a', 100)
+        assert (pool.load_of('a').mem_capacity_mb, pool.load_of('a').cpu_capacity) == (15000.0, 4.0)
+        assert pool.hosts['a'].total_usable_capacity == 25                  # the configuration is not touched
+
+    def test_the_usable_share_counts_for_nothing_in_projects_mode(self):
+        """``capacity = "projects"``: a host holds its ``max_projects``, whatever its share."""
+        counted, shared = resources(['a'], capacity='projects'), resources(['a'], capacity='projects')
+        shared.set_total_usable_capacity('a', 1)
+        for pool in (counted, shared):
+            pool.status['a'] = host([HEAVY] * 4, available=5600)
+            assert pool._fill(pool.hosts['a']) == 4 / 25 and pool._has_room(pool.hosts['a'])
+            assert pool.memory_room('a') is None and pool.cpu_room('a') is None
+            assert pool.pick(lab=HEAVY)[0].name == 'a'
+
     def test_the_processors_the_host_really_burns(self):
         """A runaway container, the Docker daemon: more than its projects are counted for."""
         pool = resources(['a'])
@@ -678,6 +761,21 @@ class TestResourcesElasticPool:
         assert status['capacity'] == 'resources' and status['cpu_full'] == ['a'] and status['memory_full'] == []
         assert status['reference'] == {'mem_mb': 1093.3, 'cpu': 0.683} and status['spare_projects'] == 5
         json.dumps(status)
+
+    def test_the_usable_share_in_the_spare_capacity(self):
+        """A host whose projects may fill half of it has fewer free slots: the elastic pool
+        counts the room of the share."""
+        pool = resources(['a', 'b'])
+        pool.status.update({'a': host([HEAVY], available=10400), 'b': host([HEAVY], available=10400)})
+        manager = PoolManager(pool, PoolConfig(spare_projects=0, min_hosts_up=0))
+        assert pool.reference_cost() == Cost(1600.0, 1.0)
+        assert {v.name: (v.memory_room, v.cpu_room) for v in manager.views()} == {'a': (5, 3), 'b': (5, 3)}
+        assert manager.status()['spare_projects'] == 6
+        pool.set_total_usable_capacity('a', 50)                             # 1900 MiB and one core left there
+        views = {v.name: v for v in manager.views()}
+        assert (views['a'].memory_room, views['a'].cpu_room) == (1, 1)
+        assert (views['b'].memory_room, views['b'].cpu_room) == (5, 3)
+        assert free_slots(views['a']) == 1 and manager.status()['spare_projects'] == 4
 
     def test_projects_mode_tells_no_room(self):
         pool = resources(capacity='projects')

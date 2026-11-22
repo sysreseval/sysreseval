@@ -1,6 +1,7 @@
 """The pool of hosts: the status of their agents, the state of each host, the placement of a
 new project, the fan-out of the project lists, and what is changed by hand
-(``sre-web-tool add / remove / enable / disable / drain / priority``, the Pool page), kept in a state file
+(``sre-web-tool add / remove / enable / disable / drain / priority / usable-capacity``, the Pool page), kept
+in a state file
 merged with the ``[[hosts]]`` of the configuration so that a restart of the portal changes
 nothing."""
 import asyncio
@@ -18,8 +19,9 @@ from ..agent.runner import (PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PR
                             LAB_README_KEY)
 from ..agent.usage import (STATUS_CPUS, STATUS_MEM_TOTAL, STATUS_CPU_BUSY, STATUS_USAGE, USAGE_NAME, USAGE_LAB,
                            USAGE_CONTAINERS, USAGE_MEM, USAGE_CPU, USAGE_SETTLED)
-from ..config import (HostConfig, Priority, host_config_from_dict, host_entry, check_priority, ConfigError,
-                      CAPACITY_PROJECTS, CAPACITY_RESOURCES)
+from ..config import (HostConfig, Priority, host_config_from_dict, host_entry, check_priority,
+                      check_usable_capacity, ConfigError, CAPACITY_PROJECTS, CAPACITY_RESOURCES,
+                      DEFAULT_USABLE_CAPACITY, USABLE_CAPACITY_KEY)
 from ..identity import Identity, is_valid_login
 from .costs import (Cost, CostBook, HostLoad, Usage, host_load, lab_key, figure, DEFAULT_MEMORY_MB, DEFAULT_CPU,
                     MAX_NAME)
@@ -45,11 +47,14 @@ SOURCE_ADDED = 'added'
 #: ``added`` entry for an added host); ``drain``: host -> when it was asked; ``priority``: host
 #: -> the priority set by hand (``value``) and the one of the configuration it was set over
 #: (``configured``), both as ``"group:order"``, for the hosts where they differ (a file of before
-#: the groups has one integer there: that order in group 0); ``clocks``: per
+#: the groups has one integer there: that order in group 0); ``total_usable_capacity``: host ->
+#: the share of the host set by hand and the one of the configuration, in the same form (two
+#: percentages); ``clocks``: per
 #: host, the wake in progress, the hold after failed wakes or a power off, the power off and
 #: the restart sent.  Every time is a wall-clock one (the runtime keeps monotonic ones).  A
 #: version 1 file had ``removed``, ``added`` and every disabled host in ``disabled``; a version
-#: 2 file written before the priorities has no ``priority`` key.
+#: 2 file written before the priorities has no ``priority`` key, one written before the shares
+#: no ``total_usable_capacity`` key.
 STATE_VERSION = 2
 KEY_VERSION = 'version'
 KEY_SAVED_AT = 'saved_at'
@@ -61,6 +66,7 @@ KEY_DRAIN = 'drain'
 KEY_PRIORITY = 'priority'
 PRIORITY_VALUE = 'value'
 PRIORITY_CONFIGURED = 'configured'
+KEY_USABLE_CAPACITY = USABLE_CAPACITY_KEY       # the entries of the priority: PRIORITY_VALUE, PRIORITY_CONFIGURED
 KEY_CLOCKS = 'clocks'
 CLOCK_WOKEN_AT = 'woken_at'
 CLOCK_NEXT_WAKE_AT = 'next_wake_at'
@@ -371,6 +377,9 @@ class HostRuntime:
     source: str = SOURCE_CONFIG
     enabled: bool = True
     priority: Priority = Priority()    # the one of the configuration until it is set by hand (``set_priority``)
+    # percent of the host its projects may fill: the one of the configuration until it is set by hand
+    # (``set_total_usable_capacity``)
+    total_usable_capacity: int = DEFAULT_USABLE_CAPACITY
     woken_at: float | None = None      # monotonic time of the last wake, None when not waking
     wake_failures: int = 0
     next_wake_at: float = 0.0          # backoff after failed wakes
@@ -462,7 +471,8 @@ class Pool:
     def _register(self, host: HostConfig, source: str):
         self.hosts[host.name] = host
         self.status[host.name] = HostStatus()
-        self.runtime[host.name] = HostRuntime(source=source, enabled=host.enabled, priority=host.priority)
+        self.runtime[host.name] = HostRuntime(source=source, enabled=host.enabled, priority=host.priority,
+                                              total_usable_capacity=host.total_usable_capacity)
         self._reservations[host.name] = []
         self._reported.pop(host.name, None)
 
@@ -534,6 +544,15 @@ class Pool:
         self.save_state()
         log.info("host %s: priority %s", name, priority)
 
+    def set_total_usable_capacity(self, name: str, percent: int):
+        """``total_usable_capacity``: the share of the memory and of the processors of *name*
+        its projects may fill, in percent (``load_of``: with ``capacity = "resources"`` the host
+        counts as a machine that share of its size; nothing with ``"projects"``)."""
+        self.host(name)
+        self.runtime[name].total_usable_capacity = percent
+        self.save_state()
+        log.info("host %s: total usable capacity %d %%", name, percent)
+
     # -- the state file -------------------------------------------------------------------------
 
     def _forget(self, name: str):
@@ -543,8 +562,8 @@ class Pool:
 
     def _settings(self) -> dict:
         """What was set by hand, as the state file keeps it: the membership, the ``enabled``
-        flags and the priorities differing from the configuration (a priority with the one of
-        the configuration it was set over) and the drains."""
+        flags, the priorities and the usable capacities differing from the configuration (each
+        with the value of the configuration it was set over) and the drains."""
         return {
             KEY_REMOVED: sorted(self._removed),
             KEY_ADDED: [host_entry(self.hosts[n]) for n, r in self.runtime.items() if r.source == SOURCE_ADDED],
@@ -553,6 +572,10 @@ class Pool:
             KEY_DRAIN: {n: r.drain_at for n, r in sorted(self.runtime.items()) if r.drain},
             KEY_PRIORITY: {n: {PRIORITY_VALUE: str(r.priority), PRIORITY_CONFIGURED: str(self.hosts[n].priority)}
                            for n, r in sorted(self.runtime.items()) if r.priority != self.hosts[n].priority},
+            KEY_USABLE_CAPACITY: {n: {PRIORITY_VALUE: r.total_usable_capacity,
+                                      PRIORITY_CONFIGURED: self.hosts[n].total_usable_capacity}
+                                  for n, r in sorted(self.runtime.items())
+                                  if r.total_usable_capacity != self.hosts[n].total_usable_capacity},
         }
 
     def _clocks(self) -> dict:
@@ -582,8 +605,9 @@ class Pool:
         """What the state file depends on in the runtime of the hosts: ``refresh`` writes the
         file when it changed otherwise than by the calls saving it themselves (a drain over,
         a wake, a power off or a restart sent by the manager)."""
-        return tuple((name, rt.enabled, rt.drain, rt.priority, rt.woken_at, rt.next_wake_at, rt.wake_failures,
-                      rt.power_off_sent, rt.restart_sent) for name, rt in self.runtime.items())
+        return tuple((name, rt.enabled, rt.drain, rt.priority, rt.total_usable_capacity, rt.woken_at,
+                      rt.next_wake_at, rt.wake_failures, rt.power_off_sent, rt.restart_sent)
+                     for name, rt in self.runtime.items())
 
     def state_info(self) -> dict:
         return {'state_file': self.state_file, 'state_error': self.state_error}
@@ -620,7 +644,8 @@ class Pool:
         file holds while the ``enabled`` of the host in the configuration is the one it was set
         against: once the configuration says the same, or the host is gone, the entry is
         dropped (the file is written again at once), so that an edit of the configuration
-        wins over an older change made by hand.  The same for a priority (``_load_priorities``)."""
+        wins over an older change made by hand.  The same for a priority and for a usable
+        capacity (``_load_overrides``)."""
         if not self.state_file:
             return
         try:
@@ -675,48 +700,53 @@ class Pool:
             runtime = self.runtime.get(name)
             if runtime is not None:
                 runtime.drain, runtime.drain_at = True, _number(asked_at) or 0.0
-        self._load_priorities(state.get(KEY_PRIORITY))
+        self._load_overrides(state.get(KEY_PRIORITY), what='priority', attribute='priority', check=check_priority)
+        self._load_overrides(state.get(KEY_USABLE_CAPACITY), what='usable capacity',
+                             attribute='total_usable_capacity', check=check_usable_capacity)
         self._load_clocks(state.get(KEY_CLOCKS))
         settings = self._settings()
         log.info("pool state read from %s: %d removed, %d added, %d enabled and %d disabled by hand, %d draining, "
-                 "%d priorities set by hand",
+                 "%d priorities set by hand, %d usable capacities set by hand",
                  self.state_file, len(settings[KEY_REMOVED]), len(settings[KEY_ADDED]), len(settings[KEY_ENABLED]),
-                 len(settings[KEY_DISABLED]), len(settings[KEY_DRAIN]), len(settings[KEY_PRIORITY]))
+                 len(settings[KEY_DISABLED]), len(settings[KEY_DRAIN]), len(settings[KEY_PRIORITY]),
+                 len(settings[KEY_USABLE_CAPACITY]))
         if not current or any(state.get(key) != value for key, value in settings.items()):
             self.save_state()
         else:
             self._check_writable()
 
-    def _load_priorities(self, priorities):
-        """The priorities set by hand, over those of the configuration.  An entry holds while
-        the priority of the host in the configuration is the one it was set over
-        (``configured``): once the configuration gives another one, or the same as the entry,
-        or the host is gone, the entry is dropped — an edit of the configuration wins.  A plain
-        value (written by hand, without the configured one) holds.  Every value is a priority
-        as the configuration writes it (``check_priority``): ``"group:order"``, or the one
-        integer of a file of before the groups."""
-        for name, entry in (priorities if isinstance(priorities, dict) else {}).items():
+    def _load_overrides(self, entries, *, what: str, attribute: str, check):
+        """A setting of the hosts set by hand (*attribute* of their ``HostConfig`` and of their
+        runtime: the priority, the usable capacity; *what* names it in the journal), over the
+        one of the configuration.  An entry holds while the value of the host in the
+        configuration is the one it was set over (``configured``): once the configuration gives
+        another one, or the same as the entry, or the host is gone, the entry is dropped — an
+        edit of the configuration wins.  A plain value (written by hand, without the configured
+        one) holds.  Every value is one the configuration takes (*check*: ``check_priority``,
+        ``"group:order"`` or the one integer of a file of before the groups;
+        ``check_usable_capacity``, a percentage)."""
+        for name, entry in (entries if isinstance(entries, dict) else {}).items():
             runtime = self.runtime.get(name)
             if runtime is None:
                 if name not in self._removed:
-                    log.info("pool state: %s (priority set by hand) is not in the pool any more: forgotten", name)
+                    log.info("pool state: %s (%s set by hand) is not in the pool any more: forgotten", name, what)
                 continue
             value, configured = entry, None
             if isinstance(entry, dict):
                 value, configured = entry.get(PRIORITY_VALUE), entry.get(PRIORITY_CONFIGURED)
             try:
-                value = check_priority(value, f"{self.state_file}: the priority of {name}")
+                value = check(value, f"{self.state_file}: the {what} of {name}")
                 if configured is not None:
-                    configured = check_priority(configured, f"{self.state_file}: the configured priority of {name}")
+                    configured = check(configured, f"{self.state_file}: the configured {what} of {name}")
             except ConfigError as e:
                 log.error("%s", e)
                 continue
-            in_config = self.hosts[name].priority
+            in_config = getattr(self.hosts[name], attribute)
             if configured is not None and configured != in_config:
-                log.info("pool state: the priority of %s was set by hand to %s over %s and the configuration says "
-                         "%s now: it follows the configuration", name, value, configured, in_config)
+                log.info("pool state: the %s of %s was set by hand to %s over %s and the configuration says "
+                         "%s now: it follows the configuration", what, name, value, configured, in_config)
                 continue
-            runtime.priority = value
+            setattr(runtime, attribute, value)
 
     def _load_clocks(self, clocks):
         """The clocks of the state file back as monotonic times, each one only while it still
@@ -990,6 +1020,8 @@ class Pool:
                 'instructors_only': h.instructors_only,
                 # "group:order" as it is written, and its two numbers (what the Pool page sorts on)
                 'priority': str(rt.priority), 'group': rt.priority.group, 'order': rt.priority.order,
+                # percent of the host its projects may fill (100: the whole host)
+                USABLE_CAPACITY_KEY: rt.total_usable_capacity,
                 # a drain is wanted: the portal's, or the one asked on the host (``local_drain``, below)
                 'drain': self.draining(h.name), 'power_off_sent': rt.power_off_sent is not None,
                 'restart_sent': rt.restart_sent is not None,
@@ -1012,7 +1044,8 @@ class Pool:
         """The load of *name* in memory and processors (``costs.host_load``) from its last
         status: its projects counted for the cost of their lab, the starts in flight for theirs
         (a reservation counts until a status asked after the end of its start, as for the number
-        of projects).  ``None`` for a host that is unreachable or whose agent does not tell its
+        of projects), the host counting as a machine ``total_usable_capacity`` percent of its
+        size.  ``None`` for a host that is unreachable or whose agent does not tell its
         size (older than these figures): it is judged by its number of projects."""
         st = self.status[name]
         if not st.reachable:
@@ -1020,7 +1053,8 @@ class Pool:
         return host_load(cpus=st.cpus, mem_total_mb=st.mem_total_mb, mem_available_mb=st.mem_available_mb,
                          cpu_busy=st.cpu_busy, committed_cpu=sum(self.costs.cost(row.lab).cpu for row in st.usage),
                          in_flight=[r.cost or self.costs.default for r in self._reservations[name]],
-                         reserve_mb=self.memory_reserve_mb, cpu_target=self.cpu_target)
+                         reserve_mb=self.memory_reserve_mb, cpu_target=self.cpu_target,
+                         share=self.runtime[name].total_usable_capacity / DEFAULT_USABLE_CAPACITY)
 
     def _load_fields(self, name: str) -> dict:
         """The load of a host in a row of ``summary()``: the cores its projects are counted for

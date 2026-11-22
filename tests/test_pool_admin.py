@@ -529,6 +529,60 @@ class TestInstructorPage:
             assert len(refused) == 12 and all('priority' not in l for l in refused)
         run(go())
 
+    def test_usable_capacity(self, tmp_path):
+        """The share of a host its projects may fill, a percentage: set with the token
+        (``sre-web-tool usable-capacity``) or by an instructor, told by the row, kept in the
+        state file and across a restart, in the ``admin`` line of the connection log; what is
+        no percentage is refused; an edit of the configuration wins."""
+        state = tmp_path / 'state' / 'pool.json'
+        over = {**P.PROXY_OVER, 'admin': {'token': ADMIN, 'state_file': str(state)}, 'pool': QUIET_POOL,
+                'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False}}
+        bob, prof = {**P.who('bob'), **CSRF}, {**P.who('prof', groups=P.TEACHERS), **CSRF}
+        url, key = '/api/pool/hosts/a01/usable-capacity', 'total_usable_capacity'
+
+        async def share_of(h):
+            return (await (await h.client.get('/api/pool', headers=prof)).json())[0][key]
+
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over, host_over={key: 80}) as h:
+                assert await share_of(h) == 80                      # the one of the configuration
+                assert (await h.client.post(url, json={key: 50}, headers=bob)).status == 403
+                resp = await h.client.post(url, json={key: 50}, headers=prof)
+                assert resp.status == 200, await resp.text()
+                row = await resp.json()
+                assert row['name'] == 'a01' and row[key] == 50 and row['state'] == 'up'
+                assert json.loads(state.read_text())[key] == {'a01': {'value': 50, 'configured': 80}}
+                for body in ({key: 0}, {key: 101}, {key: -5}, {key: True}, {key: 12.5}, {key: '50'}, {key: None},
+                             {'percent': 50}, {}, [50], 50):
+                    resp = await h.client.post(url, json=body, headers=prof)
+                    assert resp.status == 400, body
+                    assert 'total_usable_capacity must be a percentage, an integer from 1 to 100' \
+                        in (await resp.json())['error'], body
+                resp = await h.client.post(url, data=b'half', headers=prof)
+                assert resp.status == 400 and 'JSON body' in (await resp.json())['error']
+                resp = await h.client.post('/api/pool/hosts/nope/usable-capacity', json={key: 50}, headers=prof)
+                assert resp.status == 404
+                assert await share_of(h) == 50                      # the refused calls changed nothing
+                # the token (sre-web-tool usable-capacity); the limits are percentages
+                resp = await h.client.post(url, json={key: 1}, headers=auth(ADMIN))
+                assert resp.status == 200 and (await resp.json())[key] == 1
+                resp = await h.client.post(url, json={key: 100}, headers=auth(ADMIN))
+                assert resp.status == 200 and (await resp.json())[key] == 100
+            async with P.Harness(tmp_path / 'again', auth_mode='proxy', web_over=over, host_over={key: 80}) as h:
+                assert await share_of(h) == 100
+                pool = h.portal.pool
+                assert pool.runtime['a01'].total_usable_capacity == 100 and pool.hosts['a01'].total_usable_capacity == 80
+            # the configuration gives the host another share: it is followed, nothing by hand is left
+            async with P.Harness(tmp_path / 'edited', auth_mode='proxy', web_over=over, host_over={key: 60}) as h:
+                assert await share_of(h) == 60
+                assert json.loads(state.read_text())[key] == {}
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            asked = [(l['login'], l[key], l['status']) for l in lines if l['event'] == 'admin' and key in l]
+            assert asked == [('prof', '50', '200'), ('', '1', '200'), ('', '100', '200')]
+            refused = [l for l in lines if l['event'] == 'admin' and l['path'] == url and l['status'] == '400']
+            assert len(refused) == 12 and all(key not in l for l in refused)
+        run(go())
+
     def test_bulk_actions(self, tmp_path):
         """The bar of the Pool page sends one call per selected host, all at once: the per-host
         route serves them together, each answer being the row of its host, a failure (the wake
@@ -629,6 +683,33 @@ class TestCli:
                                                                  '--token', TOKEN, '--priority', '-4:1', '--json'))
                 assert r.returncode == 0 and json.loads(r.stdout)['priority'] == '-4:1', r.stderr
                 assert [e['priority'] for e in json.loads(state.read_text())['added']] == ['0:0', '-4:1']
+                # usable-capacity: a percentage, shown by list for the hosts that are not at 100; add
+                # --total-usable-capacity
+                r = await loop.run_in_executor(None, cli, 'list')
+                assert 'capacity' not in r.stdout
+                r = await loop.run_in_executor(None, cli, 'usable-capacity', 'a01', '50')
+                assert r.returncode == 0, r.stderr
+                assert r.stdout.splitlines()[1].split()[:4] == ['a01', 'up', '(capacity', '50%)']
+                assert json.loads(state.read_text())['total_usable_capacity'] == {'a01': {'value': 50, 'configured': 100}}
+                r = await loop.run_in_executor(None, lambda: cli('usable-capacity', 'b02', '25', '--json'))
+                assert r.returncode == 0 and json.loads(r.stdout)['total_usable_capacity'] == 25
+                r = await loop.run_in_executor(None, cli, 'list')
+                assert '(capacity 50%)' in r.stdout.splitlines()[1]
+                assert '(instructors, priority 0:5, capacity 25%)' in r.stdout.splitlines()[2]
+                r = await loop.run_in_executor(None, cli, 'usable-capacity', 'a01', '100')
+                assert r.returncode == 0 and 'capacity' not in r.stdout     # the whole host: not shown
+                for bad in ('0', '101', '-5', '12.5', 'half', '50%'):       # refused by the tool, nothing sent
+                    r = await loop.run_in_executor(None, cli, 'usable-capacity', 'a01', bad)
+                    assert r.returncode == 2 and 'the usable capacity must be a percentage' in r.stderr, bad
+                r = await loop.run_in_executor(None, cli, 'usable-capacity', 'nope', '50')
+                assert r.returncode == 1 and '(404)' in r.stderr
+                r = await loop.run_in_executor(None, lambda: cli('add', 'd04', '--url', 'http://127.0.0.1:9',
+                                                                 '--token', TOKEN, '--total-usable-capacity', '40',
+                                                                 '--json'))
+                assert r.returncode == 0 and json.loads(r.stdout)['total_usable_capacity'] == 40, r.stderr
+                assert [e['total_usable_capacity'] for e in json.loads(state.read_text())['added']] == [100, 100, 40]
+                r = await loop.run_in_executor(None, cli, 'remove', 'd04')
+                assert r.returncode == 0, r.stderr
                 r = await loop.run_in_executor(None, cli, 'remove', 'c03')
                 assert r.returncode == 0, r.stderr
                 r = await loop.run_in_executor(None, cli, 'disable', 'b02')
@@ -920,6 +1001,11 @@ class TestCli:
             == 'up (instructors, priority 2:12)'
         assert _cell({'state': 'up', 'priority': 0}, 'state') == 'up'
         assert _cell({'state': 'off', 'priority': -3}, 'state') == 'off (priority -3)'
+        # the share of the host its projects may fill, when it is not the whole host (an older portal: nothing)
+        assert _cell({'state': 'up', 'total_usable_capacity': 100}, 'state') == 'up'
+        assert _cell({'state': 'up', 'total_usable_capacity': 50}, 'state') == 'up (capacity 50%)'
+        assert _cell({'state': 'off', 'instructors_only': True, 'priority': '2:12', 'total_usable_capacity': 1},
+                     'state') == 'off (instructors, priority 2:12, capacity 1%)'
         # the free memory (an older agent or portal: none) and a host whose memory takes no more project
         assert _cell({'reachable': True, 'mem_available_mb': 2048}, 'mem_available_mb') == '2.0G'
         assert _cell({'reachable': True}, 'mem_available_mb') == '-'
@@ -940,7 +1026,7 @@ class TestCli:
             return {'name': body['name'], 'state': 'off', 'reachable': False}
         client = types.SimpleNamespace(call=call)
         args = dict(command='add', name='b02', host_url='http://b02', host_token=TOKEN, max_projects=25, mac='',
-                    wake_command='', power=False, instructors_only=False, json=False)
+                    wake_command='', power=False, instructors_only=False, json=False, total_usable_capacity=None)
         assert poolctl._dispatch(client, types.SimpleNamespace(**args, priority=None)) == 0
         assert poolctl._dispatch(client, types.SimpleNamespace(**args, priority=poolctl._priority('1:-3'))) == 0
         assert poolctl._dispatch(client, types.SimpleNamespace(**args, priority=poolctl._priority('0:0'))) == 0
@@ -948,6 +1034,12 @@ class TestCli:
         assert 'priority' not in bodies[0][2] and bodies[1][2]['priority'] == '1:-3'
         assert bodies[2][2]['priority'] == '0:0'            # given, though the default: sent
         assert poolctl._priority('-7') == '0:-7'            # one integer: that order in group 0
+        # the same for the share of the host: sent when given, the default too
+        for share in (40, 100):
+            assert poolctl._dispatch(client, types.SimpleNamespace(**{**args, 'total_usable_capacity': share},
+                                                                 priority=None)) == 0
+        assert [body['total_usable_capacity'] for _, _, body in bodies[3:]] == [40, 100]
+        assert 'priority' not in bodies[3][2] and poolctl._usable_capacity('100') == 100
         assert set(bodies[0][2]) == {'name', 'url', 'token', 'max_projects', 'mac', 'wake_command', 'power',
                                      'instructors_only'}
         capsys.readouterr()

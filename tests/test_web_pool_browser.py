@@ -152,6 +152,26 @@ class TestPoolPage:
                 assert asked == []                          # the page was polled once: it drew the CPU cell
         P.run(go())
 
+    def test_usable_capacity_of_a_host(self, tmp_path, monkeypatch):
+        """The share of a host its projects may fill (``total_usable_capacity``): a flag of its
+        row when it is not the whole host, and the cores of the CPU cell are those of the
+        share; changed with ``sre-web-tool usable-capacity``, the row follows at the next poll."""
+        from sreweb.agent import app as agent_app
+        monkeypatch.setattr(agent_app, '_mem_available_mb', lambda path=None: 12000)
+        monkeypatch.setattr(agent_app, '_mem_total_mb', lambda path=None: 16000)
+        monkeypatch.setattr(agent_app.os, 'cpu_count', lambda: 8)
+
+        async def go():
+            async with browser_of(tmp_path, tmp_path / 'state' / 'pool.json',
+                                  host_over={'total_usable_capacity': 50}) as (h, browser, url):
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(f"{CPU} === '0.0 / 2.8'", what="the CPU cell of half the host")   # 8 cores, 70 %
+                assert 'capacity 50%' in await page.evaluate(FLAGS)
+                h.portal.pool.set_total_usable_capacity('a01', 100)
+                await page.wait_for(f"{CPU} === '0.0 / 5.6'", timeout=POLL, what="the CPU cell of the whole host")
+                assert 'capacity' not in await page.evaluate(FLAGS)
+        P.run(go())
+
     def test_enabled_host_kept_and_unsaved_state_told(self, tmp_path):
         state = tmp_path / 'state' / 'pool.json'
 

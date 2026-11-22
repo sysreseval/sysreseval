@@ -167,6 +167,12 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [dict(HOST, priority='10000:0')]}, 'priority'),
         ({'secret': SECRET, 'hosts': [dict(HOST, priority='0:-10000')]}, 'priority'),
         ({'secret': SECRET, 'hosts': [dict(HOST, priority=[1, 2])]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, total_usable_capacity=0)]}, 'total_usable_capacity'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, total_usable_capacity=101)]}, 'total_usable_capacity'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, total_usable_capacity=-5)]}, 'total_usable_capacity'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, total_usable_capacity=True)]}, 'total_usable_capacity'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, total_usable_capacity=50.5)]}, 'total_usable_capacity'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, total_usable_capacity='50')]}, 'total_usable_capacity'),
         ({'secret': SECRET, 'hosts': [HOST], 'tls_cert': '/c.pem'}, 'tls'),
         ({'secret': SECRET, 'hosts': [HOST], 'listen': 'nowhere'}, 'listen'),
         ({'secret': SECRET, 'hosts': 'a01'}, 'hosts'),
@@ -499,6 +505,23 @@ class TestWebConfig:
             web_config_from_dict({'secret': SECRET, 'hosts': [dict(HOST, mac='zz')]})
         with pytest.raises(ConfigError, match='host name'):
             web_config_from_dict({'secret': SECRET, 'hosts': [dict(HOST, name='a b')]})
+
+    def test_hosts_usable_capacity(self):
+        """``total_usable_capacity``: the share of a host its projects may fill, a percentage,
+        an integer from 1 to 100; the whole host when the key is left out."""
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [
+            HOST, dict(HOST, name='b', total_usable_capacity=1), dict(HOST, name='c', total_usable_capacity=50),
+            dict(HOST, name='d', total_usable_capacity=100)]})
+        assert [h.total_usable_capacity for h in cfg.hosts] == [100, 1, 50, 100]
+        # a host as an entry of [[hosts]] (what the state file of the pool keeps) reads back the same
+        c = cfg.hosts[2]
+        assert config.host_entry(c)[config.USABLE_CAPACITY_KEY] == 50
+        assert config.host_config_from_dict(config.host_entry(c), 'host') == c
+        assert config.check_usable_capacity(100, 'x') == 100 == config.DEFAULT_USABLE_CAPACITY
+        assert config.check_usable_capacity(1, 'x') == 1
+        for bad in (0, 101, -5, True, False, 50.5, '50', None, [50]):
+            with pytest.raises(ConfigError, match='x must be a percentage, an integer from 1 to 100'):
+                config.check_usable_capacity(bad, 'x')
 
     def test_pool_policy_and_admin(self):
         cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST],

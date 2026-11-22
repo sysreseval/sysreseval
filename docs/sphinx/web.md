@@ -221,7 +221,7 @@ merges other files into this one, as for `web.toml` below.
 | `[exams]` | | the exams of the Exams page (*Exams* below; on iff `[access_log.database]` is set): the defaults of a new exam, each adjustable per exam — `lead` (`10m`: how long before the start the other projects of the students are hidden and the countdown shown), `pre_start` (`5m`: how long before the start their exam projects are started in the background), `eval_interval` (`60s`: the period of the evaluations the agents run during the exam) —, `close_after` (`1h`: how long after the end of a student's exam their exam projects are closed; `0` = never, an instructor closes them), `table` (`exams`, with `<table>_members`, both created when missing), `keep` (`0` = the past exams are kept forever; else days, purged daily); for the machines of the pool an exam lists, two more defaults per exam: `host_lead` (`10m`: how long before the start their agents write `exam.json`, which locks them) and `host_release` (`10m`: how long after the end-before time the file is removed and the exam projects of the machine closed; `0` = at the end) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
 | `[bbb]` | none | the BigBlueButton server behind the **Webconf** button of the instructors (*Web conference* below): `url` (the server, or its `bigbluebutton/` / `bigbluebutton/api/` path) and `secret` (the shared secret of its API, `bbb-conf --secret`; both or none), `checksum` (`sha1`; `sha256` or `sha512` when the server is restricted to them), `welcome` (the welcome message of the client: a string, or one per language; the server's message by default), `record` (`false`), `mute_on_start` (`false`), `duration` (`0` = unlimited; a duration, `"2h"`: the server ends the meeting after it), `max_participants` (`0` = unlimited), `poll_interval` (`10s`: how often the participants and the ended meetings are read from the server), `[bbb.userdata]` (the `bbb_*` client settings sent with every join, e.g. `bbb_skip_check_audio = true`), `private_rooms` (`true`: the **Talk privately** button of an instructor on a student's project, *Private conversations* below; `false` removes it), `[bbb.private_userdata]` (the `bbb_*` client settings of the joins of a private conversation, over `[bbb.userdata]` and the portal's own) |
-| `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*); `priority` (`"group:order"`, two integers from -9999 to 9999, `"0:0"`): a new project goes to the lowest group that has an available host and, in it, to the lowest order among the hosts without project; the lowest host is woken first, see *Priorities* |
+| `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*); `priority` (`"group:order"`, two integers from -9999 to 9999, `"0:0"`): a new project goes to the lowest group that has an available host and, in it, to the lowest order among the hosts without project; the lowest host is woken first, see *Priorities*; `total_usable_capacity` (`100`): the share of the memory and of the processors of the host its projects may fill, a percentage (an integer from 1 to 100), counted with `capacity = "resources"` only (*The load of a host*) |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
 
 `import = ["web.d"]` splits the configuration into `/etc/sysreseval/web.toml` and the `*.toml`
@@ -1205,7 +1205,9 @@ the portal has it disabled, as the rooms of `DISABLED_ROOMS` are), `DOMAIN` (a `
 `PORTAL_ADDRESS` (`allowed_clients` of the agents), `INSTRUCTOR_ROOMS` (the rooms whose hosts
 get `instructors_only = true`) and `INSTRUCTOR_MACHINES` (the names of the hosts that get it on
 their own, whatever their room), `ROOM_PRIORITIES` (`"z=0:1 h=1:0"`: the `priority`, `group:order`, of
-the hosts of a room, `0:0` for a room it does not name; see *Priorities*), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
+the hosts of a room, `0:0` for a room it does not name; see *Priorities*), `ROOM_USABLE_CAPACITIES`
+(`"z=80 h=50"`: the `total_usable_capacity`, a percentage, of the hosts of a room, `100` for a room it
+does not name; see *The load of a host*), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
 the paths written in the files) and `CA_KEY` / `CA_CRT` (both set: an existing CA copied into
 `OUT_DIR` instead of a new one, so that the hosts of a new `OUT_DIR` are signed by the CA the
 portal already knows; refused when `OUT_DIR` holds another CA) are optional.
@@ -1503,12 +1505,13 @@ portal through its administration API (`[admin] token`, loopback only by default
 sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
 sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking, the state file
 sre-web-tool costs                # what a project of each lab costs a host (memory, processors): measured, else declared by the lab
-sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only] [--priority 0:0]
+sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only] [--priority 0:0] [--total-usable-capacity 100]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
 sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them; enable also cancels a drain (the one the host asked for itself too)
 sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powered off once the last project is closed
 sre-web-tool allow-local-drain a03 | forbid-local-drain a03   # whether the host may ask for its own drain (sre set-drain there), until its next boot
 sre-web-tool priority a03 1:0     # group:order: a new project goes to the lowest group that has an available host, then to the lowest order among its hosts without project
+sre-web-tool usable-capacity a03 50   # the share of the memory and processors of the host its projects may fill, in percent (capacity = "resources")
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 sre-web-tool preload a03 | --all | --failed   # the hosts pull the Docker images of the labs, max_preloads of them at a time
 ```
@@ -1529,6 +1532,7 @@ portal leaves the pool as it was:
 | a host enabled or disabled by hand | `enabled` / `disabled`: the hosts whose flag differs from the `enabled` of their `[[hosts]]` entry, in both directions (a host of `DISABLED_ROOMS` enabled for a class stays enabled) |
 | a drain | `drain`, with the time it was asked; over when the host is gone, or was booted again while the portal was stopped (a drain the host asked for itself is not in the file: its agent says it again at every poll) |
 | a priority set by hand | `priority`: per host, the `value` set and the `configured` one, the `priority` of its `[[hosts]]` entry at that time, both written `"group:order"`, for the hosts where the two differ |
+| a usable capacity set by hand | `total_usable_capacity`: per host, the `value` set and the `configured` one, two percentages, in the same way |
 | a wake in progress, the pause after failed wakes or after a power off, a power off or a restart sent | `clocks` (written within one poll and when the portal stops); each is dropped at the start when too old to mean anything |
 
 The file only holds what differs from the configuration, and **an edit of the configuration
@@ -1538,9 +1542,10 @@ the entry is dropped at the next start, and a later edit of `web.toml` is follow
 the entry of a host that is no longer in the pool (one line of the journal each). A priority
 set by hand follows the same rule: it holds for as long as the `priority` of that host in
 `web.toml` is the one it was set over, and is dropped once `web.toml` gives the host another
-priority (which is then used) or the same one. The start logs
+priority (which is then used) or the same one; so does a usable capacity set by hand
+(`sre-web-tool usable-capacity`). The start logs
 `pool state read from …: 0 removed, 0 added, 21 enabled and 1 disabled by hand, 0 draining, 12
-priorities set by hand`.
+priorities set by hand, 0 usable capacities set by hand`.
 
 A state file that cannot be written (a read-only directory, a container without its volume) would
 lose all of this at the next restart: the portal says so in its journal at the start and at every
@@ -1692,6 +1697,33 @@ below 1 leaves room for the bursts: the starts, the evaluations. A host named by
 is refused with 503 "not enough free memory" or "not enough free processor time". A host whose
 agent does not tell its size (older than these figures) is judged by its number of projects, as
 before, in the same pool.
+
+**The share of a host.** `total_usable_capacity` of a `[[hosts]]` entry says how much of the
+host its projects may fill: a percentage, an integer from 1 to 100, `100` (the whole host) by
+default. The host then counts as a machine that share of its size:
+
+```
+share           = total_usable_capacity / 100
+memory capacity = (MemTotal - memory_reserve_mb) x share
+memory free     = MemAvailable - memory_reserve_mb - (MemTotal - memory_reserve_mb) x (1 - share)
+                  - the costs of the starts in flight
+cpu capacity    = its processors x cpu_target x share
+```
+
+What is in use on the host counts against its share, whoever uses it (the memory is the one the
+host has left, the cores those it really uses when that is more than its projects are counted
+for): with `memory_reserve_mb = 1024`, a host of 16000 MiB at 50 has a capacity of 7488 MiB and,
+with 4000 MiB in use, 3488 MiB free for new projects, where the whole host has 10976. Everything
+else is as above: the same test for one more project, the same `fill` (a host at 50 is twice as
+full at the same load, so the others of its group are preferred), the same free slots for the
+elastic pool; a host without project always takes one, and `max_projects` stays a ceiling.
+`sre-web-tool list` and the Pool page show `capacity 50%` for a host that is not at 100, and
+their CPU column the cores of the share. The key counts for nothing with `capacity =
+"projects"`, where `max_projects` is what a host holds. It is changed without a restart with
+`sre-web-tool usable-capacity a03 50`: kept across the restarts of the portal, until the
+`total_usable_capacity` of the host in `web.toml` changes (*Restarting the portal* above);
+`ROOM_USABLE_CAPACITIES` of `make-web-hosts.sh` writes the shares of whole rooms into
+`hosts.toml`.
 
 The elastic pool counts the same thing: a free slot is room for one more **reference project**,
 the mean cost of the projects running now on the hosts the students use (the default cost

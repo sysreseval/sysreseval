@@ -219,14 +219,33 @@ def check_priority(value, where: str) -> Priority:
     return Priority(*numbers)
 
 
+#: ``[[hosts]] total_usable_capacity``: the share of a host its projects may fill, in percent
+#: (an integer from 1 to this, the default: the whole host).  The key has that name wherever it is
+#: written: the configuration, the rows of the pool, the body of the route, the state file.
+DEFAULT_USABLE_CAPACITY = 100
+USABLE_CAPACITY_KEY = 'total_usable_capacity'
+
+
+def check_usable_capacity(value, where: str) -> int:
+    """The share of a pool host its projects may fill (``[[hosts]] total_usable_capacity``,
+    ``sre-web-tool``, the state file of the pool), checked: a percentage, an integer from 1 to
+    100."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= DEFAULT_USABLE_CAPACITY:
+        raise ConfigError(f"{where} must be a percentage, an integer from 1 to {DEFAULT_USABLE_CAPACITY}")
+    return value
+
+
 @dataclass
 class HostConfig:
     """A host of the pool: the URL of its agent and the token of that agent; how to wake it
     (a MAC address for a Wake-on-LAN packet, or a command with ``{name}`` / ``{mac}``),
     whether the portal may power it off, whether it is reserved for the instructors'
-    projects (``instructors_only``: never a student's project, outside the elastic pool), and
+    projects (``instructors_only``: never a student's project, outside the elastic pool),
     its ``priority`` (``Priority``, group:order: the lowest group that has an available host
-    takes a new project; the lowest is woken first, the highest powered off first when idle)."""
+    takes a new project; the lowest is woken first, the highest powered off first when idle),
+    and the share of its memory and processors the projects may fill
+    (``total_usable_capacity``, a percentage: with ``[pool] capacity = "resources"`` the host
+    counts as a machine that share of its size; nothing with ``"projects"``)."""
     name: str
     url: str
     token: str
@@ -237,6 +256,8 @@ class HostConfig:
     enabled: bool = True              # placement allowed (``sre-web-tool disable`` flips it)
     instructors_only: bool = False    # only the instructors' projects are placed there (chosen on their Open page)
     priority: Priority = Priority()   # group:order, the lowest first (the Pool page, ``sre-web-tool priority`` change it)
+    # percent of the host its projects may fill (``sre-web-tool usable-capacity`` changes it)
+    total_usable_capacity: int = DEFAULT_USABLE_CAPACITY
 
     @property
     def can_wake(self) -> bool:
@@ -923,6 +944,7 @@ def host_config_from_dict(h: dict, where: str) -> HostConfig:
         raise ConfigError(f"{where}: bad host name {host.name!r}")
     if host.max_projects < 1:
         raise ConfigError(f"{where}.max_projects must be positive")
+    check_usable_capacity(host.total_usable_capacity, f"{where}.total_usable_capacity")
     for key in ('power', 'enabled', 'instructors_only'):
         if not isinstance(getattr(host, key), bool):
             raise ConfigError(f"{where}.{key} must be true or false")

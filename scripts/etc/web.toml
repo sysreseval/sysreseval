@@ -361,7 +361,14 @@ max_answer_bytes = 1048576
 # "2:0", "3:0"...) fills the hosts one after the other and lets idle_host_timeout power the
 # others off: virtual machines sharing the processors of one server.  The instructors change it
 # on the Pool page.  (One integer N, the priority of before the groups, is read as "0:N".)
-# `sre-web-tool add / remove / enable / disable / priority` change the pool without a restart.
+# total_usable_capacity = N (a percentage, an integer from 1 to 100; 100, the whole host, by
+# default) is the share of the memory and of the processors of the host its projects may fill:
+# with [pool] capacity = "resources" the host counts as a machine that share of its size (its
+# memory less memory_reserve_mb and its processors by cpu_target, both multiplied by it), and
+# what is in use there counts against it, whoever uses it.  Nothing with capacity = "projects":
+# max_projects is what a host holds there.
+# `sre-web-tool add / remove / enable / disable / priority / usable-capacity` change the pool
+# without a restart.
 [[hosts]]
 name = "a01"
 url = "https://10.0.0.11:8451"       # http:// without TLS on the agent
@@ -379,3 +386,4 @@ max_projects = 25
 # enabled = false                    # kept in the pool, no project placed there
 # instructors_only = true            # never a student's project; the instructors choose it on the Open page
 # priority = "1:0"                   # group 1: used when no host of group 0 can take the project
+# total_usable_capacity = 50         # its projects fill half of its memory and processors at most

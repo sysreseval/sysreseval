@@ -36,6 +36,8 @@ const STATE_ORDER = ['up', 'occupied', 'exam', 'draining', 'waking', 'off', 'dis
 const NUMERIC = ['projects', 'terminals', 'load1', 'mem_available_mb', 'cpu_used', 'uptime'];   // sorted descending first
 // the group and the order of a priority: integers from -9999 to 9999 (config.PRIORITY_LIMIT of the portal)
 const PRIORITY_LIMIT = 9999;
+// total_usable_capacity of a host its projects may fill entirely (config.DEFAULT_USABLE_CAPACITY of the portal)
+const WHOLE_HOST = 100;
 
 const table = document.getElementById('pool');
 const body = table.querySelector('tbody');
@@ -81,6 +83,10 @@ function flagsText(row) {
   const flags = [];
   if (row.instructors_only) {
     flags.push(_('instructors'));
+  }
+  if (Number.isInteger(row.total_usable_capacity) && row.total_usable_capacity !== WHOLE_HOST) {
+    // [[hosts]] total_usable_capacity: the share of the host its projects may fill
+    flags.push(format(_('capacity {percent}%'), {percent: row.total_usable_capacity}));
   }
   if (row.power) {
     flags.push(_('power'));

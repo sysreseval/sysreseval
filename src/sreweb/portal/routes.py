@@ -44,7 +44,7 @@ from .relay import Relay, RELAYED_KEY
 from .roles import complete_owners
 from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_CREATED
 from ..config import (WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, check_priority,
-                      ConfigError)
+                      check_usable_capacity, ConfigError, USABLE_CAPACITY_KEY)
 from ..identity import (Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY,
                         is_valid_login)
 
@@ -747,7 +747,9 @@ class Routes:
         """``enable`` / ``disable`` / ``wake`` / ``poweroff`` / ``drain`` / ``restart`` a host, or
         ask for a ``preload`` of the Docker images on it (it then waits for its turn: the portal
         lets a few hosts preload at a time), or set its ``priority`` (a JSON body
-        ``{"priority": "group:order"}``; ``Pool.set_priority``: the lowest one is used first), or let it ask
+        ``{"priority": "group:order"}``; ``Pool.set_priority``: the lowest one is used first), or the share
+        of it the projects may fill (``usable-capacity``, a JSON body ``{"total_usable_capacity": N}``,
+        a percentage, the key being ``USABLE_CAPACITY_KEY``; ``Pool.set_total_usable_capacity``), or let it ask
         for its own drain or not (``allow-local-drain`` / ``forbid-local-drain``: ``sre set-drain``
         on the host; ``enable`` cancels that drain too): the commands
         of sre-web-tool and the buttons of the Pool page (which has no Restart button: the tool
@@ -767,6 +769,20 @@ class Routes:
             logged = request.get(ACCESS_KEY)      # the admin line of the connection log: the value asked
             if logged is not None:
                 logged['priority'] = str(priority)
+        elif action == 'usable-capacity':
+            try:
+                body = await request.json()
+            except ValueError:
+                return json_error(400, "a JSON body is expected")
+            try:
+                percent = check_usable_capacity(body.get(USABLE_CAPACITY_KEY) if isinstance(body, dict) else None,
+                                                USABLE_CAPACITY_KEY)
+            except ConfigError as e:
+                return json_error(400, str(e))
+            self.pool.set_total_usable_capacity(name, percent)
+            logged = request.get(ACCESS_KEY)
+            if logged is not None:
+                logged[USABLE_CAPACITY_KEY] = percent
         elif action == 'enable':
             self.pool.set_enabled(name, True)
             if self.manager is not None:

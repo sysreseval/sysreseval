@@ -3,12 +3,14 @@ through its administration API (``[admin] token`` of web.toml; stdlib ``urllib``
 
   sre-web-tool list                 the hosts, their state, projects, load, terminals...
   sre-web-tool status               the spare capacity, the floor, the active hours, who is waking, the state file
-  sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power] [--instructors-only] [--priority GROUP:ORDER]
+  sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power] [--instructors-only] [--priority GROUP:ORDER] [--total-usable-capacity PERCENT]
   sre-web-tool remove NAME [--force]
   sre-web-tool enable | disable | wake | poweroff | drain NAME
   sre-web-tool allow-local-drain | forbid-local-drain NAME   whether the host may ask for its own drain (sre set-drain)
   sre-web-tool priority NAME GROUP:ORDER   a new project goes to the lowest group that has an available host, and
                                     in it to the lowest order among the hosts without project (0:0 by default)
+  sre-web-tool usable-capacity NAME PERCENT   the share of the memory and processors of the host its projects
+                                    may fill (100 by default; with [pool] capacity = "resources")
   sre-web-tool restart NAME | --all [--wait] [--timeout S]   the agents restart themselves (new code after an update)
   sre-web-tool preload NAME | --all | --failed   the hosts pull the Docker images of the labs, a few at a time
 """
@@ -22,7 +24,8 @@ import urllib.error
 import urllib.request
 
 from ..agent.runner import PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_FAILED
-from ..config import load_web_config, check_priority, Priority, ConfigError
+from ..config import (load_web_config, check_priority, check_usable_capacity, Priority, ConfigError,
+                      DEFAULT_USABLE_CAPACITY, USABLE_CAPACITY_KEY)
 
 PROG = 'sre-web-tool'
 ERROR_WIDTH = 60
@@ -134,6 +137,8 @@ def _cell(row: dict, key: str) -> str:
             extra.append('instructors')
         if row.get('priority') not in (None, 0, str(Priority())):    # group:order, not the default: the lowest is used first
             extra.append(f"priority {row['priority']}")
+        if row.get(USABLE_CAPACITY_KEY) not in (None, DEFAULT_USABLE_CAPACITY):     # not the whole host
+            extra.append(f"capacity {row[USABLE_CAPACITY_KEY]}%")
         return value + (f" ({', '.join(extra)})" if extra else '')
     if key == 'error':
         text = '' if row.get('reachable') else (value or '')
@@ -290,6 +295,16 @@ def _priority(text: str) -> str:
         raise argparse.ArgumentTypeError(str(e))
 
 
+def _usable_capacity(text: str) -> int:
+    """A share of a host given on the command line, as the portal reads it: a percentage, an
+    integer from 1 to 100 (the argparse type of ``usable-capacity`` and ``add
+    --total-usable-capacity``)."""
+    try:
+        return check_usable_capacity(int(text) if _INTEGER_RE.match(text) else text, "the usable capacity")
+    except ConfigError as e:
+        raise argparse.ArgumentTypeError(str(e))
+
+
 def main(argv, default_config: str) -> int:
     parser = argparse.ArgumentParser(prog=PROG, description="manage the pool of the running portal")
     parser.add_argument('--config', default=default_config, help="web.toml (the portal address and the admin token)")
@@ -314,6 +329,9 @@ def main(argv, default_config: str) -> int:
     add.add_argument('--instructors-only', action='store_true', help="only the instructors' projects are placed there")
     add.add_argument('--priority', type=_priority, default=None, metavar='GROUP:ORDER',
                      help="the lowest group is used first, then the lowest order in it (default: 0:0)")
+    add.add_argument('--total-usable-capacity', type=_usable_capacity, default=None, metavar='PERCENT',
+                     help="the share of the memory and processors of the host its projects may fill, 1 to 100 "
+                          "(100)")
     remove = sub.add_parser('remove', help="remove a host", parents=[common])
     remove.add_argument('name')
     remove.add_argument('--force', action='store_true', help="even with projects (they stay on the host)")
@@ -332,6 +350,12 @@ def main(argv, default_config: str) -> int:
     priority.add_argument('value', type=_priority, metavar='GROUP:ORDER',
                           help="two integers, 0:0 by default (negative ones: before the others; one integer: "
                                "that order in group 0)")
+    usable = sub.add_parser('usable-capacity', help="set the share of the memory and of the processors of the host "
+                                                    "its projects may fill, in percent (100: the whole host); "
+                                                    "it counts with [pool] capacity = \"resources\"",
+                            parents=[common])
+    usable.add_argument('name')
+    usable.add_argument('value', type=_usable_capacity, metavar='PERCENT', help="an integer from 1 to 100")
     for parser_with_priority in (add, priority):      # "-1:5" is a value there, as "-2" is everywhere
         parser_with_priority._negative_number_matcher = _NEGATIVE_VALUE_RE
     restart = sub.add_parser('restart', help="the agent of a host restarts itself (new code after an update; "
@@ -432,10 +456,16 @@ def _dispatch(client: PoolClient, args) -> int:
                 'instructors_only': args.instructors_only}
         if args.priority is not None:   # left out unless given: a portal not restarted yet refuses what it does not know
             body['priority'] = args.priority
+        if args.total_usable_capacity is not None:      # the same
+            body[USABLE_CAPACITY_KEY] = args.total_usable_capacity
         row = client.call('POST', '/api/pool/hosts', body)
         print(json.dumps(row, indent=2) if args.json else table([row]))
     elif args.command == 'priority':
         row = client.call('POST', f"/api/pool/hosts/{args.name}/priority", {'priority': args.value})
+        print(json.dumps(row, indent=2) if args.json else table([row]))
+    elif args.command == 'usable-capacity':
+        row = client.call('POST', f"/api/pool/hosts/{args.name}/usable-capacity",
+                          {USABLE_CAPACITY_KEY: args.value})
         print(json.dumps(row, indent=2) if args.json else table([row]))
     elif args.command == 'remove':
         client.call('DELETE', f"/api/pool/hosts/{args.name}" + ('?force=1' if args.force else ''))

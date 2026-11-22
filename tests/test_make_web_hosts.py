@@ -1,7 +1,8 @@
 """scripts/make-web-hosts.sh, run for real (bash + openssl) on a small machine list in a temporary
 directory: the selection by REGEXP / ROOMS and the order of the entries, the disabled and the
 reserved hosts (DISABLED_ROOMS, INSTRUCTOR_ROOMS, INSTRUCTOR_MACHINES), the priorities of the rooms
-(ROOM_PRIORITIES), the TLS material and its
+(ROOM_PRIORITIES), the share of their hosts the projects may fill (ROOM_USABLE_CAPACITIES), the TLS
+material and its
 SANs, the tokens, hosts.toml and agent-<name>.toml loaded by sreweb.config, the plain rerun against
 --keep, the change report of a second run, an existing CA, the errors."""
 import os
@@ -215,6 +216,43 @@ class TestSelection:
         result = site.run('--keep', env={'TLS_DIR_ON_HOSTS': str(site.out)})
         assert result.stdout.splitlines()[-1] == 'make-web-hosts: hosts.toml unchanged; no agent-<name>.toml changed'
 
+    def test_room_usable_capacities(self, site):
+        """ROOM_USABLE_CAPACITIES: ``total_usable_capacity = <percent>`` for the hosts of the rooms
+        it names (any case), the default 100 left out; the file loads in the portal's
+        configuration; a room that is not in ROOMS is reported; a second run reports the shares
+        that changed, and none for a file written before the key."""
+        result = site.run(env={'ROOM_USABLE_CAPACITIES': 'H=50 s=1 a=100 z=80', 'TLS_DIR_ON_HOSTS': str(site.out)})
+        hosts = site.hosts()
+        assert [h.get('total_usable_capacity') for h in hosts.values()] == [None, None, 50, 50, 1]
+        assert "the room 'z' of ROOM_USABLE_CAPACITIES is not in ROOMS (a h s)" in result.stderr
+        text = (site.out / 'hosts.toml').read_text()
+        assert 'room usable capacities: h=50 s=1 a=100 z=80.' in text.split('\n[[hosts]]')[0]
+        assert text.count('total_usable_capacity = ') == 3 and 'total_usable_capacity = 100' not in text
+        pool = f'[pool]\nca = "{site.out}/ca.crt"\nclient_cert = "{site.out}/portal.crt"\nclient_key = "{site.out}/portal.key"'
+        (site.out / 'web.toml').write_text(f'secret = "{"s" * 32}"\nimport = ["hosts.toml"]\n{pool}\n')
+        web = load_web_config(site.out / 'web.toml')
+        assert [(h.name, h.total_usable_capacity) for h in web.hosts] == [('a01', 100), ('a02', 100), ('h01', 50),
+                                                                         ('h0', 50), ('S0', 1)]
+        # other shares: what changed is reported per host, hosts.toml alone is to deploy
+        result = site.run('--keep', env={'ROOM_USABLE_CAPACITIES': 'a=75 h=50', 'TLS_DIR_ON_HOSTS': str(site.out)})
+        lines = result.stdout.splitlines()
+        assert 'make-web-hosts: a01: hosts.toml: total_usable_capacity 100 -> 75' in lines
+        assert 'make-web-hosts: S0: hosts.toml: total_usable_capacity 1 -> 100' in lines
+        assert not any(line.startswith('make-web-hosts: h01:') for line in lines)
+        assert lines[-1] == ('make-web-hosts: hosts.toml rewritten (3 entries changed), to deploy on the portal; '
+                             'no agent-<name>.toml changed')
+        assert [h.get('total_usable_capacity') for h in site.hosts().values()] == [75, 75, 50, 50, None]
+        # with a priority: both keys in the entry, each reported on its own
+        result = site.run('--keep', env={'ROOM_USABLE_CAPACITIES': 'a=75 h=50', 'ROOM_PRIORITIES': 'h=1:0',
+                                         'TLS_DIR_ON_HOSTS': str(site.out)})
+        assert 'make-web-hosts: h01: hosts.toml: priority 0:0 -> 1:0' in result.stdout.splitlines()
+        assert (site.hosts()['h01']['priority'], site.hosts()['h01']['total_usable_capacity']) == ('1:0', 50)
+        # a hosts.toml of before the key (none there): nothing to report
+        result = site.run('--keep', env={'TLS_DIR_ON_HOSTS': str(site.out)})
+        assert 'total_usable_capacity' not in (site.out / 'hosts.toml').read_text()
+        result = site.run('--keep', env={'TLS_DIR_ON_HOSTS': str(site.out)})
+        assert result.stdout.splitlines()[-1] == 'make-web-hosts: hosts.toml unchanged; no agent-<name>.toml changed'
+
     def test_names_not_selected_are_reported(self, site):
         result = site.run(env={'ROOMS': 'a', 'DISABLED_ROOMS': 'h', 'INSTRUCTOR_ROOMS': 's', 'INSTRUCTOR_MACHINES': 's0 a02 nope'})
         assert "disabled room 'h' is not in ROOMS (a)" in result.stderr
@@ -392,6 +430,16 @@ class TestErrors:
         ({'ROOM_PRIORITIES': 'a=1:02'}, [], "ROOM_PRIORITIES: 'a=1:02' is not <room>=<group>:<order>"),
         ({'ROOM_PRIORITIES': 'a=1:2:3'}, [], "ROOM_PRIORITIES: 'a=1:2:3' is not <room>=<group>:<order>"),
         ({'ROOM_PRIORITIES': 'a=1 h=2 A=3'}, [], "ROOM_PRIORITIES: the room 'a' is given twice"),
+        ({'ROOM_USABLE_CAPACITIES': 'a'}, [],
+         "ROOM_USABLE_CAPACITIES: 'a' is not <room>=<percent> (an integer from 1 to 100)"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=50 h=half'}, [], "ROOM_USABLE_CAPACITIES: 'h=half' is not <room>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=0'}, [], "ROOM_USABLE_CAPACITIES: 'a=0' is not <room>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=101'}, [], "ROOM_USABLE_CAPACITIES: 'a=101' is not <room>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=-5'}, [], "ROOM_USABLE_CAPACITIES: 'a=-5' is not <room>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=050'}, [], "ROOM_USABLE_CAPACITIES: 'a=050' is not <room>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=12.5'}, [], "ROOM_USABLE_CAPACITIES: 'a=12.5' is not <room>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=50%'}, [], "ROOM_USABLE_CAPACITIES: 'a=50%' is not <room>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=50 h=60 A=70'}, [], "ROOM_USABLE_CAPACITIES: the room 'a' is given twice"),
     ])
     def test_variables(self, site, env, unset, message):
         result = site.run(env=env, unset=unset, check=False)

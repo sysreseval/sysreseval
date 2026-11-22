@@ -1,6 +1,6 @@
 """The state file of the pool (``[admin] state_file``): what is changed by hand (the hosts added
-and removed, the ``enabled`` flags and the priorities differing from the configuration, the
-drains) and the clocks
+and removed, the ``enabled`` flags, the priorities and the usable capacities differing from the
+configuration, the drains) and the clocks
 of the wakes, power offs and restarts are back when the portal restarts; an edit of the
 configuration wins over an older change made by hand; a file that cannot be written is told."""
 import json
@@ -21,7 +21,8 @@ import test_pool_manager as M   # noqa: E402  (FakeSession: the agents of a pool
 
 from sreweb.config import HostConfig, PoolConfig   # noqa: E402
 from sreweb.portal.manager import PoolManager   # noqa: E402
-from sreweb.portal.pool import (Pool, STATE_VERSION, MAX_HOLD, MAX_WAKE_FAILURES, UNREADABLE_SUFFIX,   # noqa: E402
+from sreweb.portal.pool import (Pool, PoolError, STATE_VERSION, MAX_HOLD, MAX_WAKE_FAILURES,   # noqa: E402
+                                UNREADABLE_SUFFIX,
                                 STATE_UP, STATE_OFF, STATE_WAKING, STATE_DRAINING, STATE_DISABLED)
 
 TOKEN = M.TOKEN
@@ -325,6 +326,131 @@ class TestPriority:
         pool = Pool(ranked(s01=0, z01=2), None)
         pool.set_priority('s01', M.prio('1:3'))
         assert priorities(pool) == {'s01': '1:3', 'z01': '0:2'} and pool.state_error == ''
+
+
+def shared(**capacity) -> list:
+    """``shared(s01=100, z01=50)``: the ``[[hosts]]`` of a configuration, with their
+    ``total_usable_capacity``."""
+    return [HostConfig(name, f'http://{name}', TOKEN, 10, total_usable_capacity=value)
+            for name, value in capacity.items()]
+
+
+def shares(pool) -> dict:
+    return {name: rt.total_usable_capacity for name, rt in pool.runtime.items()}
+
+
+def share_by_hand(value, configured) -> dict:
+    """An entry of the ``total_usable_capacity`` table of the file: the percentage set by hand
+    and the one of the configuration it was set over."""
+    return {'value': value, 'configured': configured}
+
+
+class TestUsableCapacity:
+    """``total_usable_capacity`` set by hand (``sre-web-tool usable-capacity``): kept as a
+    priority is, with the value of the configuration it was set over."""
+
+    def test_set_by_hand_is_kept(self, tmp_path):
+        state = tmp_path / 'pool.json'
+        config = dict(s01=100, s02=80, z01=50)
+        pool = Pool(shared(**config), None, state_file=str(state))
+        assert shares(pool) == config and not state.exists()
+        pool.set_total_usable_capacity('s02', 60)
+        pool.set_total_usable_capacity('z01', 100)
+        file = saved(state)
+        # not s01: the configuration's
+        assert file['total_usable_capacity'] == {'s02': share_by_hand(60, 80), 'z01': share_by_hand(100, 50)}
+        assert file['version'] == STATE_VERSION and file['priority'] == {}
+        again = Pool(shared(**config), None, state_file=str(state))
+        assert shares(again) == {'s01': 100, 's02': 60, 'z01': 100}
+        assert {row['name']: row['total_usable_capacity'] for row in again.summary()} == shares(again)
+        assert saved(state) == file                       # nothing to normalise: not written again
+        again.set_total_usable_capacity('s02', 80)        # back to what the configuration says: no entry
+        assert saved(state)['total_usable_capacity'] == {'z01': share_by_hand(100, 50)}
+        assert shares(Pool(shared(**config), None, state_file=str(state))) == {'s01': 100, 's02': 80, 'z01': 100}
+        with pytest.raises(PoolError) as e:
+            again.set_total_usable_capacity('nope', 50)
+        assert e.value.status == 404
+
+    def test_an_edit_of_the_configuration_wins(self, tmp_path, caplog):
+        """A share set by hand holds while the configuration gives the host the share it had
+        then: once it gives another one, or the one set by hand, the entry is gone."""
+        state = tmp_path / 'pool.json'
+        pool = Pool(shared(s01=100, s02=100, z01=50), None, state_file=str(state))
+        for name, value in (('s01', 70), ('s02', 40), ('z01', 20)):
+            pool.set_total_usable_capacity(name, value)
+        with caplog.at_level(logging.INFO, logger='sreweb.portal'):
+            edited = Pool(shared(s01=90, s02=40, z01=50), None, state_file=str(state))
+        # s01: another share in the configuration, followed; s02: the configuration says 40 too; z01: untouched
+        assert shares(edited) == {'s01': 90, 's02': 40, 'z01': 20}
+        assert saved(state)['total_usable_capacity'] == {'z01': share_by_hand(20, 50)}
+        assert ('the usable capacity of s01 was set by hand to 70 over 100 and the configuration says 90 now'
+                in caplog.text)
+        assert '1 usable capacities set by hand' in caplog.text
+        # the configuration back to what it was: the entries dropped do not come back
+        back = Pool(shared(s01=100, s02=100, z01=50), None, state_file=str(state))
+        assert shares(back) == {'s01': 100, 's02': 100, 'z01': 20}
+
+    def test_added_and_gone_hosts(self, tmp_path, caplog):
+        state = tmp_path / 'pool.json'
+        pool = Pool(shared(s01=100), None, state_file=str(state))
+        pool.add_host(HostConfig('b02', 'http://b02', TOKEN, 2, total_usable_capacity=30))
+        assert shares(pool)['b02'] == 30                  # the one it was added with
+        pool.set_total_usable_capacity('b02', 45)
+        file = saved(state)
+        assert file['added'][0]['total_usable_capacity'] == 30    # an entry of [[hosts]]
+        assert file['total_usable_capacity'] == {'b02': share_by_hand(45, 30)}
+        again = Pool(shared(s01=100), None, state_file=str(state))
+        assert shares(again) == {'s01': 100, 'b02': 45} and saved(state) == file
+        assert again.hosts['b02'].total_usable_capacity == 30
+        # a host that left the pool is forgotten
+        with caplog.at_level(logging.INFO, logger='sreweb.portal'):
+            again.remove_host('b02')
+            state.write_text(json.dumps({**saved(state), 'total_usable_capacity': {'b02': share_by_hand(45, 30),
+                                                                                   's01': share_by_hand(15, 100)}}))
+            last = Pool(shared(s01=100), None, state_file=str(state))
+        assert shares(last) == {'s01': 15}
+        assert 'b02 (usable capacity set by hand) is not in the pool any more' in caplog.text
+        assert saved(state)['total_usable_capacity'] == {'s01': share_by_hand(15, 100)}
+
+    def test_hand_written_and_odd_values(self, tmp_path, caplog):
+        """A plain value written by hand holds (and is written back in full); a value that is
+        no percentage is told and skipped, as an entry whose configured value cannot be read;
+        the others are read."""
+        state = tmp_path / 'pool.json'
+        state.write_text(json.dumps({'version': STATE_VERSION, 'total_usable_capacity': {
+            's01': 35, 's02': 'half', 's03': True, 's04': 101, 's05': {'value': 12.5, 'configured': 100},
+            's06': {'configured': 100}, 's07': 0, 's08': {'value': 65, 'configured': 100}, 's09': {'value': 20},
+            's10': {'value': 30, 'configured': 'what'}}}))
+        names = [f's{i:02d}' for i in range(1, 11)]
+        with caplog.at_level(logging.INFO, logger='sreweb.portal'):
+            pool = Pool(shared(**{name: 100 for name in names}), None, state_file=str(state))
+        assert pool.state_error == ''
+        assert shares(pool) == {**{name: 100 for name in names}, 's01': 35, 's08': 65, 's09': 20}
+        for name in names[1:7]:
+            assert f'the usable capacity of {name} must be a percentage, an integer from 1 to 100' in caplog.text, name
+        assert 'the configured usable capacity of s10 must be a percentage' in caplog.text
+        assert saved(state)['total_usable_capacity'] == {'s01': share_by_hand(35, 100), 's08': share_by_hand(65, 100),
+                                                         's09': share_by_hand(20, 100)}
+
+    def test_a_file_written_before_the_key(self, tmp_path):
+        """A version 2 file without the key (an older portal wrote it), a host added then: read
+        as it is, the whole host for everyone; the key is there afterwards."""
+        state = tmp_path / 'pool.json'
+        added = {'name': 'b02', 'url': 'http://b02', 'token': TOKEN, 'max_projects': 2, 'mac': '', 'wake_command': '',
+                 'power': False, 'enabled': True, 'instructors_only': False, 'priority': '0:4'}
+        state.write_text(json.dumps({'version': STATE_VERSION, 'saved_at': 1.0, 'removed': [], 'added': [added],
+                                     'enabled': [], 'disabled': [], 'drain': {}, 'clocks': {},
+                                     'priority': {'s01': by_hand('1:2', 0)}}))
+        pool = Pool(shared(s01=100, z01=50), None, state_file=str(state))
+        assert shares(pool) == {'s01': 100, 'z01': 50, 'b02': 100} and priorities(pool)['s01'] == '1:2'
+        file = saved(state)
+        assert file['total_usable_capacity'] == {} and file['added'][0]['total_usable_capacity'] == 100
+        assert file['priority'] == {'s01': by_hand('1:2', 0)}
+
+    def test_no_state_file(self):
+        pool = Pool(shared(s01=100, z01=50), None)
+        pool.set_total_usable_capacity('s01', 10)
+        assert shares(pool) == {'s01': 10, 'z01': 50} and pool.state_error == ''
 
 
 class TestDrain:

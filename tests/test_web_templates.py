@@ -533,6 +533,8 @@ class TestTemplates:
         # the costs of the labs are no longer listed here: the Costs table… button of the Open page
         assert 'pool-costs' not in html and 'Lab costs' not in html and html.count('<table') == 1
         assert 'lab_costs' not in (JS / 'pool.js').read_text(encoding='utf-8')
+        # the share of a host its projects may fill: a flag of its row, no column
+        assert "_('capacity {percent}%')" in (JS / 'pool.js').read_text(encoding='utf-8')
 
     def test_project_page(self):
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True)

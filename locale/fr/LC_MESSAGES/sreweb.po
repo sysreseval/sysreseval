@@ -766,6 +766,9 @@ msgstr "mémoire pleine"
 msgid "cpu full"
 msgstr "processeurs pleins"
 
+msgid "capacity {percent}%"
+msgstr "capacité {percent} %"
+
 msgid "CPU"
 msgstr "CPU"
 

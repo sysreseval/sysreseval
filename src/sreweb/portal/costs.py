@@ -295,19 +295,23 @@ class HostLoad(NamedTuple):
 
 
 def host_load(*, cpus, mem_total_mb, mem_available_mb, cpu_busy, committed_cpu: float, in_flight,
-              reserve_mb: float, cpu_target: float) -> HostLoad | None:
+              reserve_mb: float, cpu_target: float, share: float = 1.0) -> HostLoad | None:
     """The load of a host from its status: *cpus*, *mem_total_mb*, *mem_available_mb* and
     *cpu_busy* as its agent tells them, *committed_cpu* the sum of the costs of the labs of its
     projects, *in_flight* the costs of the projects being started there (their containers may
     not show in the readings yet).  The memory is the one the host really has left (it sees
     everything running there); the processors are what its projects are counted for, or what the
-    host really burns when that is more (the Docker daemon, a runaway container).  ``None`` when
-    the agent does not tell the size of its host (older than these figures, unreachable): the
-    host is judged by its number of projects."""
+    host really burns when that is more (the Docker daemon, a runaway container).  *share*
+    (``[[hosts]] total_usable_capacity`` as a fraction, 1 = the whole host): the host counts as
+    a machine that share of its size — its memory less the reserve and its processors by
+    ``cpu_target`` are both multiplied by it, and what is in use there counts against that,
+    whoever uses it.  ``None`` when the agent does not tell the size of its host (older than
+    these figures, unreachable): the host is judged by its number of projects."""
     if not cpus or not mem_total_mb or mem_available_mb is None:
         return None
-    capacity = max(1.0, mem_total_mb - reserve_mb)
-    free = max(0.0, mem_available_mb - reserve_mb - sum(c.mem_mb for c in in_flight))
+    full = max(0.0, mem_total_mb - reserve_mb)      # what the whole host holds
+    capacity = max(1.0, full * share)
+    free = max(0.0, mem_available_mb - reserve_mb - full * (1.0 - share) - sum(c.mem_mb for c in in_flight))
     used = max(committed_cpu, cpu_busy or 0.0) + sum(c.cpu for c in in_flight)
     return HostLoad(mem_free_mb=free, mem_capacity_mb=capacity, cpu_used=used,
-                    cpu_capacity=max(MIN_COST.cpu, cpus * cpu_target))
+                    cpu_capacity=max(MIN_COST.cpu, cpus * cpu_target * share))
