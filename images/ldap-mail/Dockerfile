@@ -7,7 +7,7 @@ ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
 #
-# Electronic mail and LDAP image (the SMTP labs and the LDAP lab): Postfix, Dovecot (IMAP, LMTP,
+# Electronic mail and LDAP image (the mail labs and the LDAP lab): Postfix, Dovecot (IMAP, LMTP,
 # Sieve + ManageSieve), OpenDKIM, policyd-spf and the clients swaks and mutt, plus the LDAP client side, nss-pam-ldapd
 # (nslcd, libnss-ldapd, libpam-ldapd; slapd and ldap-utils come from the base13 image), on top of
 # the init13 image so that the servers run under a genuine systemd (systemctl, journalctl; the
@@ -30,6 +30,8 @@ LABEL version="${SRE_VERSION}"
 
 ARG DEBIAN_FRONTEND="noninteractive"
 
+# libsasl2-modules: the PLAIN / LOGIN plugins of Cyrus SASL, without which Postfix's SMTP client cannot
+# authenticate to a relay (`SASL authentication failure: No worthy mechs found`; mail1.py, part 4).
 # "Internet Site" gives the Debian skeleton main.cf (relay restrictions, aliases, snakeoil TLS);
 # "No configuration" would leave no main.cf at all.  Postfix replaces exim4 (mail-transport-agent).
 # nslcd: a neutral default configuration (its postinst guesses the base from the build host's domain).
@@ -41,6 +43,7 @@ RUN echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-s
 RUN apt update && apt install -y \
     postfix \
     postfix-policyd-spf-python \
+    libsasl2-modules \
     dovecot-core \
     dovecot-imapd \
     dovecot-lmtpd \

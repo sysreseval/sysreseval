@@ -1,7 +1,7 @@
 """Tests for lib/smtp.py and lib/smtp_probe.py (mail labs: Postfix, Dovecot, OpenDKIM, SPF).
 
 Fixtures in tests/mock_data/smtp/ were captured on 2026-10-06 from the SMTP lab
-(lab/sre/misc/smtp.py) running on the mail image (images/ldap-mail, published as sysreseval/ldap-mail; Debian 12:
+(lab/sre/_DRAFT_misc/smtp.py, since renamed mail1.py) running on the mail image (images/ldap-mail, published as sysreseval/ldap-mail; Debian 12:
 Postfix 3.7.11, Dovecot 2.3.19, OpenDKIM 2.11.0, postfix-policyd-spf-python 3.0.4, Python
 3.11.2): the test outputs (`sre cat --tests --json`) of one evaluation in the initial state
 (`*_initial.*`, nothing configured on mx1) and of one in the `final` state (`*_final.*`, 80/80).
@@ -38,6 +38,7 @@ from smtp import (  # noqa: E402
     dovecot_mail_location, dovecot_mail_plugins, dovecot_tls_files, find_messages,
     generate_dkim_keypair, get_doveconf, get_mailq, get_master_services, get_postconf,
     imap_query, install_smtp_probe, is_bounce, maildir_cleanup_command, maildir_dump_command,
+    maildir_write_command, mailbox_cleanup_command, queue_token_cleanup_command,
     managesieve_query, mynetworks_covers, normalize_text, parse_authentication_results, parse_dkim_signature,
     parse_dkim_txt, parse_doveconf, parse_dsn, parse_maildir_dump, parse_mailq,
     parse_master_services, parse_postconf, parse_received_spf, parse_smtp_probe, parse_spf,
@@ -286,7 +287,86 @@ class TestMaildirCommands:
         assert cmd == "grep -rls 'ab'\"'\"'cd' /home/alice/Maildir 2>/dev/null | xargs -r rm -f; true"
 
 
+class TestQueueTokenCleanup:
+    def test_command(self):
+        cmd = queue_token_cleanup_command('tok')
+        assert cmd.startswith('grep -rls tok /var/spool/postfix/maildrop /var/spool/postfix/incoming'
+                              ' /var/spool/postfix/active /var/spool/postfix/deferred /var/spool/postfix/hold')
+        assert 'postsuper -d "$(basename "$f")" >/dev/null 2>&1 || rm -f "$f"; done; true' in cmd
+
+
+class TestMailboxCleanup:
+    def test_users_and_maildirs(self):
+        cmd = mailbox_cleanup_command(['alice', 'paul@newco.tp'], ['/home/alice/Maildir'], 'tok')
+        assert cmd.split('; ')[:2] == [
+            "doveadm expunge -u alice mailbox '*' HEADER X-SRE-Probe tok >/dev/null 2>&1",
+            "doveadm expunge -u paul@newco.tp mailbox '*' HEADER X-SRE-Probe tok >/dev/null 2>&1"]
+        assert ("find /home/alice/Maildir -type f \\( -path '*/new/*' -o -path '*/cur/*' \\) 2>/dev/null"
+                " | xargs -r grep -ls tok 2>/dev/null | xargs -r rm -f") in cmd
+        assert cmd.endswith('; true')
+
+    def test_keep(self):
+        cmd = mailbox_cleanup_command(['alice'], ['/home/alice/Maildir'], 'tok', keep='k1')
+        assert "HEADER X-SRE-Probe tok NOT HEADER X-SRE-Keep k1" in cmd and '| xargs -r grep -L k1 |' in cmd
+
+    def test_users_only(self):
+        assert mailbox_cleanup_command(['zoe'], [], 'tok') == (
+            "doveadm expunge -u zoe mailbox '*' HEADER X-SRE-Probe tok >/dev/null 2>&1; true")
+
+    def test_runs_without_dovecot(self, tmp_path):
+        import subprocess
+        box = tmp_path / 'Maildir'
+        for sub in ('new', 'cur', '.Junk/new'):
+            (box / sub).mkdir(parents=True)
+        (box / 'new' / 'a').write_text('X-SRE-Probe: tok\n\nx\n')
+        (box / '.Junk' / 'new' / 'b').write_text('X-SRE-Probe: tok\n\nx\n')
+        (box / 'cur' / 'c').write_text('X-SRE-Probe: tok\nX-SRE-Keep: k1\n\nx\n')
+        (box / 'cur' / 'd').write_text('Subject: mine\n\nx\n')
+        cmd = mailbox_cleanup_command([], [str(box)], 'tok', keep='k1')
+        assert subprocess.run(['sh', '-c', cmd]).returncode == 0
+        assert sorted(p.name for p in box.rglob('*') if p.is_file()) == ['c', 'd']
+
+
+class TestMaildirWrite:
+    MSG = "From: a@x.tp\nSubject: t\nX-SRE-Probe: tok\n\nhello\n"
+
+    def test_keep_existing(self):
+        cmd = maildir_write_command('/home/alice/Maildir/', 'alice', self.MSG, 'sre.imap.tok')
+        b64 = base64.b64encode(self.MSG.encode()).decode()
+        assert cmd == (
+            'if [ -z "$(find /home/alice/Maildir/new /home/alice/Maildir/cur -name sre.imap.tok\'*\' 2>/dev/null)" ];'
+            ' then mkdir -p /home/alice/Maildir/new /home/alice/Maildir/cur /home/alice/Maildir/tmp'
+            f' && echo {b64} | base64 -d > /home/alice/Maildir/tmp/sre.imap.tok'
+            ' && chown -R alice: /home/alice/Maildir'
+            ' && mv /home/alice/Maildir/tmp/sre.imap.tok /home/alice/Maildir/new/sre.imap.tok; fi 2>/dev/null; true')
+
+    def test_overwrite_and_quoting(self):
+        cmd = maildir_write_command('/var/mail/vhosts/newco.tp/paul/Maildir', 'vmail', self.MSG, "a b",
+                                    keep_existing=False)
+        assert cmd.startswith('mkdir -p /var/mail/vhosts/newco.tp/paul/Maildir/new')
+        assert "> /var/mail/vhosts/newco.tp/paul/Maildir/tmp/'a b'" in cmd and 'find' not in cmd
+        assert cmd.endswith(" 2>/dev/null; true")
+
+    def test_runs(self, tmp_path):
+        import getpass
+        import subprocess
+        box = tmp_path / 'Maildir'
+        cmd = maildir_write_command(str(box), getpass.getuser(), self.MSG, 'm1')
+        assert subprocess.run(['sh', '-c', cmd]).returncode == 0
+        assert (box / 'new' / 'm1').read_text() == self.MSG and (box / 'tmp').is_dir() and (box / 'cur').is_dir()
+        (box / 'new' / 'm1').rename(box / 'cur' / 'm1:2,S')  # seen by an IMAP server
+        subprocess.run(['sh', '-c', maildir_write_command(str(box), getpass.getuser(), 'other', 'm1')])
+        assert not (box / 'new' / 'm1').exists() and (box / 'cur' / 'm1:2,S').read_text() == self.MSG
+
+
 class TestMaildirDump:
+    def test_virtual_mailbox_owner(self):
+        raw = base64.b64encode(b"Subject: v\n\nbody\n").decode()
+        out = (f"===SRE-MAIL /var/mail/vhosts/newco.tp/paul/Maildir/new/1\n{raw}\n"
+               f"===SRE-MAIL /home/alice/Maildir/.Promo/cur/2\n{raw}\n")
+        msgs = parse_maildir_dump(out)
+        assert [m.user for m in msgs] == ['paul@newco.tp', 'alice'] and msgs[1].folder == 'cur'
+
     def test_mx1_messages(self):
         msgs = parse_maildir_dump(load('maildir_dump_mx1_final.txt'))
         assert [(m.user, m.folder) for m in msgs] == [('alice', 'new')] * 4

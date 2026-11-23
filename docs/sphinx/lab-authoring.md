@@ -1050,9 +1050,10 @@ from smtp import (install_smtp_probe, smtp_probe, smtp_query, imap_query, get_po
                   render_unbound_records, spf_record_ok, dkim_txt_record, generate_dkim_keypair)
 ```
 
-Helpers of the SMTP labs (Postfix, Dovecot, OpenDKIM, SPF). The evaluation is behavioural: a
-hidden machine runs an **active probe** (`lib/smtp_probe.py`, standard library only) that
-dialogues with the student's servers, and what must arrive is read in the Maildirs.
+Helpers of the mail labs (`lab/sre/_DRAFT_misc/mail1.py`: SMTP, Postfix, aliases, queue, IMAP;
+`mail2.py`: TLS, submission, LMTP / Sieve, SPF / DKIM / DMARC, virtual domains, anti-spam). The
+evaluation is behavioural: a hidden machine runs an **active probe** (`lib/smtp_probe.py`, standard
+library only) that dialogues with the student's servers, and what must arrive is read in the Maildirs.
 
 **Functions used in `NetScheme` (state setup):**
 
@@ -1087,7 +1088,17 @@ just sent). Then `find_messages(messages, token, query=)`, `body_contains(msg, s
 `received_hops(msg)` (most recent first: `from`, `from_ip`, `by`, `with`, `id`, `for`),
 `is_bounce(msg)` / `parse_dsn(msg)`, `parse_received_spf`, `parse_authentication_results`,
 `parse_dkim_signature`; `maildir_cleanup_command(paths, token)` removes the probe's messages at a
-later step, `queue_cleanup_command(sender)` its queued ones.
+later step, `queue_cleanup_command(sender)` its queued ones. A `MaildirMessage` found under
+`.../vhosts/<domain>/<user>/` (a virtual mailbox) has the user `<user>@<domain>`.
+
+`mailbox_cleanup_command(users, maildirs, token, keep=None)` removes the probe's messages through
+`doveadm expunge` first (every mailbox of the Dovecot *users*, so that a running Dovecot's index
+follows), then from the files of *maildirs* (sub-folders included), sparing the messages that carry
+`X-SRE-Keep: keep`; `queue_token_cleanup_command(token)` deletes the queued messages holding *token*,
+`maildrop` included (Postfix may be stopped). `maildir_write_command(maildir, owner, message, name,
+keep_existing=True)` writes a message straight into `new/` (through `tmp/`, Maildir created with the
+right owner) without any MTA: an IMAP check that does not depend on Postfix, a message the students must
+find at start; *name* must be fixed by the lab data.
 
 `get_doveconf(grade, machine)` (`doveconf -n` as nested dicts), `doveconf_listener(conf, path)`,
 `doveconf_value(conf, key)`; `parse_txt_strings(dig_output)`, `parse_spf`, `spf_record_ok(record,
@@ -1097,7 +1108,12 @@ the certificate of a STARTTLS server.
 Facts verified on the mail image: OpenDKIM resolves with its own libunbound starting from the
 root, so a closed lab needs `Nameservers <dns>` in `opendkim.conf`; policyd-spf's `TestOnly = 1`
 still rejects on a `-all` fail (`Mail_From_reject = False` and `HELO_reject = False` give a header-only
-check); `nobody` is a valid local recipient of Postfix.
+check); `nobody` is a valid local recipient of Postfix. Postfix's SMTP client authenticates to a relay
+(`smtp_sasl_auth_enable`) through Cyrus SASL, whose `PLAIN` / `LOGIN` plugins are in
+`libsasl2-modules` (in the `ldap-mail` image; without it: `SASL authentication failure: No worthy mechs
+found`). Debian 13's Dovecot already serves 993 and ManageSieve 4190 with the snakeoil certificate,
+refuses cleartext passwords and declares the special-use mailboxes without `auto`; Debian's `main.cf`
+sets `recipient_delimiter = +`.
 
 ### TLS helpers (from `/opt/sre/lib/tls.py`)
 

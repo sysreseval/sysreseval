@@ -49,6 +49,7 @@ from SRE.lib_sre import Grade0, NetScheme0
 SMTP_PROBE_PATH = '/usr/local/sbin/smtp_probe.py'
 PROBE_HEADER = 'X-SRE-Probe'  # token of the lab instance, on every message sent by the probe
 PROBE_QUERY_HEADER = 'X-SRE-Probe-Query'  # identifier of the query that sent the message
+KEEP_HEADER = 'X-SRE-Keep'  # a message the grader leaves in place (see mailbox_cleanup_command)
 DEFAULT_PROBE_TIMEOUT = 5  # seconds, per socket operation inside the probe
 
 
@@ -375,6 +376,15 @@ def queue_cleanup_command(sender: str) -> str:
             f' | postsuper -d - >/dev/null 2>&1; true')
 
 
+
+def queue_token_cleanup_command(token: str) -> str:
+    """Delete from the Postfix queue every message holding *token* (the probe's own messages,
+    whatever their sender), ``maildrop`` included so that it also works while Postfix is
+    stopped (``postsuper`` then fails and the file is removed directly); never fails."""
+    dirs = ' '.join(f'/var/spool/postfix/{q}' for q in ('maildrop', 'incoming', 'active', 'deferred', 'hold'))
+    return (f'grep -rls {shlex.quote(token)} {dirs} 2>/dev/null | while read f; do'
+            f' postsuper -d "$(basename "$f")" >/dev/null 2>&1 || rm -f "$f"; done; true')
+
 # ---------------------------------------------------------------------------
 # Maildir
 # ---------------------------------------------------------------------------
@@ -411,10 +421,53 @@ def maildir_cleanup_command(paths: list[str] | tuple[str, ...], token: str) -> s
     return f'grep -rls {shlex.quote(token)} {dirs} 2>/dev/null | xargs -r rm -f; true'
 
 
+def mailbox_cleanup_command(users: list[str] | tuple[str, ...], maildirs: list[str] | tuple[str, ...],
+                            token: str, keep: str | None = None) -> str:
+    """Remove the probe's messages (header ``X-SRE-Probe: token``) from every mailbox of the
+    Dovecot *users* and from the Maildirs *maildirs*: through ``doveadm expunge`` first, so
+    that the index of a running Dovecot follows (a file removed behind its back within the
+    second of an IMAP sync stays listed as a ghost), then from the files themselves (no
+    Dovecot, or messages it never saw; sub-folders such as ``.Junk/new`` included).  The
+    messages also carrying ``X-SRE-Keep: keep`` are spared.  Never fails."""
+    search = f"HEADER {PROBE_HEADER} {shlex.quote(token)}"
+    if keep:
+        search += f" NOT HEADER {KEEP_HEADER} {shlex.quote(keep)}"
+    parts = [f"doveadm expunge -u {shlex.quote(u)} mailbox '*' {search} >/dev/null 2>&1" for u in users]
+    if maildirs:
+        dirs = ' '.join(shlex.quote(p) for p in maildirs)
+        rm = (f"find {dirs} -type f \\( -path '*/new/*' -o -path '*/cur/*' \\) 2>/dev/null"
+              f" | xargs -r grep -ls {shlex.quote(token)} 2>/dev/null")
+        if keep:
+            rm += f" | xargs -r grep -L {shlex.quote(keep)}"
+        parts.append(rm + " | xargs -r rm -f")
+    return '; '.join(parts + ['true'])
+
+
+def maildir_write_command(maildir: str, owner: str, message: str, name: str,
+                          keep_existing: bool = True) -> str:
+    """One shell command that puts *message* (RFC 5322 text) into the Maildir *maildir* as the
+    file ``new/<name>``, without any MTA: the ``new``, ``cur`` and ``tmp`` directories are
+    created when missing and everything written belongs to *owner* (and its login group).  The
+    file goes through ``tmp/`` and is renamed, as a delivery agent does, so that an IMAP server
+    never reads half of it.  With *keep_existing* nothing happens when a file of that name is
+    already there (``new/<name>``, or ``cur/<name>:2,...`` once an IMAP server has seen it).
+    *name* must be fixed by the lab data (the command must be the same on every grade pass)
+    and be a plain file name.  Never fails."""
+    d = shlex.quote(maildir.rstrip('/'))
+    n = shlex.quote(name)
+    b64 = base64.b64encode(message.encode()).decode()
+    write = (f"mkdir -p {d}/new {d}/cur {d}/tmp && echo {b64} | base64 -d > {d}/tmp/{n}"
+             f" && chown -R {shlex.quote(owner)}: {d} && mv {d}/tmp/{n} {d}/new/{n}")
+    if keep_existing:
+        write = f'if [ -z "$(find {d}/new {d}/cur -name {n}\'*\' 2>/dev/null)" ]; then {write}; fi'
+    return f'{write} 2>/dev/null; true'
+
+
 @dataclass
 class MaildirMessage:
-    """One file of a Maildir: *user* is the home directory owner (``/home/<user>/``),
-    *folder* ``new`` or ``cur``, *message* the parsed RFC 5322 message."""
+    """One file of a Maildir: *user* is the home directory owner (``/home/<user>/``), or
+    ``<user>@<domain>`` for a virtual mailbox (``.../vhosts/<domain>/<user>/``), *folder* ``new``
+    or ``cur``, *message* the parsed RFC 5322 message."""
     path: str
     user: str
     folder: str
@@ -444,7 +497,8 @@ def parse_maildir_dump(output: str) -> list[MaildirMessage]:
         except (binascii.Error, ValueError):
             continue
         m = re.search(r'/home/([^/]+)/', path)
-        user = m.group(1) if m else ''
+        v = re.search(r'/vhosts/([^/]+)/([^/]+)/', path)  # virtual mailbox <base>/<domain>/<user>/
+        user = m.group(1) if m else f'{v.group(2)}@{v.group(1)}' if v else ''
         folder = 'cur' if '/cur/' in path else 'new' if '/new/' in path else ''
         messages.append(MaildirMessage(path=path, user=user, folder=folder,
                                        message=email.message_from_bytes(data)))
