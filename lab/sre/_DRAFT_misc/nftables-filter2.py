@@ -1374,9 +1374,9 @@ Règles valables pour tout le TP :
 - les questions sont à faire **dans l'ordre** et la configuration d'une question terminée reste
   en place : l'évaluation vérifie le jeu de règles **final** de `ext1` et de `router` (sur
   chacune, une seule table, `inet filter`) ;
-- les règles sont volatiles (`nft`) : elles ne survivent pas à un redémarrage. Écrire le
-  pare-feu dans un fichier rechargé par `nft -f` (section @@ref:ruleset@@) évite bien des erreurs
-  d'ordre ;
+- les règles tapées avec `nft` sont volatiles : elles ne survivent pas à un redémarrage. Écrire
+  chaque pare-feu dans un fichier rechargé d'un bloc évite bien des erreurs d'ordre (méthode
+  conseillée plus bas) ;
 - l'évaluation lit le jeu de règles de `ext1` et de `router` (`nft list ruleset`) et le **recopie
   sur des machines cachées identiques**, qu'elle sonde depuis des copies cachées des autres
   machines : seuls comptent **les jeux de règles chargés** (et, à la question 6, le fichier
@@ -1385,12 +1385,63 @@ Règles valables pour tout le TP :
 - pour tester sans attendre, utilisez des délais courts : `curl -m 3 …`, `ping -c 2 -W 1 …`,
   `dig … +time=1 +tries=1`, `nc -v -w 3 …`.
 """)
+            + tr("""
+**Méthode conseillée : chaque pare-feu dans un fichier.** Plutôt que de taper les règles une à une,
+écrivez chaque pare-feu dans le fichier **`/etc/nftables.conf` de sa machine**, `ext1` ou `router`,
+complétez-le de question en question et rechargez-le d'un bloc (section @@ref:files@@ des
+Informations, qui l'appelle `/root/firewall.nft` : le nom importe peu, `/etc/nftables.conf` est
+celui que Debian charge au démarrage). Plus de guillemets pour le shell, ni de handle à chercher
+pour placer une règle (on l'écrit à sa place), et des commentaires (`#`) pour s'y retrouver. Le
+fichier existe déjà sur chaque machine : le paquet Debian y a mis un squelette, une table
+`inet filter` aux chaînes vides `input`, `forward` et `output`. Remplacez-le à partir de la
+question 2 (la question 1 observe les machines sans pare-feu) en gardant cette forme :
+
+```
+#!/usr/sbin/nft -f
+flush ruleset
+
+table inet filter {
+        chain input {
+                # la déclaration de la chaîne de base, puis ses règles,
+                # dans l'ordre où les paquets doivent les rencontrer
+        }
+        # sur ext1, à partir de la question 4 : chain output { … }
+        # sur router, à partir de la question 6 : chain forward { … } ; question 7 : l'ensemble
+}
+```
+
+Après chaque modification (`nano /etc/nftables.conf`, ou `vim`), sur la machine concernée :
+
+```
+nft -c -f /etc/nftables.conf      # vérifie sans rien changer ; aucun message : correct
+nft -f /etc/nftables.conf         # remplace tout le jeu de règles par celui du fichier
+nft -a list ruleset               # ce qui est réellement chargé (avec les handles)
+```
+
+- chaque erreur est signalée par le nom du fichier, les numéros de ligne et de colonne, et des
+  `^^^` sous le mot fautif. Le chargement est atomique : en cas d'erreur, **rien** ne change et
+  l'ancien jeu de règles reste en place ;
+- **l'évaluation ne lit pas ces fichiers**, seulement les jeux de règles chargés sur `ext1` et
+  `router` : un fichier modifié mais pas rechargé ne compte pas, et aucun service ne les charge
+  dans les machines du TP ;
+- `flush ruleset` en tête : recharger le fichier remplace tout, sans doublon (aucune autre table
+  n'est à garder). Cela remet aussi à zéro les compteurs et vide l'ensemble que remplissent les
+  règles de la question 7 ;
+- les questions qui font pratiquer une commande (`nft replace rule …` à la question 4,
+  `nft insert rule`) se font dans le fichier par la modification correspondante : la règle écrite
+  à sa place. Essayez la commande si vous voulez, mais reportez **toute** modification dans le
+  fichier : le prochain `nft -f` efface ce qu'il ne contient pas ;
+- déjà commencé à la main ? `{ echo 'flush ruleset'; nft -s list ruleset; } > /etc/nftables.conf`
+  transforme le jeu de règles en place en fichier.
+""")
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
 projet. L'état `final` (onglet *Appliquer une configuration*) vide les jeux de règles de `ext1` et
 de `router`, applique toute la solution, fait de `dmz2` le serveur DNS de `int1` et remplit les
 formulaires ; il est ré-applicable et une évaluation lancée juste après donne 100/100, plus les
-points de bonus de la question 7.
+points de bonus de la question 7. Le fichier `/etc/nftables.conf` n'est qu'une méthode conseillée
+aux étudiants : l'évaluation ne le lit pas (seuls comptent les jeux de règles chargés), et l'état
+`final` passe par des commandes `nft`.
 
 L'évaluation (miroir caché, `lib/hidden_mirror.py` / `lib/firewall.py`) se fait en deux temps, parce
 que les deux pare-feux se masqueraient l'un l'autre (après la question 6, `router` ne laisse plus
@@ -3630,7 +3681,9 @@ table inet filter {
 projet. L'état `final` (onglet *Appliquer une configuration*) vide les jeux de règles de `ext1` et
 de `router`, applique toute la solution, fait de `dmz2` le serveur DNS de `int1` et remplit les
 formulaires ; il est ré-applicable et une évaluation lancée juste après donne 100/100, plus les
-points de bonus de la question 7.
+points de bonus de la question 7. Le fichier `/etc/nftables.conf` n'est qu'une méthode conseillée
+aux étudiants : l'évaluation ne le lit pas (seuls comptent les jeux de règles chargés), et l'état
+`final` passe par des commandes `nft`.
 
 L'évaluation (miroir caché, `lib/hidden_mirror.py` / `lib/firewall.py`) se fait en deux temps, parce
 que les deux pare-feux se masqueraient l'un l'autre (après la question 6, `router` ne laisse plus
@@ -3656,7 +3709,9 @@ doivent détruire attendent leur délai), une ou deux secondes sans pare-feu.
 project. The state `final` (*Apply Configuration* tab) flushes the rulesets of `ext1` and
 `router`, applies the whole solution, makes `dmz2` the DNS server of `int1` and fills the forms;
 it can be applied again and an evaluation run right after gives 100/100, plus the bonus points
-of question 7.
+of question 7. The file `/etc/nftables.conf` is only a method recommended to the students: the
+evaluation does not read it (only the loaded rulesets count), and the state `final` uses `nft`
+commands.
 
 The evaluation (hidden mirror, `lib/hidden_mirror.py` / `lib/firewall.py`) runs in two phases,
 because the two firewalls would hide each other (after question 6, `router` no longer lets the
@@ -4045,9 +4100,9 @@ Règles valables pour tout le TP :
 - les questions sont à faire **dans l'ordre** et la configuration d'une question terminée reste
   en place : l'évaluation vérifie le jeu de règles **final** de `ext1` et de `router` (sur
   chacune, une seule table, `inet filter`) ;
-- les règles sont volatiles (`nft`) : elles ne survivent pas à un redémarrage. Écrire le
-  pare-feu dans un fichier rechargé par `nft -f` (section @@ref:ruleset@@) évite bien des erreurs
-  d'ordre ;
+- les règles tapées avec `nft` sont volatiles : elles ne survivent pas à un redémarrage. Écrire
+  chaque pare-feu dans un fichier rechargé d'un bloc évite bien des erreurs d'ordre (méthode
+  conseillée plus bas) ;
 - l'évaluation lit le jeu de règles de `ext1` et de `router` (`nft list ruleset`) et le **recopie
   sur des machines cachées identiques**, qu'elle sonde depuis des copies cachées des autres
   machines : seuls comptent **les jeux de règles chargés** (et, à la question 6, le fichier
@@ -4081,14 +4136,111 @@ Rules for the whole lab:
 - the questions are to be done **in order** and the configuration of a finished question stays
   in place: the evaluation checks the **final** ruleset of `ext1` and of `router` (on each, one
   table only, `inet filter`);
-- the rules are volatile (`nft`): they do not survive a reboot. Writing the firewall in a file
-  loaded with `nft -f` (section @@ref:ruleset@@) avoids many ordering mistakes;
+- the rules typed with `nft` are volatile: they do not survive a reboot. Writing each firewall
+  in a file loaded in one go avoids many ordering mistakes (recommended method below);
 - the evaluation reads the ruleset of `ext1` and of `router` (`nft list ruleset`) and **copies it
   onto identical hidden machines**, which it probes from hidden copies of the other machines:
   only **the loaded rulesets** count (and, in question 6, the file `/etc/resolv.conf` of
   `int1`), not the state of the servers nor what you do on the other machines;
 - to test without waiting, use short timeouts: `curl -m 3 …`, `ping -c 2 -W 1 …`,
   `dig … +time=1 +tries=1`, `nc -v -w 3 …`.
+""",
+        """
+**Méthode conseillée : chaque pare-feu dans un fichier.** Plutôt que de taper les règles une à une,
+écrivez chaque pare-feu dans le fichier **`/etc/nftables.conf` de sa machine**, `ext1` ou `router`,
+complétez-le de question en question et rechargez-le d'un bloc (section @@ref:files@@ des
+Informations, qui l'appelle `/root/firewall.nft` : le nom importe peu, `/etc/nftables.conf` est
+celui que Debian charge au démarrage). Plus de guillemets pour le shell, ni de handle à chercher
+pour placer une règle (on l'écrit à sa place), et des commentaires (`#`) pour s'y retrouver. Le
+fichier existe déjà sur chaque machine : le paquet Debian y a mis un squelette, une table
+`inet filter` aux chaînes vides `input`, `forward` et `output`. Remplacez-le à partir de la
+question 2 (la question 1 observe les machines sans pare-feu) en gardant cette forme :
+
+```
+#!/usr/sbin/nft -f
+flush ruleset
+
+table inet filter {
+        chain input {
+                # la déclaration de la chaîne de base, puis ses règles,
+                # dans l'ordre où les paquets doivent les rencontrer
+        }
+        # sur ext1, à partir de la question 4 : chain output { … }
+        # sur router, à partir de la question 6 : chain forward { … } ; question 7 : l'ensemble
+}
+```
+
+Après chaque modification (`nano /etc/nftables.conf`, ou `vim`), sur la machine concernée :
+
+```
+nft -c -f /etc/nftables.conf      # vérifie sans rien changer ; aucun message : correct
+nft -f /etc/nftables.conf         # remplace tout le jeu de règles par celui du fichier
+nft -a list ruleset               # ce qui est réellement chargé (avec les handles)
+```
+
+- chaque erreur est signalée par le nom du fichier, les numéros de ligne et de colonne, et des
+  `^^^` sous le mot fautif. Le chargement est atomique : en cas d'erreur, **rien** ne change et
+  l'ancien jeu de règles reste en place ;
+- **l'évaluation ne lit pas ces fichiers**, seulement les jeux de règles chargés sur `ext1` et
+  `router` : un fichier modifié mais pas rechargé ne compte pas, et aucun service ne les charge
+  dans les machines du TP ;
+- `flush ruleset` en tête : recharger le fichier remplace tout, sans doublon (aucune autre table
+  n'est à garder). Cela remet aussi à zéro les compteurs et vide l'ensemble que remplissent les
+  règles de la question 7 ;
+- les questions qui font pratiquer une commande (`nft replace rule …` à la question 4,
+  `nft insert rule`) se font dans le fichier par la modification correspondante : la règle écrite
+  à sa place. Essayez la commande si vous voulez, mais reportez **toute** modification dans le
+  fichier : le prochain `nft -f` efface ce qu'il ne contient pas ;
+- déjà commencé à la main ? `{ echo 'flush ruleset'; nft -s list ruleset; } > /etc/nftables.conf`
+  transforme le jeu de règles en place en fichier.
+""": """
+**Recommended method: each firewall in a file.** Rather than typing the rules one by one, write
+each firewall in the file **`/etc/nftables.conf` of its machine**, `ext1` or `router`, complete it
+question after question and reload it in one go (section @@ref:files@@ of the Informations, which
+calls it `/root/firewall.nft`: the name hardly matters, `/etc/nftables.conf` is the one Debian
+loads at boot). No more quoting for the shell, no handle to look up to place a rule (you write it
+where it belongs), and comments (`#`) to find your way. The file already exists on each machine:
+the Debian package put a skeleton there, a table `inet filter` with empty chains `input`,
+`forward` and `output`. Replace it from question 2 on (question 1 looks at the machines without a
+firewall), keeping this shape:
+
+```
+#!/usr/sbin/nft -f
+flush ruleset
+
+table inet filter {
+        chain input {
+                # the declaration of the base chain, then its rules,
+                # in the order the packets must meet them
+        }
+        # on ext1, from question 4 on: chain output { … }
+        # on router, from question 6 on: chain forward { … }; question 7: the set
+}
+```
+
+After each change (`nano /etc/nftables.conf`, or `vim`), on the machine concerned:
+
+```
+nft -c -f /etc/nftables.conf      # checks without changing anything; no message: correct
+nft -f /etc/nftables.conf         # replaces the whole ruleset with the one of the file
+nft -a list ruleset               # what is really loaded (with the handles)
+```
+
+- each error is reported with the name of the file, the line and column numbers, and `^^^` under
+  the faulty word. Loading is atomic: on an error, **nothing** changes and the old ruleset stays
+  in place;
+- **the evaluation does not read these files**, only the rulesets loaded on `ext1` and `router`:
+  a file changed but not reloaded does not count, and no service loads them in the machines of the
+  lab;
+- `flush ruleset` at the top: reloading the file replaces everything, without duplicates (no other
+  table needs keeping). It also resets the counters and empties the set the rules of question 7
+  fill;
+- the questions that practise a command (`nft replace rule …` in question 4, `nft insert rule`) are
+  done in the file by the matching change: the rule written where it belongs. Try the command if
+  you like, but carry **every** change over to the file: the next `nft -f` erases what it does not
+  hold;
+- already started by hand? `{ echo 'flush ruleset'; nft -s list ruleset; } > /etc/nftables.conf`
+  turns the ruleset in place into a file.
 """,
         """
 Il reste à filtrer les paquets qui **traversent** `router`, d'une zone à l'autre : c'est le rôle

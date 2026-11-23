@@ -1311,7 +1311,7 @@ site. **Comme sur le véritable Internet, `ext1` et `ext2` n'ont aucune route ve
 privés** : ils ne connaissent que `wan`. Le jeu de règles nftables de `r1`, `r3` et `r4` est vide.
 Celui de `r2`, `r5` et `r6` contient déjà quelques règles, présentées au début de leur partie et
 écrites dans leur fichier `{conf_file}` : si vous les perdez, `nft -f {conf_file}` les recharge
-(et efface les vôtres). `r2` porte deux adresses publiques sur `eth1`. Dans vos commandes,
+(et efface celles que vous n'y avez pas écrites). `r2` porte deux adresses publiques sur `eth1`. Dans vos commandes,
 désignez les machines par leurs adresses (tableau ci-dessus).
 
 **Les serveurs de test** répondent par leur nom et par les adresses des deux bouts de la
@@ -1337,9 +1337,9 @@ n'est pas installée sur les machines du TP.
 
 Règles valables pour tout le TP :
 
-- configurez les routeurs avec **`nft`** (pas avec `iptables`). L'évaluation lit le jeu de règles
-  **chargé** sur chaque routeur (`nft list ruleset`), pas un fichier : des règles tapées avec `nft`
-  suffisent ; si vous écrivez `{conf_file}`, chargez-le (`nft -f {conf_file}`) ;
+- configurez les routeurs avec **`nft`** (pas avec `iptables`), en commandes ou dans un fichier
+  (méthode conseillée plus bas). L'évaluation lit le jeu de règles **chargé** sur chaque routeur
+  (`nft list ruleset`), pas un fichier ;
 - ce jeu de règles est **recopié sur une copie cachée du routeur**, entourée de copies cachées des
   machines (mêmes adresses, mêmes serveurs de test), où l'évaluation refait avec `curl` les
   requêtes des questions et lit les réponses. Seul compte donc le jeu de règles chargé sur `rN`,
@@ -1350,6 +1350,38 @@ Règles valables pour tout le TP :
 - une traduction est décidée au premier paquet d'une connexion : après avoir changé une règle,
   refaites une requête.
 """).format(conf_file=CONF_FILE, svc=SVC_PORT, proxy=PROXY_PORT, intranet=INTRANET_PORT)
+            + tr("""
+**Méthode conseillée : les règles de chaque routeur dans son fichier.** Plutôt que de taper les
+règles une à une, écrivez celles de `rN` dans **son** fichier `/etc/nftables.conf` et rechargez-le
+d'un bloc (section @@ref:nft-cli@@ des Informations) : plus de guillemets pour le shell, ni de
+handle à chercher pour placer une règle (on l'écrit à sa place, avant ou après celles qui sont
+données), et des commentaires (`#`) pour s'y retrouver. Sur `r2`, `r5` et `r6`, ce fichier contient
+déjà les règles données : complétez-le. Sur `r1`, `r3` et `r4`, il contient le squelette mis par le
+paquet Debian, une table `inet filter` aux chaînes vides, qui ne filtre rien : remplacez-le par un
+fichier de la même forme que celui de `r2` (`flush ruleset` en tête, puis vos tables,
+`table ip nat { … }`). Après chaque modification (`nano /etc/nftables.conf`, ou `vim`), sur le
+routeur concerné :
+
+```
+nft -c -f /etc/nftables.conf      # vérifie sans rien changer ; aucun message : correct
+nft -f /etc/nftables.conf         # remplace tout le jeu de règles par celui du fichier
+nft list ruleset                  # ce qui est réellement chargé
+```
+
+- chaque erreur est signalée par le nom du fichier, les numéros de ligne et de colonne, et des
+  `^^^` sous le mot fautif. Le chargement est atomique : en cas d'erreur, **rien** ne change et
+  l'ancien jeu de règles reste en place ;
+- **l'évaluation ne lit pas ces fichiers**, seulement le jeu de règles chargé sur chaque routeur :
+  un fichier modifié mais pas rechargé ne compte pas, et aucun service ne les charge dans les
+  machines du TP ;
+- `flush ruleset` en tête : recharger le fichier remplace tout le jeu de règles du routeur, sans
+  doublon (aucune autre table n'est à garder sur les routeurs). Les connexions déjà traduites le
+  restent : refaites une requête après chaque chargement ;
+- reportez dans le fichier **toute** modification faite en ligne de commande : le prochain `nft -f`
+  efface ce qu'il ne contient pas (les règles données comprises, si vous les en avez retirées) ;
+- déjà commencé à la main ? `{ echo 'flush ruleset'; nft -s list ruleset; } > /etc/nftables.conf`
+  transforme le jeu de règles en place en fichier.
+""")
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
 projet. L'état `final` (onglet *Appliquer une configuration*) applique toute la solution : il écrit

@@ -747,7 +747,8 @@ def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir, lang):
     resolved_questions = [_text(resolve_text(q.description, numbering), lang) for q in questions]
     assert all('@@ref' not in q and '@@sec' not in q for q in resolved_questions)
     section = 'section' if lang == 'fr' else 'section'
-    assert f'({section} 11 ' in resolved_questions[0] and f'({section} 3)' in resolved_questions[0]
+    # the test servers (section 11) and the file method (sub-section 3.x, files)
+    assert f'({section} 11 ' in resolved_questions[0] and re.search(rf'\({section} 3\.\d+ ', resolved_questions[0])
     assert f'({section}\n3 ' in resolved_questions[2] and f'({section} 5)' in resolved_questions[2]
     assert f'({section} 6 ' in resolved_questions[4]        # question 4: drop or reject in the output chain
     assert f'({section} 2 ' in resolved_questions[5] and f'({section} 4)' in resolved_questions[5]

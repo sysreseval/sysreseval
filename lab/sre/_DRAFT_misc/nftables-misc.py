@@ -1101,9 +1101,9 @@ Règles valables pour tout le TP :
   **final** de `srv`, avec les quatre questions à la fois ;
 - l'**ordre des règles** compte (une règle qui accepte, placée avant celle de la liste noire,
   laisse passer `bad`) : relisez `nft list ruleset` après chaque ajout ;
-- l'évaluation lit le jeu de règles **chargé** sur `srv` (`nft list ruleset`), pas un fichier : des
-  règles tapées avec `nft` suffisent (elles sont volatiles) ; si vous écrivez `/etc/nftables.conf`,
-  chargez-le (`nft -f /etc/nftables.conf`) ;
+- l'évaluation lit le jeu de règles **chargé** sur `srv` (`nft list ruleset`), pas un fichier :
+  des règles tapées avec `nft` suffisent (elles sont volatiles), mais un fichier rechargé d'un bloc
+  est plus sûr (méthode conseillée plus bas) ;
 - ce jeu de règles est **recopié sur une machine cachée identique** à `srv` (même adresse), où des
   services écoutent sur les ports {ssh}, {http}, {rej} et {drp}, et que l'évaluation sonde par des
   connexions TCP depuis des copies cachées de `admin`, `user` et `bad` : `bad` ne doit pas
@@ -1119,6 +1119,36 @@ Règles valables pour tout le TP :
 - pour tester sans attendre, donnez un délai court à vos commandes : `curl -m 3 http://ADRESSE:PORT/`,
   `nc -vz -w 3 ADRESSE PORT` (section @@ref:testing@@ des Informations).
 """).format(ssh=SSH_PORT, http=HTTP_PORT, rej=REJECT_PORT, drp=DROP_PORT)
+            + tr("""
+**Méthode conseillée : le pare-feu dans un fichier.** Plutôt que de taper les règles une à une,
+écrivez le pare-feu de `srv` dans **`/etc/nftables.conf`**, complétez-le de question en question et
+rechargez-le d'un bloc : plus de guillemets pour le shell, ni de handle à chercher pour placer une
+règle (on l'écrit à sa place), et des commentaires (`#`) pour s'y retrouver. Le fichier existe
+déjà : le paquet Debian y a mis un squelette, une table `inet filter` aux chaînes vides `input`,
+`forward` et `output`. Remplacez-le par le socle de la section @@ref:nft-files@@ des Informations
+(`flush ruleset` en tête, puis la table `inet filter` et sa chaîne `input`), puis ajoutez-y les
+ensembles et les règles des questions. Après chaque modification (`nano /etc/nftables.conf`, ou
+`vim`) :
+
+```
+nft -c -f /etc/nftables.conf      # vérifie sans rien changer ; aucun message : correct
+nft -f /etc/nftables.conf         # remplace tout le jeu de règles par celui du fichier
+nft -a list ruleset               # ce qui est réellement chargé (avec les handles)
+```
+
+- chaque erreur est signalée par le nom du fichier, les numéros de ligne et de colonne, et des
+  `^^^` sous le mot fautif. Le chargement est atomique : en cas d'erreur, **rien** ne change et
+  l'ancien jeu de règles reste en place ;
+- **l'évaluation ne lit pas le fichier**, seulement le jeu de règles chargé sur `srv` : un fichier
+  modifié mais pas rechargé ne compte pas, et aucun service ne le charge dans les machines du TP ;
+- `flush ruleset` en tête : recharger le fichier remplace tout, sans doublon (aucune autre table
+  n'est à garder sur `srv`). Cela remet aussi à zéro les compteurs (question 4) ;
+- ce que vous changez en ligne de commande (`nft add element`, `nft insert rule`…) n'est pas dans
+  le fichier : reportez-y **toute** modification, le prochain `nft -f` efface ce qu'il ne contient
+  pas ;
+- déjà commencé à la main ? `{ echo 'flush ruleset'; nft -s list ruleset; } > /etc/nftables.conf`
+  transforme le jeu de règles en place en fichier.
+""")
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
 projet. L'état `final` (onglet *Appliquer une configuration*) applique toute la solution : il écrit

@@ -697,9 +697,9 @@ def test_questions_html(lab, data, tmp_pub_dir, instructor_mode):
         # the steps (a), (b)… are paragraphs, never swallowed by a code block
         for step in re.findall(r'^\*\*\(([a-d])\)\*\*', source, flags=re.M):
             assert f'<strong>({step})</strong>' in html, (_text(q.title), step)
-    # the given rules of r2 / r5 / r6 for a student; for the instructor, the six reference files and the rules of
-    # the ten questions that configure something on top
-    assert blocks == (3 if not instructor_mode else 3 + 6 + 10)
+    # the given rules of r2 / r5 / r6 and the commands of the file method (Organisation) for a student; for the
+    # instructor, the six reference files and the rules of the ten questions that configure something on top
+    assert blocks == (4 if not instructor_mode else 4 + 6 + 10)
 
 
 def test_course_and_questions_pdf(lab, data, tmp_pub_dir):

@@ -99,10 +99,11 @@ def test_questions_reference_the_course(lab, data, tmp_pub_dir):
     questions = list(grade.get_questions_ordered())
     assert len(questions) == 5
     first = _text(questions[0].description)
-    assert first.count('@@ref:') == 2
+    assert first.count('@@ref:') == 3
     resolved = [_text(resolve_text(q.description, numbering)) for q in questions]
     assert all('@@' not in text for text in resolved)
     assert 'section 5 des Informations' in resolved[0] and 'section 13 des Informations' in resolved[0]
+    assert 'section 5.1 des Informations' in resolved[0]          # the file method: the base firewall as a file
     student_text = _text(ns.informations) + "".join(_text(q.description) for q in questions)
     assert not has_instructor(student_text) and "Pour l'enseignant" not in student_text
     for value in (data.nets.net1, data.ips.srv.ip, data.ips.admin.ip, data.ips.user.ip, data.ips.bad.ip):
