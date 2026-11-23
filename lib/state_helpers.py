@@ -1,4 +1,6 @@
+import re
 import shlex
+from dataclasses import dataclass
 from ipaddress import IPv4Address, IPv4Interface, IPv6Address, IPv6Interface, IPv6Network
 
 from SRE.lib_sre import NetScheme0
@@ -369,3 +371,122 @@ def set_slaac_client(net_scheme: NetScheme0, machine: str, interfaces=None, step
     for iface in names:
         net_scheme.cmd(machine, f'sysctl -w net.ipv6.conf.{iface}.accept_ra=2', step=step)
         net_scheme.cmd(machine, f'sysctl -w net.ipv6.conf.{iface}.autoconf=1', step=step)
+
+
+# ---------------------------------------------------------------------------
+# Daemons kept across `sre save` / `sre restore`
+# ---------------------------------------------------------------------------
+# A save captures files only: a restored container runs none of the processes of the saved one.
+# save() records the daemons running on a machine (save_daemons), restore() reads the record in
+# a multi_pass state (read_saved_daemons), relaunches them once the network is back
+# (restart_saved_daemons) and removes the record (forget_saved_daemons).  The record lives under
+# /var/lib: Kathara's filesystem diff leaves out /run and /tmp.
+
+SAVED_DAEMONS_FILE = '/var/lib/sre_saved_daemons'
+
+# Interfaces that ifup never brings back here: the loopback is up in every container.
+_IFUP_SKIPPED = ('lo',)
+
+_DAEMON_NAME_RE = re.compile(r'[\w.+-]+')
+
+# Wait (30 s at most) until systemd has finished booting a container started with
+# entrypoint /sbin/init: a restored one may still be booting when the restore state runs, and
+# `systemctl` fails before its bus is up (`is-system-running` then prints "offline").
+WAIT_FOR_SYSTEMD_CMD = ("timeout 30 sh -c 'while :; do "
+                        "case \"$(systemctl is-system-running --wait 2>/dev/null)\" in "
+                        "running|degraded) exit 0;; esac; sleep 1; done'; true")
+
+
+@dataclass(frozen=True)
+class SavedProcess:
+    """A process recorded by save_daemons(): its command line and the systemd service whose
+    cgroup held it (None: launched by hand, or no systemd in the container)."""
+    argv: tuple
+    unit: str | None = None
+
+
+@dataclass(frozen=True)
+class SavedDaemons:
+    """Record of one machine: the interfaces brought up by ifupdown and the recorded processes."""
+    ifup: tuple = ()
+    processes: tuple = ()
+
+
+def record_daemons_cmd(names, path: str = SAVED_DAEMONS_FILE) -> str:
+    """Shell command writing to *path* the record of the daemons named *names* (process names,
+    matched exactly by `pgrep -x`):
+
+        ifup<TAB>eth0                      one line per interface of `ifquery --state`
+        proc<TAB><unit|-><TAB>argv0<TAB>…  one line per process (argv from /proc/PID/cmdline)
+
+    *unit* is the `*.service` of /proc/PID/cgroup, `-` for a process outside any service."""
+    names = list(names)
+    if not names:
+        raise ValueError("record_daemons_cmd: no daemon name")
+    for name in names:
+        if not _DAEMON_NAME_RE.fullmatch(name):
+            raise ValueError(f"record_daemons_cmd: invalid daemon name {name!r}")
+    pattern = '|'.join(names)
+    return ("{ ifquery --state 2>/dev/null | while IFS='=' read -r i _; do printf 'ifup\\t%s\\n' \"$i\"; done; "
+            f"for p in $(pgrep -x '{pattern}'); do "
+            "u=$(grep -o '[^/]*\\.service' /proc/$p/cgroup 2>/dev/null | head -n 1); "
+            "printf 'proc\\t%s\\t' \"${u:--}\"; tr '\\0' '\\t' 2>/dev/null < /proc/$p/cmdline; echo; "
+            f"done; }} > {shlex.quote(path)}")
+
+
+def save_daemons(net_scheme: NetScheme0, machine: str, names, step: int = 1,
+                 path: str = SAVED_DAEMONS_FILE) -> None:
+    """Record on *machine* the running daemons named *names* (call it from the save() state)."""
+    net_scheme.cmd(machine, record_daemons_cmd(names, path), step=step)
+
+
+def parse_saved_daemons(text: str) -> SavedDaemons:
+    """Parse the record written by record_daemons_cmd(); malformed lines are skipped, and so is
+    a process that exited while it was recorded (empty command line)."""
+    ifup, processes = [], []
+    for line in (text or '').splitlines():
+        fields = line.split('\t')
+        while fields and fields[-1] == '':
+            fields.pop()
+        if len(fields) == 2 and fields[0] == 'ifup':
+            ifup.append(fields[1])
+        elif len(fields) >= 3 and fields[0] == 'proc' and fields[2]:
+            unit = fields[1] if fields[1] not in ('', '-') else None
+            processes.append(SavedProcess(argv=tuple(fields[2:]), unit=unit))
+    return SavedDaemons(ifup=tuple(ifup), processes=tuple(processes))
+
+
+def read_saved_daemons(net_scheme: NetScheme0, machine: str, step: int = 1,
+                       path: str = SAVED_DAEMONS_FILE) -> SavedDaemons:
+    """Read the record of *machine* in a `@sre_state(multi_pass=True)` restore(): empty until the
+    command has run (first pass), and when the machine has no record."""
+    output, _ = net_scheme.cmd(machine, f"cat {shlex.quote(path)} 2>/dev/null; true", step=step)
+    return parse_saved_daemons(output)
+
+
+def restart_saved_daemons(net_scheme: NetScheme0, machine: str, saved: SavedDaemons, step: int = 1) -> None:
+    """Relaunch on *machine* the daemons of *saved*: `systemctl start` for each recorded service,
+    the same command line, detached, for each process launched by hand, `ifup`, detached too, for
+    each interface ifupdown had brought up (static or dhcp stanza).  A process whose last argument
+    is one of these interfaces is left to ifup (the dhclient of an `inet dhcp` stanza).
+
+    Nothing waits for a DHCP lease: a dhclient whose server does not answer falls back to its
+    recorded lease after its `timeout` (60 s by default, ~80 s measured with `ifup`)."""
+    ifup = [iface for iface in saved.ifup if iface not in _IFUP_SKIPPED]
+    units = list(dict.fromkeys(p.unit for p in saved.processes if p.unit))
+    for unit in units:
+        net_scheme.cmd(machine, f"systemctl start {shlex.quote(unit)}", step=step, allow_error=True)
+    for proc in saved.processes:
+        if proc.unit or proc.argv[-1] in ifup:
+            continue
+        net_scheme.cmd(machine, f"setsid -f {shlex.join(proc.argv)} </dev/null >/dev/null 2>&1",
+                       step=step, allow_error=True)
+    for iface in ifup:
+        net_scheme.cmd(machine, f"mkdir -p /run/network; setsid -f ifup {shlex.quote(iface)} </dev/null >/dev/null 2>&1",
+                       step=step, allow_error=True)
+
+
+def forget_saved_daemons(net_scheme: NetScheme0, machine: str, step: int = 1,
+                         path: str = SAVED_DAEMONS_FILE) -> None:
+    """Remove the record of *machine* (last step of restore())."""
+    net_scheme.cmd(machine, f"rm -f {shlex.quote(path)}", step=step)

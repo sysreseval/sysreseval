@@ -623,6 +623,37 @@ def restore(self):
     self.cmd('server', 'service isc-dhcp-server start', allow_error=True)
 ```
 
+Kathara's filesystem diff also leaves out `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`, `/run/` and `/tmp/`, and the addresses, routes and sysctls set with `cmd()` are gone too. The usual shape is a helper method that both `initial()` and `restore()` call (`lab/sre/traceroute.py`, `lab/sre/dhcp.py`).
+
+The daemons the **students** started are unknown to the lab. The helpers of `state_helpers.py` record them in `save()` and relaunch them in a `multi_pass` `restore()`, which can read the record at step 1 and act on it at the next steps:
+
+```python
+from state_helpers import save_daemons, read_saved_daemons, restart_saved_daemons, forget_saved_daemons
+
+@sre_state()
+def save(self):
+    for m in ('server', 'client'):
+        save_daemons(self, m, ('dhcpd', 'dhclient'))       # process names, matched by pgrep -x
+
+@sre_state(multi_pass=True)
+def restore(self):
+    self._runtime_config()                                  # what initial() sets up
+    saved = {m: read_saved_daemons(self, m) for m in ('server', 'client')}   # step 1
+    restart_saved_daemons(self, 'server', saved['server'], step=2)
+    restart_saved_daemons(self, 'client', saved['client'], step=3)          # once the server answers
+    for m in ('server', 'client'):
+        forget_saved_daemons(self, m, step=4)               # the record is removed at the end
+```
+
+- `save_daemons()` writes `/var/lib/sre_saved_daemons` (`SAVED_DAEMONS_FILE`) in the container. It holds the interfaces that `ifquery --state` lists, and for each running process of those names its command line and the systemd service whose cgroup holds it.
+- `read_saved_daemons()` returns a `SavedDaemons(ifup, processes)`. It is empty on the first pass of the state and when a machine has no record.
+- `restart_saved_daemons()` does three things:
+  - runs `systemctl start <service>` once per recorded service;
+  - relaunches each process started by hand, detached, with the same command line (`setsid -f …`);
+  - runs `ifup <iface>`, detached too, for each interface ifupdown had brought up. A process whose last argument is one of those interfaces is left to `ifup`: that is the dhclient of an `inet dhcp` stanza. Nothing waits for a lease: a dhclient whose server does not answer keeps its recorded lease only after its `timeout` (about 80 s measured with `ifup`).
+- On a machine started with `entrypoint: "/sbin/init"`, systemd boots again on restore and may start a service at boot before the addresses exist. Run `WAIT_FOR_SYSTEMD_CMD`, stop the service (`systemctl stop …; pkill -x …`), and only then call `restart_saved_daemons()`.
+- `lab/sre/dhcp.py` uses all of this: dhcpd on srv1 / srv2, dhcrelay on r1 (step 2), the clients (step 3).
+
 Lifecycle states are never user-allowed, never listed in the GUI, and `sre check` runs `save()` / `restore()` when the lab allows save/restore. `<srelab_dir>/save/` and `<srelab_dir>/restore/` are therefore reserved state-file directories (see [State file transfer](internals.md)).
 
 ### `@sre_state` decorator

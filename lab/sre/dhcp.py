@@ -7,6 +7,8 @@ lan3 : serveur srv3, derrière le routeur r2 de lan1 ; r1 ne connaît pas ce ré
 lan1 en reçoivent la route de leur serveur DHCP (option 121).
 La machine cachée ``sonde`` envoie les requêtes DHCP de test de l'évaluation.
 L'état ``final`` applique la solution de référence.
+Sauvegarde / restauration : ``save`` note les démons DHCP en marche sur les machines des
+étudiants, ``restore`` reconfigure le réseau puis les relance (serveurs et relais, puis clients).
 Chaque question se termine par sa solution dans un bloc ``instructor()`` (mode enseignant).
 """
 
@@ -48,6 +50,13 @@ from net_config import (
     get_persistent_net_config_entry,
 )
 from ping import eval_ping
+from state_helpers import (
+    WAIT_FOR_SYSTEMD_CMD,
+    forget_saved_daemons,
+    read_saved_daemons,
+    restart_saved_daemons,
+    save_daemons,
+)
 
 default_language = "fr"
 tr = make_tr(default_language)
@@ -64,6 +73,9 @@ export_kathara_project = False
 eval_interval_without_exam_mode = 120
 eval_before_exit = True
 record_sessions = False
+# Data holds nothing the students do not see (addresses and lease times are in the questions):
+# the save files stay in clear.
+allow_save_restore = True
 
 DOMAIN = "tp-dhcp.lan"
 CLIENTS = ["m0", "m1", "m2", "m3", "m4"]
@@ -73,6 +85,16 @@ SYSTEMD_MACHINES = [
     "srv2",
     "r1",
 ]  # real systemd (init13 image): systemctl, journalctl
+STUDENT_MACHINES = SYSTEMD_MACHINES + CLIENTS
+# Daemons recorded by the save state on the students' machines and relaunched by restore.
+SAVED_DAEMONS = ("dhcpd", "dhcrelay", "dhclient")
+# Services the init system of srv1 / srv2 / r1 starts at boot (sysv scripts of the init13
+# image), with their daemon.
+BOOT_SERVICES = {
+    "srv1": ("isc-dhcp-server", "dhcpd"),
+    "srv2": ("isc-dhcp-server", "dhcpd"),
+    "r1": ("isc-dhcp-relay", "dhcrelay"),
+}
 # Locally administered prefix of every MAC address chosen by the lab ("SR" in ASCII).
 MAC_PREFIX = "02:53:52"
 # TEST-NET-1 address, foreign to every lab network: an authoritative server answers
@@ -1166,8 +1188,10 @@ lui répond, et le serveur à l'adresse MAC que le client annonce. Cela permet d
 
     # -- states ------------------------------------------------------------------
 
-    @sre_state(user_allowed=False)
-    def initial(self):
+    def _runtime_config(self):
+        """Everything of the initial state, applied again by restore(): addresses, routes,
+        sysctls and daemons do not survive `sre restore`, nor /etc/hosts and /etc/resolv.conf
+        (left out of Kathara's filesystem diff)."""
         d = self.data
         for m, nc in self.net_config.items():
             set_net_config_entry(net_scheme=self, machine_name=m, nc_entry=nc)
@@ -1210,6 +1234,47 @@ lui répond, et le serveur à l'adresse MAC que le client annonce. Cela permet d
         for iface in ("eth0", "eth1"):
             self.cmd("sonde", f"ip link set {iface} up")
         install_dhcp_probe(net_scheme=self, machine="sonde")
+
+    @sre_state(user_allowed=False)
+    def initial(self):
+        self._runtime_config()
+
+    @sre_state(user_allowed=False)
+    def save(self):
+        """Record the DHCP daemons running on the students' machines (a save keeps files only);
+        srv0 and the probe are the lab's own and always come back."""
+        for m in STUDENT_MACHINES:
+            save_daemons(self, m, SAVED_DAEMONS)
+
+    @sre_state(user_allowed=False, multi_pass=True)
+    def restore(self):
+        """Put the lab back, then relaunch the daemons recorded by save().
+
+        Step 1: the configuration of the initial state, and the records are read.  Step 2: on
+        srv1 / srv2 / r1, once systemd has booted, what it started at boot is stopped (started
+        before the addresses existed, or not running at the time of the save; its failed state is
+        reset), then the recorded dhcpd / dhcrelay are relaunched (`systemctl start` for the service, the same command
+        line for a daemon launched by hand).  Step 3: the clients, once their servers are up
+        (`ifup`, or the recorded dhclient, both detached: the restored lease files make them ask
+        for their old address; without an answer dhclient keeps its recorded lease after ~80 s).
+        Step 4: the records are removed.
+
+        Not kept: the addresses and routes set by hand, edits of /etc/hosts and
+        /etc/resolv.conf; m0 / m1 / m3 get new MAC addresses, hence maybe a new dynamic address.
+        The failover pair needs ~10 s to get back to `normal`.
+        """
+        self._runtime_config()
+        saved = {m: read_saved_daemons(self, m) for m in STUDENT_MACHINES}
+        for m, (service, daemon) in BOOT_SERVICES.items():
+            self.cmd(m, WAIT_FOR_SYSTEMD_CMD, step=2)
+            # the boot attempt failed without addresses: reset-failed shows the unit inactive again
+            self.cmd(m, f"systemctl stop {service}; pkill -x {daemon}; "
+                        f"systemctl reset-failed {service} 2>/dev/null; true", step=2)
+            restart_saved_daemons(self, m, saved[m], step=2)
+        for m in CLIENTS:
+            restart_saved_daemons(self, m, saved[m], step=3)
+        for m in STUDENT_MACHINES:
+            forget_saved_daemons(self, m, step=4)
 
     @sre_state(user_allowed=False)
     def final(self):

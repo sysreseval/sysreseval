@@ -772,3 +772,113 @@ interface eth0
             render_radvd_conf({})
         with pytest.raises(ValueError, match='/64'):
             render_radvd_conf({0: ['fd00:1::/48']})
+
+
+# ---------------------------------------------------------------------------
+# Daemons kept across sre save / sre restore
+# ---------------------------------------------------------------------------
+
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from SRE import params  # noqa: E402
+from state_helpers import (  # noqa: E402
+    SAVED_DAEMONS_FILE, WAIT_FOR_SYSTEMD_CMD, SavedDaemons, SavedProcess, forget_saved_daemons,
+    parse_saved_daemons, read_saved_daemons, record_daemons_cmd, restart_saved_daemons, save_daemons,
+)
+
+_RECORD = ("ifup\teth0\n"
+           "ifup\tlo\n"
+           "proc\tisc-dhcp-server.service\t/usr/sbin/dhcpd\t-4\t-q\t-cf\t/etc/dhcp/dhcpd.conf\teth0\t\n"
+           "proc\t-\tdhclient\t-v\teth1\t\n"
+           "proc\t-\t/sbin/dhclient\t-4\t-pf\t/run/dhclient.eth0.pid\teth0\t\n"
+           "proc\t-\t\n"                          # the process exited while it was recorded
+           "garbage line\n"
+           "ifup\n"
+           "proc\tisc-dhcp-server.service\t/usr/sbin/dhcpd\t-4\teth1\t\n")
+
+
+class TestSavedDaemons:
+    def test_parse(self):
+        saved = parse_saved_daemons(_RECORD)
+        assert saved.ifup == ('eth0', 'lo')
+        assert saved.processes == (
+            SavedProcess(('/usr/sbin/dhcpd', '-4', '-q', '-cf', '/etc/dhcp/dhcpd.conf', 'eth0'), 'isc-dhcp-server.service'),
+            SavedProcess(('dhclient', '-v', 'eth1'), None),
+            SavedProcess(('/sbin/dhclient', '-4', '-pf', '/run/dhclient.eth0.pid', 'eth0'), None),
+            SavedProcess(('/usr/sbin/dhcpd', '-4', 'eth1'), 'isc-dhcp-server.service'),
+        )
+
+    def test_parse_empty(self):
+        assert parse_saved_daemons('') == SavedDaemons()
+        assert parse_saved_daemons(None) == SavedDaemons()
+
+    def test_record_cmd(self):
+        cmd = record_daemons_cmd(('dhcpd', 'dhclient'))
+        assert "pgrep -x 'dhcpd|dhclient'" in cmd
+        assert cmd.endswith(f"> {SAVED_DAEMONS_FILE}")
+        assert 'ifquery --state' in cmd and '/proc/$p/cgroup' in cmd and '/proc/$p/cmdline' in cmd
+        assert record_daemons_cmd(['x'], path='/var/lib/my file').endswith("> '/var/lib/my file'")
+
+    @pytest.mark.parametrize('names', [[], ["dhcpd'; rm -rf /"], ['a b'], ['a|b']])
+    def test_record_cmd_rejects_bad_names(self, names):
+        with pytest.raises(ValueError):
+            record_daemons_cmd(names)
+
+    @pytest.mark.skipif(shutil.which('sh') is None, reason='no sh')
+    @pytest.mark.parametrize('cmd', [record_daemons_cmd(['dhcpd', 'dhcrelay', 'dhclient']), WAIT_FOR_SYSTEMD_CMD])
+    def test_commands_parse_as_sh(self, cmd):
+        assert subprocess.run(['sh', '-n', '-c', cmd]).returncode == 0
+
+    @pytest.mark.skipif(not Path('/proc/self/cmdline').exists() or shutil.which('pgrep') is None,
+                        reason='needs /proc and pgrep (Linux)')
+    def test_record_cmd_runs(self, tmp_path):
+        """The record of a real process: its command line, no service, read back by the parser."""
+        record = tmp_path / 'saved'
+        sleeper = subprocess.Popen(['sleep', '61.5'])
+        try:
+            time.sleep(0.2)
+            subprocess.run(['sh', '-c', record_daemons_cmd(['sleep'], path=str(record))], check=True)
+        finally:
+            sleeper.kill()
+            sleeper.wait()
+        saved = parse_saved_daemons(record.read_text())
+        assert SavedProcess(('sleep', '61.5'), None) in saved.processes
+
+    def test_save_and_forget(self):
+        s = _make_bare()
+        save_daemons(s, 'host', ['dhcpd'], step=2)
+        forget_saved_daemons(s, 'host', step=3)
+        assert _cmd_ops(s, 'host', step=2) == [record_daemons_cmd(['dhcpd'])]
+        assert _cmd_ops(s, 'host', step=3) == [f"rm -f {SAVED_DAEMONS_FILE}"]
+
+    def test_read_placeholder_then_result(self):
+        s = _make_bare()
+        assert read_saved_daemons(s, 'host') == SavedDaemons()
+        command = f"cat {SAVED_DAEMONS_FILE} 2>/dev/null; true"
+        assert _cmd_ops(s, 'host') == [command]
+        s.record_cmd_result('host', 1, command, params.default_state_cmd_timeout, _RECORD, 0)
+        assert read_saved_daemons(s, 'host') == parse_saved_daemons(_RECORD)
+
+    def test_restart(self):
+        s = _make_bare()
+        restart_saved_daemons(s, 'host', parse_saved_daemons(_RECORD), step=2)
+        assert _cmd_ops(s, 'host', step=2) == [
+            'systemctl start isc-dhcp-server.service',                       # once for both processes
+            'setsid -f dhclient -v eth1 </dev/null >/dev/null 2>&1',          # eth0's dhclient: left to ifup
+            'mkdir -p /run/network; setsid -f ifup eth0 </dev/null >/dev/null 2>&1',   # lo skipped
+        ]
+        assert all(s._allow_errors_in_cmds.get(('host', 2, c, params.default_state_cmd_timeout))
+                   for c in _cmd_ops(s, 'host', step=2))
+
+    def test_restart_quotes_the_command_line(self):
+        s = _make_bare()
+        restart_saved_daemons(s, 'host', SavedDaemons(processes=(SavedProcess(('prog', 'a b', "it's")),)))
+        assert _cmd_ops(s, 'host') == ["setsid -f prog 'a b' 'it'\"'\"'s' </dev/null >/dev/null 2>&1"]
+
+    def test_restart_nothing(self):
+        s = _make_bare()
+        restart_saved_daemons(s, 'host', SavedDaemons())
+        assert _cmd_ops(s, 'host') == []
