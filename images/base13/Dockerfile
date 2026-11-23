@@ -323,9 +323,14 @@ RUN useradd -m -s /bin/bash "etudiant" \
     && echo "student:student" | chpasswd \
     && echo "root:root" | chpasswd
 
+# The sudoers drop-in in mode 0440, as visudo wants it: written 0644, sudo still honoured it but
+# `visudo -c` exited 1 ("bad permissions, should be mode 0440") on every machine, whatever a lab
+# added to /etc/sudoers.d.  The build checks the whole sudoers configuration.
 RUN useradd -m -s /bin/bash "admin" \
     && echo "admin:admin" | chpasswd \
-    && echo "admin  ALL=(ALL:ALL) ALL\n" >/etc/sudoers.d/admin
+    && printf '%s\n' "admin  ALL=(ALL:ALL) ALL" >/etc/sudoers.d/admin \
+    && chmod 0440 /etc/sudoers.d/admin \
+    && visudo -c
 
 
 # allow root login

@@ -1627,6 +1627,48 @@ with `chain = f2b-forward` bans routed traffic, on every port of the jail's `pro
 ICMP still passes); `eve.json` lines are dated by the default detector. Example:
 `lab/sre/_DRAFT_misc/suricata-fail2ban.py`.
 
+### Ansible helpers (from `/opt/sre/lib/ansible_helpers.py` and `/opt/sre/lib/ansible_trace.py`)
+
+```python
+from ansible_helpers import (install_trace, local_fact_json, read_trace_cmd, parse_runs, iter_tasks, tasks_done_on,
+                             hosts_of_tasks, idempotent_run, normalize_action, parse_inventory_list, group_hosts,
+                             group_children, hostvar, parse_config_dump, config_value, config_list, is_vault,
+                             crypt_check_cmd, crypt_matches, parse_users, parse_group_line, motd_matches)
+```
+
+The module is named `ansible_helpers`, not `ansible`: the lib directory is on the `sys.path` of SRE and would
+shadow the real package. `lib/ansible_trace.py` is an Ansible **callback plugin**, never imported by SRE:
+`install_trace(net_scheme, 'control')` copies it to `/usr/share/ansible/plugins/callback/sre_trace.py` (a default
+callback path) and creates `/var/log/ansible-runs.jsonl` (mode 0666). With `CALLBACK_NEEDS_ENABLED = False` every
+`ansible-playbook` run loads it, whatever the students' `ansible.cfg` (an ad hoc `ansible` command loads no extra
+callback); it prints nothing and appends one JSON line per run: playbook, working directory, check mode, plays, every
+task (name, resolved module, role, handler, loop, `run_once`, `delegate_to`, the status of each host: `ok`, `changed`,
+`failed`, `ignored`, `skipped`, `unreachable`) and the recap. Task arguments are never recorded.
+
+| Function | Returns |
+|----------|---------|
+| `parse_runs(text)` | the runs of `read_trace_cmd()` (`tail -n 200` of the log), oldest first |
+| `iter_tasks(runs, role=, action=, handler=, loop=, run_once=, delegate_to=)` | `(run, task)` matching the filters (`action` and `delegate_to` take a name or a list); `normalize_action()` makes `template`, `ansible.builtin.template`, `ansible.legacy.template` one name |
+| `tasks_done_on(runs, hosts, **filters)` / `hosts_of_tasks(runs, **filters)` | every host has a matching task that ended `ok` or `changed` (in any run) / the hosts that have one |
+| `idempotent_run(runs, role, hosts, min_tasks=3)` | one run applied the tasks of the role to every host with at least *min_tasks* `ok` and no `changed` / `failed` / `unreachable` (a `--check` run counts) |
+| `parse_inventory_list(text)` + `group_hosts()` / `group_children()` / `hostvar()` | `ansible-inventory --list` (children resolved recursively) |
+| `parse_config_dump(text)` + `config_value()` / `config_list()` | `ansible-config dump --only-changed`: `{setting: (origin, value)}` |
+| `is_vault(text)` | a file encrypted by `ansible-vault` |
+| `crypt_check_cmd(user, password)` + `crypt_matches(out)` | a password checked against `/etc/shadow` by libcrypt through `ctypes` (any hash type, yescrypt included; Python 3.13 has no `crypt` module) |
+| `parse_users()` / `parse_group_line()` / `motd_matches()` | `getent passwd`, `getent group`, a motd |
+
+Verified on Debian 13 (ansible-core 2.19.11 and ansible 12.0.0 from Debian in the `ansible` image, init13 managed
+nodes): the callback loads with no warning (2.19 hands the callbacks a `CallbackTaskResult` with public `host` /
+`task` attributes: the private ones would print a deprecation warning); the task names of a role are prefixed
+(`webserver : Reload nginx`); a local fact is `ansible_local` or `ansible_facts['ansible_local']` (the key keeps its
+prefix); a machine without a default route has an empty `default_ipv4` fact; interpreter discovery warns once per host
+unless `interpreter_python = auto_silent`; `ansible-vault encrypt --vault-password-file F` fails when `ansible.cfg`
+already names a password file ("The vault-ids default,default are available to encrypt"). In the images: base13 images
+built before 2026-11-23 ship `/etc/sudoers.d/admin` in mode 0644 (sudo honours it, but a global `visudo -c` fails;
+the lab checks one file with `visudo -cf`, which works with both);
+nginx 1.30 (nginx.org) keeps its upstream connections open without a `keepalive` directive and each worker has its own
+round robin, restarting at the first server after a reload. Example: `lab/sre/_DRAFT_misc/ansible.py`.
+
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
 `machine_config(net_scheme, machine_name, config)` — concise helper for wiring a machine inside `NetScheme.build()` (or `initial()`). `config` is a `(interfaces, sysctls)` tuple:

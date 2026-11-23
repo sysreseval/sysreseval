@@ -1,6 +1,7 @@
 {
   "@weights": {
     "aaa.py": 130,
+    "ansible.py": 50,
     "anycast.py": 235,
     "bgp.py": 46,
     "bridge.py": 9,
@@ -49,6 +50,10 @@
   "aaa.py": {
     "en": "AAA: RADIUS, 802.1X, two-factor authentication and Kerberos",
     "fr": "AAA : RADIUS, 802.1X, double authentification et Kerberos"
+  },
+  "ansible.py": {
+    "en": "Automation with Ansible",
+    "fr": "Automatisation avec Ansible"
   },
   "anycast.py": {
     "en": "Anycast: one service announced from several sites (OSPF and BGP)",

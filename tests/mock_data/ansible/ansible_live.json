@@ -1,0 +1,1006 @@
+{
+ "data": {
+  "__type__": "srelab.Data",
+  "data": {
+   "__current_srelab_file": "/var/tmp/sre-stage-ansible/lab/sre/_DRAFT_misc/ansible.py",
+   "admins": [
+    {
+     "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPVBzRTMCR45v5fEb/Jx1BCOPNuTnuuoULzNjanMfbVC hugo@mistral",
+     "name": "hugo",
+     "uid": 2324
+    },
+    {
+     "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMR0BJGpinBzDSdTu6babYM/Pcq9tYxtZpfXy7qMKqmU lea@mistral",
+     "name": "lea",
+     "uid": 2073
+    },
+    {
+     "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHM1siGuUiv6kpTT76AKqYoFjP1nJKRJoY8f+b8gM7Ao farid@mistral",
+     "name": "farid",
+     "uid": 2304
+    }
+   ],
+   "ansible_password": "E6Hx9R0Qsj",
+   "archiver_password": "OsCvL9zVlmMx8E",
+   "archiver_uid": 4121,
+   "company": "mistral",
+   "http_port": 8917,
+   "ips": {
+    "client": "192.168.45.100/24",
+    "control": "192.168.85.10/24",
+    "gw": "192.168.85.1/24",
+    "gw_ext": "192.168.45.1/24",
+    "lb": "192.168.85.20/24",
+    "web1": "192.168.85.11/24",
+    "web2": "192.168.85.12/24"
+   },
+   "ips6": {},
+   "macs": {},
+   "nets": {
+    "ext": "192.168.45.0/24",
+    "mgmt": "192.168.85.0/24"
+   },
+   "nets6": {},
+   "old_account": "trainee",
+   "old_uid": 1565,
+   "ops_gid": 3890,
+   "racks": {
+    "gw": "H16",
+    "lb": "F10",
+    "web1": "G14",
+    "web2": "A13"
+   },
+   "ref_private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz\nc2gtZWQyNTUxOQAAACCH5yGAfvvpuJniadeRiZyUveGdGIyV6nBWe7kKc7HFPgAA\nAIjOgli4zoJYuAAAAAtzc2gtZWQyNTUxOQAAACCH5yGAfvvpuJniadeRiZyUveGd\nGIyV6nBWe7kKc7HFPgAAAECzXUQ0AilnkUABxGxkpUAXeorHtqNkHnDRLEI3InD6\n04fnIYB+++m4meJp15GJnJS94Z0YjJXqcFZ7uQpzscU+AAAAAAECAwQF\n-----END OPENSSH PRIVATE KEY-----\n",
+   "ref_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIfnIYB+++m4meJp15GJnJS94Z0YjJXqcFZ7uQpzscU+ root@control",
+   "serials": {
+    "gw": "SN-544436",
+    "lb": "SN-343388",
+    "web1": "SN-386267",
+    "web2": "SN-212979"
+   },
+   "vault_password": "f4TPazEUI2JB"
+  }
+ },
+ "final": [
+  [
+   "client",
+   1,
+   "bash -c 'timeout 4 bash -c \"exec 3<>/dev/tcp/192.168.45.1/22\" >/dev/null 2>&1; echo RC=$?'",
+   "RC=124\n",
+   0
+  ],
+  [
+   "client",
+   1,
+   "bash -c 'timeout 4 bash -c \"exec 3<>/dev/tcp/192.168.85.20/22\" >/dev/null 2>&1; echo RC=$?'",
+   "RC=124\n",
+   0
+  ],
+  [
+   "client",
+   1,
+   "bash -c 'timeout 4 bash -c \"exec 3<>/dev/tcp/192.168.85.20/80\" >/dev/null 2>&1; echo RC=$?'",
+   "RC=0\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "bash -c 'timeout 4 bash -c \"exec 3<>/dev/tcp/192.168.85.1/22\" >/dev/null 2>&1; echo RC=$?'",
+   "RC=0\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "cat /root/ansible/report.md 2>/dev/null; true",
+   "# Inventory report\n\n| host | IPv4 | serial | rack | system |\n|------|------|--------|------|--------|\n| gw | 192.168.85.1 | SN-544436 | H16 | Debian 1.34 |\n| lb | 192.168.85.20 | SN-343388 | F10 | Debian 1.34 |\n| web1 | 192.168.85.11 | SN-386267 | G14 | Debian 1.34 |\n| web2 | 192.168.85.12 | SN-212979 | A13 | Debian 1.34 |\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "cd /root/ansible 2>/dev/null && ansible-config dump --only-changed 2>/dev/null; true",
+   "CONFIG_FILE() = /root/ansible/ansible.cfg\nDEFAULT_HOST_LIST(/root/ansible/ansible.cfg) = ['/root/ansible/inventory.ini']\nDEFAULT_VAULT_PASSWORD_FILE(/root/ansible/ansible.cfg) = /root/ansible/.vault_pass\nHOST_KEY_CHECKING(/root/ansible/ansible.cfg) = False\nINTERPRETER_PYTHON(/root/ansible/ansible.cfg) = auto_silent\n\nGALAXY_SERVERS:\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "cd /root/ansible 2>/dev/null && for f in inventory.ini inventory.yml inventory.yaml; do [ -f \"$f\" ] && ansible-inventory -i \"$f\" --list 2>/dev/null && break; done; true",
+   "{\n    \"_meta\": {\n        \"hostvars\": {\n            \"gw\": {\n                \"ansible_host\": \"192.168.85.1\",\n                \"ansible_user\": \"ansible\",\n                \"lan_if\": \"eth0\",\n                \"wan_if\": \"eth1\"\n            },\n            \"lb\": {\n                \"ansible_host\": \"192.168.85.20\",\n                \"ansible_user\": \"ansible\"\n            },\n            \"web1\": {\n                \"ansible_host\": \"192.168.85.11\",\n                \"ansible_user\": \"ansible\",\n                \"http_port\": 8917,\n                \"site_name\": \"Intranet Mistral\"\n            },\n            \"web2\": {\n                \"ansible_host\": \"192.168.85.12\",\n                \"ansible_user\": \"ansible\",\n                \"http_port\": 8917,\n                \"site_name\": \"Intranet Mistral\"\n            }\n        },\n        \"profile\": \"inventory_legacy\"\n    },\n    \"all\": {\n        \"children\": [\n            \"ungrouped\",\n            \"routers\",\n            \"production\"\n        ]\n    },\n    \"loadbalancers\": {\n        \"hosts\": [\n            \"lb\"\n        ]\n    },\n    \"production\": {\n        \"children\": [\n            \"webservers\",\n            \"loadbalancers\"\n        ]\n    },\n    \"routers\": {\n        \"hosts\": [\n            \"gw\"\n        ]\n    },\n    \"webservers\": {\n        \"hosts\": [\n            \"web1\",\n            \"web2\"\n        ]\n    }\n}\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "cd /root/ansible/roles/webserver 2>/dev/null && ls -1 tasks/main.yml tasks/main.yaml handlers/main.yml handlers/main.yaml defaults/main.yml defaults/main.yaml templates/*.j2 2>/dev/null; true",
+   "defaults/main.yml\nhandlers/main.yml\ntasks/main.yml\ntemplates/index.html.j2\ntemplates/site.conf.j2\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "grep -rl --include='*.j2' -e hostvars /root/ansible 2>/dev/null | xargs -r grep -l -e groups 2>/dev/null; true",
+   "/root/ansible/templates/lb.conf.j2\n/root/ansible/templates/report.md.j2\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "grep -rlF -e OsCvL9zVlmMx8E /root/ansible 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "control",
+   1,
+   "head -c 64 /root/ansible/vars/vault.yml 2>/dev/null; true",
+   "$ANSIBLE_VAULT;1.1;AES256\n63623534353830666261646263303933313538",
+   0
+  ],
+  [
+   "control",
+   1,
+   "ping -c 1 -W 2 192.168.45.100",
+   "PING 192.168.45.100 (192.168.45.100) 56(84) bytes of data.\n64 bytes from 192.168.45.100: icmp_seq=1 ttl=63 time=1.35 ms\n\n--- 192.168.45.100 ping statistics ---\n1 packets transmitted, 1 received, 0% packet loss, time 0ms\nrtt min/avg/max/mdev = 1.347/1.347/1.347/0.000 ms\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "printf '%s\\n' f4TPazEUI2JB > /tmp/.sre_vault_check && cd / && ansible-vault view --vault-password-file /tmp/.sre_vault_check /root/ansible/vars/vault.yml 2>&1; rm -f /tmp/.sre_vault_check; true",
+   "---\nvault_archiver_password: \"OsCvL9zVlmMx8E\"\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "stat -c '%a' /root/ansible/.vault_pass 2>/dev/null && head -n 1 /root/ansible/.vault_pass; true",
+   "600\nf4TPazEUI2JB\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "tail -n 200 /var/log/ansible-runs.jsonl 2>/dev/null; true",
+   "{\"ansible\":\"2.19.11\",\"check\":false,\"cwd\":\"/root/ansible\",\"end\":1795448952.5308146,\"limit\":\"\",\"playbook\":\"/root/ansible/users.yml\",\"plays\":[{\"hosts\":\"all\",\"name\":\"Accounts and rights\",\"serial\":[]}],\"recap\":{\"gw\":{\"changed\":6,\"failures\":0,\"ignored\":0,\"ok\":7,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"lb\":{\"changed\":6,\"failures\":0,\"ignored\":0,\"ok\":7,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"web1\":{\"changed\":6,\"failures\":0,\"ignored\":0,\"ok\":7,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"web2\":{\"changed\":6,\"failures\":0,\"ignored\":0,\"ok\":7,\"rescued\":0,\"skipped\":0,\"unreachable\":0}},\"start\":1795448945.681767,\"tags\":[\"all\"],\"tasks\":[{\"action\":\"ansible.builtin.gather_facts\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"ok\",\"lb\":\"ok\",\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"Gathering Facts\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.copy\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\",\"lb\":\"changed\",\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"Message of the day\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.group\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\",\"lb\":\"changed\",\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"Group ops\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.user\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\",\"lb\":\"changed\",\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":true,\"name\":\"Administrators\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.posix.authorized_key\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\",\"lb\":\"changed\",\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":true,\"name\":\"Their SSH keys\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.copy\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\",\"lb\":\"changed\",\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"sudo without password for the group ops\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.user\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\",\"lb\":\"changed\",\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"Obsolete account\",\"play\":0,\"role\":\"\",\"run_once\":false}]}\n{\"ansible\":\"2.19.11\",\"check\":false,\"cwd\":\"/root/ansible\",\"end\":1795448957.9348602,\"limit\":\"\",\"playbook\":\"/root/ansible/web.yml\",\"plays\":[{\"hosts\":\"webservers\",\"name\":\"Web servers\",\"serial\":[]}],\"recap\":{\"web1\":{\"changed\":7,\"failures\":0,\"ignored\":0,\"ok\":8,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"web2\":{\"changed\":7,\"failures\":0,\"ignored\":0,\"ok\":8,\"rescued\":0,\"skipped\":0,\"unreachable\":0}},\"start\":1795448952.9552479,\"tags\":[\"all\"],\"tasks\":[{\"action\":\"ansible.builtin.gather_facts\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"Gathering Facts\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.file\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"webserver : Document root\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.template\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"webserver : Home page\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.template\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"webserver : Site configuration\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.file\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"webserver : Site enabled\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.file\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"webserver : Default site disabled\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.systemd_service\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"webserver : nginx enabled and started\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.systemd_service\",\"delegate_to\":\"\",\"handler\":true,\"hosts\":{\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"webserver : Reload nginx\",\"play\":0,\"role\":\"webserver\",\"run_once\":false}]}\n{\"ansible\":\"2.19.11\",\"check\":false,\"cwd\":\"/root/ansible\",\"end\":1795448961.8721092,\"limit\":\"\",\"playbook\":\"/root/ansible/lb.yml\",\"plays\":[{\"hosts\":\"loadbalancers\",\"name\":\"Load balancer\",\"serial\":[]}],\"recap\":{\"lb\":{\"changed\":4,\"failures\":0,\"ignored\":0,\"ok\":5,\"rescued\":0,\"skipped\":0,\"unreachable\":0}},\"start\":1795448958.3270378,\"tags\":[\"all\"],\"tasks\":[{\"action\":\"ansible.builtin.gather_facts\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"lb\":\"ok\"},\"loop\":false,\"name\":\"Gathering Facts\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.template\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"lb\":\"changed\"},\"loop\":false,\"name\":\"Load balancer configuration\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.file\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"lb\":\"changed\"},\"loop\":false,\"name\":\"Default site disabled\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.systemd_service\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"lb\":\"changed\"},\"loop\":false,\"name\":\"nginx enabled and started\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.systemd_service\",\"delegate_to\":\"\",\"handler\":true,\"hosts\":{\"lb\":\"changed\"},\"loop\":false,\"name\":\"Reload nginx\",\"play\":0,\"role\":\"\",\"run_once\":false}]}\n{\"ansible\":\"2.19.11\",\"check\":false,\"cwd\":\"/root/ansible\",\"end\":1795448965.0445132,\"limit\":\"\",\"playbook\":\"/root/ansible/secrets.yml\",\"plays\":[{\"hosts\":\"all\",\"name\":\"Service account\",\"serial\":[]}],\"recap\":{\"gw\":{\"changed\":1,\"failures\":0,\"ignored\":0,\"ok\":2,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"lb\":{\"changed\":1,\"failures\":0,\"ignored\":0,\"ok\":2,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"web1\":{\"changed\":1,\"failures\":0,\"ignored\":0,\"ok\":2,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"web2\":{\"changed\":1,\"failures\":0,\"ignored\":0,\"ok\":2,\"rescued\":0,\"skipped\":0,\"unreachable\":0}},\"start\":1795448962.3183367,\"tags\":[\"all\"],\"tasks\":[{\"action\":\"ansible.builtin.gather_facts\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"ok\",\"lb\":\"ok\",\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"Gathering Facts\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.user\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\",\"lb\":\"changed\",\"web1\":\"changed\",\"web2\":\"changed\"},\"loop\":false,\"name\":\"Account archiver\",\"play\":0,\"role\":\"\",\"run_once\":false}]}\n{\"ansible\":\"2.19.11\",\"check\":false,\"cwd\":\"/root/ansible\",\"end\":1795448968.7527382,\"limit\":\"\",\"playbook\":\"/root/ansible/gw.yml\",\"plays\":[{\"hosts\":\"routers\",\"name\":\"Router\",\"serial\":[]}],\"recap\":{\"gw\":{\"changed\":4,\"failures\":0,\"ignored\":0,\"ok\":5,\"rescued\":0,\"skipped\":0,\"unreachable\":0}},\"start\":1795448965.5036597,\"tags\":[\"all\"],\"tasks\":[{\"action\":\"ansible.builtin.gather_facts\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"ok\"},\"loop\":false,\"name\":\"Gathering Facts\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.posix.sysctl\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\"},\"loop\":false,\"name\":\"IPv4 forwarding\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.template\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\"},\"loop\":false,\"name\":\"Firewall rules\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.systemd_service\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"changed\"},\"loop\":false,\"name\":\"nftables enabled and started\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.systemd_service\",\"delegate_to\":\"\",\"handler\":true,\"hosts\":{\"gw\":\"changed\"},\"loop\":false,\"name\":\"Reload nftables\",\"play\":0,\"role\":\"\",\"run_once\":false}]}\n{\"ansible\":\"2.19.11\",\"check\":false,\"cwd\":\"/root/ansible\",\"end\":1795448970.7568233,\"limit\":\"\",\"playbook\":\"/root/ansible/report.yml\",\"plays\":[{\"hosts\":\"all\",\"name\":\"Inventory report\",\"serial\":[]}],\"recap\":{\"gw\":{\"changed\":1,\"failures\":0,\"ignored\":0,\"ok\":2,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"lb\":{\"changed\":0,\"failures\":0,\"ignored\":0,\"ok\":1,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"web1\":{\"changed\":0,\"failures\":0,\"ignored\":0,\"ok\":1,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"web2\":{\"changed\":0,\"failures\":0,\"ignored\":0,\"ok\":1,\"rescued\":0,\"skipped\":0,\"unreachable\":0}},\"start\":1795448969.1307683,\"tags\":[\"all\"],\"tasks\":[{\"action\":\"ansible.builtin.gather_facts\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"gw\":\"ok\",\"lb\":\"ok\",\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"Gathering Facts\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.template\",\"delegate_to\":\"localhost\",\"handler\":false,\"hosts\":{\"gw\":\"changed\"},\"loop\":false,\"name\":\"Report written on the control node\",\"play\":0,\"role\":\"\",\"run_once\":true}]}\n{\"ansible\":\"2.19.11\",\"check\":false,\"cwd\":\"/root/ansible\",\"end\":1795448974.7914028,\"limit\":\"\",\"playbook\":\"/root/ansible/web.yml\",\"plays\":[{\"hosts\":\"webservers\",\"name\":\"Web servers\",\"serial\":[]}],\"recap\":{\"web1\":{\"changed\":0,\"failures\":0,\"ignored\":0,\"ok\":7,\"rescued\":0,\"skipped\":0,\"unreachable\":0},\"web2\":{\"changed\":0,\"failures\":0,\"ignored\":0,\"ok\":7,\"rescued\":0,\"skipped\":0,\"unreachable\":0}},\"start\":1795448971.1821055,\"tags\":[\"all\"],\"tasks\":[{\"action\":\"ansible.builtin.gather_facts\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"Gathering Facts\",\"play\":0,\"role\":\"\",\"run_once\":false},{\"action\":\"ansible.builtin.file\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"webserver : Document root\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.template\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"webserver : Home page\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.template\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"webserver : Site configuration\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.file\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"webserver : Site enabled\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.file\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"webserver : Default site disabled\",\"play\":0,\"role\":\"webserver\",\"run_once\":false},{\"action\":\"ansible.builtin.systemd_service\",\"delegate_to\":\"\",\"handler\":false,\"hosts\":{\"web1\":\"ok\",\"web2\":\"ok\"},\"loop\":false,\"name\":\"webserver : nginx enabled and started\",\"play\":0,\"role\":\"webserver\",\"run_once\":false}]}\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PasswordAuthentication=no -o LogLevel=ERROR ansible@192.168.85.1 echo SSH_KEY_OK 2>&1; true",
+   "SSH_KEY_OK\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PasswordAuthentication=no -o LogLevel=ERROR ansible@192.168.85.11 echo SSH_KEY_OK 2>&1; true",
+   "SSH_KEY_OK\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PasswordAuthentication=no -o LogLevel=ERROR ansible@192.168.85.12 echo SSH_KEY_OK 2>&1; true",
+   "SSH_KEY_OK\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PasswordAuthentication=no -o LogLevel=ERROR ansible@192.168.85.20 echo SSH_KEY_OK 2>&1; true",
+   "SSH_KEY_OK\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "cat /etc/motd 2>/dev/null; true",
+   "MISTRAL: managed by Ansible, do not edit by hand\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "cat /proc/sys/net/ipv4/ip_forward",
+   "1\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "for u in hugo lea farid; do echo \"=== $u\"; stat -c '%U %a' /home/$u/.ssh/authorized_keys 2>/dev/null; cat /home/$u/.ssh/authorized_keys 2>/dev/null; done; true",
+   "=== hugo\nhugo 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPVBzRTMCR45v5fEb/Jx1BCOPNuTnuuoULzNjanMfbVC hugo@mistral\n=== lea\nlea 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMR0BJGpinBzDSdTu6babYM/Pcq9tYxtZpfXy7qMKqmU lea@mistral\n=== farid\nfarid 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHM1siGuUiv6kpTT76AKqYoFjP1nJKRJoY8f+b8gM7Ao farid@mistral\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "getent group ops; true",
+   "ops:x:3890:hugo,lea,farid\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "getent passwd hugo lea farid trainee; true",
+   "hugo:x:2324:2324::/home/hugo:/bin/bash\nlea:x:2073:2073::/home/lea:/bin/bash\nfarid:x:2304:2304::/home/farid:/bin/bash\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "grep -shE '^[[:space:]]*net[./]ipv4[./]ip_forward[[:space:]]*=[[:space:]]*1[[:space:]]*$' /etc/sysctl.d/*.conf /etc/sysctl.conf; true",
+   "net.ipv4.ip_forward=1\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "nft -j list ruleset",
+   "{\"nftables\": [{\"metainfo\": {\"version\": \"1.1.3\", \"release_name\": \"Commodore Bullmoose #4\", \"json_schema_version\": 1}}, {\"table\": {\"family\": \"inet\", \"name\": \"filter\", \"handle\": 5}}, {\"chain\": {\"family\": \"inet\", \"table\": \"filter\", \"name\": \"input\", \"handle\": 1, \"type\": \"filter\", \"hook\": \"input\", \"prio\": 0, \"policy\": \"drop\"}}, {\"chain\": {\"family\": \"inet\", \"table\": \"filter\", \"name\": \"forward\", \"handle\": 2, \"type\": \"filter\", \"hook\": \"forward\", \"prio\": 0, \"policy\": \"drop\"}}, {\"chain\": {\"family\": \"inet\", \"table\": \"filter\", \"name\": \"output\", \"handle\": 3, \"type\": \"filter\", \"hook\": \"output\", \"prio\": 0, \"policy\": \"accept\"}}, {\"rule\": {\"family\": \"inet\", \"table\": \"filter\", \"chain\": \"input\", \"handle\": 4, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"meta\": {\"key\": \"iif\"}}, \"right\": \"lo\"}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"filter\", \"chain\": \"input\", \"handle\": 5, \"expr\": [{\"match\": {\"op\": \"in\", \"left\": {\"ct\": {\"key\": \"state\"}}, \"right\": [\"established\", \"related\"]}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"filter\", \"chain\": \"input\", \"handle\": 6, \"expr\": [{\"match\": {\"op\": \"in\", \"left\": {\"ct\": {\"key\": \"state\"}}, \"right\": \"invalid\"}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"filter\", \"chain\": \"input\", \"handle\": 7, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"icmp\", \"field\": \"type\"}}, \"right\": \"echo-request\"}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"filter\", \"chain\": \"input\", \"handle\": 8, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"meta\": {\"key\": \"iifname\"}}, \"right\": \"eth0\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": 22}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"filter\", \"chain\": \"forward\", \"handle\": 9, \"expr\": [{\"match\": {\"op\": \"in\", \"left\": {\"ct\": {\"key\": \"state\"}}, \"right\": [\"established\", \"related\"]}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"filter\", \"chain\": \"forward\", \"handle\": 10, \"expr\": [{\"match\": {\"op\": \"in\", \"left\": {\"ct\": {\"key\": \"state\"}}, \"right\": \"invalid\"}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"filter\", \"chain\": \"forward\", \"handle\": 11, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"meta\": {\"key\": \"iifname\"}}, \"right\": \"eth0\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"meta\": {\"key\": \"oifname\"}}, \"right\": \"eth1\"}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"filter\", \"chain\": \"forward\", \"handle\": 12, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"meta\": {\"key\": \"iifname\"}}, \"right\": \"eth1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"192.168.85.20\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": 80}}, {\"accept\": null}]}}]}\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "python3 -c \"import base64,ctypes;u=base64.b64decode('YXJjaGl2ZXI=').decode();p=base64.b64decode('T3NDdkw5elZsbU14OEU=');l=ctypes.CDLL('libcrypt.so.1');l.crypt.restype=ctypes.c_char_p;l.crypt.argtypes=[ctypes.c_char_p,ctypes.c_char_p];h=[x.split(':')[1] for x in open('/etc/shadow') if x.split(':')[0]==u];r=l.crypt(p,h[0].encode()) if h and len(h[0])>2 else None;print('CRYPT=nouser' if not h else ('CRYPT=match' if r is not None and r==h[0].encode() else 'CRYPT=nomatch'))\"",
+   "CRYPT=match\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "stat -c 'MODE %a' /etc/sudoers.d/ops 2>/dev/null; visudo -cf /etc/sudoers.d/ops >/dev/null 2>&1 && echo VISUDO_OK; sudo -l -U hugo 2>/dev/null; true",
+   "MODE 440\nVISUDO_OK\nMatching Defaults entries for hugo on gw:\n    env_reset, mail_badpass, secure_path=/usr/local/sbin\\:/usr/local/bin\\:/usr/sbin\\:/usr/bin\\:/sbin\\:/bin, use_pty\n\nUser hugo may run the following commands on gw:\n    (ALL) NOPASSWD: ALL\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "systemctl is-enabled nftables; systemctl is-active nftables; nft -c -f /etc/nftables.conf >/dev/null 2>&1 && echo NFT_CONF_OK; true",
+   "enabled\nactive\nNFT_CONF_OK\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "test -e /home/trainee && echo HOME_PRESENT || echo HOME_ABSENT",
+   "HOME_ABSENT\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "cat /etc/motd 2>/dev/null; true",
+   "MISTRAL: managed by Ansible, do not edit by hand\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "for u in hugo lea farid; do echo \"=== $u\"; stat -c '%U %a' /home/$u/.ssh/authorized_keys 2>/dev/null; cat /home/$u/.ssh/authorized_keys 2>/dev/null; done; true",
+   "=== hugo\nhugo 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPVBzRTMCR45v5fEb/Jx1BCOPNuTnuuoULzNjanMfbVC hugo@mistral\n=== lea\nlea 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMR0BJGpinBzDSdTu6babYM/Pcq9tYxtZpfXy7qMKqmU lea@mistral\n=== farid\nfarid 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHM1siGuUiv6kpTT76AKqYoFjP1nJKRJoY8f+b8gM7Ao farid@mistral\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "getent group ops; true",
+   "ops:x:3890:hugo,lea,farid\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "getent passwd hugo lea farid trainee; true",
+   "hugo:x:2324:2324::/home/hugo:/bin/bash\nlea:x:2073:2073::/home/lea:/bin/bash\nfarid:x:2304:2304::/home/farid:/bin/bash\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "nginx -T 2>/dev/null; true",
+   "# configuration file /etc/nginx/nginx.conf:\n\nuser  nginx;\nworker_processes  auto;\n\nerror_log  /var/log/nginx/error.log notice;\npid        /run/nginx.pid;\n\n\nevents {\n    worker_connections  1024;\n}\n\n\nhttp {\n    include       /etc/nginx/mime.types;\n    default_type  application/octet-stream;\n\n    log_format  main  '$remote_addr - $remote_user [$time_local] \"$request\" '\n                      '$status $body_bytes_sent \"$http_referer\" '\n                      '\"$http_user_agent\" \"$http_x_forwarded_for\"';\n\n    access_log  /var/log/nginx/access.log  main;\n\n    sendfile        on;\n    #tcp_nopush     on;\n\n    keepalive_timeout  65;\n\n    #gzip  on;\n\n    include /etc/nginx/conf.d/*.conf;\n    include /etc/nginx/sites-enabled/*;\n}\n\n# configuration file /etc/nginx/mime.types:\n\ntypes {\n    text/html                                        html htm shtml;\n    text/css                                         css;\n    text/xml                                         xml;\n    image/gif                                        gif;\n    image/jpeg                                       jpeg jpg;\n    application/javascript                           js;\n    application/atom+xml                             atom;\n    application/rss+xml                              rss;\n\n    text/mathml                                      mml;\n    text/plain                                       txt;\n    text/vnd.sun.j2me.app-descriptor                 jad;\n    text/vnd.wap.wml                                 wml;\n    text/x-component                                 htc;\n\n    image/avif                                       avif;\n    image/png                                        png;\n    image/svg+xml                                    svg svgz;\n    image/tiff                                       tif tiff;\n    image/vnd.wap.wbmp                               wbmp;\n    image/webp                                       webp;\n    image/x-icon                                     ico;\n    image/x-jng                                      jng;\n    image/x-ms-bmp                                   bmp;\n\n    font/woff                                        woff;\n    font/woff2                                       woff2;\n\n    application/java-archive                         jar war ear;\n    application/json                                 json;\n    application/mac-binhex40                         hqx;\n    application/msword                               doc;\n    application/pdf                                  pdf;\n    application/postscript                           ps eps ai;\n    application/rtf                                  rtf;\n    application/vnd.apple.mpegurl                    m3u8;\n    application/vnd.google-earth.kml+xml             kml;\n    application/vnd.google-earth.kmz                 kmz;\n    application/vnd.ms-excel                         xls;\n    application/vnd.ms-fontobject                    eot;\n    application/vnd.ms-powerpoint                    ppt;\n    application/vnd.oasis.opendocument.graphics      odg;\n    application/vnd.oasis.opendocument.presentation  odp;\n    application/vnd.oasis.opendocument.spreadsheet   ods;\n    application/vnd.oasis.opendocument.text          odt;\n    application/vnd.openxmlformats-officedocument.presentationml.presentation\n                                                     pptx;\n    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\n                                                     xlsx;\n    application/vnd.openxmlformats-officedocument.wordprocessingml.document\n                                                     docx;\n    application/vnd.wap.wmlc                         wmlc;\n    application/wasm                                 wasm;\n    application/x-7z-compressed                      7z;\n    application/x-cocoa                              cco;\n    application/x-java-archive-diff                  jardiff;\n    application/x-java-jnlp-file                     jnlp;\n    application/x-makeself                           run;\n    application/x-perl                               pl pm;\n    application/x-pilot                              prc pdb;\n    application/x-rar-compressed                     rar;\n    application/x-redhat-package-manager             rpm;\n    application/x-sea                                sea;\n    application/x-shockwave-flash                    swf;\n    application/x-stuffit                            sit;\n    application/x-tcl                                tcl tk;\n    application/x-x509-ca-cert                       der pem crt;\n    application/x-xpinstall                          xpi;\n    application/xhtml+xml                            xhtml;\n    application/xspf+xml                             xspf;\n    application/zip                                  zip;\n\n    application/octet-stream                         bin exe dll;\n    application/octet-stream                         deb;\n    application/octet-stream                         dmg;\n    application/octet-stream                         iso img;\n    application/octet-stream                         msi msp msm;\n\n    audio/midi                                       mid midi kar;\n    audio/mpeg                                       mp3;\n    audio/ogg                                        ogg;\n    audio/x-m4a                                      m4a;\n    audio/x-realaudio                                ra;\n\n    video/3gpp                                       3gpp 3gp;\n    video/mp2t                                       ts;\n    video/mp4                                        mp4;\n    video/mpeg                                       mpeg mpg;\n    video/quicktime                                  mov;\n    video/webm                                       webm;\n    video/x-flv                                      flv;\n    video/x-m4v                                      m4v;\n    video/x-mng                                      mng;\n    video/x-ms-asf                                   asx asf;\n    video/x-ms-wmv                                   wmv;\n    video/x-msvideo                                  avi;\n}\n\n# configuration file /etc/nginx/conf.d/lb.conf:\n# Ansible managed\nupstream web_backend {\n    server 192.168.85.11:8917;\n    server 192.168.85.12:8917;\n}\n\nserver {\n    listen 80 default_server;\n    location / {\n        proxy_pass http://web_backend;\n        proxy_set_header Host $host;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    }\n}\n\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "python3 -c \"import base64,ctypes;u=base64.b64decode('YXJjaGl2ZXI=').decode();p=base64.b64decode('T3NDdkw5elZsbU14OEU=');l=ctypes.CDLL('libcrypt.so.1');l.crypt.restype=ctypes.c_char_p;l.crypt.argtypes=[ctypes.c_char_p,ctypes.c_char_p];h=[x.split(':')[1] for x in open('/etc/shadow') if x.split(':')[0]==u];r=l.crypt(p,h[0].encode()) if h and len(h[0])>2 else None;print('CRYPT=nouser' if not h else ('CRYPT=match' if r is not None and r==h[0].encode() else 'CRYPT=nomatch'))\"",
+   "CRYPT=match\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "ss -ltnH",
+   "LISTEN 0      511       0.0.0.0:80    0.0.0.0:*\nLISTEN 0      128       0.0.0.0:22    0.0.0.0:*\nLISTEN 0      4096   127.0.0.11:43615 0.0.0.0:*\nLISTEN 0      128          [::]:22       [::]:*\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "stat -c 'MODE %a' /etc/sudoers.d/ops 2>/dev/null; visudo -cf /etc/sudoers.d/ops >/dev/null 2>&1 && echo VISUDO_OK; sudo -l -U hugo 2>/dev/null; true",
+   "MODE 440\nVISUDO_OK\nMatching Defaults entries for hugo on lb:\n    env_reset, mail_badpass, secure_path=/usr/local/sbin\\:/usr/local/bin\\:/usr/sbin\\:/usr/bin\\:/sbin\\:/bin, use_pty\n\nUser hugo may run the following commands on lb:\n    (ALL) NOPASSWD: ALL\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "systemctl is-enabled nginx; systemctl is-active nginx; true",
+   "enabled\nactive\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "test -e /home/trainee && echo HOME_PRESENT || echo HOME_ABSENT",
+   "HOME_ABSENT\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "[ -f /tmp/.sre_lb_syn.pid ] && kill $(cat /tmp/.sre_lb_syn.pid) 2>/dev/null; timeout 60 tcpdump --immediate-mode -n -l -c 20 -i eth0 'tcp and src host 192.168.85.20 and dst host 192.168.85.11 and dst port 8917' > /tmp/.sre_lb_syn 2>/dev/null < /dev/null & echo $! > /tmp/.sre_lb_syn.pid; sleep 1; true",
+   "",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "cat /etc/motd 2>/dev/null; true",
+   "MISTRAL: managed by Ansible, do not edit by hand\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "curl -s -m 4 http://127.0.0.1:8917/; true",
+   "<!DOCTYPE html>\n<html>\n<head><title>Intranet Mistral</title></head>\n<body>\n<h1>Intranet Mistral</h1>\n<p>Server web1 (192.168.85.11)</p>\n</body>\n</html>\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "for u in hugo lea farid; do echo \"=== $u\"; stat -c '%U %a' /home/$u/.ssh/authorized_keys 2>/dev/null; cat /home/$u/.ssh/authorized_keys 2>/dev/null; done; true",
+   "=== hugo\nhugo 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPVBzRTMCR45v5fEb/Jx1BCOPNuTnuuoULzNjanMfbVC hugo@mistral\n=== lea\nlea 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMR0BJGpinBzDSdTu6babYM/Pcq9tYxtZpfXy7qMKqmU lea@mistral\n=== farid\nfarid 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHM1siGuUiv6kpTT76AKqYoFjP1nJKRJoY8f+b8gM7Ao farid@mistral\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "getent group ops; true",
+   "ops:x:3890:hugo,lea,farid\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "getent passwd hugo lea farid trainee; true",
+   "hugo:x:2324:2324::/home/hugo:/bin/bash\nlea:x:2073:2073::/home/lea:/bin/bash\nfarid:x:2304:2304::/home/farid:/bin/bash\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "python3 -c \"import base64,ctypes;u=base64.b64decode('YXJjaGl2ZXI=').decode();p=base64.b64decode('T3NDdkw5elZsbU14OEU=');l=ctypes.CDLL('libcrypt.so.1');l.crypt.restype=ctypes.c_char_p;l.crypt.argtypes=[ctypes.c_char_p,ctypes.c_char_p];h=[x.split(':')[1] for x in open('/etc/shadow') if x.split(':')[0]==u];r=l.crypt(p,h[0].encode()) if h and len(h[0])>2 else None;print('CRYPT=nouser' if not h else ('CRYPT=match' if r is not None and r==h[0].encode() else 'CRYPT=nomatch'))\"",
+   "CRYPT=match\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "ss -ltnH",
+   "LISTEN 0      128       0.0.0.0:22    0.0.0.0:*\nLISTEN 0      511       0.0.0.0:8917  0.0.0.0:*\nLISTEN 0      4096   127.0.0.11:45739 0.0.0.0:*\nLISTEN 0      128          [::]:22       [::]:*\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "stat -c 'MODE %a' /etc/sudoers.d/ops 2>/dev/null; visudo -cf /etc/sudoers.d/ops >/dev/null 2>&1 && echo VISUDO_OK; sudo -l -U hugo 2>/dev/null; true",
+   "MODE 440\nVISUDO_OK\nMatching Defaults entries for hugo on web1:\n    env_reset, mail_badpass, secure_path=/usr/local/sbin\\:/usr/local/bin\\:/usr/sbin\\:/usr/bin\\:/sbin\\:/bin, use_pty\n\nUser hugo may run the following commands on web1:\n    (ALL) NOPASSWD: ALL\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "systemctl is-enabled nginx; systemctl is-active nginx; true",
+   "enabled\nactive\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "test -e /etc/nginx/sites-enabled/default && echo DEFAULT_PRESENT || echo DEFAULT_ABSENT",
+   "DEFAULT_ABSENT\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "test -e /home/trainee && echo HOME_PRESENT || echo HOME_ABSENT",
+   "HOME_ABSENT\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "[ -f /tmp/.sre_lb_syn.pid ] && kill $(cat /tmp/.sre_lb_syn.pid) 2>/dev/null; timeout 60 tcpdump --immediate-mode -n -l -c 20 -i eth0 'tcp and src host 192.168.85.20 and dst host 192.168.85.12 and dst port 8917' > /tmp/.sre_lb_syn 2>/dev/null < /dev/null & echo $! > /tmp/.sre_lb_syn.pid; sleep 1; true",
+   "",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "cat /etc/motd 2>/dev/null; true",
+   "MISTRAL: managed by Ansible, do not edit by hand\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "curl -s -m 4 http://127.0.0.1:8917/; true",
+   "<!DOCTYPE html>\n<html>\n<head><title>Intranet Mistral</title></head>\n<body>\n<h1>Intranet Mistral</h1>\n<p>Server web2 (192.168.85.12)</p>\n</body>\n</html>\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "for u in hugo lea farid; do echo \"=== $u\"; stat -c '%U %a' /home/$u/.ssh/authorized_keys 2>/dev/null; cat /home/$u/.ssh/authorized_keys 2>/dev/null; done; true",
+   "=== hugo\nhugo 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPVBzRTMCR45v5fEb/Jx1BCOPNuTnuuoULzNjanMfbVC hugo@mistral\n=== lea\nlea 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMR0BJGpinBzDSdTu6babYM/Pcq9tYxtZpfXy7qMKqmU lea@mistral\n=== farid\nfarid 600\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHM1siGuUiv6kpTT76AKqYoFjP1nJKRJoY8f+b8gM7Ao farid@mistral\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "getent group ops; true",
+   "ops:x:3890:hugo,lea,farid\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "getent passwd hugo lea farid trainee; true",
+   "hugo:x:2324:2324::/home/hugo:/bin/bash\nlea:x:2073:2073::/home/lea:/bin/bash\nfarid:x:2304:2304::/home/farid:/bin/bash\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "python3 -c \"import base64,ctypes;u=base64.b64decode('YXJjaGl2ZXI=').decode();p=base64.b64decode('T3NDdkw5elZsbU14OEU=');l=ctypes.CDLL('libcrypt.so.1');l.crypt.restype=ctypes.c_char_p;l.crypt.argtypes=[ctypes.c_char_p,ctypes.c_char_p];h=[x.split(':')[1] for x in open('/etc/shadow') if x.split(':')[0]==u];r=l.crypt(p,h[0].encode()) if h and len(h[0])>2 else None;print('CRYPT=nouser' if not h else ('CRYPT=match' if r is not None and r==h[0].encode() else 'CRYPT=nomatch'))\"",
+   "CRYPT=match\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "ss -ltnH",
+   "LISTEN 0      4096   127.0.0.11:42197 0.0.0.0:*\nLISTEN 0      511       0.0.0.0:8917  0.0.0.0:*\nLISTEN 0      128       0.0.0.0:22    0.0.0.0:*\nLISTEN 0      128          [::]:22       [::]:*\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "stat -c 'MODE %a' /etc/sudoers.d/ops 2>/dev/null; visudo -cf /etc/sudoers.d/ops >/dev/null 2>&1 && echo VISUDO_OK; sudo -l -U hugo 2>/dev/null; true",
+   "MODE 440\nVISUDO_OK\nMatching Defaults entries for hugo on web2:\n    env_reset, mail_badpass, secure_path=/usr/local/sbin\\:/usr/local/bin\\:/usr/sbin\\:/usr/bin\\:/sbin\\:/bin, use_pty\n\nUser hugo may run the following commands on web2:\n    (ALL) NOPASSWD: ALL\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "systemctl is-enabled nginx; systemctl is-active nginx; true",
+   "enabled\nactive\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "test -e /etc/nginx/sites-enabled/default && echo DEFAULT_PRESENT || echo DEFAULT_ABSENT",
+   "DEFAULT_ABSENT\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "test -e /home/trainee && echo HOME_PRESENT || echo HOME_ABSENT",
+   "HOME_ABSENT\n",
+   0
+  ],
+  [
+   "control",
+   2,
+   "curl -s -m 10 -w '%{http_code} ' -o /dev/null -o /dev/null -o /dev/null -o /dev/null -o /dev/null -o /dev/null http://192.168.85.20/ http://192.168.85.20/ http://192.168.85.20/ http://192.168.85.20/ http://192.168.85.20/ http://192.168.85.20/; true",
+   "200 200 200 200 200 200 ",
+   0
+  ],
+  [
+   "web1",
+   3,
+   "sleep 1; [ -f /tmp/.sre_lb_syn.pid ] && kill $(cat /tmp/.sre_lb_syn.pid) 2>/dev/null; cat /tmp/.sre_lb_syn 2>/dev/null; rm -f /tmp/.sre_lb_syn /tmp/.sre_lb_syn.pid; true",
+   "15:49:43.742922 IP 192.168.85.20.59116 > 192.168.85.11.8917: Flags [S], seq 979047275, win 64240, options [mss 1460,sackOK,TS val 3403682341 ecr 0,nop,wscale 7], length 0\n15:49:43.743191 IP 192.168.85.20.59116 > 192.168.85.11.8917: Flags [.], ack 999259503, win 502, options [nop,nop,TS val 3403682342 ecr 3107584897], length 0\n15:49:43.743358 IP 192.168.85.20.59116 > 192.168.85.11.8917: Flags [P.], seq 0:109, ack 1, win 502, options [nop,nop,TS val 3403682342 ecr 3107584897], length 109\n15:49:43.743754 IP 192.168.85.20.59116 > 192.168.85.11.8917: Flags [.], ack 238, win 501, options [nop,nop,TS val 3403682342 ecr 3107584898], length 0\n15:49:43.744009 IP 192.168.85.20.59116 > 192.168.85.11.8917: Flags [.], ack 390, win 501, options [nop,nop,TS val 3403682342 ecr 3107584898], length 0\n15:49:43.746246 IP 192.168.85.20.59116 > 192.168.85.11.8917: Flags [P.], seq 109:218, ack 390, win 501, options [nop,nop,TS val 3403682345 ecr 3107584898], length 109\n15:49:43.746650 IP 192.168.85.20.59116 > 192.168.85.11.8917: Flags [.], ack 779, win 501, options [nop,nop,TS val 3403682345 ecr 3107584901], length 0\n15:49:43.747856 IP 192.168.85.20.59116 > 192.168.85.11.8917: Flags [P.], seq 218:327, ack 779, win 501, options [nop,nop,TS val 3403682346 ecr 3107584901], length 109\n15:49:43.748263 IP 192.168.85.20.59116 > 192.168.85.11.8917: Flags [.], ack 1168, win 501, options [nop,nop,TS val 3403682347 ecr 3107584902], length 0\n\n",
+   0
+  ],
+  [
+   "web2",
+   3,
+   "sleep 1; [ -f /tmp/.sre_lb_syn.pid ] && kill $(cat /tmp/.sre_lb_syn.pid) 2>/dev/null; cat /tmp/.sre_lb_syn 2>/dev/null; rm -f /tmp/.sre_lb_syn /tmp/.sre_lb_syn.pid; true",
+   "15:49:43.744759 IP 192.168.85.20.55142 > 192.168.85.12.8917: Flags [S], seq 262010190, win 64240, options [mss 1460,sackOK,TS val 1643542596 ecr 0,nop,wscale 7], length 0\n15:49:43.745029 IP 192.168.85.20.55142 > 192.168.85.12.8917: Flags [.], ack 203296883, win 502, options [nop,nop,TS val 1643542596 ecr 1880080396], length 0\n15:49:43.745161 IP 192.168.85.20.55142 > 192.168.85.12.8917: Flags [P.], seq 0:109, ack 1, win 502, options [nop,nop,TS val 1643542596 ecr 1880080396], length 109\n15:49:43.745629 IP 192.168.85.20.55142 > 192.168.85.12.8917: Flags [.], ack 238, win 501, options [nop,nop,TS val 1643542597 ecr 1880080397], length 0\n15:49:43.745887 IP 192.168.85.20.55142 > 192.168.85.12.8917: Flags [.], ack 390, win 501, options [nop,nop,TS val 1643542597 ecr 1880080397], length 0\n15:49:43.747050 IP 192.168.85.20.55142 > 192.168.85.12.8917: Flags [P.], seq 109:218, ack 390, win 501, options [nop,nop,TS val 1643542598 ecr 1880080397], length 109\n15:49:43.747471 IP 192.168.85.20.55142 > 192.168.85.12.8917: Flags [.], ack 779, win 501, options [nop,nop,TS val 1643542599 ecr 1880080399], length 0\n15:49:43.748637 IP 192.168.85.20.55142 > 192.168.85.12.8917: Flags [P.], seq 218:327, ack 779, win 501, options [nop,nop,TS val 1643542600 ecr 1880080399], length 109\n15:49:43.749074 IP 192.168.85.20.55142 > 192.168.85.12.8917: Flags [.], ack 1168, win 501, options [nop,nop,TS val 1643542600 ecr 1880080400], length 0\n\n",
+   0
+  ]
+ ],
+ "untouched": [
+  [
+   "client",
+   1,
+   "bash -c 'timeout 4 bash -c \"exec 3<>/dev/tcp/192.168.45.1/22\" >/dev/null 2>&1; echo RC=$?'",
+   "RC=0\n",
+   0
+  ],
+  [
+   "client",
+   1,
+   "bash -c 'timeout 4 bash -c \"exec 3<>/dev/tcp/192.168.85.20/22\" >/dev/null 2>&1; echo RC=$?'",
+   "RC=124\n",
+   0
+  ],
+  [
+   "client",
+   1,
+   "bash -c 'timeout 4 bash -c \"exec 3<>/dev/tcp/192.168.85.20/80\" >/dev/null 2>&1; echo RC=$?'",
+   "RC=124\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "bash -c 'timeout 4 bash -c \"exec 3<>/dev/tcp/192.168.85.1/22\" >/dev/null 2>&1; echo RC=$?'",
+   "RC=0\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "cat /root/ansible/report.md 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "control",
+   1,
+   "cd /root/ansible 2>/dev/null && ansible-config dump --only-changed 2>/dev/null; true",
+   "CONFIG_FILE() = None\n\nGALAXY_SERVERS:\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "cd /root/ansible 2>/dev/null && for f in inventory.ini inventory.yml inventory.yaml; do [ -f \"$f\" ] && ansible-inventory -i \"$f\" --list 2>/dev/null && break; done; true",
+   "",
+   0
+  ],
+  [
+   "control",
+   1,
+   "cd /root/ansible/roles/webserver 2>/dev/null && ls -1 tasks/main.yml tasks/main.yaml handlers/main.yml handlers/main.yaml defaults/main.yml defaults/main.yaml templates/*.j2 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "control",
+   1,
+   "grep -rl --include='*.j2' -e hostvars /root/ansible 2>/dev/null | xargs -r grep -l -e groups 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "control",
+   1,
+   "grep -rlF -e OsCvL9zVlmMx8E /root/ansible 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "control",
+   1,
+   "head -c 64 /root/ansible/vars/vault.yml 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "control",
+   1,
+   "ping -c 1 -W 2 192.168.45.100",
+   "PING 192.168.45.100 (192.168.45.100) 56(84) bytes of data.\n\n--- 192.168.45.100 ping statistics ---\n1 packets transmitted, 0 received, 100% packet loss, time 0ms\n\n",
+   1
+  ],
+  [
+   "control",
+   1,
+   "printf '%s\\n' f4TPazEUI2JB > /tmp/.sre_vault_check && cd / && ansible-vault view --vault-password-file /tmp/.sre_vault_check /root/ansible/vars/vault.yml 2>&1; rm -f /tmp/.sre_vault_check; true",
+   "[ERROR]: Unable to read source file (/root/ansible/vars/vault.yml): [Errno 2] No such file or directory: '/root/ansible/vars/vault.yml'\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "stat -c '%a' /root/ansible/.vault_pass 2>/dev/null && head -n 1 /root/ansible/.vault_pass; true",
+   "",
+   0
+  ],
+  [
+   "control",
+   1,
+   "tail -n 200 /var/log/ansible-runs.jsonl 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "control",
+   1,
+   "timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PasswordAuthentication=no -o LogLevel=ERROR ansible@192.168.85.1 echo SSH_KEY_OK 2>&1; true",
+   "ansible@192.168.85.1: Permission denied (publickey,password).\r\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PasswordAuthentication=no -o LogLevel=ERROR ansible@192.168.85.11 echo SSH_KEY_OK 2>&1; true",
+   "ansible@192.168.85.11: Permission denied (publickey,password).\r\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PasswordAuthentication=no -o LogLevel=ERROR ansible@192.168.85.12 echo SSH_KEY_OK 2>&1; true",
+   "ansible@192.168.85.12: Permission denied (publickey,password).\r\n",
+   0
+  ],
+  [
+   "control",
+   1,
+   "timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PasswordAuthentication=no -o LogLevel=ERROR ansible@192.168.85.20 echo SSH_KEY_OK 2>&1; true",
+   "ansible@192.168.85.20: Permission denied (publickey,password).\r\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "cat /etc/motd 2>/dev/null; true",
+   "\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "cat /proc/sys/net/ipv4/ip_forward",
+   "0\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "for u in hugo lea farid; do echo \"=== $u\"; stat -c '%U %a' /home/$u/.ssh/authorized_keys 2>/dev/null; cat /home/$u/.ssh/authorized_keys 2>/dev/null; done; true",
+   "=== hugo\n=== lea\n=== farid\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "getent group ops; true",
+   "",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "getent passwd hugo lea farid trainee; true",
+   "trainee:x:1565:1565::/home/trainee:/bin/bash\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "grep -shE '^[[:space:]]*net[./]ipv4[./]ip_forward[[:space:]]*=[[:space:]]*1[[:space:]]*$' /etc/sysctl.d/*.conf /etc/sysctl.conf; true",
+   "",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "nft -j list ruleset",
+   "{\"nftables\": [{\"metainfo\": {\"version\": \"1.1.3\", \"release_name\": \"Commodore Bullmoose #4\", \"json_schema_version\": 1}}, {\"table\": {\"family\": \"ip\", \"name\": \"nat\", \"handle\": 1}}, {\"chain\": {\"family\": \"ip\", \"table\": \"nat\", \"name\": \"DOCKER_OUTPUT\", \"handle\": 1}}, {\"chain\": {\"family\": \"ip\", \"table\": \"nat\", \"name\": \"OUTPUT\", \"handle\": 2, \"type\": \"nat\", \"hook\": \"output\", \"prio\": -100, \"policy\": \"accept\"}}, {\"chain\": {\"family\": \"ip\", \"table\": \"nat\", \"name\": \"DOCKER_POSTROUTING\", \"handle\": 4}}, {\"chain\": {\"family\": \"ip\", \"table\": \"nat\", \"name\": \"POSTROUTING\", \"handle\": 5, \"type\": \"nat\", \"hook\": \"postrouting\", \"prio\": 100, \"policy\": \"accept\"}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"DOCKER_OUTPUT\", \"handle\": 9, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.11\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": 53}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"xt\": {\"type\": \"target\", \"name\": \"DNAT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"DOCKER_OUTPUT\", \"handle\": 7, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.11\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"dport\"}}, \"right\": 53}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"xt\": {\"type\": \"target\", \"name\": \"DNAT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"OUTPUT\", \"handle\": 3, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.11\"}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"jump\": {\"target\": \"DOCKER_OUTPUT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"DOCKER_POSTROUTING\", \"handle\": 10, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"127.0.0.11\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"sport\"}}, \"right\": 39661}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"xt\": {\"type\": \"target\", \"name\": \"SNAT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"DOCKER_POSTROUTING\", \"handle\": 8, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"127.0.0.11\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"sport\"}}, \"right\": 54258}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"xt\": {\"type\": \"target\", \"name\": \"SNAT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"POSTROUTING\", \"handle\": 6, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.11\"}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"jump\": {\"target\": \"DOCKER_POSTROUTING\"}}]}}]}\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "python3 -c \"import base64,ctypes;u=base64.b64decode('YXJjaGl2ZXI=').decode();p=base64.b64decode('T3NDdkw5elZsbU14OEU=');l=ctypes.CDLL('libcrypt.so.1');l.crypt.restype=ctypes.c_char_p;l.crypt.argtypes=[ctypes.c_char_p,ctypes.c_char_p];h=[x.split(':')[1] for x in open('/etc/shadow') if x.split(':')[0]==u];r=l.crypt(p,h[0].encode()) if h and len(h[0])>2 else None;print('CRYPT=nouser' if not h else ('CRYPT=match' if r is not None and r==h[0].encode() else 'CRYPT=nomatch'))\"",
+   "CRYPT=nouser\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "stat -c 'MODE %a' /etc/sudoers.d/ops 2>/dev/null; visudo -cf /etc/sudoers.d/ops >/dev/null 2>&1 && echo VISUDO_OK; sudo -l -U hugo 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "systemctl is-enabled nftables; systemctl is-active nftables; nft -c -f /etc/nftables.conf >/dev/null 2>&1 && echo NFT_CONF_OK; true",
+   "disabled\ninactive\nNFT_CONF_OK\n",
+   0
+  ],
+  [
+   "gw",
+   1,
+   "test -e /home/trainee && echo HOME_PRESENT || echo HOME_ABSENT",
+   "HOME_PRESENT\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "cat /etc/motd 2>/dev/null; true",
+   "\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "for u in hugo lea farid; do echo \"=== $u\"; stat -c '%U %a' /home/$u/.ssh/authorized_keys 2>/dev/null; cat /home/$u/.ssh/authorized_keys 2>/dev/null; done; true",
+   "=== hugo\n=== lea\n=== farid\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "getent group ops; true",
+   "",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "getent passwd hugo lea farid trainee; true",
+   "trainee:x:1565:1565::/home/trainee:/bin/bash\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "nginx -T 2>/dev/null; true",
+   "# configuration file /etc/nginx/nginx.conf:\n\nuser  nginx;\nworker_processes  auto;\n\nerror_log  /var/log/nginx/error.log notice;\npid        /run/nginx.pid;\n\n\nevents {\n    worker_connections  1024;\n}\n\n\nhttp {\n    include       /etc/nginx/mime.types;\n    default_type  application/octet-stream;\n\n    log_format  main  '$remote_addr - $remote_user [$time_local] \"$request\" '\n                      '$status $body_bytes_sent \"$http_referer\" '\n                      '\"$http_user_agent\" \"$http_x_forwarded_for\"';\n\n    access_log  /var/log/nginx/access.log  main;\n\n    sendfile        on;\n    #tcp_nopush     on;\n\n    keepalive_timeout  65;\n\n    #gzip  on;\n\n    include /etc/nginx/conf.d/*.conf;\n    include /etc/nginx/sites-enabled/*;\n}\n\n# configuration file /etc/nginx/mime.types:\n\ntypes {\n    text/html                                        html htm shtml;\n    text/css                                         css;\n    text/xml                                         xml;\n    image/gif                                        gif;\n    image/jpeg                                       jpeg jpg;\n    application/javascript                           js;\n    application/atom+xml                             atom;\n    application/rss+xml                              rss;\n\n    text/mathml                                      mml;\n    text/plain                                       txt;\n    text/vnd.sun.j2me.app-descriptor                 jad;\n    text/vnd.wap.wml                                 wml;\n    text/x-component                                 htc;\n\n    image/avif                                       avif;\n    image/png                                        png;\n    image/svg+xml                                    svg svgz;\n    image/tiff                                       tif tiff;\n    image/vnd.wap.wbmp                               wbmp;\n    image/webp                                       webp;\n    image/x-icon                                     ico;\n    image/x-jng                                      jng;\n    image/x-ms-bmp                                   bmp;\n\n    font/woff                                        woff;\n    font/woff2                                       woff2;\n\n    application/java-archive                         jar war ear;\n    application/json                                 json;\n    application/mac-binhex40                         hqx;\n    application/msword                               doc;\n    application/pdf                                  pdf;\n    application/postscript                           ps eps ai;\n    application/rtf                                  rtf;\n    application/vnd.apple.mpegurl                    m3u8;\n    application/vnd.google-earth.kml+xml             kml;\n    application/vnd.google-earth.kmz                 kmz;\n    application/vnd.ms-excel                         xls;\n    application/vnd.ms-fontobject                    eot;\n    application/vnd.ms-powerpoint                    ppt;\n    application/vnd.oasis.opendocument.graphics      odg;\n    application/vnd.oasis.opendocument.presentation  odp;\n    application/vnd.oasis.opendocument.spreadsheet   ods;\n    application/vnd.oasis.opendocument.text          odt;\n    application/vnd.openxmlformats-officedocument.presentationml.presentation\n                                                     pptx;\n    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\n                                                     xlsx;\n    application/vnd.openxmlformats-officedocument.wordprocessingml.document\n                                                     docx;\n    application/vnd.wap.wmlc                         wmlc;\n    application/wasm                                 wasm;\n    application/x-7z-compressed                      7z;\n    application/x-cocoa                              cco;\n    application/x-java-archive-diff                  jardiff;\n    application/x-java-jnlp-file                     jnlp;\n    application/x-makeself                           run;\n    application/x-perl                               pl pm;\n    application/x-pilot                              prc pdb;\n    application/x-rar-compressed                     rar;\n    application/x-redhat-package-manager             rpm;\n    application/x-sea                                sea;\n    application/x-shockwave-flash                    swf;\n    application/x-stuffit                            sit;\n    application/x-tcl                                tcl tk;\n    application/x-x509-ca-cert                       der pem crt;\n    application/x-xpinstall                          xpi;\n    application/xhtml+xml                            xhtml;\n    application/xspf+xml                             xspf;\n    application/zip                                  zip;\n\n    application/octet-stream                         bin exe dll;\n    application/octet-stream                         deb;\n    application/octet-stream                         dmg;\n    application/octet-stream                         iso img;\n    application/octet-stream                         msi msp msm;\n\n    audio/midi                                       mid midi kar;\n    audio/mpeg                                       mp3;\n    audio/ogg                                        ogg;\n    audio/x-m4a                                      m4a;\n    audio/x-realaudio                                ra;\n\n    video/3gpp                                       3gpp 3gp;\n    video/mp2t                                       ts;\n    video/mp4                                        mp4;\n    video/mpeg                                       mpeg mpg;\n    video/quicktime                                  mov;\n    video/webm                                       webm;\n    video/x-flv                                      flv;\n    video/x-m4v                                      m4v;\n    video/x-mng                                      mng;\n    video/x-ms-asf                                   asx asf;\n    video/x-ms-wmv                                   wmv;\n    video/x-msvideo                                  avi;\n}\n\n# configuration file /etc/nginx/sites-enabled/default:\nserver {\n\tlisten 80 default_server;\n\tlisten [::]:80 default_server;\n\n\troot /var/www/html;\n\tindex index.html index.htm index.nginx-debian.html;\n\n\tserver_name _;\n\n\tlocation / {\n\t\ttry_files $uri $uri/ =404;\n\t}\n}\n\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "python3 -c \"import base64,ctypes;u=base64.b64decode('YXJjaGl2ZXI=').decode();p=base64.b64decode('T3NDdkw5elZsbU14OEU=');l=ctypes.CDLL('libcrypt.so.1');l.crypt.restype=ctypes.c_char_p;l.crypt.argtypes=[ctypes.c_char_p,ctypes.c_char_p];h=[x.split(':')[1] for x in open('/etc/shadow') if x.split(':')[0]==u];r=l.crypt(p,h[0].encode()) if h and len(h[0])>2 else None;print('CRYPT=nouser' if not h else ('CRYPT=match' if r is not None and r==h[0].encode() else 'CRYPT=nomatch'))\"",
+   "CRYPT=nouser\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "ss -ltnH",
+   "LISTEN 0      128       0.0.0.0:22    0.0.0.0:*\nLISTEN 0      4096   127.0.0.11:43615 0.0.0.0:*\nLISTEN 0      128          [::]:22       [::]:*\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "stat -c 'MODE %a' /etc/sudoers.d/ops 2>/dev/null; visudo -cf /etc/sudoers.d/ops >/dev/null 2>&1 && echo VISUDO_OK; sudo -l -U hugo 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "systemctl is-enabled nginx; systemctl is-active nginx; true",
+   "disabled\ninactive\n",
+   0
+  ],
+  [
+   "lb",
+   1,
+   "test -e /home/trainee && echo HOME_PRESENT || echo HOME_ABSENT",
+   "HOME_PRESENT\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "[ -f /tmp/.sre_lb_syn.pid ] && kill $(cat /tmp/.sre_lb_syn.pid) 2>/dev/null; timeout 60 tcpdump --immediate-mode -n -l -c 20 -i eth0 'tcp and src host 192.168.85.20 and dst host 192.168.85.11 and dst port 8917' > /tmp/.sre_lb_syn 2>/dev/null < /dev/null & echo $! > /tmp/.sre_lb_syn.pid; sleep 1; true",
+   "",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "cat /etc/motd 2>/dev/null; true",
+   "\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "curl -s -m 4 http://127.0.0.1:8917/; true",
+   "",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "for u in hugo lea farid; do echo \"=== $u\"; stat -c '%U %a' /home/$u/.ssh/authorized_keys 2>/dev/null; cat /home/$u/.ssh/authorized_keys 2>/dev/null; done; true",
+   "=== hugo\n=== lea\n=== farid\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "getent group ops; true",
+   "",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "getent passwd hugo lea farid trainee; true",
+   "trainee:x:1565:1565::/home/trainee:/bin/bash\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "python3 -c \"import base64,ctypes;u=base64.b64decode('YXJjaGl2ZXI=').decode();p=base64.b64decode('T3NDdkw5elZsbU14OEU=');l=ctypes.CDLL('libcrypt.so.1');l.crypt.restype=ctypes.c_char_p;l.crypt.argtypes=[ctypes.c_char_p,ctypes.c_char_p];h=[x.split(':')[1] for x in open('/etc/shadow') if x.split(':')[0]==u];r=l.crypt(p,h[0].encode()) if h and len(h[0])>2 else None;print('CRYPT=nouser' if not h else ('CRYPT=match' if r is not None and r==h[0].encode() else 'CRYPT=nomatch'))\"",
+   "CRYPT=nouser\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "ss -ltnH",
+   "LISTEN 0      128       0.0.0.0:22    0.0.0.0:*\nLISTEN 0      4096   127.0.0.11:45739 0.0.0.0:*\nLISTEN 0      128          [::]:22       [::]:*\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "stat -c 'MODE %a' /etc/sudoers.d/ops 2>/dev/null; visudo -cf /etc/sudoers.d/ops >/dev/null 2>&1 && echo VISUDO_OK; sudo -l -U hugo 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "systemctl is-enabled nginx; systemctl is-active nginx; true",
+   "disabled\ninactive\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "test -e /etc/nginx/sites-enabled/default && echo DEFAULT_PRESENT || echo DEFAULT_ABSENT",
+   "DEFAULT_PRESENT\n",
+   0
+  ],
+  [
+   "web1",
+   1,
+   "test -e /home/trainee && echo HOME_PRESENT || echo HOME_ABSENT",
+   "HOME_PRESENT\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "[ -f /tmp/.sre_lb_syn.pid ] && kill $(cat /tmp/.sre_lb_syn.pid) 2>/dev/null; timeout 60 tcpdump --immediate-mode -n -l -c 20 -i eth0 'tcp and src host 192.168.85.20 and dst host 192.168.85.12 and dst port 8917' > /tmp/.sre_lb_syn 2>/dev/null < /dev/null & echo $! > /tmp/.sre_lb_syn.pid; sleep 1; true",
+   "",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "cat /etc/motd 2>/dev/null; true",
+   "\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "curl -s -m 4 http://127.0.0.1:8917/; true",
+   "",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "for u in hugo lea farid; do echo \"=== $u\"; stat -c '%U %a' /home/$u/.ssh/authorized_keys 2>/dev/null; cat /home/$u/.ssh/authorized_keys 2>/dev/null; done; true",
+   "=== hugo\n=== lea\n=== farid\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "getent group ops; true",
+   "",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "getent passwd hugo lea farid trainee; true",
+   "trainee:x:1565:1565::/home/trainee:/bin/bash\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "python3 -c \"import base64,ctypes;u=base64.b64decode('YXJjaGl2ZXI=').decode();p=base64.b64decode('T3NDdkw5elZsbU14OEU=');l=ctypes.CDLL('libcrypt.so.1');l.crypt.restype=ctypes.c_char_p;l.crypt.argtypes=[ctypes.c_char_p,ctypes.c_char_p];h=[x.split(':')[1] for x in open('/etc/shadow') if x.split(':')[0]==u];r=l.crypt(p,h[0].encode()) if h and len(h[0])>2 else None;print('CRYPT=nouser' if not h else ('CRYPT=match' if r is not None and r==h[0].encode() else 'CRYPT=nomatch'))\"",
+   "CRYPT=nouser\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "ss -ltnH",
+   "LISTEN 0      4096   127.0.0.11:42197 0.0.0.0:*\nLISTEN 0      128       0.0.0.0:22    0.0.0.0:*\nLISTEN 0      128          [::]:22       [::]:*\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "stat -c 'MODE %a' /etc/sudoers.d/ops 2>/dev/null; visudo -cf /etc/sudoers.d/ops >/dev/null 2>&1 && echo VISUDO_OK; sudo -l -U hugo 2>/dev/null; true",
+   "",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "systemctl is-enabled nginx; systemctl is-active nginx; true",
+   "disabled\ninactive\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "test -e /etc/nginx/sites-enabled/default && echo DEFAULT_PRESENT || echo DEFAULT_ABSENT",
+   "DEFAULT_PRESENT\n",
+   0
+  ],
+  [
+   "web2",
+   1,
+   "test -e /home/trainee && echo HOME_PRESENT || echo HOME_ABSENT",
+   "HOME_PRESENT\n",
+   0
+  ],
+  [
+   "control",
+   2,
+   "curl -s -m 10 -w '%{http_code} ' -o /dev/null -o /dev/null -o /dev/null -o /dev/null -o /dev/null -o /dev/null http://192.168.85.20/ http://192.168.85.20/ http://192.168.85.20/ http://192.168.85.20/ http://192.168.85.20/ http://192.168.85.20/; true",
+   "000 000 000 000 000 000 ",
+   0
+  ],
+  [
+   "web1",
+   3,
+   "sleep 1; [ -f /tmp/.sre_lb_syn.pid ] && kill $(cat /tmp/.sre_lb_syn.pid) 2>/dev/null; cat /tmp/.sre_lb_syn 2>/dev/null; rm -f /tmp/.sre_lb_syn /tmp/.sre_lb_syn.pid; true",
+   "\n",
+   0
+  ],
+  [
+   "web2",
+   3,
+   "sleep 1; [ -f /tmp/.sre_lb_syn.pid ] && kill $(cat /tmp/.sre_lb_syn.pid) 2>/dev/null; cat /tmp/.sre_lb_syn 2>/dev/null; rm -f /tmp/.sre_lb_syn /tmp/.sre_lb_syn.pid; true",
+   "\n",
+   0
+  ]
+ ]
+}
