@@ -2564,3 +2564,146 @@ msgstr "Fichier"
 
 msgid "Size"
 msgstr "Taille"
+
+# --- the saved projects: the Save Project dialog of a project page, the Saved projects page ---
+
+msgid "Saved projects"
+msgstr "Projets enregistrés"
+
+msgid "Save the project as it is now, to restore it later"
+msgstr "Enregistrer le projet dans son état actuel, pour le restaurer plus tard"
+
+msgid "Save Project"
+msgstr "Enregistrer le projet"
+
+msgid "Mine"
+msgstr "Les miens"
+
+msgid "The saved projects of every user"
+msgstr "Les projets enregistrés de tous les utilisateurs"
+
+msgid "All saved projects"
+msgstr "Tous les projets enregistrés"
+
+msgid "Student, group, lab or comment"
+msgstr "Étudiant, groupe, TP ou commentaire"
+
+msgid "The restored project keeps the instructor texts and lists every state"
+msgstr "Le projet restauré garde les textes enseignant et liste tous les états"
+
+msgid "Restore in instructor mode"
+msgstr "Restaurer en mode enseignant"
+
+msgid "Read the saved projects again"
+msgstr "Relire les projets enregistrés"
+
+msgid "A project whose lab allows it is saved with the Save Project button of its page. A saved project is restored as a new project: the saved one stays as it is."
+msgstr "Un projet dont le TP l'autorise s'enregistre avec le bouton Enregistrer le projet de sa page. Un projet enregistré est restauré comme un nouveau projet : l'enregistrement reste tel quel."
+
+msgid "My saved projects"
+msgstr "Mes projets enregistrés"
+
+msgid "Comment"
+msgstr "Commentaire"
+
+msgid "Saved"
+msgstr "Enregistré le"
+
+msgid "Shared with"
+msgstr "Partagé avec"
+
+msgid "Shared with me"
+msgstr "Partagés avec moi"
+
+msgid "Saved by"
+msgstr "Enregistré par"
+
+msgid "What this save is, for you (optional)"
+msgstr "Ce que représente cet enregistrement, pour vous (facultatif)"
+
+msgid "The machines keep running while the project is saved; this can take a minute."
+msgstr "Les machines continuent de fonctionner pendant l'enregistrement ; cela peut prendre une minute."
+
+msgid "You already keep {n} saved projects, the most you may. Delete one to save this project."
+msgstr "Vous avez déjà {n} projets enregistrés, le maximum autorisé. Supprimez-en un pour enregistrer ce projet."
+
+msgid "Saving…"
+msgstr "Enregistrement…"
+
+msgid "Project saved."
+msgstr "Projet enregistré."
+
+msgid "Please wait {n} s before saving again."
+msgstr "Veuillez attendre {n} s avant d'enregistrer à nouveau."
+
+msgid "The lab of this saved project is not available any more."
+msgstr "Le TP de ce projet enregistré n'est plus disponible."
+
+msgid "Share…"
+msgstr "Partager…"
+
+msgid "instructor mode"
+msgstr "mode enseignant"
+
+msgid "No host with the saved projects answers: this is the list as it was a moment ago."
+msgstr "Aucune machine ayant accès aux projets enregistrés ne répond : voici la liste telle qu'elle était il y a un instant."
+
+msgid "({n})"
+msgstr "({n})"
+
+msgid "({n} of {total})"
+msgstr "({n} sur {total})"
+
+msgid "Free space of the saved projects: {free} of {total}"
+msgstr "Espace libre des projets enregistrés : {free} sur {total}"
+
+msgid "No saved project matches the filter."
+msgstr "Aucun projet enregistré ne correspond au filtre."
+
+msgid "No saved project."
+msgstr "Aucun projet enregistré."
+
+msgid "You have no saved project."
+msgstr "Vous n'avez aucun projet enregistré."
+
+msgid "Restoring {lab}…"
+msgstr "Restauration de {lab}…"
+
+msgid "The restore failed."
+msgstr "La restauration a échoué."
+
+msgid "Delete the saved project \"{name}\" of {date}? It cannot be restored afterwards."
+msgstr "Supprimer le projet enregistré « {name} » du {date} ? Il ne pourra plus être restauré."
+
+msgid "Share with nobody"
+msgstr "Ne partager avec personne"
+
+msgid "Groups whose members may restore this saved project"
+msgstr "Groupes dont les membres peuvent restaurer ce projet enregistré"
+
+msgid "A member who restores it gets a project of their own with your answers and the state of your machines. Hold Ctrl (or Cmd) to choose several groups."
+msgstr "Un membre qui le restaure obtient un projet à lui, avec vos réponses et l'état de vos machines. Maintenez Ctrl (ou Cmd) pour choisir plusieurs groupes."
+
+msgid "You belong to no group to share with."
+msgstr "Vous n'appartenez à aucun groupe avec lequel partager."
+
+msgid "Share {lab}"
+msgstr "Partager {lab}"
+
+msgid "{n} B"
+msgstr "{n} o"
+
+msgid "{n} KB"
+msgstr "{n} Ko"
+
+msgid "{n} MB"
+msgstr "{n} Mo"
+
+msgid "{n} GB"
+msgstr "{n} Go"
+
+msgid "{used} of {max} saved projects"
+msgstr "{used} projets enregistrés sur {max}"
+
+msgid "{used} saved project(s)"
+msgstr "{used} projet(s) enregistré(s)"

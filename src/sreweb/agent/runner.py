@@ -16,12 +16,14 @@ final ``project created`` event with the running lab name) between plain error l
 ``{"phase": "message", "line": ...}``.
 """
 import asyncio
+import contextlib
 import json
 import os
+import resource
 import signal
 import time
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Callable
+from typing import AsyncIterator, Awaitable, Callable
 
 from .. import config as _config
 
@@ -64,7 +66,7 @@ RESULT_FLAVOR_ERROR = 'flavor_error'
 RESULT_ERROR = 'error'
 
 #: Commands sharing the "start", the "eval" and the "report" concurrency limits.
-START_LIKE = frozenset({'start'})
+START_LIKE = frozenset({'start', 'restore'})
 EVAL_LIKE = frozenset({'eval', 'state'})
 REPORT_LIKE = frozenset({'report'})
 
@@ -333,9 +335,11 @@ class SreRunner:
 
     # -- spawning -------------------------------------------------------------------------------
 
-    async def _spawn(self, user: str, args, *, privileged: bool, stdin, lang=None, env=None):
+    async def _spawn(self, user: str, args, *, privileged: bool, stdin, lang=None, env=None,
+                     stdout=asyncio.subprocess.PIPE):
         """*env*: variables added for this call (``start``: the X cookie and display number of
-        the virtual desktop of the project); the agent's ``extra_env`` comes last."""
+        the virtual desktop of the project); the agent's ``extra_env`` comes last.  *stdin* and
+        *stdout* may be descriptors, handed to the process as they are (a pipe to another one)."""
         argv = build_argv(self.sre_exe, args, privileged=privileged)
         environment = build_env(user, privileged=privileged, lang=lang)
         environment.update(env or {})
@@ -343,7 +347,7 @@ class SreRunner:
         env = environment
         return await asyncio.create_subprocess_exec(
             *argv, env=env,
-            stdin=stdin, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            stdin=stdin, stdout=stdout, stderr=asyncio.subprocess.PIPE,
             start_new_session=True, close_fds=True, limit=STREAM_LINE_LIMIT)
 
     async def run(self, user: str, args, *, privileged: bool = False, stdin: bytes | None = None,
@@ -369,22 +373,62 @@ class SreRunner:
             raise CommandError(proc.returncode, last_message(text), text)
         return RunResult(proc.returncode, stdout, text, events)
 
-    async def stream(self, user: str, args, *, privileged: bool = False, stdin: bytes | None = None,
+    async def stream(self, user: str, args, *, privileged: bool = False,
+                     stdin: bytes | Callable[[], Awaitable[int]] | None = None,
                      timeout: float | None = None, lang: str | None = None, env: dict | None = None) -> StreamingRun:
         """Start ``sre`` and give its stderr events as they come (``start``, ``restore``: the
         progress of the pulls and deploys, the flavor form, the ``project created`` event).
-        *stdin* (``restore -``) is written then closed."""
+        *stdin* (``restore -``): bytes, written then closed, or a coroutine function giving the
+        descriptor the process reads (a pipe fed by another process), called once the limits of
+        the command are held (a restore waiting for its turn holds nothing open) and closed here."""
         held = await self._acquire(user, args)
         try:
-            proc = await self._spawn(user, args, privileged=privileged,
-                                     stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
-                                     lang=lang, env=env)
+            if callable(stdin):
+                source = await stdin()
+                try:
+                    proc = await self._spawn(user, args, privileged=privileged, stdin=source, lang=lang, env=env)
+                finally:
+                    os.close(source)
+                stdin = None
+            else:
+                proc = await self._spawn(
+                    user, args, privileged=privileged, lang=lang, env=env,
+                    stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL)
         except BaseException:
             self._release(held)
             raise
         if stdin is not None:
             asyncio.ensure_future(_feed_stdin(proc, stdin))
         return StreamingRun(proc, self._timeout(args, timeout), lambda: self._release(held))
+
+    async def pipe_stdout(self, user: str, args, stdout: int, *, privileged: bool = False,
+                          timeout: float | None = None, lang: str | None = None,
+                          file_size_limit: int | None = None) -> RunResult:
+        """Run ``sre`` to completion with its stdout on the descriptor *stdout* (``save``: a pipe
+        to the process that stores the save; the caller closes its own copy).  *file_size_limit*:
+        the largest file the command may write, in bytes (the archive ``sre save`` builds before
+        streaming it: a machine holding a huge file must not fill the disk of the host).  The
+        command is stopped when the caller is cancelled."""
+        held = await self._acquire(user, args)
+        try:
+            proc = await self._spawn(user, args, privileged=privileged, stdin=asyncio.subprocess.DEVNULL,
+                                     stdout=stdout, lang=lang)
+            if file_size_limit:
+                limit_file_size(proc.pid, file_size_limit)
+            try:
+                _, stderr = await asyncio.wait_for(proc.communicate(), self._timeout(args, timeout))
+            except TimeoutError:
+                await cancel_process(proc)
+                raise CommandTimeout(self._timeout(args, timeout) or 0)
+            except BaseException:
+                await asyncio.shield(cancel_process(proc, grace=5.0))
+                raise
+        finally:
+            self._release(held)
+        text = stderr.decode('utf-8', 'replace')
+        if proc.returncode != 0:
+            raise CommandError(proc.returncode, last_message(text), text)
+        return RunResult(proc.returncode, b'', text, [parse_stderr_line(line) for line in text.splitlines()])
 
     async def stream_stdout(self, user: str, args, *, privileged: bool = False, timeout: float | None = None,
                             chunk_size: int = 1 << 16) -> AsyncIterator[bytes]:
@@ -411,6 +455,17 @@ class SreRunner:
                 raise CommandError(rc, last_message(stderr), stderr)
         finally:
             self._release(held)
+
+
+def limit_file_size(pid: int, limit: int):
+    """Cap the size of the files the process *pid* writes (``RLIMIT_FSIZE``: a write beyond it
+    fails, Python ignoring the signal).  Where the platform cannot (no ``prlimit``: not Linux),
+    or the process is already gone, nothing is done."""
+    prlimit = getattr(resource, 'prlimit', None)
+    if prlimit is None:
+        return
+    with contextlib.suppress(OSError, ValueError):
+        prlimit(pid, resource.RLIMIT_FSIZE, (limit, limit))
 
 
 async def _feed_stdin(proc: asyncio.subprocess.Process, data: bytes):

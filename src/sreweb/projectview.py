@@ -27,13 +27,15 @@ def lang_priority(identity: Identity, info: dict) -> list:
 
 
 def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display_enabled: bool = False,
-             privileged: bool = False, exam: dict | None = None) -> dict:
+             privileged: bool = False, exam: dict | None = None, can_save: bool = False) -> dict:
     """*privileged*: an instructor on somebody else's project (``access.is_privileged_caller``):
     every device opens, as in a debug project, and the Evaluation tab is shown whatever the lab
     says (the last archived evaluation).  The owner, instructor or not, gets the student's view.
     *exam_mode*: the host-wide ``exam.json``, or an exam project (``agent/exam.py``) seen by its
     owner: no Evaluation nor Apply Config tab, as in the Qt GUI; *exam* is the view of that exam
-    (``exam.view``), given back as ``exam`` (null for a plain project)."""
+    (``exam.view``), given back as ``exam`` (null for a plain project).  *can_save*: the
+    project may be saved now (the lab allows it, the host has the saved projects, no exam): the
+    Save button of the page."""
     priority = lang_priority(identity, info)
     show_instructor = instructor_view_allowed(info, identity)
     display = bool(display_enabled) and display_available(info, identity)
@@ -104,6 +106,7 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display
         'exam': exam,
         'allow_self_grade': bool(info.get('allow_self_grade', True)),
         'export_schema_pdf': bool(info.get('export_schema_pdf', True)),
+        'can_save': bool(can_save),
         'delay_between_self_grade': info.get('delay_between_self_grade', 0) or 0,
         'debug_project': bool(info.get('debug_project', False)),
         'instructor_mode': bool(info.get('instructor_mode', False)),

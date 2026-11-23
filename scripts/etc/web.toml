@@ -348,9 +348,25 @@ session_timeout = "30m"
 #                            # bbb_hide_presentation_on_join: straight to the microphone)
 # bbb_listen_only_mode = true
 
+# The saved projects: a user saves a running project whose lab allows it (allow_save_restore:
+# the Save Project button of its page), restores it later as a new project on any host, and may
+# share it with groups of theirs, whose members restore their own copy; the instructors see every
+# saved project (the Saved projects page).  The files are kept by the pool hosts, in a directory
+# they all mount ([saves] dir of their agent.toml): the portal holds none and mounts nothing.
+# max_per_user: how many saved projects a student keeps (the page asks to delete one first when
+# the limit is reached); max_per_instructor: an instructor; 0 = no limit.  cache_ttl: how long
+# the list of the saved projects is kept before a host is asked again.  Needs users who log in
+# (not auth.mode = "anonymous").
+[saves]
+enabled = false
+# max_per_user = 5
+# max_per_instructor = 0
+# cache_ttl = "30s"
+
 [limits]
 eval_interval = 10        # seconds between two self-evaluations of one user
 start_interval = 30       # seconds between two starts of one user
+save_interval = 60        # seconds between two saves of a project by one user ([saves])
 login_per_minute = 5      # login attempts per client address
 max_answer_bytes = 1048576
 

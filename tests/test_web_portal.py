@@ -53,6 +53,7 @@ TEMPLATES = {
                      '{{ groups }}</html>',
     'groups.html': '<html><title>Groups</title>{{ identity.login }} {{ instructor }} {{ groups_directory }} '
                    '{{ groups_database }} {{ group_sources }}</html>',
+    'saves.html': '<html><title>Saved projects</title>{{ identity.login }} {{ instructor }} saves={{ saves }}</html>',
     'exams.html': '<html><title>Exams</title>{{ identity.login }} {{ instructor }} {{ exams_database }} '
                   '{{ exams_available }} {{ exam_defaults.lead }} {{ exam_defaults.pre_start }} '
                   '{{ exam_defaults.eval_interval }}</html>',
@@ -389,7 +390,10 @@ class TestProjectsThroughThePortal:
                     assert resp.status == 200 and resp.content_type == 'application/pdf'
                     assert (await resp.read()).startswith(b'%PDF')
                     assert resp.headers['Content-Disposition'].endswith('_schema.pdf"')   # copied by the relay
-                assert (await h.client.get(f'{base}/save')).status == 404     # not offered on the web
+                # a save is never downloaded (the saved projects stay on the hosts: tests/test_web_saves.py),
+                # and they are off unless [saves] turns them on
+                assert (await h.client.get(f'{base}/save')).status == 405
+                assert (await h.client.post(f'{base}/save', json={}, headers=CSRF)).status == 404
                 assert (await h.client.get(f'{base}/export')).status == 404   # the Kathara export neither
                 # websockets through the relay
                 ws = await h.client.ws_connect(f'{base}/events')

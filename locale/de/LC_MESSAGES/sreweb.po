@@ -2750,3 +2750,146 @@ msgstr "Datei"
 
 msgid "Size"
 msgstr "Größe"
+
+# --- the saved projects: the Save Project dialog of a project page, the Saved projects page ---
+
+msgid "Saved projects"
+msgstr "Gesicherte Projekte"
+
+msgid "Save the project as it is now, to restore it later"
+msgstr "Das Projekt in seinem jetzigen Zustand sichern, um es später wiederherzustellen"
+
+msgid "Save Project"
+msgstr "Projekt sichern"
+
+msgid "Mine"
+msgstr "Meine"
+
+msgid "The saved projects of every user"
+msgstr "Die gesicherten Projekte aller Benutzer"
+
+msgid "All saved projects"
+msgstr "Alle gesicherten Projekte"
+
+msgid "Student, group, lab or comment"
+msgstr "Studierende(r), Gruppe, Labor oder Kommentar"
+
+msgid "The restored project keeps the instructor texts and lists every state"
+msgstr "Das wiederhergestellte Projekt behält die Lehrkrafttexte und listet alle Zustände auf"
+
+msgid "Restore in instructor mode"
+msgstr "Im Lehrkraftmodus wiederherstellen"
+
+msgid "Read the saved projects again"
+msgstr "Die gesicherten Projekte neu einlesen"
+
+msgid "A project whose lab allows it is saved with the Save Project button of its page. A saved project is restored as a new project: the saved one stays as it is."
+msgstr "Ein Projekt, dessen Labor es erlaubt, wird mit der Schaltfläche Projekt sichern seiner Seite gesichert. Ein gesichertes Projekt wird als neues Projekt wiederhergestellt: die Sicherung bleibt unverändert."
+
+msgid "My saved projects"
+msgstr "Meine gesicherten Projekte"
+
+msgid "Comment"
+msgstr "Kommentar"
+
+msgid "Saved"
+msgstr "Gesichert am"
+
+msgid "Shared with"
+msgstr "Geteilt mit"
+
+msgid "Shared with me"
+msgstr "Mit mir geteilt"
+
+msgid "Saved by"
+msgstr "Gesichert von"
+
+msgid "What this save is, for you (optional)"
+msgstr "Was diese Sicherung für Sie ist (optional)"
+
+msgid "The machines keep running while the project is saved; this can take a minute."
+msgstr "Die Maschinen laufen weiter, während das Projekt gesichert wird; das kann eine Minute dauern."
+
+msgid "You already keep {n} saved projects, the most you may. Delete one to save this project."
+msgstr "Sie haben bereits {n} gesicherte Projekte, das erlaubte Maximum. Löschen Sie eines, um dieses Projekt zu sichern."
+
+msgid "Saving…"
+msgstr "Wird gesichert…"
+
+msgid "Project saved."
+msgstr "Projekt gesichert."
+
+msgid "Please wait {n} s before saving again."
+msgstr "Bitte warten Sie {n} s, bevor Sie erneut sichern."
+
+msgid "The lab of this saved project is not available any more."
+msgstr "Das Labor dieses gesicherten Projekts ist nicht mehr verfügbar."
+
+msgid "Share…"
+msgstr "Teilen…"
+
+msgid "instructor mode"
+msgstr "Lehrkraftmodus"
+
+msgid "No host with the saved projects answers: this is the list as it was a moment ago."
+msgstr "Kein Rechner mit den gesicherten Projekten antwortet: dies ist die Liste, wie sie eben noch war."
+
+msgid "({n})"
+msgstr "({n})"
+
+msgid "({n} of {total})"
+msgstr "({n} von {total})"
+
+msgid "Free space of the saved projects: {free} of {total}"
+msgstr "Freier Speicher der gesicherten Projekte: {free} von {total}"
+
+msgid "No saved project matches the filter."
+msgstr "Kein gesichertes Projekt entspricht dem Filter."
+
+msgid "No saved project."
+msgstr "Kein gesichertes Projekt."
+
+msgid "You have no saved project."
+msgstr "Sie haben kein gesichertes Projekt."
+
+msgid "Restoring {lab}…"
+msgstr "{lab} wird wiederhergestellt…"
+
+msgid "The restore failed."
+msgstr "Die Wiederherstellung ist fehlgeschlagen."
+
+msgid "Delete the saved project \"{name}\" of {date}? It cannot be restored afterwards."
+msgstr "Das gesicherte Projekt „{name}“ vom {date} löschen? Es kann danach nicht mehr wiederhergestellt werden."
+
+msgid "Share with nobody"
+msgstr "Mit niemandem teilen"
+
+msgid "Groups whose members may restore this saved project"
+msgstr "Gruppen, deren Mitglieder dieses gesicherte Projekt wiederherstellen dürfen"
+
+msgid "A member who restores it gets a project of their own with your answers and the state of your machines. Hold Ctrl (or Cmd) to choose several groups."
+msgstr "Ein Mitglied, das es wiederherstellt, erhält ein eigenes Projekt mit Ihren Antworten und dem Zustand Ihrer Maschinen. Halten Sie Strg (oder Cmd) gedrückt, um mehrere Gruppen zu wählen."
+
+msgid "You belong to no group to share with."
+msgstr "Sie gehören keiner Gruppe an, mit der Sie teilen könnten."
+
+msgid "Share {lab}"
+msgstr "{lab} teilen"
+
+msgid "{n} B"
+msgstr "{n} B"
+
+msgid "{n} KB"
+msgstr "{n} KB"
+
+msgid "{n} MB"
+msgstr "{n} MB"
+
+msgid "{n} GB"
+msgstr "{n} GB"
+
+msgid "{used} of {max} saved projects"
+msgstr "{used} von {max} gesicherten Projekten"
+
+msgid "{used} saved project(s)"
+msgstr "{used} gesicherte(s) Projekt(e)"

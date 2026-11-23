@@ -22,13 +22,17 @@ from ..agent.usage import (STATUS_CPUS, STATUS_MEM_TOTAL, STATUS_CPU_BUSY, STATU
 from ..config import (HostConfig, Priority, host_config_from_dict, host_entry, check_priority,
                       check_usable_capacity, ConfigError, CAPACITY_PROJECTS, CAPACITY_RESOURCES,
                       DEFAULT_USABLE_CAPACITY, USABLE_CAPACITY_KEY)
-from ..identity import Identity, is_valid_login
+from ..identity import Identity, is_valid_login, ROLE_INSTRUCTOR
+from ..savestore import STATUS_SAVES
 from .costs import (Cost, CostBook, HostLoad, Usage, host_capacity, host_load, lab_key, figure, DEFAULT_MEMORY_MB,
                     DEFAULT_CPU, MAX_NAME)
 
 log = logging.getLogger('sreweb.portal')
 
 STATUS_TIMEOUT = 5.0
+#: The portal itself asking the hosts something no user is behind (the list of the saved
+#: projects): every host may answer, the reserved ones included.
+_PORTAL = Identity(login='portal', role=ROLE_INSTRUCTOR)
 #: Seconds a host is expected to restart within after ``POST /v1/restart`` (``restart_sent``).
 RESTART_HOLD = 120.0
 
@@ -185,6 +189,9 @@ class HostStatus:
     local_drain_since: float | None = None
     local_drain_allowed: bool | None = None
     local_drain_default: bool | None = None
+    # whether the host saves and restores projects (``savestore.STATUS_SAVES``: its directory of
+    # the saved projects is configured and usable); false for an agent older than the key
+    saves: bool = False
     hostname: str = ''
     sre_version: str = ''
     error: str = ''
@@ -367,6 +374,7 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       exam=host_exam_fields(data.get('exam')), exam_known='exam' in data,
                       hostname=_text(data.get('hostname')),
                       sre_version=_text(data.get('sre_version')),
+                      saves=data.get(STATUS_SAVES) is True,
                       **preload_fields(data.get('preload')),
                       **local_drain_fields(data.get('local_drain')))
 
@@ -1248,7 +1256,8 @@ class Pool:
             return self.memory_room(h.name) != 0
         return st.projects == 0 or load.fits(cost or self.reference_cost())
 
-    def pick(self, identity: Identity | None = None, host: str | None = None, *, lab: str | None = None) -> tuple:
+    def pick(self, identity: Identity | None = None, host: str | None = None, *, lab: str | None = None,
+             need_saves: bool = False) -> tuple:
         """The host of a new project and its reservation.  Without *host*: the host of a local
         login session of *identity* (``follow_local_sessions``: the workstation the user sits at,
         occupied by them, whatever its load), else, among the hosts up (enabled, reachable, not
@@ -1266,7 +1275,8 @@ class Pool:
         without identity.  With *host* (an instructor naming one on the Open page): that host,
         when the identity may use it (403 otherwise), it is available to them (503) and has room
         (503).  The caller releases the reservation when the start is over.  *lab*: the lab of
-        the project, whose cost (``costs.CostBook``) the reservation carries."""
+        the project, whose cost (``costs.CostBook``) the reservation carries.  *need_saves*
+        (the restore of a saved project): only a host whose agent has the saved projects."""
         instructor = identity is not None and identity.is_instructor
         now = time.monotonic()
         cost = self.costs.cost(lab)
@@ -1274,6 +1284,8 @@ class Pool:
             chosen = self.host(host)
             if chosen.instructors_only and not instructor:
                 raise PoolError(403, "instructors only")
+            if need_saves and not self.status[host].saves:
+                raise PoolError(503, f"the host {host} has no access to the saved projects", retry_after=60)
             if not self._available_to(chosen, identity, self.state_of(host, now))[0]:
                 raise PoolError(503, f"the host {host} is not available", retry_after=60)
             if self.status[host].projects >= chosen.max_projects:
@@ -1294,6 +1306,8 @@ class Pool:
                 continue
             state = self.state_of(h.name, now)
             waking = waking or state == STATE_WAKING or self.runtime[h.name].restart_sent is not None
+            if need_saves and not self.status[h.name].saves:
+                continue
             available, placement = self._available_to(h, identity, state)
             if not available or not self._has_room(h, cost):
                 continue
@@ -1396,6 +1410,13 @@ class Pool:
                          st.load1 if st.load1 is not None else 0.0, h.name, h))
         rows.sort(key=lambda r: r[:4])
         return [r[4] for r in rows]
+
+    def save_hosts(self, identity: Identity | None = None) -> list:
+        """The hosts that can answer about the saved projects (their list, a deletion, a share:
+        any host mounting the shared directory serves them), the most available first, as
+        ``_labs_hosts``; without *identity*, for the portal itself: every such host."""
+        hosts = self._labs_hosts(identity if identity is not None else _PORTAL)
+        return [h for h in hosts if self.status[h.name].saves]
 
     def report_hosts(self, identity: Identity) -> list:
         """The hosts able to answer a request any host of the pool can serve for *identity* (the

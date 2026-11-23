@@ -988,3 +988,19 @@ dialog.exam-groups-dialog { width: 360px; }
 .exam-groups h3 { margin: 6px 0 2px; font-size: 13px; }
 .exam-groups label.exam-group { display: flex; align-items: center; gap: 6px; margin: 0; }
 dialog.exam .form-error { color: var(--danger); font-weight: bold; margin: 6px 0; }
+/* The saved projects: the Saved projects page (saves.html) and its dialogs, the Save Project
+   dialog of the project page.  After dialog.modal: same weight, the later rule wins. */
+main.page section > h2 { font-size: 14px; margin: 14px 8px 6px; }
+table.grid.saves td.description { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.grid.saves .save-flags { color: var(--muted); }
+.toolbar label.inline-option { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+dialog.save-dialog, dialog.save-share { width: 520px; }
+dialog.save-dialog label, dialog.save-share label { display: block; margin: 6px 0; }
+dialog.save-dialog input[type="text"], dialog.save-share input[type="text"], dialog.save-share select {
+  display: block; width: 100%; margin-top: 3px; box-sizing: border-box;
+}
+dialog.save-dialog .form-error, dialog.save-share .form-error { color: var(--danger); font-weight: bold; margin: 6px 0; }
+dialog.save-dialog .buttons { align-items: center; }
+dialog.save-dialog ul.save-list { list-style: none; margin: 6px 0; padding: 0; max-height: 40vh; overflow: auto; }
+dialog.save-dialog ul.save-list li { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-top: 1px solid var(--border-light); }
+dialog.save-dialog ul.save-list .save-what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

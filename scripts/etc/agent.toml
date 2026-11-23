@@ -89,6 +89,8 @@ start = 900
 eval = 600
 state = 600
 stop = 300
+save = 900      # a project saved into the directory of [saves]
+restore = 900   # ... and restored from it
 list = 30
 report = 600
 # One virtual X desktop per project whose lab has an x11_host machine (the Wireshark lab): a
@@ -132,3 +134,23 @@ at_start = false
 # docker_socket = "/var/run/docker.sock"
 # cgroup_root = "/sys/fs/cgroup"
 # meminfo = "/proc/meminfo"
+# The saved projects of the web site: a user saves a project whose lab allows it
+# (allow_save_restore) and restores it later, on this host or on another.  dir: the directory of
+# the saved projects, a volume every pool host mounts at the same place (NFS); nothing is saved
+# without it.  The agent itself never touches the directory: each access is a small program run
+# as `user` (sre), so the export may squash root and the directory stays closed to the local
+# users of the host.  Prepare the volume once, as that user:
+#     mkdir /srv/sre-saves ; chown sre:sre /srv/sre-saves ; chmod 700 /srv/sre-saves
+#     touch /srv/sre-saves/.sre-saves        # the marker: a host whose volume is not mounted saves nothing
+# and leave the mount point itself to root on each host.  max_size_mb: a project whose save is
+# larger is not saved; min_free_mb: no save below this much free space, in the directory and
+# where sre save builds its archive (/var/lib/sre/tmp); max_concurrent: saves running at once on
+# this host; timeout: the time one access to the directory may take (a volume that hangs).
+# On the portal: [saves] enabled = true of web.toml, and the limit of saved projects per user.
+# [saves]
+# dir = "/srv/sre-saves"
+# user = "sre"
+# max_size_mb = 512
+# min_free_mb = 2048
+# max_concurrent = 1
+# timeout = "30s"

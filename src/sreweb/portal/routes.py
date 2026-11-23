@@ -42,6 +42,7 @@ from .examhosts import ExamHosts
 from .pool import LAB_KIND_LAB, LAB_SORT_NAME
 from .ratelimit import RateLimiter
 from .relay import Relay, RELAYED_KEY
+from .saves import SaveRoutes
 from .roles import complete_owners
 from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_CREATED
 from ..config import (WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, check_priority,
@@ -173,6 +174,8 @@ class Routes:
         self._heavy = asyncio.Semaphore(HEAVY_QUERIES)     # the slots of the heavy reports (_heavy_acquire)
         self.heavy_wait = HEAVY_WAIT
         self.ldap = LdapAuthenticator(cfg.auth.ldap) if cfg.auth.mode == AUTH_LDAP else None
+        # the saved projects ([saves]: their page and API, saves.SaveRoutes; every route 404 when off)
+        self.saves = SaveRoutes(self)
 
     def register(self, app: web.Application):
         r = app.router
@@ -258,6 +261,7 @@ class Routes:
         r.add_get('/api/projects/{host}/{rln}/display/ws', self.api_display_ws)
         r.add_get('/api/projects/{host}/{rln}/log', self.api_log)
         r.add_post('/api/projects/{host}/{rln}/touch', self.api_touch)
+        self.saves.register(r)
         # presentations: an instructor's project shown read-only on the students' browsers
         r.add_get('/present/{id}', self.present_page)
         r.add_get('/api/presence/ws', self.api_presence_ws)
@@ -332,6 +336,7 @@ class Routes:
             'group_sources': self.cfg.group_sources,  # any user groups: the group select, the Present audience
             'webconf': self.cfg.webconf_available,    # the Webconf button of the instructors ([bbb])
             'webconf_private': self.cfg.webconf_private,   # ... and Talk privately on a student's project
+            'saves': self.saves.shown_to(identity),        # the Saved projects link, the Save button of a project
             'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
             'site': self._site(language),
             # the sub-path of the site ('' at the root): before every href / src / action of the

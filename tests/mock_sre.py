@@ -62,6 +62,11 @@ Environment variables (all optional but the first):
                       other images still pulled, like the real command)
   MOCK_PRELOAD_DELAY  seconds (float) each of these pulls lasts
   MOCK_FAIL           the subcommand that exits 1 with `sre: mock failure` on stderr
+  MOCK_NO_SAVE_RESTORE set: the stub lab has no `allow_save_restore` (its info.json says so, and
+                      `save` / `restore` refuse as the real commands do)
+  MOCK_SAVE_SIZE      bytes (int) of the payload `save` writes after its header (default 1024)
+  MOCK_SAVE_BREAK     set: `save` writes its header and half its payload, then exits 1 with
+                      `sre: mock failure` (a save that dies while it streams)
 
 `main(argv, env)` runs one invocation and returns its exit code (the script itself runs
 `main(sys.argv[1:], os.environ)`); `connect` replaces the process by a shell, so never call it
@@ -129,6 +134,11 @@ ENV_PRELOAD_IMAGES = 'MOCK_PRELOAD_IMAGES'
 ENV_PRELOAD_DELAY = 'MOCK_PRELOAD_DELAY'
 ENV_FAIL = 'MOCK_FAIL'
 ENV_X11 = 'MOCK_X11'               # set: the open machine of the stub lab is an x11_host
+ENV_NO_SAVE_RESTORE = 'MOCK_NO_SAVE_RESTORE'   # set: the stub lab does not allow save / restore
+ENV_SAVE_SIZE = 'MOCK_SAVE_SIZE'   # bytes of the payload of a save
+ENV_SAVE_BREAK = 'MOCK_SAVE_BREAK'  # set: a save fails half-way through its stream
+SAVE_PAYLOAD_SIZE = 1024
+NO_SAVE_RESTORE_MESSAGE = "save/restore is not allowed for this lab (set allow_save_restore = True in the lab file)"
 
 #: the environment keys written to MOCK_SRE_LOG (when present in the environment)
 LOGGED_ENV = ('SUDO_USER', 'USER_USERNAME', 'LOGNAME', 'SUDO_COMMAND', 'SRE_IN_RECORDER', 'TERM',
@@ -231,7 +241,7 @@ def stub_machines(include_hidden: bool, x11_host: bool = False) -> list:
 
 
 def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_mode: bool,
-              x11_host: bool = False, eval_interval: int = 0) -> InfoLab:
+              x11_host: bool = False, eval_interval: int = 0, allow_save_restore: bool = True) -> InfoLab:
     """The ``info.json`` of a project of the stub lab, as ``Grade0.save_lab_info()`` would write
     it: the hidden machine and every state only in a debug project; an ``instructor()`` fragment
     (the solution) at the top of the informations of an instructor-mode or debug project, as a
@@ -261,7 +271,7 @@ def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_m
         user_allowed_states={FINAL_STATE: _tr("Solution", "Solution")},
         debug_project=debug_project,
         instructor_mode=instructor_mode,
-        allow_save_restore=True,
+        allow_save_restore=allow_save_restore,
         export_schema_pdf=True,
         admin_only_states=[],
         default_language=DEFAULT_LANGUAGE,
@@ -454,7 +464,8 @@ class Mock:
 
         info = stub_info(running_lab_name, self.lab_title(lab_cli_arg) or lab_name.removesuffix('.py'),
                          debug_project=debug_project, instructor_mode=instructor_mode, x11_host=bool(self.env.get(ENV_X11)),
-                         eval_interval=int(self.env.get(ENV_EVAL_INTERVAL) or 0))
+                         eval_interval=int(self.env.get(ENV_EVAL_INTERVAL) or 0),
+                         allow_save_restore=not self.env.get(ENV_NO_SAVE_RESTORE))
         Path(params.info_filename(running_lab_name)).write_text(info.to_json())
         emit({"phase": "project", "status": "created", "running_lab_name": running_lab_name})
         return running_lab_name
@@ -811,6 +822,8 @@ class Mock:
             if args.full_images:
                 error_quit("--full-images is only available to privileged users")
         running_lab_name = self.require_project(args.running_lab)
+        if self.env.get(ENV_NO_SAVE_RESTORE):
+            error_quit(NO_SAVE_RESTORE_MESSAGE)
         header = {
             params.save_meta_format_version: params.save_format_version,
             params.save_meta_sre_version: params.sre_version,
@@ -822,7 +835,12 @@ class Mock:
             params.save_meta_full_images: bool(args.full_images),
             params.save_meta_encrypted: False,
         }
-        payload = params.save_file_magic + json.dumps(header).encode() + b"\n" + os.urandom(1024)
+        size = int(self.env.get(ENV_SAVE_SIZE) or SAVE_PAYLOAD_SIZE)
+        payload = params.save_file_magic + json.dumps(header).encode() + b"\n" + os.urandom(size)
+        if self.env.get(ENV_SAVE_BREAK):
+            sys.stdout.buffer.write(payload[:len(payload) - size // 2])
+            sys.stdout.buffer.flush()
+            error_quit(MOCK_FAILURE_MESSAGE)
         if args.output is not None:
             try:
                 Path(args.output).write_bytes(payload)
@@ -863,8 +881,12 @@ class Mock:
         is_path = lab_cli_arg.startswith("/")
         if is_path and self.user_mode:
             error_quit("this save file refers to a lab outside the lab directory; restoring it requires privileges")
-        if not is_path and lab_cli_arg not in self.lab_list():
+        # as the real command: the exam-only labs too, in user mode as well (what the web agent
+        # checks itself before a restore)
+        if not is_path and lab_cli_arg not in self.lab_list(include_exam_only=True):
             error_quit(f"lab '{lab_cli_arg}' does not exist")
+        if self.env.get(ENV_NO_SAVE_RESTORE):
+            error_quit(NO_SAVE_RESTORE_MESSAGE)
         debug_project = bool(header.get(params.save_meta_debug_project)) and not self.user_mode
         running_lab_name = self.create_project(lab_cli_arg, is_path=is_path, debug_project=debug_project,
                                                instructor_mode=bool(args.instructor_mode))

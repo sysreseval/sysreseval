@@ -488,6 +488,7 @@ class PoolConfig:
 class LimitsConfig:
     eval_interval: float = 10.0        # seconds between two self-evaluations of one user
     start_interval: float = 30.0       # seconds between two starts of one user
+    save_interval: float = 60.0        # seconds between two saves of a project by one user ([saves])
     login_per_minute: int = 5          # per client address
     max_answer_bytes: int = 1 << 20
 
@@ -551,6 +552,33 @@ class ArchivesConfig:
     keep: int = 0                       # days of rows kept (purged daily); 0 = forever
     poll_interval: float = 30.0         # seconds between two collections from the agents
     directory: str = ''                 # absolute path of the directory of the archive files; '' = no file view
+
+
+@dataclass
+class WebSavesConfig:
+    """``[saves]`` of web.toml: the saved projects (``sreweb/portal/saves.py``).  A user saves a
+    project whose lab allows it into the directory the pool hosts share (``[saves]`` of their
+    agent.toml), restores it later on any of them, and may share it with groups.  The portal
+    holds no file: it asks one agent, and decides who sees, restores and shares what."""
+    enabled: bool = False
+    max_per_user: int = 5               # saved projects a student may keep; 0 = no limit
+    max_per_instructor: int = 0         # ... an instructor; 0 = no limit
+    cache_ttl: float = 30.0             # seconds the list of the saved projects is kept before an agent is asked again
+
+
+def _check_web_saves(cfg: WebSavesConfig, auth_mode: str, path: str):
+    where = f"{path}: saves."
+    if not isinstance(cfg.enabled, bool):
+        raise ConfigError(f"{where}enabled must be true or false")
+    for name in ('max_per_user', 'max_per_instructor'):
+        value = getattr(cfg, name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ConfigError(f"{where}{name} must be an integer, 0 or more (0 = no limit)")
+    if isinstance(cfg.cache_ttl, bool) or not isinstance(cfg.cache_ttl, (int, float)) or cfg.cache_ttl < 0:
+        raise ConfigError(f"{where}cache_ttl must be a duration, 0 or more")
+    if cfg.enabled and auth_mode == AUTH_ANONYMOUS:
+        # a pseudonym lasts as long as its cookie: its saves would be nobody's
+        raise ConfigError(f"{where}enabled needs users who log in (auth.mode is {AUTH_ANONYMOUS!r})")
 
 
 @dataclass
@@ -857,6 +885,7 @@ class WebConfig:
     exams: ExamsConfig = field(default_factory=ExamsConfig)
     site: SiteConfig = field(default_factory=SiteConfig)
     bbb: BbbConfig = field(default_factory=BbbConfig)
+    saves: WebSavesConfig = field(default_factory=WebSavesConfig)
     hosts: list = field(default_factory=list)
 
     @property
@@ -1136,7 +1165,12 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     limits_data = _section(data, 'limits', path)
     limits = _build(LimitsConfig, limits_data, f"{path}: [limits]",
                     **{k: parse_duration(limits_data[k], f'limits.{k}') for k in
-                       ('eval_interval', 'start_interval') if k in limits_data})
+                       ('eval_interval', 'start_interval', 'save_interval') if k in limits_data})
+    saves_data = _section(data, 'saves', path)
+    saves = _build(WebSavesConfig, saves_data, f"{path}: [saves]",
+                   **({'cache_ttl': parse_duration(saves_data['cache_ttl'], 'saves.cache_ttl')}
+                      if 'cache_ttl' in saves_data else {}))
+    _check_web_saves(saves, auth.mode, path)
     site = _build(SiteConfig, _section(data, 'site', path), f"{path}: [site]")
     _check_site(site, path)
     bbb_data = _section(data, 'bbb', path)
@@ -1157,9 +1191,9 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
         raise ConfigError(f"{path}: host names must be unique")
     top = {k: v for k, v in data.items()
            if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'archives', 'groups', 'exams', 'site', 'bbb',
-                        'hosts')}
+                        'saves', 'hosts')}
     cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, access_log=access_log,
-                 archives=archives, groups=groups, exams=exams, site=site, bbb=bbb, hosts=hosts,
+                 archives=archives, groups=groups, exams=exams, site=site, bbb=bbb, saves=saves, hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
                  base_path=parse_base_path(top.get('base_path', ''), f'{path}: base_path'),
                  trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))
@@ -1196,9 +1230,9 @@ def load_web_config(path) -> WebConfig:
 #: ``export``: the Kathara export left the web front-end (the schema PDF is rendered by the agent
 #: itself); the key is still accepted so that the agent.toml files naming it keep loading.
 #: ``report``: the sheet / outline of the Archives page (``sre report``: minutes of PDF rendering
-#: for a whole class).
+#: for a whole class).  ``save`` / ``restore``: the saved projects (``[saves]``).
 DEFAULT_TIMEOUTS = {'start': 900.0, 'eval': 600.0, 'state': 600.0, 'stop': 300.0, 'export': 600.0, 'list': 30.0,
-                    'report': 600.0}
+                    'report': 600.0, 'save': 900.0, 'restore': 900.0}
 
 
 _GEOMETRY_RE = re.compile(r'^\d{3,5}x\d{3,5}$')
@@ -1297,6 +1331,35 @@ def _check_usage(u: UsageConfig, path: str):
 
 
 @dataclass
+class SavesConfig:
+    """``[saves]`` of agent.toml: the saved projects of the web site, files in a directory every
+    pool host mounts (``sreweb/savestore.py``).  Off without ``dir``."""
+    dir: str = ''                     # the directory of the saved projects (a shared volume); '' = no saved project
+    user: str = 'sre'                 # the account every access to the directory runs as: the volume may squash
+                                      # root ('' = the agent's own user: tests only, refused when it runs as root)
+    max_size_mb: int = 512            # a project whose save is larger is not saved
+    min_free_mb: int = 2048           # no save below this much free space, in the directory and where sre save
+                                      # writes its temporary files
+    max_concurrent: int = 1           # saves running at once on this host
+    timeout: float = 30.0             # seconds for one access to the directory (a listing, a deletion): a
+                                      # volume that hangs must not hang the agent
+
+
+def _check_saves(s: SavesConfig, path: str):
+    where = f"{path}: saves."
+    if not isinstance(s.dir, str) or (s.dir and not s.dir.startswith('/')):
+        raise ConfigError(f"{where}dir must be an absolute path")
+    if not isinstance(s.user, str) or (s.user and not _USER_RE.match(s.user)):
+        raise ConfigError(f"{where}user must be a system user name (or empty)")
+    for name, least in (('max_size_mb', 1), ('min_free_mb', 0), ('max_concurrent', 1)):
+        value = getattr(s, name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < least:
+            raise ConfigError(f"{where}{name} must be an integer, {least} or more")
+    if isinstance(s.timeout, bool) or not isinstance(s.timeout, (int, float)) or s.timeout <= 0:
+        raise ConfigError(f"{where}timeout must be a positive duration")
+
+
+@dataclass
 class AgentConfig:
     listen: tuple = ('127.0.0.1', 8451)
     token: str = ''
@@ -1344,6 +1407,7 @@ class AgentConfig:
     display: DisplayConfig = field(default_factory=DisplayConfig)
     preload: PreloadConfig = field(default_factory=PreloadConfig)
     usage: UsageConfig = field(default_factory=UsageConfig)
+    saves: SavesConfig = field(default_factory=SavesConfig)
 
 
 def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str = '',
@@ -1372,10 +1436,14 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
     usage = _build(UsageConfig, usage_data, f"{path}: [usage]",
                    **({'interval': parse_duration(usage_data['interval'], 'usage.interval')}
                       if 'interval' in usage_data else {}))
-    top = {k: v for k, v in data.items() if k not in ('timeouts', 'display', 'preload', 'usage')}
+    saves_data = _section(data, 'saves', path)
+    saves = _build(SavesConfig, saves_data, f"{path}: [saves]",
+                   **({'timeout': parse_duration(saves_data['timeout'], 'saves.timeout')}
+                      if 'timeout' in saves_data else {}))
+    top = {k: v for k, v in data.items() if k not in ('timeouts', 'display', 'preload', 'usage', 'saves')}
     converted = {k: parse_duration(top[k], k) for k in ('poll_interval', 'max_idle', 'lab_list_cache_ttl',
                                                         'shutdown_timeout', 'terminals_linger') if k in top}
-    cfg = _build(AgentConfig, top, path, timeouts=timeouts, display=display, preload=preload, usage=usage,
+    cfg = _build(AgentConfig, top, path, timeouts=timeouts, display=display, preload=preload, usage=usage, saves=saves,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8451')),
                  allowed_clients=parse_networks(top.get('allowed_clients', []), f'{path}: allowed_clients'), **converted)
     if len(cfg.token) < MIN_SECRET_LENGTH:
@@ -1404,6 +1472,7 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
     _check_display(cfg.display, path)
     _check_preload(cfg.preload, path)
     _check_usage(cfg.usage, path)
+    _check_saves(cfg.saves, path)
     return cfg
 
 

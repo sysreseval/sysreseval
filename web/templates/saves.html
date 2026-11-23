@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Saved projects") }} - SRE{% endblock %}
+{% block nav %}<a href="{{ base_path }}/projects">{{ _("Running projects") }}</a> <a href="{{ base_path }}/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ _("Saved projects") }}</h1>
+  {% if instructor %}
+  <div id="saves-views" class="history-views">
+    <button type="button" class="toggle" data-view="mine" aria-pressed="true">{{ _("Mine") }}</button>
+    <button type="button" class="toggle" data-view="all" aria-pressed="false" title="{{ _("The saved projects of every user") }}">{{ _("All saved projects") }}</button>
+  </div>
+  <input type="text" id="saves-filter" class="watch-filter" hidden placeholder="{{ _("Filter…") }}" title="{{ _("Student, group, lab or comment") }}">
+  <label id="saves-instructor-mode-box" class="inline-option" title="{{ _("The restored project keeps the instructor texts and lists every state") }}"><input type="checkbox" id="saves-instructor-mode"> {{ _("Restore in instructor mode") }}</label>
+  {% endif %}
+  <span id="saves-quota" class="muted"></span>
+  <button type="button" id="saves-refresh" title="{{ _("Read the saved projects again") }}">{{ _("Refresh") }}</button>
+</div>
+<p class="muted">{{ _("A project whose lab allows it is saved with the Save Project button of its page. A saved project is restored as a new project: the saved one stays as it is.") }}</p>
+<p id="saves-notice" class="muted" hidden></p>
+<div id="progress" class="progress-box" hidden></div>
+
+<section id="saves-mine-box">
+  <h2>{{ _("My saved projects") }}</h2>
+  <table id="saves-mine" class="grid watch saves">
+    <thead>
+      <tr>
+        <th class="sortable" data-sort="lab">{{ _("Lab") }}</th>
+        <th class="sortable" data-sort="comment">{{ _("Comment") }}</th>
+        <th class="sortable" data-sort="saved_at">{{ _("Saved") }}</th>
+        <th class="sortable" data-sort="size">{{ _("Size") }}</th>
+        <th class="sortable" data-sort="shared_with">{{ _("Shared with") }}</th>
+        <th>{{ _("Actions") }}</th>
+      </tr>
+    </thead>
+    <tbody><tr><td colspan="6" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  </table>
+</section>
+
+<section id="saves-shared-box" hidden>
+  <h2>{{ _("Shared with me") }}</h2>
+  <table id="saves-shared" class="grid watch saves">
+    <thead>
+      <tr>
+        <th class="sortable" data-sort="lab">{{ _("Lab") }}</th>
+        <th class="sortable" data-sort="comment">{{ _("Comment") }}</th>
+        <th class="sortable" data-sort="owner">{{ _("Saved by") }}</th>
+        <th class="sortable" data-sort="saved_at">{{ _("Saved") }}</th>
+        <th class="sortable" data-sort="size">{{ _("Size") }}</th>
+        <th>{{ _("Actions") }}</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+{% if instructor %}
+<section id="saves-all-box" hidden>
+  <h2>{{ _("All saved projects") }} <span id="saves-count" class="muted"></span></h2>
+  <p id="saves-space" class="muted"></p>
+  <table id="saves-all" class="grid watch saves striped">
+    <thead>
+      <tr>
+        <th class="sortable" data-sort="owner">{{ _("Saved by") }}</th>
+        <th class="sortable" data-sort="group">{{ _("Group") }}</th>
+        <th class="sortable" data-sort="lab">{{ _("Lab") }}</th>
+        <th class="sortable" data-sort="comment">{{ _("Comment") }}</th>
+        <th class="sortable" data-sort="saved_at">{{ _("Saved") }}</th>
+        <th class="sortable" data-sort="size">{{ _("Size") }}</th>
+        <th class="sortable" data-sort="shared_with">{{ _("Shared with") }}</th>
+        <th>{{ _("Actions") }}</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ base_path }}/static/js/saves.js"></script>{% endblock %}

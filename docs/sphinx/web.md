@@ -108,7 +108,9 @@ at with the Qt GUI, the exam file of the host, `PUT` / `DELETE /v1/exam`),
 `allow_connection` of the
 devices, `allow_self_grade`, the
 user-allowed states, the `export_schema_pdf` flag of the lab (the *Export Schema to PDF*
-button). Save, restore and the Kathara export are not offered on the web. An instructor acting on
+button), `allow_save_restore` for the saved projects. A project is saved and restored through
+the *saved projects* only (below: a directory the pool hosts share; no save file ever goes to
+the browser or comes from it), and the Kathara export is not offered on the web. An instructor acting on
 somebody else's project is served by a **privileged** `sre` (no `--user`, their own login:
 `sre eval` without cooldown nor counter, `sre connect` to every listed device, `sre state`),
 never by a command run as the student; the owner, instructor or not, follows the student path.
@@ -189,10 +191,11 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `allow_local_drain` | `false` | the host may ask for its own drain: `sre set-drain` run by root on the host (*A drain asked on the host* below); the default of the host, which the Pool page or `sre-web-tool` changes until its next boot |
 | `allow_power_off_when_disabled` | `false` | a drain powers the host off even while the portal has it disabled: the one asked on the host (`sre set-drain`) and the portal's (`sre-web-tool drain`, *Drain* of the Pool page, then available on a disabled host). A disabled host is otherwise never powered off by the portal (*A drain asked on the host* below). The agent only tells the portal, which applies it; the power off itself still needs `allow_power_off` here and `power = true` on the host in `web.toml` |
 | `restart_command` | none | how the agent restarts itself on `sre-web-tool restart` (`POST /v1/restart`): by default `systemctl restart` of its own unit, read from `/proc/self/cgroup`; a command for an agent run otherwise (refused, 409, when neither applies) |
-| `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30`, `report = 600` | seconds, per `sre` command (`report`: the spreadsheet / PDF reports of the Archives page, built by `sre report` on this host; `export`, the timeout of the former Kathara export, is still accepted) |
+| `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30`, `report = 600`, `save = 900`, `restore = 900` | seconds, per `sre` command (`report`: the spreadsheet / PDF reports of the Archives page, built by `sre report` on this host; `export`, the timeout of the former Kathara export, is still accepted) |
 | `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
 | `[preload]` | `at_start = false` | the Docker images of the labs pulled by the agent (`sre preload-images`) when the portal gives the host its turn (see *Pre-loading the images* below): `at_start` (the agent asks for a preload each time it starts; `sre-web-tool preload` asks by hand in any case), `paths` (the lab files and directories scanned; default: the lab directories of the installation), `timeout` (`"2h"`: a preload still running after this long is stopped) |
 | `[usage]` | `interval = "15s"` | what the running projects use, measured by the agent for the portal (*The load of a host* below): `interval` (the time between two measures; `0` = none), `docker_socket` (the socket of the Docker daemon the containers are listed on; default: the one of the host), `cgroup_root` (`/sys/fs/cgroup`: where the cgroups, version 2, of the containers are read), `meminfo` (`/proc/meminfo`: where the memory of the host is read) |
+| `[saves]` | off (no `dir`) | the saved projects (*Saved projects* below): `dir` (the directory every pool host mounts; nothing is saved without it), `user` (`sre`: the account every access to the directory runs as), `max_size_mb` (`512`: a project whose save is larger is not saved), `min_free_mb` (`2048`: no save below this much free space, in the directory and where `sre save` builds its archive), `max_concurrent` (`1`: saves running at once on the host), `timeout` (`30s`: one access to the directory) |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
 `import` (a path or a list of paths relative to `agent.toml`: a directory, a glob or a file)
@@ -876,6 +879,98 @@ presentation). Every reading of the page is a `groups` line of the connection lo
 `group_edit` line (`action` = `create` / `update` / `delete` / `add` / `remove`, `group`, and
 `member` (the one member removed), `source` (the group whose members were added or removed),
 `count` (the logins given to an add, the members a removal by source took out) or `new_name`).
+
+### Saved projects
+
+A user **saves** a running project and **restores** it later, on the same host or on another:
+the work of a session is not lost when the project is closed, when its host is recycled for the
+night, or when the student comes back from another room. A save belongs to the user who made
+it; they may **share** it with groups of theirs, whose members restore a copy of their own, and
+an instructor sees every save. Off by default.
+
+**Which projects.** Those whose lab sets `allow_save_restore = True`, the attribute that already
+gives the Qt GUI its *Save Project* menu (see [Lab Authoring](lab-authoring.md)); a lab with a
+`save_key` is saved encrypted, as there. What is saved is what `sre save` saves: the files the
+machines changed since their image, the answers, the shared directory and the data of the lab,
+not the running processes (the lab's `restore` state starts its daemons again).
+
+**Where.** In a directory every pool host mounts at the same place, usually an NFS volume. The
+portal holds no file and mounts nothing: it asks one of the hosts for the list, and a restore is
+placed on a host that has the directory. Prepare the volume once:
+
+```
+mkdir /srv/sre-saves
+chown sre:sre /srv/sre-saves && chmod 700 /srv/sre-saves
+touch /srv/sre-saves/.sre-saves        # as sre: the marker of the volume
+```
+
+- Every access runs as the `sre` account (a small program the agent starts for it, the agent
+  itself never opens the directory), so the export may **squash root**; it must be reachable
+  with the numeric uid of `sre` (`sec=sys`: the account has no Kerberos ticket), and that uid
+  must be the same on every host.
+- The directory is `0700`: the local users of a pool host cannot read the saves of the others.
+- `.sre-saves` is the **marker**: a host whose volume is not mounted finds none and saves
+  nothing, instead of writing on its own disk a save no other host would see. Leave the mount
+  point itself to root.
+- The agent starts after the remote file systems; for a mount that may come later, a drop-in of
+  its unit says so:
+
+  ```
+  # /etc/systemd/system/sre-agent.service.d/saves.conf
+  [Unit]
+  RequiresMountsFor=/srv/sre-saves
+  ```
+
+  The agent checks the directory every minute anyway: a volume that comes or goes turns the
+  saved projects of that host on or off (`saves` in its status; the *Save Project* button
+  follows), and a volume that hangs blocks one small program for `timeout`, never the agent.
+
+On each pool host, in `agent.toml`:
+
+```toml
+[saves]
+dir = "/srv/sre-saves"
+# user = "sre"
+# max_size_mb = 512      # a project whose save is larger is not saved
+# min_free_mb = 2048     # no save below this much free space
+```
+
+and on the portal, in `web.toml`:
+
+```toml
+[saves]
+enabled = true
+# max_per_user = 5         # saved projects a student keeps; 0 = no limit
+# max_per_instructor = 0   # ... an instructor
+# cache_ttl = "30s"
+
+[limits]
+# save_interval = 60       # seconds between two saves of one user
+```
+
+The saved projects need users who log in: `enabled = true` is refused with
+`auth.mode = "anonymous"` (a pseudonym lasts as long as its cookie).
+
+**The limit.** A user at their limit is told so before anything is saved, with the list of their
+saves: one deleted, the project is saved. The host counts again in the directory right before
+it saves. `max_size_mb` bounds one save (a machine holding a huge file is refused, and `sre
+save` is not allowed to write a larger archive on the host meanwhile); the volume is otherwise
+bounded by the number of users times their limit, and the instructors see its free space.
+
+**Files.** `<dir>/<login>/<id>.sre` is the save (`sre restore` reads it, see *Save file format*
+in [Internals](internals.md)) and `<id>.json` beside it who saved what, when, with which
+comment, and the groups it is shared with; the id is the time of the save and a random part. A
+save exists once both files do: what a save that failed left is removed by itself. To remove a
+save by hand, remove both files.
+
+**A save restores anywhere.** A restored project that is saved again gives a file as complete
+as the first one: it names the images of the lab, never something the first restore left on its
+host. A save needs the versions of the images it was made with: keep the previous tags
+pullable when the images change. It restores on a host of the same architecture.
+
+**Access log**: `save` (`save` = `<login>/<id>`, `lab`, `size`), `start` with `restore` =
+`<login>/<id>` for a restore (counted with the other starts), `save_share` (`groups`),
+`save_delete`.
 
 ### Exams
 
@@ -1896,6 +1991,8 @@ default): a shorter value lets the machines empty sooner.
   hidden machines), rendered by the agent as the GUI's File → Export Schema to PDF does, unless
   the lab sets `export_schema_pdf = False`; the icons need `rsvg-convert` (`librsvg2-bin`) on the
   pool host, graphviz shapes otherwise. The Kathara export is not offered on the web.
+  *Save Project* (when the site has the saved projects and the lab allows it) saves the project
+  as it is now, with a comment; the machines keep running meanwhile.
   A terminal is a session shared by its viewers: the live sessions of the project that are not
   on the page are listed under the bar with a Join button (the same shell for everybody, the
   last 64 KiB of output replayed to the newcomer, the pty sized to the smallest window), a
@@ -1907,6 +2004,18 @@ default): a shorter value lets the machines empty sooner.
   where they were on that browser, with the last 64 KiB of output (a page the browser kept in
   its back/forward cache, brought back by the Back button, joins its sessions again by itself);
   after a disconnection, Reconnect joins the same session again.
+- **Saved projects** (the link of every page, when the site has them: *Saved projects* above):
+  the projects the user saved, each with its lab, its comment, its date, its size and the groups
+  it is shared with. **Restore** starts a new project from a save, with the progress of a
+  start, and opens its page; the saved project stays as it is and can be restored again.
+  **Share…** chooses the groups whose members may restore it, among the groups of the user
+  (their department, their groups of the directory, the custom groups an instructor put them
+  in), and edits the comment: a member gets a project of their own with the answers and the
+  machines as they were saved; they cannot change nor delete the save. **Delete** removes it.
+  The saves shared by others are listed under *Shared with me*. The page says how many saved
+  projects the user keeps and may keep; at the limit, the save dialog lists them to delete one.
+  Nothing is available during an exam of the user, and the save of an exam project is never
+  made by its student.
 - **A presentation**: when an instructor presents a project to the class (*Present* below), the
   page of every chosen student is covered by that project, read-only: every tab is there but
   nothing can be done on it, and the tab shown, the terminals open (the instructor's shells, in
@@ -2330,6 +2439,15 @@ What an instructor gets:
   they join, both browsers show a private room instead of the class conference, and come back to
   it when the conversation ends (*Private conversations* above).
 
+- **Saved projects**: on the page of every user, an instructor also has *All saved projects*:
+  every save of the site with who made it and their group, a text filter (student, group, lab,
+  comment) and the free space of the directory. An instructor restores any save (as a project
+  of their own; *Restore in instructor mode* keeps the instructor texts and every state),
+  shares it with any group, and deletes it. An instructor on a student's project may save it:
+  the save is then the instructor's, the way to hand a prepared state of a lab to a class —
+  save, *Share…* with the group, and each student restores their copy. The save of an exam
+  project (an instructor's only) is never shared nor restored by a student.
+
 ### Administrators
 
 An administrator is an instructor who may read the connection log on the **History** page (the
@@ -2470,6 +2588,16 @@ once.
 
 ## Security
 
+- **The saved projects.** A save is written by `sre save` and read by `sre restore` only; no
+  file of a user ever reaches the directory, and the directory is closed to the local users of
+  the hosts. Who may see, restore, share or delete a save is decided by the portal (it knows the
+  groups) and checked again by the agent on the save as it is at that moment; what `sre restore`
+  does not check is checked first (the lab must be one the user may start: an exam-only lab
+  never comes back to a student). Root on a pool host — or in a privileged or bridged machine
+  of a lab, which can reach the file server from the host's address — can read and write every
+  save: export the volume to the pool hosts only, and keep the containers away from the file
+  server (a `DOCKER-USER` rule dropping their traffic to it). Each save carries its size and its
+  SHA-256, checked before the last piece of it is handed to `sre restore`.
 - The agent refuses every request without its bearer token
   and the identity headers the portal adds (`X-SRE-Login`, `X-SRE-Fullname`, `X-SRE-Group`, …); the browser never talks to it.
   With mutual TLS (above) only the holder of a client certificate of the CA reaches the token
@@ -2576,6 +2704,13 @@ the browser reaches a desktop through the owner check of the portal and of the a
 
 ## Limitations
 
+- The saved projects are listed by a pool host: with every host powered off, the page shows the
+  last list it had (flagged) and nothing can be restored until a host is up. A save made a
+  moment ago through another portal may be missing from the list for the two minutes a host
+  takes to see a new file of the shared volume. Old saves are never removed by themselves: the
+  limit per user and the instructors' page bound them. A restored project starts with a new
+  self-evaluation counter, as in the Qt GUI, and with the answers of the save: a member who
+  restores a shared save gets the author's answers under their own name.
 - After an update of the tree, the portal and the agents must be restarted for the Python code
   (`sre-web-tool restart --all` for the agents, see *Restarting the agents* above; the
   templates are re-read when they change); the scripts and style sheets of `web/static` are

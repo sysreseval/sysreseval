@@ -145,7 +145,10 @@ class TestEventFor:
                                                                             'webconf_attend', 'webconf_stop',
                                                                             'webconf_join', 'webconf_invite',
                                                                             'webconf_accept', 'webconf_decline',
-                                                                            'webconf_cancel', 'webconf_leave'}
+                                                                            'webconf_cancel', 'webconf_leave',
+                                                                            'save_share', 'save_delete'}
+        # the saved projects: a save names its project, a restore is a start like another
+        assert 'save' in A.PROJECT_EVENTS and A.EVENTS[('POST', '/api/saves/{owner}/{id}/restore')] == 'start'
         # the web conferences: the listings are keepalives, the page of the iframe after Leave is ignored
         assert ('GET', '/api/webconfs') in A.KEEPALIVE and ('GET', '/api/webconfs/{id}') in A.KEEPALIVE
         assert '/webconf/left' in A.IGNORED and A.EVENTS[('GET', '/api/webconfs/{id}/join')] == 'webconf_join'

@@ -834,13 +834,16 @@ class TestProject:
                 assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).status == 403
         run(go())
 
-    def test_schema_pdf_and_no_export_save_restore(self, tmp_path):
+    def test_schema_pdf_and_no_export_nor_download_of_a_save(self, tmp_path):
         async def go():
             async with Harness(tmp_path) as h:
                 rln = await h.started()
-                # save, restore and the Kathara export are not offered on the web
-                assert (await h.client.get(f'/v1/projects/{rln}/save', headers=headers())).status == 404
-                # the URL now matches the {rln} route, which has no POST: 405 (404 when no route matches at all)
+                # a save never travels to the browser nor comes from it (the saved projects stay in
+                # the shared directory of the hosts, tests/test_agent_saves.py; without [saves] the
+                # route answers 404), and the Kathara export is not offered on the web
+                assert (await h.client.get(f'/v1/projects/{rln}/save', headers=headers())).status == 405
+                assert (await h.client.post(f'/v1/projects/{rln}/save', json={}, headers=headers())).status == 404
+                # the URL matches the {rln} route, which has no POST: 405 (404 when no route matches at all)
                 assert (await h.client.post('/v1/projects/restore', data=b'x', headers=headers())).status in (404, 405)
                 assert (await h.client.get(f'/v1/projects/{rln}/export?curved=1', headers=headers())).status == 404
                 # the schema PDF: the drawing of the Schema tab, rendered by the agent itself (no sre call)

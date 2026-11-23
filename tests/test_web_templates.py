@@ -92,6 +92,7 @@ def every_page(**extra) -> list:
             page('history.html', instructor=True, administrator=True, history_database=True, events=('login',)),
             page('archives.html', instructor=True, archives_database=True),
             page('groups.html', instructor=True, groups_directory=True, groups_database=True),
+            page('saves.html', instructor=True, saves=True),
             page('exams.html', instructor=True, exams_database=True, exams_available=True,
                  exam_defaults={'lead': 10, 'pre_start': 5, 'eval_interval': 60}),
             page('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'}),
@@ -841,6 +842,76 @@ class TestTranslations:
         for msgid, msgstr in parse_po(po_of(lang)).items():
             if msgid:
                 assert translation.gettext(msgid) == msgstr, msgid
+
+
+class TestSavedProjects:
+    """The saved projects in the pages ([saves] of web.toml: the ``saves`` flag of the context):
+    their link in every page, the Save Project button of a project page, their own page."""
+
+    def test_link_of_every_user(self):
+        html = render('projects.html', saves=True)
+        assert '<a href="/saves" class="saves-link">Saved projects</a>' in html
+        # after the links of the page itself, before those of the instructors
+        html = render('watch.html', instructor=True, saves=True)
+        assert html.index('href="/open"') < html.index('class="saves-link"') < html.index('class="watch-link"')
+        # under a sub-path
+        assert 'href="/sre/saves"' in render('projects.html', saves=True, base_path='/sre')
+        # not without the saved projects (and an anonymous user never has the flag)
+        for page in (render('projects.html'), render('open.html'), render('watch.html', instructor=True),
+                     render('project.html', host='a01', rln=RLN, api_base=API_BASE)):
+            assert 'saves-link' not in page and 'save-project' not in page
+
+    def test_save_button_of_a_project(self):
+        html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, saves=True)
+        # hidden until the project says it may be saved (project.js: the lab allows it, the host has the saves)
+        assert '<button type="button" id="save-project" hidden' in html and 'Save Project' in html
+        assert html.index('id="save-project"') < html.index('id="close-project"')
+        # nothing to download: a button, never a link to a file
+        assert 'download>Save' not in html and 'href="/api/projects/a01/' + RLN + '/save"' not in html
+        # never on a presentation: a spectator saves nothing
+        shown = render('project.html', host='a01', rln=RLN, api_base=API_BASE, saves=True,
+                       presentation={'id': 'x', 'presenter': 'P'})
+        assert 'id="save-project"' not in shown
+        source = (JS / 'project.js').read_text(encoding='utf-8')
+        assert "saveButton.hidden = spectator || !project.can_save" in source
+        assert "openSaveDialog({url: ctx.url('/save')})" in source
+
+    def test_page_of_a_student(self):
+        html = render('saves.html', saves=True)
+        for element in ('saves-quota', 'saves-refresh', 'saves-notice', 'progress', 'saves-mine-box', 'saves-mine',
+                        'saves-shared-box', 'saves-shared'):
+            assert f'id="{element}"' in html, element
+        # the list of every save, its filter and the instructor-mode restore are the instructors'
+        for element in ('saves-views', 'saves-filter', 'saves-instructor-mode', 'saves-all-box', 'saves-all',
+                        'saves-space'):
+            assert f'id="{element}"' not in html, element
+        assert '<section id="saves-shared-box" hidden>' in html
+        assert 'class="grid watch saves"' in html and '/static/js/saves.js' in html
+        for key in ('lab', 'comment', 'saved_at', 'size', 'shared_with', 'owner'):
+            assert f'data-sort="{key}"' in html, key
+        assert 'href="/projects"' in html and 'href="/open"' in html
+
+    def test_page_of_an_instructor(self):
+        html = render('saves.html', saves=True, instructor=True)
+        for element in ('saves-views', 'saves-filter', 'saves-instructor-mode', 'saves-all-box', 'saves-all',
+                        'saves-count', 'saves-space'):
+            assert f'id="{element}"' in html, element
+        assert 'data-view="mine" aria-pressed="true"' in html and 'data-view="all" aria-pressed="false"' in html
+        assert '<section id="saves-all-box" hidden>' in html and 'data-sort="group"' in html
+        assert 'class="grid watch saves striped"' in html
+
+    def test_modules(self):
+        """saves.js and the save dialog share their texts and their URL with saves_model.js /
+        save_dialog.js; a restore is run like a start (creation.js)."""
+        page = (JS / 'saves.js').read_text(encoding='utf-8')
+        dialog = (JS / 'save_dialog.js').read_text(encoding='utf-8')
+        assert "from './saves_model.js'" in page and "from './saves_model.js'" in dialog
+        assert "import {saveUrl} from './save_dialog.js'" in page
+        assert 'runCreation(progress' in page and 'projectUrl(result.host, result.running_lab_name)' in page
+        assert "e.data.code === 'quota'" in dialog and "siteUrl('/saves')" in dialog
+        # the model touches no page: it runs under node
+        model = (JS / 'saves_model.js').read_text(encoding='utf-8')
+        assert 'document.' not in model and 'window.' not in model
 
 
 # ---------------------------------------------------------------------------------------------
@@ -2752,3 +2823,69 @@ class TestJavaScript:
         show = terminals[terminals.index("window.addEventListener('pageshow'"):]
         assert 'event.persisted' in show[:show.index('});')] and 'entry.session.rejoin()' in show[:show.index('});')]
         assert 'rejoin() {' in terminal and 'disconnect() {' in terminal
+
+
+
+SAVES_MODEL_RUNNER = """\
+import {formatSize, formatSpace, labLabel, groupsLabel, ownerLabel, split, matches, sortSaves,
+        quotaLabel} from './saves_model.js';
+
+const input = JSON.parse(process.argv[2]);
+const ids = (saves) => saves.map((save) => save.id);
+const parts = split(input.saves);
+process.stdout.write(JSON.stringify({
+  sizes: input.sizes.map(formatSize),
+  spaces: input.spaces.map(formatSpace),
+  labs: input.saves.map(labLabel),
+  groups: input.saves.map(groupsLabel),
+  owners: input.saves.map(ownerLabel),
+  split: {mine: ids(parts.mine), shared: ids(parts.shared), others: ids(parts.others)},
+  matches: input.filters.map((filter) => ids(input.saves.filter((save) => matches(save, filter)))),
+  sorts: input.sorts.map((sort) => ids(sortSaves(input.saves, sort))),
+  defaultSort: ids(sortSaves(input.saves)),
+  quotas: input.quotas.map(quotaLabel),
+  nothing: [ids(sortSaves(null)), split(null), matches({}, 'x'), matches({}, '')],
+}));
+"""
+
+
+class TestSavesModel:
+    """The pure helpers of saves_model.js: what the Saved projects page shows of ``GET
+    /api/saves`` (the three tables, the filter, the sorts, the sizes), run by the ``js`` runtime."""
+
+    def test_rows(self, tmp_path, js):
+        runner = js_project(tmp_path, SAVES_MODEL_RUNNER, 'saves_model.js', 'i18n.js', 'groups_model.js',
+                            'table_sort.js')
+        saves = [
+            {'id': 'a', 'owner': 'alice', 'fullname': 'Alice Martin', 'group': '1A', 'lab': 'sre/dhcp.py',
+             'lab_title': {'en': 'DHCP', 'fr': 'Le DHCP'}, 'comment': 'after part 2', 'saved_at': '2026-11-23T10:00:00+00:00',
+             'size': 2048, 'shared_with': ['department:1A', 'custom:TP lundi'], 'mine': True, 'shared_with_me': False},
+            {'id': 'b', 'owner': 'bob', 'fullname': '', 'group': '2B', 'lab': 'sre/ospf.py', 'lab_title': None,
+             'comment': '', 'saved_at': '2026-11-24T09:00:00+00:00', 'size': 5 * 1024 * 1024, 'shared_with': ['1A'],
+             'mine': False, 'shared_with_me': True},
+            {'id': 'c', 'owner': 'carol', 'fullname': 'Carol Zed', 'group': '', 'lab': 'sre/dhcp.py', 'lab_title': 'DHCP',
+             'comment': 'Routing done', 'saved_at': '2026-11-22T08:00:00+00:00', 'size': 100, 'shared_with': [],
+             'mine': False, 'shared_with_me': False},
+        ]
+        out = json.loads(js.run(tmp_path, runner, json.dumps({
+            'saves': saves,
+            'sizes': [0, 1023, 1024, 1536, 10 * 1024, 5 * 1024 * 1024, 3.5 * 1024 ** 3, 5000 * 1024 ** 3, -1, 'x', None],
+            'spaces': [850, 12595, None],
+            'filters': ['', 'DHCP', 'dhcp alice', 'tp lundi', 'zed routing', 'nobody', '  2b  '],
+            'sorts': [{'key': 'saved_at', 'asc': True}, {'key': 'size', 'asc': False}, {'key': 'lab', 'asc': True},
+                      {'key': 'owner', 'asc': True}, {'key': 'shared_with', 'asc': False}],
+            'quotas': [{'max': 5, 'used': 3}, {'max': 0, 'used': 2}, None]})))
+        assert out['sizes'] == ['0 B', '1023 B', '1.0 KB', '1.5 KB', '10 KB', '5.0 MB', '3.5 GB', '5000 GB', '', '', '0 B']
+        assert out['spaces'] == ['850 MB', '12 GB', '']
+        # the title in the language of the page (English here: no catalog), else the name of the lab
+        assert out['labs'] == ['DHCP', 'sre/ospf.py', 'DHCP']
+        assert out['groups'] == ['1A, TP lundi', '1A', '']
+        assert out['owners'] == ['Alice Martin (alice)', 'bob', 'Carol Zed (carol)']
+        assert out['split'] == {'mine': ['a'], 'shared': ['b'], 'others': ['c']}
+        assert out['matches'] == [['a', 'b', 'c'], ['a', 'c'], ['a'], ['a'], ['c'], [], ['b']]
+        # the newest first by default, and among equals
+        assert out['defaultSort'] == ['b', 'a', 'c']
+        assert out['sorts'] == [['c', 'a', 'b'], ['b', 'a', 'c'], ['a', 'c', 'b'], ['a', 'b', 'c'], ['a', 'b', 'c']]
+        assert out['quotas'] == ['3 of 5 saved projects', '2 saved project(s)', '']
+        assert out['nothing'] == [[], {'mine': [], 'shared': [], 'others': []}, False, True]
+

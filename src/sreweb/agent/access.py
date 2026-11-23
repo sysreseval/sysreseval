@@ -5,8 +5,8 @@ The ``sre`` CLI only checks, in user mode, that the project belongs to the calle
 those), and ``allow_connection``, ``allow_self_grade`` or the user-allowed states are enforced by
 the Qt GUI only.  The agent therefore checks, before spawning anything: the exact running lab
 name, its owner (an instructor is served by a privileged call, which the CLI never checks), the
-visibility of a device, the state, and the flags of the lab.
-Save and restore are not offered on the web: no endpoint, no rule.
+visibility of a device, the state, and the flags of the lab (``allow_save_restore`` for the
+saved projects: ``sre save`` checks it too, the agent says so before spawning anything).
 """
 import os
 import re
@@ -143,6 +143,12 @@ def check_state(info: dict, state: str, identity: Identity):
 def check_self_grade(info: dict):
     if not info.get('allow_self_grade', True):
         raise AccessError(403, "self-evaluation is not allowed for this lab")
+
+
+def check_save(info: dict):
+    """The lab's ``allow_save_restore`` flag (the Save Project menu of the GUI)."""
+    if not info.get('allow_save_restore', False):
+        raise AccessError(403, "this lab cannot be saved")
 
 
 def check_schema_pdf(info: dict):

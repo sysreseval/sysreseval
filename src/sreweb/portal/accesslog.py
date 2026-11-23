@@ -131,11 +131,18 @@ EVENTS = {
     ('POST', '/api/webconfs/invitations/{id}/decline'): 'webconf_decline',
     ('DELETE', '/api/webconfs/invitations/{id}'): 'webconf_cancel',
     ('POST', '/api/webconfs/{id}/leave'): 'webconf_leave',
+    # the saved projects: a project saved (``save`` = <owner>/<id>, ``lab``, ``size``, ``result``),
+    # a save restored — a ``start`` line like any new project, with ``restore`` = <owner>/<id> —,
+    # a save shared (``groups``) or commented, a save deleted
+    ('POST', '/api/projects/{host}/{rln}/save'): 'save',
+    ('POST', '/api/saves/{owner}/{id}/restore'): 'start',
+    ('PUT', '/api/saves/{owner}/{id}'): 'save_share',
+    ('DELETE', '/api/saves/{owner}/{id}'): 'save_delete',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
 PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', 'stop', 'eval', 'state',
-                            'present_start', 'present_open', 'focus_start'})
+                            'present_start', 'present_open', 'focus_start', 'save'})
 #: The polls of the browser: they keep the session alive but are not counted as requests.
 KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', '/api/watch/clients'),
                        ('GET', '/api/pool'),

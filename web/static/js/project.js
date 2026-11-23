@@ -47,6 +47,7 @@ import {createStatesTab} from './tabs/states.js';
 import {createLogTab} from './tabs/log.js';
 import {createWebconfTab} from './tabs/webconf.js';
 import {setTabHost as setWebconfTabHost} from './webconf.js';
+import {openSaveDialog} from './save_dialog.js';
 
 const TOUCH_INTERVAL = 60000;   // ms
 
@@ -80,6 +81,8 @@ const fontMinus = document.getElementById('font-minus');
 const fontPlus = document.getElementById('font-plus');
 const schemaPdfLink = document.getElementById('schema-pdf-link');
 const closeButton = document.getElementById('close-project');
+// Save Project: only on a site with the saved projects ([saves] of web.toml), never on a presentation
+const saveButton = document.getElementById('save-project');
 const closedBanner = document.getElementById('closed-banner');
 const endedBanner = document.getElementById('ended-banner');          // a spectator's page
 const leaveButton = document.getElementById('leave-presentation');    // a spectator's page, of an instructor
@@ -341,6 +344,10 @@ function applyProject(project) {
   if (schemaPdfLink) {
     schemaPdfLink.hidden = spectator || !project.export_schema_pdf;
     updateSchemaPdfLink();
+  }
+  if (saveButton) {
+    // the lab allows it and the host has the saved projects (the agent says so in the project)
+    saveButton.hidden = spectator || !project.can_save;
   }
   if (presentButton && presenter && !presenter.isPresenting()) {
     presentButton.hidden = false;
@@ -781,6 +788,9 @@ function setupControls() {
       adjustFontSize(-1);
     }
   });
+  if (saveButton) {
+    saveButton.addEventListener('click', () => openSaveDialog({url: ctx.url('/save')}));
+  }
   closeButton.addEventListener('click', async () => {
     if (!window.confirm(_('Close this project? Its machines will be stopped.'))) {
       return;

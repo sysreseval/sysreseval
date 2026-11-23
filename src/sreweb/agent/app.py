@@ -15,6 +15,7 @@ import hmac
 import json
 import logging
 import os
+import platform
 import secrets
 import shlex
 import socket
@@ -27,7 +28,7 @@ from SRE import params
 from SRE import common
 from SRE import web_updates
 from SRE.archive_summary import (error_entries, exo_grade_list, lab_elements, archive_record, archives_after,
-                                 read_archive, scan_archive_dirs)
+                                 read_archive, scan_archive_dirs, lab_name_of_rln)
 from SRE.common import TranslatedText
 from SRE.evaluation_table import build_evaluation_rows, header_labels, rows_to_json
 from SRE.form_spec import parse_form_description, chunks_to_json
@@ -45,6 +46,7 @@ from .preload import Preloader
 from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVALUATED, EVENT_EXAM
 from .results import ArchiveIndex
 from .rfb_filter import RfbInputFilter, RfbProtocolError
+from .saves import SaveStore, SaveRefused, sweep_tmp_dir
 from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv, sre_args,
                      RESULT_CREATED, RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_ERROR,
                      build_env, PHASE_PROJECT, LAB_README_KEY)
@@ -52,6 +54,7 @@ from .schedulers import Schedulers
 from .usage import UsageSampler, STATUS_CPUS, STATUS_MEM_TOTAL, STATUS_CPU_BUSY, STATUS_USAGE
 from .terminals import (TerminalSession, MAX_CLIENTS_PER_SESSION, MAX_READONLY_CLIENTS_PER_SESSION,
                         PROBE_DELAY)  # noqa: F401  (PROBE_DELAY: the tests)
+from .. import savestore
 from ..config import AgentConfig
 from ..identity import Identity, IdentityError, IDENTITY_KEY
 from ..i18n import translator
@@ -110,8 +113,10 @@ def activity_ago(text: str) -> float | None:
     return min(max(float(ago), 0.0), ACTIVITY_MAX_AGO)
 
 
-def json_error(status: int, message: str) -> web.Response:
-    return web.json_response({'error': message, 'status': status}, status=status)
+def json_error(status: int, message: str, **extra) -> web.Response:
+    """*extra*: what a program reads next to the message (the ``code`` of a refusal about a
+    saved project, the quota that was reached)."""
+    return web.json_response({'error': message, 'status': status, **extra}, status=status)
 
 
 OCCUPANCY_TTL = 5.0
@@ -237,6 +242,10 @@ class Agent:
             params.docker_socket_path if pub_dir is None else ''))
         # the drain asked on the host itself (`sre set-drain`), told to the portal in the status
         self.local_drain = LocalDrain(self.pub_dir, cfg.allow_local_drain)
+        # the saved projects: a directory shared by the pool hosts ([saves] of agent.toml)
+        self.save_tmp_dir = params.save_tmp_dir if pub_dir is None else os.path.join(self.pub_dir, 'tmp')
+        self.saves = SaveStore(cfg.saves, hostname=self.hostname, tmp_dir=self.save_tmp_dir)
+        self._save_tasks: set = set()
         self._labs_cache: tuple[float, list] | None = None
         self._labs_lock = asyncio.Lock()
         self._all_labs_cache: tuple[float, list] | None = None
@@ -288,7 +297,14 @@ class Agent:
         return sanitise(project.info, identity,
                         exam_mode=self.exam_mode() or (project.exam is not None and not privileged),
                         display_enabled=self.displays.offered(project), privileged=privileged,
-                        exam=exam_view(project.exam))
+                        exam=exam_view(project.exam), can_save=self._can_save(project, privileged))
+
+    def _can_save(self, project: Project, privileged: bool) -> bool:
+        """Whether the page of the project shows its Save button: what ``project_save`` checks
+        that does not change from one minute to the next."""
+        return bool(self.saves.enabled and self.saves.available and project.managed
+                    and project.info.get('allow_save_restore', False) and not self.exam_mode()
+                    and (project.exam is None or privileged))
 
     def _project(self, request, *, touch: bool = True) -> Project:
         """The project of the request, checked (a known running lab name the caller may access);
@@ -401,6 +417,11 @@ class Agent:
         app.router.add_get(f'{p}/projects/{{rln}}/display/ws', self.display_ws)
         app.router.add_get(f'{p}/projects/{{rln}}/log', self.log_get)
         app.router.add_post(f'{p}/projects/{{rln}}/touch', self.touch)
+        app.router.add_post(f'{p}/projects/{{rln}}/save', self.project_save)
+        app.router.add_get(f'{p}/saves', self.saves_list)
+        app.router.add_post(f'{p}/saves/{{owner}}/{{id}}/restore', self.save_restore)
+        app.router.add_put(f'{p}/saves/{{owner}}/{{id}}', self.save_update)
+        app.router.add_delete(f'{p}/saves/{{owner}}/{{id}}', self.save_delete)
         app.on_startup.append(self._on_startup)
         app.on_shutdown.append(self._on_shutdown)
         return app
@@ -410,6 +431,10 @@ class Agent:
         await self.registry.tick()
         self.registry.start()
         self.usage.start()
+        if self.saves.enabled:
+            # what a save or a restore killed with the agent left where sre writes its archives
+            sweep_tmp_dir(self.save_tmp_dir, older_than=2 * max(self.runner.timeouts.values()))
+            await self.saves.start()
 
     async def _on_shutdown(self, app):
         """SIGTERM (a stop or a restart of the unit; the listening socket is already closed):
@@ -422,6 +447,11 @@ class Agent:
         started = time.monotonic()
         await self.usage.stop()
         await self.preloader.stop()
+        # a save lasts minutes and its project stays as it is: stopped, not waited for
+        for task in list(self._save_tasks):
+            task.cancel()
+        await asyncio.gather(*self._save_tasks, return_exceptions=True)
+        await self.saves.stop()
         left = await self.runner.wait_idle(self.cfg.shutdown_timeout)
         if left:
             log.warning("stopping with %d sre command(s) still running", left)
@@ -525,7 +555,8 @@ class Agent:
                             f'{API_PREFIX}/preload/request', f'{API_PREFIX}/preload/start',
                             f'{API_PREFIX}/local-drain/cancel', f'{API_PREFIX}/local-drain/allow',
                             f'{API_PREFIX}/local-drain/forbid',
-                            f'{API_PREFIX}/archives', f'{API_PREFIX}/archives/updates'):
+                            f'{API_PREFIX}/archives', f'{API_PREFIX}/archives/updates',
+                            f'{API_PREFIX}/saves'):
             request[IDENTITY_KEY] = None   # the portal itself, no user behind it
             return await handler(request)
         try:
@@ -538,6 +569,8 @@ class Agent:
     async def error_middleware(self, request, handler):
         try:
             return await handler(request)
+        except SaveRefused as e:
+            return json_error(e.status, e.message, code=e.code, **e.extra)
         except AccessError as e:
             return json_error(e.status, e.message)
         except CommandTimeout as e:
@@ -592,6 +625,9 @@ class Agent:
             'preload': self.preloader.to_dict(),
             # the drain asked on this host (`sre set-drain`) and whether the host may ask for one
             'local_drain': self.local_drain.view(),
+            # whether the host saves and restores projects (what its last check of the shared
+            # directory found: the directory is never asked here)
+            **self.saves.status(),
         })
 
     def _exam_projects(self) -> int:
@@ -807,18 +843,7 @@ class Agent:
         args = sre_args('start', lab, options=options)
         if exam is not None:
             self._log_skew(lab, exam, skew)
-        # the virtual desktop of the project: its number and cookie go to sre start (the containers
-        # keep them), kept when the lab turns out to have an x11_host machine
-        reservation = None
-        if self.displays.ready:
-            try:
-                reservation = self.displays.reserve()
-            except DisplayError as e:
-                # a number is taken by a lock file in /tmp or a listener on 6000+N, which any local
-                # user can leave: the project starts without a desktop rather than not at all
-                self._warn_display(f"no virtual desktop for the new projects: {e}")
-            else:
-                self._display_warning = ''
+        reservation = self._reserve_display()
         try:
             return await self._stream_creation(request, identity, args, body.get('idle_timeout'),
                                                reservation=reservation,
@@ -828,6 +853,22 @@ class Agent:
             if reservation is not None:
                 self.displays.release(reservation)
 
+    def _reserve_display(self):
+        """The virtual desktop of a project being created: its number and cookie go to sre start /
+        restore (the containers keep them), kept when the lab turns out to have an x11_host
+        machine; ``None`` without desktops, or when none can be reserved."""
+        if not self.displays.ready:
+            return None
+        try:
+            reservation = self.displays.reserve()
+        except DisplayError as e:
+            # a number is taken by a lock file in /tmp or a listener on 6000+N, which any local
+            # user can leave: the project starts without a desktop rather than not at all
+            self._warn_display(f"no virtual desktop for the new projects: {e}")
+            return None
+        self._display_warning = ''
+        return reservation
+
     def _warn_display(self, message: str):
         """One warning per reason the desktops cannot be reserved (every start would repeat it);
         cleared by the next reservation that succeeds."""
@@ -836,11 +877,14 @@ class Agent:
             log.warning("%s", message)
 
     async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout, *, reservation=None,
-                               privileged: bool = False, exam: dict | None = None):
-        """``sre start`` as an NDJSON stream (privileged: ``--instructor-mode``,
+                               privileged: bool = False, exam: dict | None = None, source=None):
+        """``sre start`` / ``sre restore`` as an NDJSON stream (privileged: ``--instructor-mode``,
         ``--debug-web-project``, or an exam project, whose deploy events lose the names of the
         machines a privileged start gives: the hidden ones among them; a debug project shows
-        them to its instructor anyway)."""
+        them to its instructor anyway).  *source* (a restore: ``saves.SaveReader``): what gives
+        the save on the stdin of ``sre``, opened once the command has its turn; when it refused
+        (a damaged save), its reason is the error told rather than the one of ``sre``, which
+        only saw its input end early."""
         try:
             idle = None if idle_timeout is None else max(0.0, float(idle_timeout))
         except (TypeError, ValueError):
@@ -852,12 +896,19 @@ class Agent:
             await resp.write(json.dumps(obj).encode('utf-8') + b'\n')
 
         try:
-            run = await self.runner.stream(identity.login, args, privileged=privileged, lang=identity.language,
-                                           env=self.displays.env_for(reservation) if reservation else None)
-            async for event in run.events():
-                if exam is not None and isinstance(event, dict) and event.get('phase') == 'deploy':
-                    event.pop('machine', None)
-                await line(event)
+            try:
+                run = await self.runner.stream(identity.login, args, privileged=privileged, lang=identity.language,
+                                               env=self.displays.env_for(reservation) if reservation else None,
+                                               stdin=source.open if source is not None else None)
+                async for event in run.events():
+                    if exam is not None and isinstance(event, dict) and event.get('phase') == 'deploy':
+                        event.pop('machine', None)
+                    await line(event)
+            finally:
+                refused = await source.close() if source is not None else ''
+            if refused:
+                await line({'phase': 'result', 'status': RESULT_ERROR, 'message': refused})
+                return resp
             run.result()
         except FlavorFormNeeded as e:
             form = TranslatedText.from_value(e.form).resolve_priority([identity.language, 'en'])
@@ -939,6 +990,160 @@ class Agent:
     async def touch(self, request):
         self._project(request)
         return web.Response(status=204)
+
+    # -- saved projects -------------------------------------------------------------------------
+
+    async def _listed_labs(self, identity: Identity) -> set:
+        """The names of the labs *identity* may start: every lab for an instructor, the exam-only
+        ones included, as in ``projects_create``."""
+        labs = await (self.all_labs(identity.login) if identity.is_instructor else self.labs(identity.login))
+        return self._lab_names(labs)
+
+    async def project_save(self, request):
+        """Save the project into the shared directory, as a new saved project of the caller: its
+        owner, or an instructor (a privileged ``sre save``: the save is then the instructor's).
+        The portal gives the quota of the caller, counted here right before the save."""
+        project = self._project(request)
+        identity = request[IDENTITY_KEY]
+        body = await self._read_json(request)
+        self.saves.require()
+        if identity.anonymous:
+            raise AccessError(403, "an anonymous user cannot save a project")
+        privileged = access.is_privileged_caller(project.rln, identity)
+        if not project.managed:
+            raise AccessError(403, "this project was not started from the web site")
+        access.check_save(project.info)
+        access.check_not_exam(self.pub_dir)
+        # the owner of an exam project never saves it, during the exam or after
+        access.check_exam_action(project.exam, privileged=privileged, during=True)
+        # what restores is a lab of the list: a debug project started from a path would not
+        if lab_name_of_rln(project.rln) not in await self._listed_labs(identity):
+            raise AccessError(403, "this project cannot be saved")
+        quota = body.get('quota', 0)
+        if isinstance(quota, bool) or not isinstance(quota, int) or quota < 0:
+            raise AccessError(400, "bad quota")
+        self.saves.check_space()
+        sidecar = {
+            savestore.KEY_FULLNAME: identity.fullname, savestore.KEY_GROUP: identity.group,
+            savestore.KEY_PROJECT: project.rln, savestore.KEY_PROJECT_OWNER: project.owner,
+            savestore.KEY_COMMENT: body.get('comment') if isinstance(body.get('comment'), str) else '',
+            savestore.KEY_EXAM: project.exam is not None, savestore.KEY_INSTRUCTOR_MODE: bool(project.instructor),
+        }
+        # the save goes on when the browser leaves: what it wrote would otherwise be thrown away
+        task = asyncio.ensure_future(self._save_project(project, identity, privileged, sidecar, quota))
+        self._save_tasks.add(task)
+        task.add_done_callback(self._save_tasks.discard)
+        entry = await asyncio.shield(task)
+        return web.json_response({'ok': True, 'save': entry})
+
+    async def _save_project(self, project: Project, identity: Identity, privileged: bool, sidecar: dict,
+                            quota: int) -> dict:
+        async with self.saves.slot():
+            async with self.saves.owner_lock(identity.login):
+                if quota:
+                    count = await self.saves.count(identity.login)
+                    if count >= quota:
+                        raise SaveRefused(409, "the limit of saved projects is reached", savestore.CODE_QUOTA,
+                                          quota=quota, count=count)
+                if project.closing:
+                    raise AccessError(404, "unknown project")
+                if project.lock.locked():
+                    raise AccessError(409, "the project is busy")
+                async with project.lock:
+                    entry = await self.saves.save(
+                        self.runner, user=identity.login if privileged else project.owner, rln=project.rln,
+                        privileged=privileged, owner=identity.login, sidecar=sidecar, lang=identity.language)
+        project.touch()
+        self._acted(project, identity)
+        return entry
+
+    async def saves_list(self, request):
+        """Every saved project of the shared directory, and its free space: asked by the portal
+        itself (no user behind the call), which decides who sees what."""
+        return web.json_response(await self.saves.list())
+
+    @staticmethod
+    def _saved(request) -> tuple:
+        owner, save_id = request.match_info['owner'], request.match_info['id']
+        if not savestore.valid_owner(owner) or not savestore.valid_id(save_id):
+            raise AccessError(404, "unknown saved project")
+        return owner, save_id
+
+    @staticmethod
+    def _check_saved_owner(owner: str, identity: Identity):
+        if owner != identity.login and not identity.is_instructor:
+            raise AccessError(403, "not your saved project")
+
+    async def save_update(self, request):
+        """Who a saved project is shared with, and its comment: its owner or an instructor."""
+        identity = request[IDENTITY_KEY]
+        owner, save_id = self._saved(request)
+        self._check_saved_owner(owner, identity)
+        body = await self._read_json(request)
+        changes = {}
+        if savestore.KEY_SHARED_WITH in body:
+            shared = body[savestore.KEY_SHARED_WITH]
+            if not isinstance(shared, list) or not all(isinstance(key, str) for key in shared) \
+                    or len(shared) > savestore.MAX_SHARED_WITH:
+                raise AccessError(400, "shared_with must be a list of group keys")
+            changes[savestore.KEY_SHARED_WITH] = shared
+        if savestore.KEY_COMMENT in body:
+            if not isinstance(body[savestore.KEY_COMMENT], str):
+                raise AccessError(400, "comment must be a text")
+            changes[savestore.KEY_COMMENT] = body[savestore.KEY_COMMENT]
+        if not changes:
+            raise AccessError(400, "nothing to change")
+        entry = await self.saves.get(owner, save_id)
+        if entry[savestore.KEY_EXAM] and changes.get(savestore.KEY_SHARED_WITH):
+            raise AccessError(409, "the save of an exam project cannot be shared")
+        return web.json_response({'ok': True, 'save': await self.saves.update(owner, save_id, changes)})
+
+    async def save_delete(self, request):
+        identity = request[IDENTITY_KEY]
+        owner, save_id = self._saved(request)
+        self._check_saved_owner(owner, identity)
+        return web.json_response({'ok': True, 'save': await self.saves.delete(owner, save_id)})
+
+    async def save_restore(self, request):
+        """Restore a saved project as a new project of the caller (an NDJSON stream, like a
+        start): its owner, an instructor, or a member of a group it is shared with — the portal
+        knows the groups and names the one that lets the caller in (``via``), checked here
+        against the save as it is now.  What ``sre restore`` does not check is checked first:
+        the lab must be one the caller may start (it would bring an exam-only lab back to a
+        student), and a privileged restore (``instructor_mode``) reads the header of the save,
+        so the lab is never anything but a lab of the list."""
+        identity = request[IDENTITY_KEY]
+        owner, save_id = self._saved(request)
+        if self.restarting is not None:
+            raise AccessError(503, "the agent is restarting, please retry in a moment")
+        body = await self._read_json(request)
+        access.check_not_exam(self.pub_dir)
+        if identity.anonymous:
+            raise AccessError(403, "an anonymous user cannot restore a saved project")
+        instructor_mode = bool(body.get('instructor_mode', False))
+        if instructor_mode and not identity.is_instructor:
+            raise AccessError(403, "instructors only")
+        entry = await self.saves.get(owner, save_id)
+        if owner != identity.login and not identity.is_instructor:
+            via = body.get('via')
+            if not isinstance(via, str) or via not in entry[savestore.KEY_SHARED_WITH]:
+                raise AccessError(403, "this saved project is not shared with you")
+        if entry[savestore.KEY_EXAM] and not identity.is_instructor:
+            raise AccessError(403, "the save of an exam project is restored by instructors only")
+        if entry[savestore.KEY_ARCH] and entry[savestore.KEY_ARCH] != platform.machine():
+            raise AccessError(409, f"this project was saved on another kind of machine ({entry[savestore.KEY_ARCH]})")
+        lab = entry[savestore.KEY_LAB]
+        if not lab or lab not in await self._listed_labs(identity):
+            raise AccessError(404, f"the lab of this saved project is not available any more: {lab or '?'}")
+        args = sre_args('restore', params.save_stdio_arg, options=['--instructor-mode'] if instructor_mode else [])
+        reservation = self._reserve_display()
+        try:
+            return await self._stream_creation(request, identity, args, body.get('idle_timeout'),
+                                               reservation=reservation, privileged=instructor_mode,
+                                               source=self.saves.reader(owner, save_id))
+        finally:
+            if reservation is not None:
+                self.displays.release(reservation)
 
     async def schema(self, request):
         project = self._project(request)
