@@ -105,7 +105,8 @@ Depends: ${misc:Depends},
          python3-yarl,
          python3-jinja2
 Recommends: python3-ldap3
-Suggests: nginx | apache2 | caddy, sysreseval-agent, python3-pymysql
+Suggests: nginx | apache2 | caddy, sysreseval-agent, python3-pymysql,
+          python3-zstandard, python3-msgpack
 Description: web site of SysResEval
  The web site through which the students work on the labs from a browser: the
  projects run on a pool of hosts (sysreseval-agent), every tab of the graphical

@@ -11,7 +11,9 @@
 // time window on the evaluation time and the exam flag, and chooses what to show: the last
 // evaluation of each project (the default), the last of each student (per lab) or every one.
 // A click on a row opens the evaluation (archive_detail.js); a click on a login, group, lab or
-// host cell filters on that value.
+// host cell filters on that value.  When the portal has the archive files (data-files: `[archives]
+// directory` of web.toml), the dialog of an evaluation opens the content of its file, what
+// `sre cat` shows (archive_file.js).
 //
 // Summary (GET /api/archives/summary): the lab summary of the Watch page for the evaluations
 // found by the same filters (a lab is required; the last evaluation of each student by default):
@@ -44,6 +46,7 @@ import {renderSummaryTables} from './watch_summary.js';
 import {labKey} from './lab_key.js';
 import {createArchiveDialog, startOf} from './archive_detail.js';
 import {inExoScope} from './evaluation_rows.js';
+import {attachmentName, saveBlob} from './download.js';
 
 const FILTER_KEYS = ['student', 'group', 'lab', 'host', 'since', 'until', 'exam', 'show', 'limit'];
 const DEFAULT_LIMIT = '100';
@@ -64,7 +67,9 @@ const pageElement = document.getElementById('archives-page');
 const pager = document.querySelector('.history-pager');
 const databaseConfigured = table.dataset.database === 'true';
 const groupsEnabled = table.dataset.groups === 'true';   // a group source is configured: Group column shown
-const detail = createArchiveDialog();
+// the portal has the archive files themselves ([archives] directory of web.toml): the dialog of
+// an evaluation offers their content
+const detail = createArchiveDialog({files: table.dataset.files === 'true'});
 const selectionBar = document.getElementById('archives-selection');
 const selectAll = document.getElementById('archives-select-all');
 const selectedElement = document.getElementById('archives-selected');
@@ -215,15 +220,8 @@ function readOptions() {
 // the file name of a download when the answer carries none, per kind
 const FALLBACK_NAMES = {sheet: 'evaluations.ods', outline: 'reports.zip', summary: 'summary.ods'};
 
-// the file name of a download, from the Content-Disposition of the answer
-function attachmentName(response, fallback) {
-  const header = response.headers.get('Content-Disposition') || '';
-  const match = /filename="?([^";]+)"?/.exec(header);
-  return match ? match[1] : fallback;
-}
-
 // a report of the selected evaluations: POST /api/archives/report, the file saved by the browser
-// (an <a download> on a blob URL); the button reads "Generating…" meanwhile, an error (the
+// (download.js); the button reads "Generating…" meanwhile, an error (the
 // portal's or the agent's, relayed with its status) is a toast
 async function download(kind) {
   if (!selected.size || generating) {
@@ -240,14 +238,7 @@ async function download(kind) {
   try {
     const response = await api.fetchRaw('POST', '/api/archives/report',
                                         {json: {kind, ids: Array.from(selected), options: readOptions()}});
-    const blob = await response.blob();
-    const name = attachmentName(response, FALLBACK_NAMES[kind] || 'report');
-    const url = URL.createObjectURL(blob);
-    const link = el('a', {href: url, download: name});
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    saveBlob(await response.blob(), attachmentName(response, FALLBACK_NAMES[kind] || 'report'));
   } catch (e) {
     toast(e.message, {error: true});
   } finally {

@@ -10,7 +10,9 @@ front authenticates them), or everybody is anonymous.
 Nothing of a lab ever reaches the browser but what a student sees today: the content of
 `info.json` (resolved to the user's language, the instructor texts stripped), the outputs of the
 `sre --user` commands (the schema, the grades of a self-evaluation, the console of a machine).
-The lab files, `data.json`, the hidden machines and the archives stay on the pool hosts.
+The lab files, `data.json`, the hidden machines and the archives stay on the pool hosts (the
+archives are read by the portal itself, for the instructors alone, when the site gives it a
+directory holding them: *The archive files* below).
 
 The instructors get, on top of what a student sees (*Instructors* below):
 
@@ -216,7 +218,7 @@ merges other files into this one, as for `web.toml` below.
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: what is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained), kept across the restarts of the portal (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`; *Restarting the portal* below) |
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session); `database` (the next row) |
 | `[access_log.database]` | none | the same events in a MariaDB / MySQL table (below): `host` or `unix_socket`, `port` (`3306`), `user`, `password` (in an imported secrets file), `name` (the database), `table` (`access_log`, created when missing), `keep` (`400` days of rows kept, purged daily; `0` = forever), `queue` (`10000` rows kept in memory while the server does not answer), `connect_timeout` (`5`); needs PyMySQL (`python3-pymysql`, a *Suggests* of the Debian package: optional) |
-| `[archives]` | | the archives of the evaluations of the pool hosts in a second table of that database (*The archives of the evaluations* below; on iff `[access_log.database]` is set): `table` (`archives`, created when missing), `keep` (`0` = the rows are kept forever; else days of rows kept, purged daily), `poll_interval` (`30s` between two collections from the agents) |
+| `[archives]` | | the archives of the evaluations of the pool hosts in a second table of that database (*The archives of the evaluations* below; on iff `[access_log.database]` is set): `table` (`archives`, created when missing), `keep` (`0` = the rows are kept forever; else days of rows kept, purged daily), `poll_interval` (`30s` between two collections from the agents), `directory` (not set; the absolute path of a directory of this host holding the archive files themselves, looked up by name at any depth, for the *Archive file* view of the Archives page: *The archive files* below) |
 | `[groups]` | | the user groups of the Groups page (*User groups* below): `table` (`user_groups`: the custom groups the instructors create, in the database of `[access_log.database]`, their members in `<table>_members`; both created when missing), `directory_ttl` (`10m`: how long the people and groups read from the directory are kept), `refresh_interval` (`10s`: the least time between two reads forced by the *Refresh* button of the page; the clicks arriving during a read share it, `0` = none) |
 | `[exams]` | | the exams of the Exams page (*Exams* below; on iff `[access_log.database]` is set): the defaults of a new exam, each adjustable per exam — `lead` (`10m`: how long before the start the other projects of the students are hidden and the countdown shown), `pre_start` (`5m`: how long before the start their exam projects are started in the background), `eval_interval` (`60s`: the period of the evaluations the agents run during the exam) —, `close_after` (`1h`: how long after the end of a student's exam their exam projects are closed; `0` = never, an instructor closes them), `table` (`exams`, with `<table>_members`, both created when missing), `keep` (`0` = the past exams are kept forever; else days, purged daily); for the machines of the pool an exam lists, two more defaults per exam: `host_lead` (`10m`: how long before the start their agents write `exam.json`, which locks them) and `host_release` (`10m`: how long after the end-before time the file is removed and the exam projects of the machine closed; `0` = at the end) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
@@ -564,7 +566,9 @@ the lab, the evaluation time, the student's login, full name, group, e-mail, the
 evaluated, the exam flag and fields, the exo-eval and self-eval totals and marks, the errors and
 warnings, and every element of the grade list with its title and description as the lab wrote
 them (in every language of the lab: the browser shows the viewer's), its grade, maximum, letter,
-part and bonus flag. **The answers of the students are not sent and not stored.** The group and
+part and bonus flag. **The answers of the students are not sent and not stored** (with
+`[archives] directory` the portal reads them in the archive file itself when an instructor opens
+it, *The archive files* below: nothing of a file is ever written to the table). The group and
 the full name an archive lacks (the projects of the Qt GUI) are completed from the directory
 when the portal reads one (`attr_group`, `ldap_roles` / `ldap_groups`), as on the Watch page.
 
@@ -661,6 +665,76 @@ auto-evaluation (`eval_interval_without_exam_mode`), a few kilobytes each. The t
 personal data (names, groups, results): the account of the portal should be the only one reading
 it, and the page is open to the instructors only. Every consultation of the Archives page is an
 `archives` line of the connection log, with the filters asked.
+
+#### The archive files
+
+The table holds the results of an evaluation, not the evaluation: what the commands of the tests
+printed on each machine, what the student answered, the data generated for the lab and the files
+it saved are in the archive file alone, which `sre cat` prints on a host that has it. Give the
+portal a directory holding the archive files and the instructors read them from the Archives
+page:
+
+```toml
+[archives]
+directory = "/srv/sre-archives"
+```
+
+- **What the directory is.** Any directory of the portal host where the `*.zst` files of the
+  pool end up: a mount of the shared directory the hosts write them to (an `archive_dirs` entry
+  of `params.py`: [Installation](installation.md#4-sharing-evaluation-archives-for-sre-watch)), or a copy made by a job of the
+  site. The Archives page itself still needs `[access_log.database]`: the rows come from the
+  table, the directory only adds their files. The portal needs `python3-zstandard` and
+  `python3-msgpack` to read them (suggested by `sysreseval-web`; already in the venv of a
+  checkout) and refuses to start without them when `directory` is set.
+- **A file is found by its name, wherever it is.** A row of the table names its archive
+  (`20261122143015_<project>.zst`), never a place, and no path is stored anywhere. At each
+  request the portal looks for a file of that name under `directory`, at any depth (six levels;
+  the names starting with a dot are skipped and no symbolic link is followed, the directory
+  itself apart). The files may therefore be moved while the portal runs: the nightly rotation of
+  `scripts/misc/rotate-nfs-dirs.py`, which renames `current/` to the date of the day, a job
+  sorting them by month or by lab. Nothing is to be set nor restarted, and the layout may change.
+- **What a lookup costs.** The portal keeps one summary per directory (the smallest and the
+  greatest archive name directly inside), not one entry per file. It reads the tree once at its
+  start (one line of its log: `archive files: N archive(s) in M directories of …, read in …`),
+  then a request tries the name in the directories whose range holds it and in the 256 most
+  recently modified ones: a file written seconds ago is found without reading any directory.
+  When that fails the tree is read again (one check per directory, a listing for those whose
+  modification time changed) and the name tried again; this is what finds a renamed directory
+  or a file moved alone. After a reading that took *t* seconds the next one waits 5 *t* (two
+  minutes at most), so that rows whose files were purged cannot make the portal read a large NFS
+  tree over and over: a file asked meanwhile and not found is answered *not found so far* with
+  the delay, never *not there*, and the dialog has a **Retry** button.
+- **The rights.** The portal reads the files as `sre-web`. The evaluations write them mode 0600
+  in a directory they keep at 0700, both owned by `sre`: as they are, `sre-web` reads nothing.
+  The usual grants are an NFS export of the directory to the portal host, read-only, with
+  `all_squash,anonuid=<uid of sre>,anongid=<gid of sre>` (every access from that host is then
+  made as `sre`), or a job that copies the files and gives the copies to `sre-web`. A POSIX ACL
+  does not do: the mask of a file created 0600 is empty. A file or a directory the portal may
+  not read is reported as such, with its place, never as a file that is not there.
+- **systemd and containers.** The unit of the portal runs with `ProtectHome=yes`, which hides
+  `/home`: for a directory under it (`/home/sre-archives`), add a drop-in (`systemctl edit
+  sre-web`) with `ProtectHome=tmpfs` and `BindReadOnlyPaths=/home/sre-archives`. A portal in a
+  container needs the directory as one more read-only mount. A directory mounted after the
+  portal started is found at the next request.
+- **What the instructors see.** The dialog of an evaluation gets a button **Archive file…**
+  (*Instructors* below): the commands run on each machine with their exit code and output, the
+  answers, the data of the lab, the errors, the grades and the saved files, which can be
+  downloaded like the archive itself. This is everything `sre cat` prints, the answers of the
+  student and the data of the lab (the expected values) included: the three routes are open to
+  the instructors only, and each reading is an `archive_file` line of the connection log
+  (`archive_id`, the `archive` name, `part` = `view`, `raw` for the file downloaded or `saved`
+  for one saved `file`). A row re-evaluated with `sre re-eval --update-web` keeps the name of
+  its first archive: the file shown is that evaluation, not the re-graded results of the row.
+- **Limits.** A file of 64 MiB at most, 64 MiB once decompressed (the limit of the agents); in
+  the view an output is cut at 256 KiB and the outputs of an archive at 8 MiB (the download has
+  all of it). Two files are read at a time, in threads of their own, and a request gives up
+  after 30 s: a mount that hangs delays these requests and nothing else of the portal.
+
+`GET /api/archives/{id}/file` answers 404 when the row is unknown or its file is not in the
+directory, 409 when `directory` is not set or the portal may not read the file (or a directory
+where it may be), 503 with `retry_after` while the directory cannot be read, is being read or
+may not be read again yet, 422 for a file that is no archive and 413 above the size limits;
+`…/file/raw` is the file itself and `…/file/saved?name=` one of its saved files.
 
 ### Re-evaluated archives
 
@@ -1997,7 +2071,20 @@ What an instructor gets:
   start of the project, the table of its grade elements with the parts, the subtotals, the
   bonuses, the total and the mark, laid out by the browser from the stored elements exactly as
   the agent lays out the evaluation of a running project, then the errors and the warnings of
-  the run). The **Summary** view (the second button of the toolbar; a lab is required: without
+  the run). When the portal has the archive files (`[archives] directory`: *The archive files*
+  above), that dialog has a button **Archive file…** opening the file of the evaluation over it,
+  as `sre cat` shows it, one tab per section: **Tests** (per machine and step, each command run
+  with its exit code — a timeout is said so —, its time limit and its output; the machines are
+  folded when the archive holds more than twenty commands, *Unfold all* opens them),
+  **Answers** (who answered: login, name, group, host, the program used, the exam fields; then
+  each answer under the hash of its question, the answer of a form shown field by field: the
+  text of the questions is not in an archive), **Data** (the data generated for the lab, the
+  expected values among them), **Errors**, **Grades** and **Files** (the files the lab saved in
+  the archive, each with a *Download* button); the title is the name of the file and the line
+  under it says where it was found, its size and its date; *Download the archive* saves the
+  `.zst` file, for `sre cat`, `sre check-eval` or `sre re-eval` on one's own machine. A file that
+  is not found or cannot be read is said so in the dialog, with a *Retry* button. The
+  **Summary** view (the second button of the toolbar; a lab is required: without
   one the view lists the labs of the archives, a click on one loads its summary; the search
   starts on the last evaluation of each student) is the lab summary of the Watch page
   for the evaluations found: one block per lab matched (the lab file really run, as on the Watch
@@ -2432,6 +2519,14 @@ once.
   only (`[auth] administrators` and the administrator group tests: instructors, never
   students; every consultation is itself logged); the account of the portal needs `SELECT,
   INSERT, DELETE` on that table and nothing else.
+- With `[archives] directory` the portal reads the archive files of that directory for the
+  instructors (*The archive files* above): the answers of the students, the outputs of the
+  commands, the data of the labs with the expected values. The three routes are for the
+  instructors only and every reading is logged (`archive_file`). The file read is the one named
+  by a row of the archives table, never by the request, under a name checked to be an archive
+  name (one path component); it is opened under the directory without following a symbolic
+  link, read with a size limit, and a saved file is only ever sent as a download. The portal
+  needs read access to that directory and nothing more: give it a read-only mount.
 - A project's owner is the third field of its running lab name; the portal, the agent and, in
   user mode, the `sre` CLI itself (`params.check_project_owner`: the local GUI of a pool host
   lists and reaches the same projects as the CLI lets through) check it. An instructor (see

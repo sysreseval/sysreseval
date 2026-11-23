@@ -388,7 +388,7 @@ class TestTemplates:
         assert '<option value="project">The last evaluation of each project</option>' in html
         assert '<option value="student">The last evaluation of each student</option>' in html
         assert 'list="archives-labs"' in html and '<datalist id="archives-labs">' in html
-        assert 'class="grid watch archives" data-database="false" data-groups="false"' in html
+        assert 'class="grid watch archives" data-database="false" data-files="false" data-groups="false"' in html
         assert 'id="archives-older"' in html and 'id="archives-newer"' in html and 'id="archives-reset"' in html
         assert 'data-view="evaluations" aria-pressed="true"' in html and 'data-view="summary" aria-pressed="false"' in html
         assert '<div id="archives-summary" class="archives-summary" hidden>' in html
@@ -406,17 +406,38 @@ class TestTemplates:
                               ('timeline', True), ('remaining_time', False), ('parts', True)):
             assert f'<input type="checkbox" name="{name}"' + (' checked>' if checked else '>') in html, name
         with_db = render('archives.html', instructor=True, archives_database=True, groups=True)
-        assert 'data-database="true" data-groups="true"' in with_db and 'id="archives-notice" class="muted" hidden>' in with_db
+        assert 'data-database="true" data-files="false" data-groups="true"' in with_db
+        assert 'id="archives-notice" class="muted" hidden>' in with_db
         assert '<th>Group</th>' in with_db and '<label>Group' in with_db and 'not stored in a database' not in with_db
         assert '<div id="archives-selection" class="selection-bar">' in with_db
+        # the portal has the archive files ([archives] directory): the dialogs offer their content
+        with_files = render('archives.html', instructor=True, archives_database=True, archive_files=True)
+        assert 'data-database="true" data-files="true"' in with_files
 
     def test_archives_reports_script(self):
         """archives.js posts the selection to the report route and saves the answer as a file."""
         source = (ROOT / 'web' / 'static' / 'js' / 'archives.js').read_text(encoding='utf-8')
-        assert "api.fetchRaw('POST', '/api/archives/report'" in source and 'URL.createObjectURL(blob)' in source
+        assert "api.fetchRaw('POST', '/api/archives/report'" in source and 'saveBlob(await response.blob()' in source
         assert "no_timeline: !ticked('timeline')" in source and "no_parts: !ticked('parts')" in source
-        assert "event.target.closest('td.link, td.select')" in source and 'Content-Disposition' in source
-        assert "summary: 'summary.ods'" in source
+        assert "event.target.closest('td.link, td.select')" in source and "summary: 'summary.ods'" in source
+        saving = (ROOT / 'web' / 'static' / 'js' / 'download.js').read_text(encoding='utf-8')
+        assert 'URL.createObjectURL(blob)' in saving and 'Content-Disposition' in saving
+
+    def test_archive_file_script(self):
+        """The dialog of an archive file: opened from the dialog of an evaluation when the page
+        says the portal has the files, it reads the file of the row and downloads through the
+        API helper (an error is then shown in the dialog, not a page of JSON)."""
+        page = (ROOT / 'web' / 'static' / 'js' / 'archives.js').read_text(encoding='utf-8')
+        assert "createArchiveDialog({files: table.dataset.files === 'true'})" in page
+        detail = (ROOT / 'web' / 'static' / 'js' / 'archive_detail.js').read_text(encoding='utf-8')
+        assert "createArchiveDialog({files = false} = {})" in detail and "_('Archive file…')" in detail
+        assert 'fileDialog ? el(' in detail      # no button without the files
+        dialog = (ROOT / 'web' / 'static' / 'js' / 'archive_file.js').read_text(encoding='utf-8')
+        assert "`/api/archives/${encodeURIComponent(row.id)}/file${suffix || ''}`" in dialog
+        assert "fileUrl(row, '/raw')" in dialog and "api.withQuery(fileUrl(c.row, '/saved'), {name: file.name})" in dialog
+        assert "api.fetchRaw('GET', url)" in dialog and 'saveBlob(await response.blob(), name, c.dialog)' in dialog
+        for tab in ('tests', 'answers', 'data', 'errors', 'grades', 'files'):
+            assert f"'{tab}'" in dialog, tab
 
     def test_history_page(self):
         events = ('denied', 'login', 'start')
@@ -1228,6 +1249,50 @@ class TestLabKey:
                 {'lab': 's3/r306/dns1.py'}, {'canonical_lab': ''}, {}, None]
         assert json.loads(js.run(tmp_path, runner, json.dumps(rows))) == \
             ['sre@dns1.py', 's3@r306@dns1.py', 'sre/dns1.py', 's3/r306/dns1.py', '', '', '']
+
+
+ARCHIVE_FILE_VIEW_RUNNER = """\
+import {answerText, codeKind, commandCount, formatSize, pretty, splitAnswers, testGroups} from './archive_file_view.js';
+
+const input = JSON.parse(process.argv[2]);
+process.stdout.write(JSON.stringify({
+  kinds: input.codes.map(codeKind),
+  sizes: input.sizes.map(formatSize),
+  groups: testGroups(input.tests).map((g) => [g.machine, g.step, g.commands.length, g.failed]),
+  count: commandCount(input.tests),
+  nothing: [testGroups(null), commandCount(undefined), splitAnswers(null), pretty(undefined)],
+  split: splitAnswers(input.answers),
+  texts: input.values.map(answerText),
+}));
+"""
+
+
+class TestArchiveFileView:
+    """archive_file_view.js: what the dialog of an archive file shows of the sections the portal
+    answers (the fields of ``sre cat``), computed without the page; run by the ``js`` runtime."""
+
+    def test_sections(self, tmp_path, js):
+        runner = js_project(tmp_path, ARCHIVE_FILE_VIEW_RUNNER, 'archive_file_view.js')
+        tests = [{'machine': 'pc1', 'step': 1, 'commands': [{'command': 'true', 'code': 0}]},
+                 {'machine': 'r1', 'step': 2, 'commands': [{'command': 'a', 'code': 0}, {'command': 'b', 'code': 3},
+                                                           {'command': 'c', 'code': -1}]},
+                 {'machine': 7, 'step': 1}]
+        answers = {'cfc14058': '{"vlan": 10, "trunk": true}', 'hostname': 'a12', 'e8773696': 'a text\nof two lines',
+                   'login': 'bob', 'exam_duration': 3600, 'client': 'web', 'odd': '{not json'}
+        out = json.loads(js.run(tmp_path, runner, json.dumps({
+            'codes': [0, 1, 255, -1, -2, None, '0'], 'sizes': [0, 512, 1024, 14000, 2400000, -1, 'x'],
+            'tests': tests, 'answers': answers, 'values': ['plain', ' [1, 2] ', {'a': 1}, None, 12]})))
+        assert out['kinds'] == ['ok', 'error', 'error', 'timeout', 'unknown', 'unknown', 'unknown']
+        assert out['sizes'] == ['0 B', '512 B', '1 KB', '14 KB', '2.3 MB', '', '']
+        assert out['groups'] == [['pc1', 1, 1, 0], ['r1', 2, 3, 2], ['7', 1, 0, 0]] and out['count'] == 4
+        assert out['nothing'] == [[], 0, {'metadata': [], 'answers': []}, 'null']
+        # the metadata present in the order of the dialog, then the answers in the order of the
+        # file: the answer of a form indented, a text as typed, a broken one as it is
+        assert out['split']['metadata'] == [['login', 'bob'], ['hostname', 'a12'], ['client', 'web'],
+                                            ['exam_duration', '3600']]
+        assert out['split']['answers'] == [['cfc14058', '{\n  "vlan": 10,\n  "trunk": true\n}'],
+                                           ['e8773696', 'a text\nof two lines'], ['odd', '{not json']]
+        assert out['texts'] == ['plain', '[\n  1,\n  2\n]', '{\n  "a": 1\n}', 'null', '12']
 
 
 LAB_COSTS_RUNNER = """\

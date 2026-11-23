@@ -23,6 +23,7 @@ from .accessstats import statistics_window, statistics_query, compute_statistics
 from .archives import (ArchiveStore, parse_archive_filters, SHOW_STUDENT, MAX_SUMMARY_ROWS, parse_report_request,
                        record_of_row, report_body, REPORT_EXPAND_OPTION, REPORT_LIGHT_KINDS, REPORT_MAX_BODY,
                        REPORT_MAX_LIGHT_ROWS, REPORT_MAX_ROWS)
+from .archivefiles import ArchiveFileStore, ArchiveFileError, attachment, MAX_SAVED_NAME
 from .auth_ldap import LdapAuthenticator, LdapError
 from .groups import (Memberships, GroupError, KINDS, KIND_CUSTOM, MAX_BATCH, MAX_DESCRIPTION, check_group_name,
                      group_dict, group_key, parse_group_key, sort_key as group_sort_key)
@@ -142,7 +143,8 @@ class Routes:
                  presentations: Presentations | None = None, roles=None, focuses: Focuses | None = None,
                  archives: ArchiveStore | None = None, memberships: Memberships | None = None,
                  exams: Exams | None = None, exam_projects: ExamProjects | None = None,
-                 exam_hosts: ExamHosts | None = None, webconfs: Webconfs | None = None):
+                 exam_hosts: ExamHosts | None = None, webconfs: Webconfs | None = None,
+                 archive_files: ArchiveFileStore | None = None):
         self.cfg = cfg
         self.csp, self.csp_framed = security_policies(cfg)
         self.pool = pool
@@ -151,6 +153,7 @@ class Routes:
         self.relay = relay
         self.access = access
         self.archives = archives     # the evaluation archives in the database (None without one)
+        self.archive_files = archive_files      # the archive files themselves ([archives] directory; None: not set)
         # the user groups (groups.Memberships: the directory and the custom groups, either may be missing)
         self.memberships = memberships if memberships is not None else Memberships()
         self.presentations = presentations if presentations is not None else Presentations(Presence())
@@ -213,6 +216,9 @@ class Routes:
         r.add_get('/api/archives/options', self.api_archives_options)
         r.add_post('/api/archives/report', self.api_archives_report)
         r.add_get('/api/archives/{id}', self.api_archive)
+        r.add_get('/api/archives/{id}/file', self.api_archive_file)
+        r.add_get('/api/archives/{id}/file/raw', self.api_archive_file_raw)
+        r.add_get('/api/archives/{id}/file/saved', self.api_archive_file_saved)
         # the user groups (the fixed paths before the parametrised ones)
         r.add_get('/api/groups', self.api_groups)
         r.add_post('/api/groups', self.api_group_create)
@@ -572,7 +578,8 @@ class Routes:
         if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
             raise web.HTTPForbidden(text="instructors only")
         return aiohttp_jinja2.render_template('archives.html', request, self._page_context(
-            request, archives_database=self.archives is not None))
+            request, archives_database=self.archives is not None,
+            archive_files=self.archives is not None and self.archive_files is not None))
 
     async def groups_page(self, request):
         """Instructors: the user groups (the departments and the groups of the directory, the
@@ -1058,6 +1065,75 @@ class Routes:
         if row is None:
             return json_error(404, "unknown archive")
         return web.json_response(row)
+
+    # the archive files themselves ([archives] directory of web.toml: archivefiles.py)
+
+    async def _archive_row(self, request, part: str) -> tuple:
+        """``(the archive files, the row)`` for a request of an instructor about the file of one
+        row of the archives table: the file name is the row's, never the request's.  409
+        without database or directory, 404 for an unknown row; the fields of the
+        ``archive_file`` line of the log (``archive_id``, ``part``, ``archive``)."""
+        self._require_instructor(request)
+        reader = self._archives_reader()
+        if self.archive_files is None:
+            raise PoolError(409, "the archive files are not available ([archives] directory of web.toml)")
+        row_id = request.match_info['id']
+        if not (row_id.isascii() and row_id.isdigit()):
+            raise PoolError(404, "unknown archive")
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(archive_id=int(row_id), part=part)
+        try:
+            row = await reader.get(int(row_id))
+        except HistoryError as e:
+            log.warning("archives database: a query failed: %s", e)
+            raise PoolError(503, "the database of the archives does not answer") from None
+        if row is None:
+            raise PoolError(404, "unknown archive")
+        if logged is not None:
+            logged['archive'] = row['archive']
+        return self.archive_files, row
+
+    async def api_archive_file(self, request):
+        """Instructors: the content of the archive file of one row, as ``sre cat`` shows it (the
+        data of the lab, the commands run and their outputs, the errors, the answers, the
+        grades, the names of the saved files), with where the file was found; an
+        ``archive_file`` line of the log.  The file is looked up by its name in ``[archives]
+        directory`` at each request: 404 when it is not there, 409 when the portal may not read
+        it, 503 while the directory cannot be read."""
+        files, row = await self._archive_row(request, 'view')
+        try:
+            view = await files.view(row['archive'], row.get('rln') or '')
+        except ArchiveFileError as e:
+            raise PoolError(e.status, e.message, e.retry_after) from None
+        return web.json_response({'id': row['id'], **view})
+
+    async def api_archive_file_raw(self, request):
+        """Instructors: the archive file of one row itself (``part=raw`` in the log)."""
+        files, row = await self._archive_row(request, 'raw')
+        try:
+            body = await files.raw(row['archive'])
+        except ArchiveFileError as e:
+            raise PoolError(e.status, e.message, e.retry_after) from None
+        return web.Response(body=body, content_type='application/zstd',
+                            headers={'Content-Disposition': attachment(row['archive'])})
+
+    async def api_archive_file_saved(self, request):
+        """Instructors: one of the files saved in the archive of a row (``?name=``; ``part=saved``
+        and ``file`` in the log): what ``sre cat --extract-files`` writes."""
+        files, row = await self._archive_row(request, 'saved')
+        name = request.query.get('name', '')
+        if not name or len(name) > MAX_SAVED_NAME:
+            return json_error(400, "the name of a saved file is expected")
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged['file'] = name
+        try:
+            body = await files.saved(row['archive'], name)
+        except ArchiveFileError as e:
+            raise PoolError(e.status, e.message, e.retry_after) from None
+        return web.Response(body=body, content_type='application/octet-stream',
+                            headers={'Content-Disposition': attachment(name)})
 
     async def api_archives_options(self, request):
         """Instructors: the labs and student groups the table knows (the suggestions of the

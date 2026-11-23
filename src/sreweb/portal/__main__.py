@@ -55,6 +55,11 @@ def main(argv=None) -> int:
     logger.info("connection log: %s", portal.access.describe())
     if portal.archives is not None:
         logger.info("evaluation archives: %s", portal.archives.describe())
+    if portal.archive_files is not None:
+        logger.info("archive files: %s", portal.archive_files.describe())
+    elif cfg.archives.directory:
+        logger.warning("archive files: [archives] directory is ignored without [access_log.database] "
+                       "(the Archives page reads the database)")
     logger.info("user groups: %s", portal.describe_groups())
     logger.info("exams: %s", portal.exams.describe())
     logger.info("webconf: %s", portal.webconfs.describe())

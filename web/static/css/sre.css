@@ -439,6 +439,32 @@ dialog.watch-detail, dialog.archive-detail { width: 760px; overflow: auto; }
 dialog.watch-summary { width: 95vw; overflow: auto; }
 dialog.watch-detail h2, dialog.watch-summary h2, dialog.archive-detail h2 { margin: 0 0 6px; font-size: 1.2em; }
 dialog.watch-detail table.grid.evaluation, dialog.archive-detail table.grid.evaluation { margin: 8px 0; width: 100%; }
+/* the content of an archive file (archive_file.js): the tabs over one scrolling pane */
+dialog.archive-file { width: 1100px; height: 90vh; display: flex; flex-direction: column; }
+dialog.archive-file:not([open]) { display: none; }
+dialog.archive-file h2 { margin: 0 0 6px; font-size: 1.2em; overflow-wrap: anywhere; }
+dialog.archive-file .tabbar { padding: 4px 0 0; background: none; }
+.archive-file-pane { flex: 1; min-height: 120px; overflow: auto; padding: 8px 2px; }
+.archive-file-warning { margin: 4px 0; padding: 4px 8px; background: var(--fail-bg); }
+.archive-file-status { margin: 6px 0 0; }
+.archive-file-tools { margin-bottom: 6px; }
+.archive-file-pane pre { margin: 0; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.archive-tests { margin-bottom: 6px; border: 1px solid var(--border-light); border-radius: 4px; }
+.archive-tests > summary { padding: 4px 8px; background: var(--bar-bg); cursor: pointer; }
+.archive-command { padding: 6px 8px; border-top: 1px solid var(--border-light); }
+.archive-command-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 4px; }
+.archive-command-line code { flex: 1 1 320px; font-family: var(--mono); font-size: 12px; font-weight: bold; overflow-wrap: anywhere; }
+.archive-code { padding: 0 6px; border-radius: 3px; font-size: 12px; white-space: nowrap; }
+.archive-code.ok { background: var(--ok-bg); }
+.archive-code.error, .archive-code.timeout, .archive-code.unknown { background: var(--fail-bg); }
+.archive-output { max-height: 320px; overflow: auto; padding: 6px; background: #f4f4f4; border: 1px solid var(--border-light); }
+.archive-no-output { margin: 0; font-size: 12px; }
+/* the key column narrow, a long hash cut (whole in its title): the room goes to the values */
+table.archive-answers { width: 100%; margin-bottom: 8px; table-layout: fixed; }
+table.archive-answers thead th:first-child { width: 240px; }
+table.archive-answers th[scope="row"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                                        font-family: var(--mono); font-size: 12px; font-weight: normal; text-align: left; vertical-align: top; }
+table.archive-saved td.number { text-align: right; white-space: nowrap; }
 .evaluation-errors { margin: 4px 0; padding-left: 20px; }
 .evaluation-errors li.error { color: var(--danger); }
 .evaluation-errors li.warning { color: var(--muted); }

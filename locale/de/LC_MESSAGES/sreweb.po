@@ -2648,3 +2648,105 @@ msgid ""
 msgstr ""
 "Sie legen die Prüfung am Arbeitsplatz {host} in einem eigenen Fenster ab: "
 "hier ist kein Projekt verfügbar, bis sie dort endet."
+
+msgid "Archive file…"
+msgstr "Archivdatei…"
+
+msgid "Archive file"
+msgstr "Archivdatei"
+
+msgid "Download the archive"
+msgstr "Archiv herunterladen"
+
+msgid "Tests ({count})"
+msgstr "Tests ({count})"
+
+msgid "Answers"
+msgstr "Antworten"
+
+msgid "Data"
+msgstr "Daten"
+
+msgid "Errors ({count})"
+msgstr "Fehler ({count})"
+
+msgid "Grades"
+msgstr "Punkte"
+
+msgid "Files ({count})"
+msgstr "Dateien ({count})"
+
+msgid "(at the root of the archives directory)"
+msgstr "(im Wurzelverzeichnis der Archive)"
+
+msgid "This file is not of the project of the row: another file of the same name was found."
+msgstr "Diese Datei gehört nicht zum Projekt der Zeile: eine andere Datei mit demselben Namen wurde gefunden."
+
+msgid "timeout"
+msgstr "Zeitüberschreitung"
+
+msgid "no exit code"
+msgstr "kein Rückgabewert"
+
+msgid "exit {code}"
+msgstr "Rückgabewert {code}"
+
+msgid "No command was run."
+msgstr "Es wurde kein Befehl ausgeführt."
+
+msgid "{count} command(s), {failed} with a non-zero exit code"
+msgstr "{count} Befehl(e), davon {failed} mit Rückgabewert ungleich null"
+
+msgid "{count} command(s)"
+msgstr "{count} Befehl(e)"
+
+msgid "step {step}"
+msgstr "Schritt {step}"
+
+msgid "timeout {seconds} s"
+msgstr "Zeitlimit {seconds} s"
+
+msgid "(no output)"
+msgstr "(keine Ausgabe)"
+
+msgid "Output cut: {shown} of {length} characters shown (download the archive for all of it)."
+msgstr "Ausgabe gekürzt: {shown} von {length} Zeichen angezeigt (das Archiv herunterladen, um alles zu sehen)."
+
+msgid "Fold all"
+msgstr "Alle einklappen"
+
+msgid "Unfold all"
+msgstr "Alle ausklappen"
+
+msgid "Field"
+msgstr "Feld"
+
+msgid "Value"
+msgstr "Wert"
+
+msgid "The answers are stored under the hash of their question: the text of the questions is not in an archive."
+msgstr "Die Antworten sind unter dem Hash ihrer Frage gespeichert: der Text der Fragen steht nicht in einem Archiv."
+
+msgid "Question (hash)"
+msgstr "Frage (Hash)"
+
+msgid "Answer"
+msgstr "Antwort"
+
+msgid "No answer in this archive."
+msgstr "Keine Antwort in diesem Archiv."
+
+msgid "No error nor warning."
+msgstr "Weder Fehler noch Warnung."
+
+msgid "No file was saved in this archive."
+msgstr "In diesem Archiv wurde keine Datei gespeichert."
+
+msgid "Download"
+msgstr "Herunterladen"
+
+msgid "File"
+msgstr "Datei"
+
+msgid "Size"
+msgstr "Größe"

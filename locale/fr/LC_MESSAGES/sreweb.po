@@ -2462,3 +2462,105 @@ msgstr "vous le passez sur le poste {host} : vos autres projets sont masqués ju
 
 msgid "You take the exam on the workstation {host}, in its own window: no project is available here until it ends there."
 msgstr "Vous passez l'examen sur le poste {host}, dans sa propre fenêtre : aucun projet n'est disponible ici jusqu'à ce qu'il s'y termine."
+
+msgid "Archive file…"
+msgstr "Fichier d'archive…"
+
+msgid "Archive file"
+msgstr "Fichier d'archive"
+
+msgid "Download the archive"
+msgstr "Télécharger l'archive"
+
+msgid "Tests ({count})"
+msgstr "Tests ({count})"
+
+msgid "Answers"
+msgstr "Réponses"
+
+msgid "Data"
+msgstr "Données"
+
+msgid "Errors ({count})"
+msgstr "Erreurs ({count})"
+
+msgid "Grades"
+msgstr "Notes"
+
+msgid "Files ({count})"
+msgstr "Fichiers ({count})"
+
+msgid "(at the root of the archives directory)"
+msgstr "(à la racine du répertoire des archives)"
+
+msgid "This file is not of the project of the row: another file of the same name was found."
+msgstr "Ce fichier n'est pas celui du projet de la ligne : un autre fichier du même nom a été trouvé."
+
+msgid "timeout"
+msgstr "délai dépassé"
+
+msgid "no exit code"
+msgstr "pas de code de retour"
+
+msgid "exit {code}"
+msgstr "code {code}"
+
+msgid "No command was run."
+msgstr "Aucune commande n'a été exécutée."
+
+msgid "{count} command(s), {failed} with a non-zero exit code"
+msgstr "{count} commande(s), dont {failed} avec un code de retour non nul"
+
+msgid "{count} command(s)"
+msgstr "{count} commande(s)"
+
+msgid "step {step}"
+msgstr "étape {step}"
+
+msgid "timeout {seconds} s"
+msgstr "délai {seconds} s"
+
+msgid "(no output)"
+msgstr "(aucune sortie)"
+
+msgid "Output cut: {shown} of {length} characters shown (download the archive for all of it)."
+msgstr "Sortie tronquée : {shown} caractères affichés sur {length} (téléchargez l'archive pour la totalité)."
+
+msgid "Fold all"
+msgstr "Tout replier"
+
+msgid "Unfold all"
+msgstr "Tout déplier"
+
+msgid "Field"
+msgstr "Champ"
+
+msgid "Value"
+msgstr "Valeur"
+
+msgid "The answers are stored under the hash of their question: the text of the questions is not in an archive."
+msgstr "Les réponses sont enregistrées sous le hachage de leur question : le texte des questions n'est pas dans une archive."
+
+msgid "Question (hash)"
+msgstr "Question (hachage)"
+
+msgid "Answer"
+msgstr "Réponse"
+
+msgid "No answer in this archive."
+msgstr "Aucune réponse dans cette archive."
+
+msgid "No error nor warning."
+msgstr "Ni erreur ni avertissement."
+
+msgid "No file was saved in this archive."
+msgstr "Aucun fichier n'a été enregistré dans cette archive."
+
+msgid "Download"
+msgstr "Télécharger"
+
+msgid "File"
+msgstr "Fichier"
+
+msgid "Size"
+msgstr "Taille"

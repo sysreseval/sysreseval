@@ -86,6 +86,12 @@ EVENTS = {
     ('GET', '/api/archives/summary'): 'archives',
     ('GET', '/api/archives/{id}'): 'archives',
     ('POST', '/api/archives/report'): 'report',
+    # ... and an archive file read (``[archives] directory``: the answers of a student, the
+    # outputs of the commands, the data of the lab): ``archive_id``, the ``archive`` name,
+    # ``part`` = view / raw (the file downloaded) / saved (one saved ``file`` downloaded)
+    ('GET', '/api/archives/{id}/file'): 'archive_file',
+    ('GET', '/api/archives/{id}/file/raw'): 'archive_file',
+    ('GET', '/api/archives/{id}/file/saved'): 'archive_file',
     # the Groups page: the listings, and every change of a custom group (``action`` = create /
     # update / delete / add / remove, ``group``, ``member`` / ``count`` / ``source`` / ``new_name``)
     ('GET', '/api/groups'): 'groups',

@@ -1362,9 +1362,115 @@ class TestArchives:
                 assert page.status == 200 and 'prof True False True' in await page.text()   # no database; a group source
                 assert (await h.client.get('/api/archives')).status == 401
                 assert (await h.client.get('/api/archives', headers=bob)).status == 403
-                for path in ('/api/archives', '/api/archives/summary?lab=x', '/api/archives/options', '/api/archives/3'):
+                for path in ('/api/archives', '/api/archives/summary?lab=x', '/api/archives/options', '/api/archives/3',
+                             '/api/archives/3/file', '/api/archives/3/file/raw', '/api/archives/3/file/saved?name=x'):
                     resp = await h.client.get(path, headers=prof)
                     assert resp.status == 409 and 'access_log.database' in (await resp.json())['error'], path
+        run(go())
+
+    def test_archive_files(self, tmp_path):
+        """``[archives] directory``: the content of the archive file of a row for the instructors
+        (what ``sre cat`` shows), the file looked up by its name wherever it was moved since, the
+        file itself and a saved file downloaded; the ``archive_file`` lines of the log."""
+        import msgpack
+        import zstandard
+        from test_web_accessdb import FakeServer, Down
+        from SRE.archive_summary import archive_record, read_archive
+        from sreweb.portal.archives import COLUMNS, row_of_record
+        server = FakeServer(table_exists=True)
+        pub = tmp_path / 'pub'              # the fake sre writes its archives in pub/archives: one level down
+        over = {**PROXY_OVER, 'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB},
+                'archives': {'poll_interval': '1h', 'directory': str(pub)}}
+        full = ['id', *COLUMNS]
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
+                assert h.portal.archive_files is not None and h.portal.routes.archive_files is h.portal.archive_files
+                prof, bob = who('prof', 'Prof Essor', groups=TEACHERS), who('bob', 'Bob Test', group='INFO2')
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**bob, **CSRF})
+                rln = [json.loads(l) for l in (await resp.text()).splitlines()][-1]['running_lab_name']
+                assert (await h.client.post(f'/api/projects/a01/{rln}/eval', headers={**bob, **CSRF})).status == 200
+                path = next((pub / 'archives').glob('*.zst'))
+                raw = read_archive(str(path))
+                row = row_of_record('a01', archive_record(raw, str(path)))
+                assert row[2] == path.name and row[3] == rln
+                server.select_names, server.select_rows = full, [(5, *row)]
+                # the content of the file, found one level down
+                resp = await h.client.get('/api/archives/5/file', headers=prof)
+                view = await resp.json()
+                assert resp.status == 200 and (view['id'], view['archive'], view['directory']) == (5, path.name, 'archives')
+                assert view['size'] == path.stat().st_size and view['mismatch'] is False
+                assert view['tests'][0]['machine'] == 'm1' and view['tests'][0]['commands'][0]['command'] == 'cat /etc/hostname'
+                assert view['answers']['login'] == 'bob' and view['grades']['running_lab_name'] == rln
+                assert view['grades']['grade_list'][0]['title'] and view['files'] == [] and 'data' in view
+                # the file itself
+                resp = await h.client.get('/api/archives/5/file/raw', headers=prof)
+                assert resp.status == 200 and await resp.read() == path.read_bytes()
+                assert resp.content_type == 'application/zstd'
+                assert resp.headers['Content-Disposition'].startswith(f'attachment; filename="{path.name}"')
+                # moved by the site while the portal runs (a rotation): found again by its name
+                moved = pub / 'archives' / '2026-11-22' / 'pool1' / path.name
+                moved.parent.mkdir(parents=True)
+                path.rename(moved)
+                view = await (await h.client.get('/api/archives/5/file', headers=prof)).json()
+                assert view['directory'] == 'archives/2026-11-22/pool1' and view['answers']['login'] == 'bob'
+                # the row of another project under that name (a file of the same name written by
+                # something else): said so
+                server.select_rows = [(5, *row[:3], 'another@@@lab@@@eve', *row[4:])]
+                assert (await (await h.client.get('/api/archives/5/file', headers=prof)).json())['mismatch'] is True
+                # an archive with saved files, in a directory of its own
+                saved_name = '20261122150000_' + rln + '.zst'
+                packed = msgpack.packb({**raw, 'files': {'capture é.pcap': b'\xd4\xc3\x00\xff', 'notes.txt': b'hi\n'}},
+                                       use_bin_type=True)
+                (pub / 'elsewhere').mkdir()
+                (pub / 'elsewhere' / saved_name).write_bytes(zstandard.ZstdCompressor().compress(packed))
+                server.select_rows = [(6, *row[:2], saved_name, *row[3:])]
+                view = await (await h.client.get('/api/archives/6/file', headers=prof)).json()
+                assert view['directory'] == 'elsewhere'
+                assert view['files'] == [{'name': 'capture é.pcap', 'size': 4}, {'name': 'notes.txt', 'size': 3}]
+                resp = await h.client.get('/api/archives/6/file/saved', params={'name': 'capture é.pcap'}, headers=prof)
+                assert resp.status == 200 and await resp.read() == b'\xd4\xc3\x00\xff'
+                assert resp.content_type == 'application/octet-stream'
+                assert resp.headers['Content-Disposition'] == \
+                    "attachment; filename=\"capture__.pcap\"; filename*=UTF-8''capture%20%C3%A9.pcap"
+                resp = await h.client.get('/api/archives/6/file/saved?name=nothing', headers=prof)
+                assert resp.status == 404 and (await resp.json())['error'] == "no such file in the archive"
+                assert (await h.client.get('/api/archives/6/file/saved', headers=prof)).status == 400
+                assert (await h.client.get('/api/archives/6/file/saved?name=' + 'x' * 300, headers=prof)).status == 400
+                # the guards: instructors only, a row of the table only
+                for path_ in ('/api/archives/6/file', '/api/archives/6/file/raw', '/api/archives/6/file/saved?name=notes.txt'):
+                    assert (await h.client.get(path_)).status == 401, path_
+                    assert (await h.client.get(path_, headers=bob)).status == 403, path_
+                for bad in ('x', '²', '-1', '6.0'):
+                    assert (await h.client.get(f'/api/archives/{bad}/file', headers=prof)).status == 404, bad
+                server.select_rows = []
+                resp = await h.client.get('/api/archives/7/file', headers=prof)
+                assert resp.status == 404 and (await resp.json())['error'] == "unknown archive"
+                # a row whose file is not in the directory (purged, or never copied there)
+                server.select_rows = [(8, *row[:2], '20200101000000_gone@@@lab@@@bob.zst', *row[3:])]
+                resp = await h.client.get('/api/archives/8/file', headers=prof)
+                assert resp.status == 404 and (await resp.json())['error'] == "the archive file is not in the archives directory"
+                resp = await h.client.get('/api/archives/8/file/raw', headers=prof)
+                assert resp.status == 404
+                # a name that is no archive name never reaches the directory
+                server.select_rows = [(9, *row[:2], '../../etc/passwd', *row[3:])]
+                resp = await h.client.get('/api/archives/9/file/raw', headers=prof)
+                assert resp.status == 404 and 'not the name of an archive' in (await resp.json())['error']
+                server.down = True
+                resp = await h.client.get('/api/archives/5/file', headers=prof)
+                assert resp.status == 503 and 'does not answer' in (await resp.json())['error']
+                server.down = False
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            files = [l for l in lines if l['event'] == 'archive_file']
+            first = files[0]
+            assert (first['login'], first['archive_id'], first['part'], first['archive'], first['status']) == \
+                ('prof', '5', 'view', path.name, '200')
+            assert any(l['part'] == 'raw' and l['status'] == '200' for l in files)
+            saved = next(l for l in files if l['part'] == 'saved' and l['status'] == '200')
+            assert (saved['archive_id'], saved['archive'], saved['file']) == ('6', saved_name, 'capture é.pcap')
+            assert any(l['login'] == 'bob' and l['status'] == '403' for l in files)
+            assert any(l.get('archive') == '../../etc/passwd' and l['status'] == '404' for l in files)
+            assert not any(l['path'].startswith('/api/archives') for l in lines if l['event'] == 'denied')
         run(go())
 
     def test_collected_from_the_agent_and_queried(self, tmp_path):
@@ -1425,6 +1531,10 @@ class TestArchives:
                 server.select_rows = []
                 assert (await h.client.get('/api/archives/6', headers=prof)).status == 404
                 server.select_rows = [(5, *rows[0])]
+                # the archive files themselves: [archives] directory is not set here
+                assert h.portal.archive_files is None
+                resp = await h.client.get('/api/archives/5/file', headers=prof)
+                assert resp.status == 409 and '[archives] directory' in (await resp.json())['error']
                 routes = h.portal.routes                                       # the two report slots busy: 503
                 routes.heavy_wait = 0.2
                 await routes._heavy.acquire()

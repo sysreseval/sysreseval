@@ -19,6 +19,7 @@ from .accesslog import AccessLog
 from .basepath import strip_base
 from .defaults import costs_file_beside
 from .archives import ArchiveStore
+from .archivefiles import ArchiveFileStore
 from .auth_ldap import LdapRoleResolver
 from .auth_proxy import identity_from_headers
 from .groups import DirectoryCache, DirectoryListing, GroupStore, Memberships
@@ -80,6 +81,11 @@ class Portal:
         self.archives: ArchiveStore | None = None       # the evaluation archives ([archives], same database)
         if connect is not None and cfg.access_log.database.enabled:
             self.archives = ArchiveStore(cfg.access_log.database, cfg.archives, connect=connect[0], transient=connect[1])
+        # the archive files themselves ([archives] directory), for the rows of that table: a
+        # ConfigError without the two libraries that read them, like the database driver
+        self.archive_files: ArchiveFileStore | None = None
+        if cfg.archives.directory and self.archives is not None:
+            self.archive_files = ArchiveFileStore(cfg.archives.directory)
         self._administrators = set(cfg.auth.administrators)    # [auth] administrators: logins (instructors only)
         self.roles: RoleCache | None = None
         if cfg.directory_lookups:
@@ -144,7 +150,8 @@ class Portal:
         self.pool.exam_hold = self.exam_hosts.held
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
                              access=self.access, presentations=self.presentations, roles=self.roles,
-                             focuses=self.focuses, archives=self.archives, memberships=self.memberships,
+                             focuses=self.focuses, archives=self.archives, archive_files=self.archive_files,
+                             memberships=self.memberships,
                              exams=self.exams, exam_projects=self.exam_projects, exam_hosts=self.exam_hosts,
                              webconfs=self.webconfs)
         self.routes.register(app)
@@ -208,6 +215,8 @@ class Portal:
         self.manager.start()
         if self.archives is not None:
             self.archives.start(self.pool, self.roles)     # the collector of the evaluation archives
+        if self.archive_files is not None:
+            self.archive_files.start()                     # the directory read once, in a thread
         self.access.start()
         self.presentations.start_loop()
         self.focuses.start_loop()
@@ -255,6 +264,8 @@ class Portal:
                 await self._warmup
         if self.archives is not None:
             await self.archives.stop()      # no fetch in flight when the session closes
+        if self.archive_files is not None:
+            await self.archive_files.stop()
         await self.access.stop()
         self.access.close_all('shutdown')
         self.access.close()

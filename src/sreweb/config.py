@@ -544,10 +544,13 @@ class ArchivesConfig:
     """``[archives]``: the evaluation archives of the pool hosts collected into the database of
     the connection log (``sreweb/portal/archives.py``: one row per archive, the results without
     the answers) for the Archives page of the instructors; on iff ``[access_log.database]`` is
-    configured."""
+    configured.  ``directory``: where the portal finds the archive files themselves
+    (``sreweb/portal/archivefiles.py``), looked up by name at any depth since they may be moved
+    (a nightly rotation), for the *Archive file* view of that page: what ``sre cat`` shows."""
     table: str = 'archives'
     keep: int = 0                       # days of rows kept (purged daily); 0 = forever
     poll_interval: float = 30.0         # seconds between two collections from the agents
+    directory: str = ''                 # absolute path of the directory of the archive files; '' = no file view
 
 
 @dataclass
@@ -741,6 +744,13 @@ def _check_archives(cfg: ArchivesConfig, path: str):
         raise ConfigError(f"{where}keep must be a number of days (0 = rows kept forever)")
     if cfg.poll_interval <= 0:
         raise ConfigError(f"{where}poll_interval must be positive")
+    # only the form is checked: the directory may be mounted after the portal starts (NFS), a
+    # check of its existence here would put the service in a restart loop
+    if not isinstance(cfg.directory, str) or '\0' in cfg.directory \
+            or (cfg.directory and not os.path.isabs(cfg.directory)):
+        raise ConfigError(f"{where}directory must be the absolute path of the directory of the archive files")
+    if cfg.directory:
+        cfg.directory = os.path.normpath(cfg.directory)
 
 
 def _check_groups(cfg: GroupsConfig, path: str):

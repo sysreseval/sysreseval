@@ -882,6 +882,21 @@ class TestConfig:
         cfg = web_config_from_dict({**self.BASE, 'archives': {'table': 'evals', 'keep': 30, 'poll_interval': '2m'}})
         assert (cfg.archives.table, cfg.archives.keep, cfg.archives.poll_interval) == ('evals', 30, 120.0)
 
+    def test_directory_of_the_archive_files(self, tmp_path):
+        """``directory``: an absolute path, normalised; nothing is looked at when the file is
+        loaded (a directory mounted after the portal starts must not stop it)."""
+        assert web_config_from_dict(dict(self.BASE)).archives.directory == ''
+        for given, kept in ((str(tmp_path), str(tmp_path)), ('/srv/sre-archives/', '/srv/sre-archives'),
+                            ('/srv/./archives/../sre', '/srv/sre'), ('/nonexistent/not/mounted/yet', '/nonexistent/not/mounted/yet'),
+                            ('', '')):
+            cfg = web_config_from_dict({**self.BASE, 'archives': {'directory': given}})
+            assert cfg.archives.directory == kept, given
+
+    @pytest.mark.parametrize('value', ['archives', './archives', '~/archives', 3, True, ['/srv/a'], '/srv/a\0b'])
+    def test_directory_refused(self, value):
+        with pytest.raises(ConfigError, match='archives.directory must be the absolute path'):
+            web_config_from_dict({**self.BASE, 'archives': {'directory': value}})
+
     @pytest.mark.parametrize('data, key', [
         ({'archives': 3}, 'archives'), ({'archives': {'typo': 1}}, 'typo'), ({'archives': {'table': 'drop;'}}, 'table'),
         ({'archives': {'table': ''}}, 'table'), ({'archives': {'keep': -1}}, 'keep'), ({'archives': {'keep': True}}, 'keep'),

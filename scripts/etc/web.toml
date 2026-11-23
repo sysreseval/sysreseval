@@ -263,6 +263,14 @@ session_timeout = "30m"
 # table = "archives"
 # keep = 0
 # poll_interval = "30s"
+# directory: a directory of this host holding the archive files themselves (*.zst: a mount of the
+# directory the pool hosts write them to, or a copy).  With it an instructor opens the whole
+# content of an archive from the Archives page, as `sre cat` shows it (the commands run and their
+# outputs, the answers, the data of the lab, the saved files), and downloads the file.  A file is
+# looked up by its name at any depth, at each request: the files may be moved (a nightly
+# rotation into dated directories).  Readable by sre-web (the archives are written 0600 for sre:
+# see the documentation); needs python3-zstandard and python3-msgpack.  Not set: no file view.
+# directory = "/srv/sre-archives"
 
 [groups]
 # The user groups of the Groups page of the instructors: the departments (attr_group of

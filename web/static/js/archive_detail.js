@@ -2,13 +2,16 @@
 // (GET /api/archives/{id}: the stored elements, laid out by evaluation_rows.js as the agent lays
 // out the evaluation of a running project, then the errors and the warnings of the run), the
 // student, the lab and the host in the title, the time of the evaluation and of the start of
-// the project in the caption.
+// the project in the caption.  With `files` (the portal has the archive files: `[archives]
+// directory` of web.toml) the button "Archive file…" opens the content of the file itself
+// (archive_file.js) over this dialog.
 
 import * as api from './api.js';
 import {el, clear, formatTimestamp} from './ui.js';
 import {_, format, resolveText} from './i18n.js';
 import {renderEvaluationTable} from './evaluation_table.js';
 import {buildEvaluationRows, evaluationHeader} from './evaluation_rows.js';
+import {createArchiveFileDialog} from './archive_file.js';
 
 const WARNING = 'WARNING';
 
@@ -18,8 +21,9 @@ export function startOf(rln) {
   return parts.length >= 3 ? formatTimestamp(parts[0]) : '';
 }
 
-export function createArchiveDialog() {
-  let current = null;      // the open dialog: {row, dialog, caption, table, errors}
+export function createArchiveDialog({files = false} = {}) {
+  let current = null;      // the open dialog: {row, dialog, caption, table, errors, data}
+  const fileDialog = files ? createArchiveFileDialog() : null;
 
   function heading(row) {
     const who = [row.fullname, row.group].filter(Boolean).join(', ');
@@ -35,9 +39,15 @@ export function createArchiveDialog() {
     const errors = el('ul', {class: 'evaluation-errors'});
     const close = el('button', {type: 'button'}, _('Close'));
     const title = el('h2', {}, heading(row));
+    const file = fileDialog ? el('button', {type: 'button', class: 'archive-file-open'}, _('Archive file…')) : null;
     const dialog = el('dialog', {class: 'modal archive-detail'},
       title, caption, table, errors,
-      el('div', {class: 'buttons'}, el('span', {class: 'spacer'}), close));
+      el('div', {class: 'buttons'}, file, el('span', {class: 'spacer'}), close));
+    if (file) {
+      // the row as the database gave it once loaded (a row opened from the URL had no fields)
+      file.addEventListener('click', () => fileDialog.open(
+        current && current.dialog === dialog && current.data ? current.data : row));
+    }
     close.addEventListener('click', () => dialog.close());
     dialog.addEventListener('close', () => {
       dialog.remove();
@@ -45,7 +55,7 @@ export function createArchiveDialog() {
         current = null;
       }
     });
-    current = {row, dialog, title, caption, table, errors};
+    current = {row, dialog, title, caption, table, errors, data: null};
     document.body.append(dialog);
     dialog.showModal();
     load();
@@ -71,6 +81,7 @@ export function createArchiveDialog() {
     if (c !== current) {
       return;
     }
+    c.data = data;
     c.title.textContent = heading(data);     // a row opened from the URL (?open=id) had no fields
     const details = data.details || {};
     const language = details.language || 'en';

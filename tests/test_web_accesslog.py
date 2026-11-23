@@ -139,7 +139,7 @@ class TestEventFor:
         assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin',
                                                                             'present_audience', 'present_stop',
                                                                             'focus_stop', 'history', 'archives', 'report',
-                                                                            'groups', 'group_edit',
+                                                                            'archive_file', 'groups', 'group_edit',
                                                                             'exam_edit', 'exam_dismiss',
                                                                             'webconf_start', 'webconf_audience',
                                                                             'webconf_attend', 'webconf_stop',
@@ -167,6 +167,9 @@ class TestEventFor:
         assert A.EVENTS[('POST', '/api/exam/{id}/dismiss')] == 'exam_dismiss'
         assert {'exam_edit', 'exam_dismiss'} <= set(A.ALL_EVENTS)
         assert ('GET', '/api/archives/options') in A.KEEPALIVE and A.EVENTS[('GET', '/api/archives/{id}')] == 'archives'
+        # an archive file read (the answers, the outputs): its own event, the view and the two downloads
+        assert {A.EVENTS[('GET', f'/api/archives/{{id}}/file{part}')] for part in ('', '/raw', '/saved')} == {'archive_file'}
+        assert 'archive_file' in A.ALL_EVENTS
         # the Groups page: the listings are read, every write of a custom group is a group_edit
         assert ('GET', '/api/groups/people') in A.KEEPALIVE
         assert A.EVENTS[('GET', '/api/groups')] == A.EVENTS[('GET', '/api/groups/{kind}/{name}')] == 'groups'

@@ -59,7 +59,7 @@
   </details>
 </div>
 <p id="archives-notice" class="muted"{% if archives_database %} hidden{% endif %}>{% if not archives_database %}{{ _("The evaluations are not stored in a database: set [access_log.database] in web.toml to browse them here.") }}{% endif %}</p>
-<table id="archives" class="grid watch archives" data-database="{{ 'true' if archives_database else 'false' }}" data-groups="{{ 'true' if groups else 'false' }}">
+<table id="archives" class="grid watch archives" data-database="{{ 'true' if archives_database else 'false' }}" data-files="{{ 'true' if archive_files else 'false' }}" data-groups="{{ 'true' if groups else 'false' }}">
   <thead>
     <tr>
       <th class="select"><input type="checkbox" id="archives-select-all" title="{{ _("Select the evaluations shown") }}"></th>
