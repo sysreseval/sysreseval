@@ -1,0 +1,823 @@
+{
+ "data": {
+  "c2_domain": "metrics-push97.example",
+  "passwords": {
+   "alice": "v96j6FSewT",
+   "bob": "MyCXmN1p1K",
+   "carol": "BpPFB6neT6",
+   "demo": "0F7GKM9x"
+  },
+  "history_day": "2026-11-22",
+  "history_seed": 863674,
+  "history_attackers": {
+   "198.51.100.161": 60,
+   "198.51.100.87": 24,
+   "198.51.100.103": 37
+  },
+  "ips": {
+   "gw_wan": "198.18.125.1/24",
+   "ips_wan": "198.18.125.2/24",
+   "attacker": "198.18.125.66/24",
+   "probe": "198.18.125.200/24",
+   "gw_dmz": "10.203.228.1/24",
+   "bastion": "10.203.228.10/24",
+   "intranet": "10.203.228.20/24",
+   "gw_lan": "192.168.207.1/24",
+   "ids": "192.168.207.5/24",
+   "admin": "192.168.207.10/24",
+   "ips_apps": "172.20.110.1/24",
+   "app": "172.20.110.10/24"
+  },
+  "nets": {
+   "wan": "198.18.125.0/24",
+   "dmz": "10.203.228.0/24",
+   "lan": "192.168.207.0/24",
+   "apps": "172.20.110.0/24"
+  },
+  "ips6": {},
+  "nets6": {},
+  "macs": {},
+  "__current_srelab_file": "/var/tmp/sre-stage-ids/lab/sre/_DRAFT_misc/suricata-fail2ban.py"
+ },
+ "tests": [
+  {
+   "machine": "admin",
+   "step": 2,
+   "commands": [
+    {
+     "command": "for i in $(seq 4); do python3 /usr/local/sbin/sre_login_probe.py --timeout 12 ssh 10.203.228.10 student oops-0F7GKM9x >/dev/null 2>&1; done",
+     "timeout": 90,
+     "code": 1,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "admin",
+   "step": 3,
+   "commands": [
+    {
+     "command": "sleep 3; if nc -z -w 3 10.203.228.10 22 >/dev/null 2>&1; then echo OPEN_admin; else echo CLOSED_admin; fi",
+     "timeout": 20,
+     "code": 0,
+     "output": "OPEN_admin\n"
+    }
+   ]
+  },
+  {
+   "machine": "bastion",
+   "step": 1,
+   "commands": [
+    {
+     "command": "fail2ban-client unban 198.18.125.204 192.168.207.10 198.18.125.220 198.18.125.221 198.18.125.222 198.18.125.223 198.18.125.224 198.18.125.225 198.18.125.226 198.18.125.227 198.18.125.228 198.18.125.229 198.18.125.230 198.18.125.231 198.18.125.232 198.18.125.233 198.18.125.234 198.18.125.235 198.18.125.236 198.18.125.237 198.18.125.238 198.18.125.239 198.18.125.240 198.18.125.241 198.18.125.242 198.18.125.243 >/dev/null 2>&1; true",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    },
+    {
+     "command": "fail2ban-client status 2>/dev/null",
+     "timeout": 20,
+     "code": 255,
+     "output": ""
+    },
+    {
+     "command": "fail2ban-client get sshd maxretry 2>/dev/null",
+     "timeout": 20,
+     "code": 255,
+     "output": ""
+    },
+    {
+     "command": "fail2ban-client get sshd findtime 2>/dev/null",
+     "timeout": 20,
+     "code": 255,
+     "output": ""
+    },
+    {
+     "command": "fail2ban-client get sshd bantime 2>/dev/null",
+     "timeout": 20,
+     "code": 255,
+     "output": ""
+    },
+    {
+     "command": "tail -n 8 /var/log/fail2ban.log",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "bastion",
+   "step": 3,
+   "commands": [
+    {
+     "command": "fail2ban-client status sshd 2>/dev/null",
+     "timeout": 20,
+     "code": 255,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "bastion",
+   "step": 4,
+   "commands": [
+    {
+     "command": "fail2ban-client unban 198.18.125.204 192.168.207.10 198.18.125.220 198.18.125.221 198.18.125.222 198.18.125.223 198.18.125.224 198.18.125.225 198.18.125.226 198.18.125.227 198.18.125.228 198.18.125.229 198.18.125.230 198.18.125.231 198.18.125.232 198.18.125.233 198.18.125.234 198.18.125.235 198.18.125.236 198.18.125.237 198.18.125.238 198.18.125.239 198.18.125.240 198.18.125.241 198.18.125.242 198.18.125.243 >/dev/null 2>&1; true",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "gw",
+   "step": 1,
+   "commands": [
+    {
+     "command": "fail2ban-client unban 198.18.125.210 198.18.125.201 >/dev/null 2>&1; true",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    },
+    {
+     "command": "nft list ruleset",
+     "timeout": 20,
+     "code": 0,
+     "output": "table ip nat {\n\tchain DOCKER_OUTPUT {\n\t\tip daddr 127.0.0.11 tcp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:43829\n\t\tip daddr 127.0.0.11 udp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:44933\n\t}\n\n\tchain OUTPUT {\n\t\ttype nat hook output priority dstnat; policy accept;\n\t\tip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_OUTPUT\n\t}\n\n\tchain DOCKER_POSTROUTING {\n\t\tip saddr 127.0.0.11 tcp sport 43829 counter packets 0 bytes 0 snat to :53\n\t\tip saddr 127.0.0.11 udp sport 44933 counter packets 0 bytes 0 snat to :53\n\t}\n\n\tchain POSTROUTING {\n\t\ttype nat hook postrouting priority srcnat; policy accept;\n\t\tip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_POSTROUTING\n\t}\n}\n"
+    },
+    {
+     "command": "fail2ban-client status",
+     "timeout": 20,
+     "code": 255,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "gw",
+   "step": 3,
+   "commands": [
+    {
+     "command": "for j in $(fail2ban-client status 2>/dev/null | sed -n 's/.*Jail list:[[:space:]]*//p' | tr ',' ' '); do fail2ban-client status $j; done",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "gw",
+   "step": 4,
+   "commands": [
+    {
+     "command": "fail2ban-client unban 198.18.125.210 198.18.125.201 >/dev/null 2>&1; true",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "ids",
+   "step": 1,
+   "commands": [
+    {
+     "command": "date +%s.%N",
+     "timeout": 20,
+     "code": 0,
+     "output": "1795446648.048951611\n"
+    },
+    {
+     "command": "suricata --dump-config -c /etc/suricata/suricata.yaml 2>/dev/null",
+     "timeout": 20,
+     "code": 0,
+     "output": "suricata-version = 7.0\nvars = (null)\nvars.address-groups = (null)\nvars.address-groups.HOME_NET = [10.203.228.0/24,192.168.207.0/24]\nvars.address-groups.EXTERNAL_NET = !$HOME_NET\nvars.address-groups.HTTP_SERVERS = $HOME_NET\nvars.address-groups.SMTP_SERVERS = $HOME_NET\nvars.address-groups.SQL_SERVERS = $HOME_NET\nvars.address-groups.DNS_SERVERS = $HOME_NET\nvars.address-groups.TELNET_SERVERS = $HOME_NET\nvars.address-groups.AIM_SERVERS = $EXTERNAL_NET\nvars.address-groups.DC_SERVERS = $HOME_NET\nvars.address-groups.DNP3_SERVER = $HOME_NET\nvars.address-groups.DNP3_CLIENT = $HOME_NET\nvars.address-groups.MODBUS_CLIENT = $HOME_NET\nvars.address-groups.MODBUS_SERVER = $HOME_NET\nvars.address-groups.ENIP_CLIENT = $HOME_NET\nvars.address-groups.ENIP_SERVER = $HOME_NET\nvars.port-groups = (null)\nvars.port-groups.HTTP_PORTS = 80\nvars.port-groups.SHELLCODE_PORTS = !80\nvars.port-groups.ORACLE_PORTS = 1521\nvars.port-groups.SSH_PORTS = 22\nvars.port-groups.DNP3_PORTS = 20000\nvars.port-groups.MODBUS_PORTS = 502\nvars.port-groups.FILE_DATA_PORTS = [$HTTP_PORTS,110,143]\nvars.port-groups.FTP_PORTS = 21\nvars.port-groups.GENEVE_PORTS = 6081\nvars.port-groups.VXLAN_PORTS = 4789\nvars.port-groups.TEREDO_PORTS = 3544\ndefault-log-dir = /var/log/suricata/\nstats = (null)\nstats.enabled = yes\nstats.interval = 8\nplugins = (null)\noutputs = (null)\noutputs.0 = fast\noutputs.0.fast = (null)\noutputs.0.fast.enabled = yes\noutputs.0.fast.filename = fast.log\noutputs.0.fast.append = yes\noutputs.1 = eve-log\noutputs.1.eve-log = (null)\noutputs.1.eve-log.enabled = yes\noutputs.1.eve-log.filetype = regular\noutputs.1.eve-log.filename = eve.json\noutputs.1.eve-log.pcap-file = false\noutputs.1.eve-log.community-id = false\noutputs.1.eve-log.community-id-seed = 0\noutputs.1.eve-log.xff = (null)\noutputs.1.eve-log.xff.enabled = no\noutputs.1.eve-log.xff.mode = extra-data\noutputs.1.eve-log.xff.deployment = reverse\noutputs.1.eve-log.xff.header = X-Forwarded-For\noutputs.1.eve-log.types = (null)\noutputs.1.eve-log.types.0 = alert\noutputs.1.eve-log.types.0.alert = (null)\noutputs.1.eve-log.types.0.alert.tagged-packets = yes\noutputs.1.eve-log.types.1 = frame\noutputs.1.eve-log.types.1.frame = (null)\noutputs.1.eve-log.types.1.frame.enabled = no\noutputs.1.eve-log.types.2 = anomaly\noutputs.1.eve-log.types.2.anomaly = (null)\noutputs.1.eve-log.types.2.anomaly.enabled = yes\noutputs.1.eve-log.types.2.anomaly.types = (null)\noutputs.1.eve-log.types.3 = http\noutputs.1.eve-log.types.3.http = (null)\noutputs.1.eve-log.types.3.http.extended = yes\noutputs.1.eve-log.types.4 = dns\noutputs.1.eve-log.types.4.dns = (null)\noutputs.1.eve-log.types.5 = tls\noutputs.1.eve-log.types.5.tls = (null)\noutputs.1.eve-log.types.5.tls.extended = yes\noutputs.1.eve-log.types.6 = files\noutputs.1.eve-log.types.6.files = (null)\noutputs.1.eve-log.types.6.files.force-magic = no\noutputs.1.eve-log.types.7 = smtp\noutputs.1.eve-log.types.7.smtp = (null)\noutputs.1.eve-log.types.8 = ftp\noutputs.1.eve-log.types.9 = rdp\noutputs.1.eve-log.types.10 = nfs\noutputs.1.eve-log.types.11 = smb\noutputs.1.eve-log.types.12 = tftp\noutputs.1.eve-log.types.13 = ike\noutputs.1.eve-log.types.14 = dcerpc\noutputs.1.eve-log.types.15 = krb5\noutputs.1.eve-log.types.16 = bittorrent-dht\noutputs.1.eve-log.types.17 = snmp\noutputs.1.eve-log.types.18 = rfb\noutputs.1.eve-log.types.19 = sip\noutputs.1.eve-log.types.20 = quic\noutputs.1.eve-log.types.20.quic = (null)\noutputs.1.eve-log.types.21 = dhcp\noutputs.1.eve-log.types.21.dhcp = (null)\noutputs.1.eve-log.types.21.dhcp.enabled = yes\noutputs.1.eve-log.types.21.dhcp.extended = no\noutputs.1.eve-log.types.22 = ssh\noutputs.1.eve-log.types.23 = mqtt\noutputs.1.eve-log.types.23.mqtt = (null)\noutputs.1.eve-log.types.24 = http2\noutputs.1.eve-log.types.25 = pgsql\noutputs.1.eve-log.types.25.pgsql = (null)\noutputs.1.eve-log.types.25.pgsql.enabled = no\noutputs.1.eve-log.types.26 = stats\noutputs.1.eve-log.types.26.stats = (null)\noutputs.1.eve-log.types.26.stats.totals = yes\noutputs.1.eve-log.types.26.stats.threads = no\noutputs.1.eve-log.types.26.stats.deltas = no\noutputs.1.eve-log.types.27 = flow\noutputs.2 = http-log\noutputs.2.http-log = (null)\noutputs.2.http-log.enabled = no\noutputs.2.http-log.filename = http.log\noutputs.2.http-log.append = yes\noutputs.3 = tls-log\noutputs.3.tls-log = (null)\noutputs.3.tls-log.enabled = no\noutputs.3.tls-log.filename = tls.log\noutputs.3.tls-log.append = yes\noutputs.4 = tls-store\noutputs.4.tls-store = (null)\noutputs.4.tls-store.enabled = no\noutputs.5 = pcap-log\noutputs.5.pcap-log = (null)\noutputs.5.pcap-log.enabled = no\noutputs.5.pcap-log.filename = log.pcap\noutputs.5.pcap-log.limit = 1000mb\noutputs.5.pcap-log.max-files = 2000\noutputs.5.pcap-log.compression = none\noutputs.5.pcap-log.mode = normal\noutputs.5.pcap-log.use-stream-depth = no\noutputs.5.pcap-log.honor-pass-rules = no\noutputs.6 = alert-debug\noutputs.6.alert-debug = (null)\noutputs.6.alert-debug.enabled = no\noutputs.6.alert-debug.filename = alert-debug.log\noutputs.6.alert-debug.append = yes\noutputs.7 = stats\noutputs.7.stats = (null)\noutputs.7.stats.enabled = yes\noutputs.7.stats.filename = stats.log\noutputs.7.stats.append = yes\noutputs.7.stats.totals = yes\noutputs.7.stats.threads = no\noutputs.8 = syslog\noutputs.8.syslog = (null)\noutputs.8.syslog.enabled = no\noutputs.8.syslog.facility = local5\noutputs.9 = file-store\noutputs.9.file-store = (null)\noutputs.9.file-store.version = 2\noutputs.9.file-store.enabled = no\noutputs.9.file-store.xff = (null)\noutputs.9.file-store.xff.enabled = no\noutputs.9.file-store.xff.mode = extra-data\noutputs.9.file-store.xff.deployment = reverse\noutputs.9.file-store.xff.header = X-Forwarded-For\noutputs.10 = tcp-data\noutputs.10.tcp-data = (null)\noutputs.10.tcp-data.enabled = no\noutputs.10.tcp-data.type = file\noutputs.10.tcp-data.filename = tcp-data.log\noutputs.11 = http-body-data\noutputs.11.http-body-data = (null)\noutputs.11.http-body-data.enabled = no\noutputs.11.http-body-data.type = file\noutputs.11.http-body-data.filename = http-data.log\noutputs.12 = lua\noutputs.12.lua = (null)\noutputs.12.lua.enabled = no\noutputs.12.lua.scripts = (null)\nlogging = (null)\nlogging.default-log-level = notice\nlogging.default-output-filter = (null)\nlogging.outputs = (null)\nlogging.outputs.0 = console\nlogging.outputs.0.console = (null)\nlogging.outputs.0.console.enabled = yes\nlogging.outputs.1 = file\nlogging.outputs.1.file = (null)\nlogging.outputs.1.file.enabled = yes\nlogging.outputs.1.file.level = info\nlogging.outputs.1.file.filename = suricata.log\nlogging.outputs.2 = syslog\nlogging.outputs.2.syslog = (null)\nlogging.outputs.2.syslog.enabled = no\nlogging.outputs.2.syslog.facility = local5\nlogging.outputs.2.syslog.format = [%i] <%d> -- \naf-packet = (null)\naf-packet.0 = interface\naf-packet.0.interface = eth1\naf-packet.0.threads = 1\naf-packet.0.cluster-id = 99\naf-packet.0.cluster-type = cluster_flow\naf-packet.0.defrag = yes\naf-packet.1 = interface\naf-packet.1.interface = default\naf-packet.1.threads = 1\naf-xdp = (null)\naf-xdp.0 = interface\naf-xdp.0.interface = default\ndpdk = (null)\ndpdk.eal-params = (null)\ndpdk.eal-params.proc-type = primary\ndpdk.interfaces = (null)\ndpdk.interfaces.0 = interface\ndpdk.interfaces.0.interface = 0000:3b:00.0\ndpdk.interfaces.0.threads = auto\ndpdk.interfaces.0.promisc = true\ndpdk.interfaces.0.multicast = true\ndpdk.interfaces.0.checksum-checks = true\ndpdk.interfaces.0.checksum-checks-offload = true\ndpdk.interfaces.0.mtu = 1500\ndpdk.interfaces.0.mempool-size = 65535\ndpdk.interfaces.0.mempool-cache-size = 257\ndpdk.interfaces.0.rx-descriptors = 1024\ndpdk.interfaces.0.tx-descriptors = 1024\ndpdk.interfaces.0.copy-mode = none\ndpdk.interfaces.0.copy-iface = none\ndpdk.interfaces.1 = interface\ndpdk.interfaces.1.interface = default\ndpdk.interfaces.1.threads = auto\ndpdk.interfaces.1.promisc = true\ndpdk.interfaces.1.multicast = true\ndpdk.interfaces.1.checksum-checks = true\ndpdk.interfaces.1.checksum-checks-offload = true\ndpdk.interfaces.1.mtu = 1500\ndpdk.interfaces.1.rss-hash-functions = auto\ndpdk.interfaces.1.mempool-size = 65535\ndpdk.interfaces.1.mempool-cache-size = 257\ndpdk.interfaces.1.rx-descriptors = 1024\ndpdk.interfaces.1.tx-descriptors = 1024\ndpdk.interfaces.1.copy-mode = none\ndpdk.interfaces.1.copy-iface = none\npcap = (null)\npcap.0 = interface\npcap.0.interface = eth0\npcap.1 = interface\npcap.1.interface = default\npcap-file = (null)\npcap-file.checksum-checks = auto\napp-layer = (null)\napp-layer.protocols = (null)\napp-layer.protocols.telnet = (null)\napp-layer.protocols.telnet.enabled = yes\napp-layer.protocols.rfb = (null)\napp-layer.protocols.rfb.enabled = yes\napp-layer.protocols.rfb.detection-ports = (null)\napp-layer.protocols.rfb.detection-ports.dp = 5900, 5901, 5902, 5903, 5904, 5905, 5906, 5907, 5908, 5909\napp-layer.protocols.mqtt = (null)\napp-layer.protocols.mqtt.enabled = yes\napp-layer.protocols.krb5 = (null)\napp-layer.protocols.krb5.enabled = yes\napp-layer.protocols.bittorrent-dht = (null)\napp-layer.protocols.bittorrent-dht.enabled = yes\napp-layer.protocols.snmp = (null)\napp-layer.protocols.snmp.enabled = yes\napp-layer.protocols.ike = (null)\napp-layer.protocols.ike.enabled = yes\napp-layer.protocols.tls = (null)\napp-layer.protocols.tls.enabled = yes\napp-layer.protocols.tls.detection-ports = (null)\napp-layer.protocols.tls.detection-ports.dp = 443\napp-layer.protocols.pgsql = (null)\napp-layer.protocols.pgsql.enabled = no\napp-layer.protocols.pgsql.stream-depth = 0\napp-layer.protocols.dcerpc = (null)\napp-layer.protocols.dcerpc.enabled = yes\napp-layer.protocols.ftp = (null)\napp-layer.protocols.ftp.enabled = yes\napp-layer.protocols.rdp = (null)\napp-layer.protocols.ssh = (null)\napp-layer.protocols.ssh.enabled = yes\napp-layer.protocols.http2 = (null)\napp-layer.protocols.http2.enabled = yes\napp-layer.protocols.smtp = (null)\napp-layer.protocols.smtp.enabled = yes\napp-layer.protocols.smtp.raw-extraction = no\napp-layer.protocols.smtp.mime = (null)\napp-layer.protocols.smtp.mime.decode-mime = yes\napp-layer.protocols.smtp.mime.decode-base64 = yes\napp-layer.protocols.smtp.mime.decode-quoted-printable = yes\napp-layer.protocols.smtp.mime.header-value-depth = 2000\napp-layer.protocols.smtp.mime.extract-urls = yes\napp-layer.protocols.smtp.mime.body-md5 = no\napp-layer.protocols.smtp.inspected-tracker = (null)\napp-layer.protocols.smtp.inspected-tracker.content-limit = 100000\napp-layer.protocols.smtp.inspected-tracker.content-inspect-min-size = 32768\napp-layer.protocols.smtp.inspected-tracker.content-inspect-window = 4096\napp-layer.protocols.imap = (null)\napp-layer.protocols.imap.enabled = detection-only\napp-layer.protocols.smb = (null)\napp-layer.protocols.smb.enabled = yes\napp-layer.protocols.smb.detection-ports = (null)\napp-layer.protocols.smb.detection-ports.dp = 139, 445\napp-layer.protocols.nfs = (null)\napp-layer.protocols.nfs.enabled = yes\napp-layer.protocols.tftp = (null)\napp-layer.protocols.tftp.enabled = yes\napp-layer.protocols.dns = (null)\napp-layer.protocols.dns.tcp = (null)\napp-layer.protocols.dns.tcp.enabled = yes\napp-layer.protocols.dns.tcp.detection-ports = (null)\napp-layer.protocols.dns.tcp.detection-ports.dp = 53\napp-layer.protocols.dns.udp = (null)\napp-layer.protocols.dns.udp.enabled = yes\napp-layer.protocols.dns.udp.detection-ports = (null)\napp-layer.protocols.dns.udp.detection-ports.dp = 53\napp-layer.protocols.http = (null)\napp-layer.protocols.http.enabled = yes\napp-layer.protocols.http.libhtp = (null)\napp-layer.protocols.http.libhtp.default-config = (null)\napp-layer.protocols.http.libhtp.default-config.personality = IDS\napp-layer.protocols.http.libhtp.default-config.request-body-limit = 100kb\napp-layer.protocols.http.libhtp.default-config.response-body-limit = 100kb\napp-layer.protocols.http.libhtp.default-config.request-body-minimal-inspect-size = 32kb\napp-layer.protocols.http.libhtp.default-config.request-body-inspect-window = 4kb\napp-layer.protocols.http.libhtp.default-config.response-body-minimal-inspect-size = 40kb\napp-layer.protocols.http.libhtp.default-config.response-body-inspect-window = 16kb\napp-layer.protocols.http.libhtp.default-config.response-body-decompress-layer-limit = 2\napp-layer.protocols.http.libhtp.default-config.http-body-inline = auto\napp-layer.protocols.http.libhtp.default-config.swf-decompression = (null)\napp-layer.protocols.http.libhtp.default-config.swf-decompression.enabled = no\napp-layer.protocols.http.libhtp.default-config.swf-decompression.type = both\napp-layer.protocols.http.libhtp.default-config.swf-decompression.compress-depth = 100kb\napp-layer.protocols.http.libhtp.default-config.swf-decompression.decompress-depth = 100kb\napp-layer.protocols.http.libhtp.default-config.double-decode-path = no\napp-layer.protocols.http.libhtp.default-config.double-decode-query = no\napp-layer.protocols.http.libhtp.server-config = (null)\napp-layer.protocols.modbus = (null)\napp-layer.protocols.modbus.enabled = no\napp-layer.protocols.modbus.detection-ports = (null)\napp-layer.protocols.modbus.detection-ports.dp = 502\napp-layer.protocols.modbus.stream-depth = 0\napp-layer.protocols.dnp3 = (null)\napp-layer.protocols.dnp3.enabled = no\napp-layer.protocols.dnp3.detection-ports = (null)\napp-layer.protocols.dnp3.detection-ports.dp = 20000\napp-layer.protocols.enip = (null)\napp-layer.protocols.enip.enabled = no\napp-layer.protocols.enip.detection-ports = (null)\napp-layer.protocols.enip.detection-ports.dp = 44818\napp-layer.protocols.enip.detection-ports.sp = 44818\napp-layer.protocols.ntp = (null)\napp-layer.protocols.ntp.enabled = yes\napp-layer.protocols.quic = (null)\napp-layer.protocols.quic.enabled = yes\napp-layer.protocols.dhcp = (null)\napp-layer.protocols.dhcp.enabled = yes\napp-layer.protocols.sip = (null)\nasn1-max-frames = 256\ndatasets = (null)\ndatasets.defaults = (null)\ndatasets.limits = (null)\ndatasets.rules = (null)\nsecurity = (null)\nsecurity.limit-noproc = true\nsecurity.landlock = (null)\nsecurity.landlock.enabled = no\nsecurity.landlock.directories = (null)\nsecurity.landlock.directories.read = (null)\nsecurity.landlock.directories.read.0 = /usr/\nsecurity.landlock.directories.read.1 = /etc/\nsecurity.landlock.directories.read.2 = /etc/suricata/\nsecurity.lua = (null)\ncoredump = (null)\ncoredump.max-dump = unlimited\nhost-mode = auto\nunix-command = (null)\nunix-command.enabled = yes\nunix-command.filename = /var/run/suricata-command.socket\nlegacy = (null)\nlegacy.uricontent = enabled\nexception-policy = auto\nengine-analysis = (null)\nengine-analysis.rules-fast-pattern = yes\nengine-analysis.rules = yes\npcre = (null)\npcre.match-limit = 3500\npcre.match-limit-recursion = 1500\nhost-os-policy = (null)\nhost-os-policy.windows = (null)\nhost-os-policy.windows.0 = 0.0.0.0/0\nhost-os-policy.bsd = (null)\nhost-os-policy.bsd-right = (null)\nhost-os-policy.old-linux = (null)\nhost-os-policy.linux = (null)\nhost-os-policy.old-solaris = (null)\nhost-os-policy.solaris = (null)\nhost-os-policy.hpux10 = (null)\nhost-os-policy.hpux11 = (null)\nhost-os-policy.irix = (null)\nhost-os-policy.macos = (null)\nhost-os-policy.vista = (null)\nhost-os-policy.windows2k3 = (null)\ndefrag = (null)\ndefrag.memcap = 32mb\ndefrag.hash-size = 65536\ndefrag.trackers = 65535\ndefrag.max-frags = 65535\ndefrag.prealloc = yes\ndefrag.timeout = 60\nflow = (null)\nflow.memcap = 128mb\nflow.hash-size = 65536\nflow.prealloc = 10000\nflow.emergency-recovery = 30\nvlan = (null)\nvlan.use-for-tracking = true\nlivedev = (null)\nlivedev.use-for-tracking = true\nflow-timeouts = (null)\nflow-timeouts.default = (null)\nflow-timeouts.default.new = 30\nflow-timeouts.default.established = 300\nflow-timeouts.default.closed = 0\nflow-timeouts.default.bypassed = 100\nflow-timeouts.default.emergency-new = 10\nflow-timeouts.default.emergency-established = 100\nflow-timeouts.default.emergency-closed = 0\nflow-timeouts.default.emergency-bypassed = 50\nflow-timeouts.tcp = (null)\nflow-timeouts.tcp.new = 60\nflow-timeouts.tcp.established = 600\nflow-timeouts.tcp.closed = 60\nflow-timeouts.tcp.bypassed = 100\nflow-timeouts.tcp.emergency-new = 5\nflow-timeouts.tcp.emergency-established = 100\nflow-timeouts.tcp.emergency-closed = 10\nflow-timeouts.tcp.emergency-bypassed = 50\nflow-timeouts.udp = (null)\nflow-timeouts.udp.new = 30\nflow-timeouts.udp.established = 300\nflow-timeouts.udp.bypassed = 100\nflow-timeouts.udp.emergency-new = 10\nflow-timeouts.udp.emergency-established = 100\nflow-timeouts.udp.emergency-bypassed = 50\nflow-timeouts.icmp = (null)\nflow-timeouts.icmp.new = 30\nflow-timeouts.icmp.established = 300\nflow-timeouts.icmp.bypassed = 100\nflow-timeouts.icmp.emergency-new = 10\nflow-timeouts.icmp.emergency-established = 100\nflow-timeouts.icmp.emergency-bypassed = 50\nstream = (null)\nstream.memcap = 64mb\nstream.checksum-validation = yes\nstream.inline = auto\nstream.reassembly = (null)\nstream.reassembly.memcap = 256mb\nstream.reassembly.depth = 1mb\nstream.reassembly.toserver-chunk-size = 2560\nstream.reassembly.toclient-chunk-size = 2560\nstream.reassembly.randomize-chunk-size = yes\nhost = (null)\nhost.hash-size = 4096\nhost.prealloc = 1000\nhost.memcap = 32mb\ndecoder = (null)\ndecoder.teredo = (null)\ndecoder.teredo.enabled = true\ndecoder.teredo.ports = $TEREDO_PORTS\ndecoder.vxlan = (null)\ndecoder.vxlan.enabled = true\ndecoder.vxlan.ports = $VXLAN_PORTS\ndecoder.geneve = (null)\ndecoder.geneve.enabled = true\ndecoder.geneve.ports = $GENEVE_PORTS\ndetect = (null)\ndetect.profile = medium\ndetect.custom-values = (null)\ndetect.custom-values.toclient-groups = 3\ndetect.custom-values.toserver-groups = 25\ndetect.sgh-mpm-context = auto\ndetect.prefilter = (null)\ndetect.prefilter.default = mpm\ndetect.grouping = (null)\ndetect.profiling = (null)\ndetect.profiling.grouping = (null)\ndetect.profiling.grouping.dump-to-disk = false\ndetect.profiling.grouping.include-rules = false\ndetect.profiling.grouping.include-mpm-stats = false\nmpm-algo = auto\nspm-algo = auto\nthreading = (null)\nthreading.set-cpu-affinity = no\nthreading.cpu-affinity = (null)\nthreading.cpu-affinity.0 = management-cpu-set\nthreading.cpu-affinity.0.management-cpu-set = (null)\nthreading.cpu-affinity.0.management-cpu-set.cpu = (null)\nthreading.cpu-affinity.0.management-cpu-set.cpu.0 = 0\nthreading.cpu-affinity.1 = receive-cpu-set\nthreading.cpu-affinity.1.receive-cpu-set = (null)\nthreading.cpu-affinity.1.receive-cpu-set.cpu = (null)\nthreading.cpu-affinity.1.receive-cpu-set.cpu.0 = 0\nthreading.cpu-affinity.2 = worker-cpu-set\nthreading.cpu-affinity.2.worker-cpu-set = (null)\nthreading.cpu-affinity.2.worker-cpu-set.cpu = (null)\nthreading.cpu-affinity.2.worker-cpu-set.cpu.0 = all\nthreading.cpu-affinity.2.worker-cpu-set.mode = exclusive\nthreading.cpu-affinity.2.worker-cpu-set.prio = (null)\nthreading.cpu-affinity.2.worker-cpu-set.prio.low = (null)\nthreading.cpu-affinity.2.worker-cpu-set.prio.low.0 = 0\nthreading.cpu-affinity.2.worker-cpu-set.prio.medium = (null)\nthreading.cpu-affinity.2.worker-cpu-set.prio.medium.0 = 1-2\nthreading.cpu-affinity.2.worker-cpu-set.prio.high = (null)\nthreading.cpu-affinity.2.worker-cpu-set.prio.high.0 = 3\nthreading.cpu-affinity.2.worker-cpu-set.prio.default = medium\nthreading.detect-thread-ratio = 1.0\nluajit = (null)\nluajit.states = 128\nprofiling = (null)\nprofiling.rules = (null)\nprofiling.rules.enabled = yes\nprofiling.rules.filename = rule_perf.log\nprofiling.rules.append = yes\nprofiling.rules.limit = 10\nprofiling.rules.json = yes\nprofiling.keywords = (null)\nprofiling.keywords.enabled = yes\nprofiling.keywords.filename = keyword_perf.log\nprofiling.keywords.append = yes\nprofiling.prefilter = (null)\nprofiling.prefilter.enabled = yes\nprofiling.prefilter.filename = prefilter_perf.log\nprofiling.prefilter.append = yes\nprofiling.rulegroups = (null)\nprofiling.rulegroups.enabled = yes\nprofiling.rulegroups.filename = rule_group_perf.log\nprofiling.rulegroups.append = yes\nprofiling.packets = (null)\nprofiling.packets.enabled = yes\nprofiling.packets.filename = packet_stats.log\nprofiling.packets.append = yes\nprofiling.packets.csv = (null)\nprofiling.packets.csv.enabled = no\nprofiling.packets.csv.filename = packet_stats.csv\nprofiling.locks = (null)\nprofiling.locks.enabled = no\nprofiling.locks.filename = lock_stats.log\nprofiling.locks.append = yes\nprofiling.pcap-log = (null)\nprofiling.pcap-log.enabled = no\nprofiling.pcap-log.filename = pcaplog_stats.log\nprofiling.pcap-log.append = yes\nnfq = (null)\nnflog = (null)\nnflog.0 = group\nnflog.0.group = 2\nnflog.0.buffer-size = 18432\nnflog.1 = group\nnflog.1.group = default\nnflog.1.qthreshold = 1\nnflog.1.qtimeout = 100\nnflog.1.max-size = 20000\ncapture = (null)\nnetmap = (null)\nnetmap.0 = interface\nnetmap.0.interface = eth2\nnetmap.1 = interface\nnetmap.1.interface = default\npfring = (null)\npfring.0 = interface\npfring.0.interface = eth0\npfring.0.threads = auto\npfring.0.cluster-id = 99\npfring.0.cluster-type = cluster_flow\npfring.1 = interface\npfring.1.interface = default\nipfw = (null)\nnapatech = (null)\nnapatech.streams = (null)\nnapatech.streams.0 = 0-3\nnapatech.enable-stream-stats = no\nnapatech.auto-config = yes\nnapatech.hardware-bypass = yes\nnapatech.inline = no\nnapatech.ports = (null)\nnapatech.ports.0 = 0-1\nnapatech.ports.1 = 2-3\nnapatech.hashmode = hash5tuplesorted\ndefault-rule-path = /var/lib/suricata/rules\nrule-files = (null)\nrule-files.0 = suricata.rules\nrule-files.1 = /etc/suricata/rules/sre.rules\nrule-files.2 = /etc/suricata/rules/local.rules\nclassification-file = /etc/suricata/classification.config\nreference-config-file = /etc/suricata/reference.config\n"
+    },
+    {
+     "command": "pgrep -a -x suricata || pgrep -a Suricata-Main",
+     "timeout": 20,
+     "code": 0,
+     "output": "654 /usr/bin/suricata -D --af-packet -c /etc/suricata/suricata.yaml --pidfile /run/suricata.pid\n"
+    },
+    {
+     "command": "rm -rf /tmp/sre-suricata-offline/signatures; mkdir -p /tmp/sre-suricata-offline/signatures; : > /tmp/sre-suricata-offline/signatures/empty.threshold; python3 /usr/local/sbin/sre_suricata_pcap.py eyJldmVudHMiOlt7ImtpbmQiOiJodHRwIiwic3JjIjoiMTk4LjE4LjEyNS4xNTAiLCJkc3QiOiIxMC4yMDMuMjI4LjIwIiwidXJpIjoiLyIsInVhIjoic3FsbWFwLzEuOC40I3N0YWJsZSAoaHR0cHM6Ly9zcWxtYXAub3JnKSIsImF0IjowLjAsImhvc3QiOiJpbnRyYW5ldCIsInNwb3J0Ijo0MTAxMH0seyJraW5kIjoiaHR0cCIsInNyYyI6IjE5OC4xOC4xMjUuMTUxIiwiZHN0IjoiMTAuMjAzLjIyOC4yMCIsInVyaSI6Ii9pbmRleC5odG1sIiwidWEiOiJTcWxNYXAvMS41LjIiLCJhdCI6MS4wLCJob3N0IjoiaW50cmFuZXQiLCJzcG9ydCI6NDEwMTF9LHsia2luZCI6Imh0dHAiLCJzcmMiOiIxOTguMTguMTI1LjE1MiIsImRzdCI6IjEwLjIwMy4yMjguMjAiLCJ1cmkiOiIvd2lraS9TUUxtYXAiLCJ1YSI6Ik1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiBDaHJvbWUvMTMxLjAgU2FmYXJpLzUzNy4zNiIsImF0IjoyLjAsImhvc3QiOiJpbnRyYW5ldCIsInNwb3J0Ijo0MTAxMn0seyJraW5kIjoiaHR0cCIsInNyYyI6IjE5OC4xOC4xMjUuMTUzIiwiZHN0IjoiMTAuMjAzLjIyOC4yMCIsInVyaSI6Ii9wYWdlP25hbWU9Li4vLi4vLi4vLi4vZXRjL3Bhc3N3ZCIsInVhIjoiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IENocm9tZS8xMzEuMCBTYWZhcmkvNTM3LjM2IiwiYXQiOjMuMCwiaG9zdCI6ImludHJhbmV0Iiwic3BvcnQiOjQxMDEzfSx7ImtpbmQiOiJodHRwIiwic3JjIjoiMTk4LjE4LjEyNS4xNTQiLCJkc3QiOiIxMC4yMDMuMjI4LjIwIiwidXJpIjoiL3BhZ2U/bmFtZT0uLiUyRi4uJTJGLi4lMkZldGMlMkZwYXNzd2QiLCJ1YSI6Ik1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiBDaHJvbWUvMTMxLjAgU2FmYXJpLzUzNy4zNiIsImF0Ijo0LjAsImhvc3QiOiJpbnRyYW5ldCIsInNwb3J0Ijo0MTAxNH0seyJraW5kIjoiaHR0cCIsInNyYyI6IjE5OC4xOC4xMjUuMTU1IiwiZHN0IjoiMTAuMjAzLjIyOC4yMCIsInVyaSI6Ii9oZWxwL2V0Yy1wYXNzd2QtZm9ybWF0LnR4dCIsInVhIjoiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IENocm9tZS8xMzEuMCBTYWZhcmkvNTM3LjM2IiwiYXQiOjUuMCwiaG9zdCI6ImludHJhbmV0Iiwic3BvcnQiOjQxMDE1fSx7ImtpbmQiOiJodHRwIiwic3JjIjoiMTk4LjE4LjEyNS4xNTYiLCJkc3QiOiIxMC4yMDMuMjI4LjIwIiwidXJpIjoiLyIsInVhIjoic2Nhbm5lci8yLjAgL2V0Yy9wYXNzd2QiLCJhdCI6Ni4wLCJob3N0IjoiaW50cmFuZXQiLCJzcG9ydCI6NDEwMTZ9LHsia2luZCI6InN5biIsInNyYyI6IjE5OC4xOC4xMjUuMTU3IiwiZHN0IjoiMTAuMjAzLjIyOC4xMCIsImRwb3J0IjoyMiwiY291bnQiOjgsImludGVydmFsIjowLjUsInNwb3J0Ijo0MDEwMSwiYXQiOjcuMH0seyJraW5kIjoic3luIiwic3JjIjoiMTk4LjE4LjEyNS4xNTgiLCJkc3QiOiIxMC4yMDMuMjI4LjEwIiwiZHBvcnQiOjIyLCJjb3VudCI6MywiaW50ZXJ2YWwiOjAuNSwic3BvcnQiOjQwMjAxLCJhdCI6OC4wfSx7ImtpbmQiOiJzeW4iLCJzcmMiOiIxOTguMTguMTI1LjE1OSIsImRzdCI6IjEwLjIwMy4yMjguMTAiLCJkcG9ydCI6MjIsImNvdW50Ijo4LCJpbnRlcnZhbCI6MjUuMCwic3BvcnQiOjQwMzAxLCJhdCI6OS4wfSx7ImtpbmQiOiJzeW4iLCJzcmMiOiIxOTguMTguMTI1LjE2MCIsImRzdCI6IjEwLjIwMy4yMjguMTAiLCJkcG9ydCI6MjIyMiwiY291bnQiOjgsImludGVydmFsIjowLjUsInNwb3J0Ijo0MDQwMSwiYXQiOjEwLjB9LHsia2luZCI6ImRucyIsInNyYyI6IjE5Mi4xNjguMjA3LjMxIiwiZHN0IjoiMTk4LjE4LjEyNS41MyIsInNwb3J0Ijo1MzEwMSwicW5hbWUiOiJDbWQubWVUcmljcy1QVVNoOTcuRXhhbVBMZSIsImF0IjoxMS4wfSx7ImtpbmQiOiJkbnMiLCJzcmMiOiIxOTIuMTY4LjIwNy40MSIsImRzdCI6IjE5OC4xOC4xMjUuNTMiLCJzcG9ydCI6NTMyMDEsInFuYW1lIjoibWV0cmljcy1wdXNoOTcuZXhhbXBsZSIsImF0IjoxMi4wfSx7ImtpbmQiOiJkbnMiLCJzcmMiOiIxOTIuMTY4LjIwNy40MyIsImRzdCI6IjE5OC4xOC4xMjUuNTMiLCJzcG9ydCI6NTMzMDEsInFuYW1lIjoiZnIud2lraXBlZGlhLm9yZyIsImF0IjoxMy4wfSx7ImtpbmQiOiJkbnMiLCJzcmMiOiIxOTIuMTY4LjIwNy40NSIsImRzdCI6IjE5OC4xOC4xMjUuNTMiLCJzcG9ydCI6NTM0MDEsInFuYW1lIjoibWV0cmljcy1wdXNoOTcuZXhhbXBsZS5jYWNoZS5leGFtcGxlLm5ldCIsImF0IjoxNC4wfV19 /tmp/sre-suricata-offline/signatures/probe.pcap && suricata -c /usr/local/share/sre/suricata-offline.yaml --runmode single -r /tmp/sre-suricata-offline/signatures/probe.pcap -S /etc/suricata/rules/local.rules -l /tmp/sre-suricata-offline/signatures -k none --set unix-command.enabled=no --set threshold-file=/tmp/sre-suricata-offline/signatures/empty.threshold --set 'vars.address-groups.HOME_NET=[10.203.228.0/24,192.168.207.0/24]' > /tmp/sre-suricata-offline/signatures/stdout 2>&1; echo SRE-RC=$?; jq -c 'select(.event_type==\"alert\") | {sid: .alert.signature_id, src: .src_ip, dst: .dest_ip, action: .alert.action}' /tmp/sre-suricata-offline/signatures/eve.json 2>/dev/null | sed 's/^/SRE-ALERT /'; grep -h -E 'Error|error' /tmp/sre-suricata-offline/signatures/suricata.log /tmp/sre-suricata-offline/signatures/stdout 2>/dev/null | head -8 | sed 's/^/SRE-ERROR /'; rm -rf /tmp/sre-suricata-offline/signatures",
+     "timeout": 60,
+     "code": 0,
+     "output": "SRE-RC=0\n"
+    },
+    {
+     "command": "rm -rf /tmp/sre-suricata-offline/tuning; mkdir -p /tmp/sre-suricata-offline/tuning; : > /tmp/sre-suricata-offline/tuning/empty.threshold; python3 /usr/local/sbin/sre_suricata_pcap.py eyJldmVudHMiOlt7ImtpbmQiOiJodHRwIiwic3JjIjoiMTkyLjE2OC4yMDcuMTAiLCJkc3QiOiIxMC4yMDMuMjI4LjIwIiwidXJpIjoiL2hlYWx0aCIsInVhIjoiY3VybC84LjE0LjEiLCJob3N0IjoiaW50cmFuZXQiLCJzcG9ydCI6NDUwMTAsImF0IjowLjB9LHsia2luZCI6Imh0dHAiLCJzcmMiOiIxOTIuMTY4LjIwNy4xMCIsImRzdCI6IjEwLjIwMy4yMjguMjAiLCJ1cmkiOiIvaGVhbHRoIiwidWEiOiJjdXJsLzguMTQuMSIsImhvc3QiOiJpbnRyYW5ldCIsInNwb3J0Ijo0NTAxMSwiYXQiOjEuMH0seyJraW5kIjoiaHR0cCIsInNyYyI6IjE5Mi4xNjguMjA3Ljc3IiwiZHN0IjoiMTAuMjAzLjIyOC4yMCIsInVyaSI6Ii8iLCJ1YSI6ImN1cmwvOC4xNC4xIiwiaG9zdCI6ImludHJhbmV0Iiwic3BvcnQiOjQ1MDEyLCJhdCI6Mi4wfSx7ImtpbmQiOiJodHRwIiwic3JjIjoiMTk4LjE4LjEyNS4xNzEiLCJkc3QiOiIxMC4yMDMuMjI4LjIwIiwidXJpIjoiL2xvZ2luIiwidWEiOiJjdXJsLzcuODguMSIsImhvc3QiOiJpbnRyYW5ldCIsInNwb3J0Ijo0NTAxMywiYXQiOjMuMH1dfQ== /tmp/sre-suricata-offline/tuning/probe.pcap && suricata -c /usr/local/share/sre/suricata-offline.yaml --runmode single -r /tmp/sre-suricata-offline/tuning/probe.pcap -S /usr/local/share/sre/sre-noisy.rules -l /tmp/sre-suricata-offline/tuning -k none --set unix-command.enabled=no --set threshold-file=/etc/suricata/threshold.config --set 'vars.address-groups.HOME_NET=[10.203.228.0/24,192.168.207.0/24]' > /tmp/sre-suricata-offline/tuning/stdout 2>&1; echo SRE-RC=$?; jq -c 'select(.event_type==\"alert\") | {sid: .alert.signature_id, src: .src_ip, dst: .dest_ip, action: .alert.action}' /tmp/sre-suricata-offline/tuning/eve.json 2>/dev/null | sed 's/^/SRE-ALERT /'; grep -h -E 'Error|error' /tmp/sre-suricata-offline/tuning/suricata.log /tmp/sre-suricata-offline/tuning/stdout 2>/dev/null | head -8 | sed 's/^/SRE-ERROR /'; rm -rf /tmp/sre-suricata-offline/tuning",
+     "timeout": 60,
+     "code": 0,
+     "output": "SRE-RC=0\nSRE-ALERT {\"sid\":1000100,\"src\":\"192.168.207.10\",\"dst\":\"10.203.228.20\",\"action\":\"allowed\"}\nSRE-ALERT {\"sid\":1999999,\"src\":\"192.168.207.10\",\"dst\":\"10.203.228.20\",\"action\":\"allowed\"}\nSRE-ALERT {\"sid\":1000100,\"src\":\"192.168.207.10\",\"dst\":\"10.203.228.20\",\"action\":\"allowed\"}\nSRE-ALERT {\"sid\":1999999,\"src\":\"192.168.207.10\",\"dst\":\"10.203.228.20\",\"action\":\"allowed\"}\nSRE-ALERT {\"sid\":1000100,\"src\":\"192.168.207.77\",\"dst\":\"10.203.228.20\",\"action\":\"allowed\"}\nSRE-ALERT {\"sid\":1999999,\"src\":\"192.168.207.77\",\"dst\":\"10.203.228.20\",\"action\":\"allowed\"}\nSRE-ALERT {\"sid\":1000100,\"src\":\"198.18.125.171\",\"dst\":\"10.203.228.20\",\"action\":\"allowed\"}\nSRE-ALERT {\"sid\":1999999,\"src\":\"198.18.125.171\",\"dst\":\"10.203.228.20\",\"action\":\"allowed\"}\n"
+    },
+    {
+     "command": "tail -n 5 /var/log/suricata/suricata.log",
+     "timeout": 20,
+     "code": 0,
+     "output": "[654 - Suricata-Main] 2026-11-23 15:10:43 Warning: af-packet: eth1: AF_PACKET tpacket-v3 is recommended for non-inline operation\n[654 - Suricata-Main] 2026-11-23 15:10:43 Info: runmodes: eth1: creating 1 thread\n[654 - Suricata-Main] 2026-11-23 15:10:43 Info: unix-manager: unix socket '/var/run/suricata-command.socket'\n[656 - W#01-eth1] 2026-11-23 15:10:43 Info: ioctl: eth1: MTU 1500\n[654 - Suricata-Main] 2026-11-23 15:10:43 Notice: threads: Threads created -> W: 1 FM: 1 FR: 1   Engine started.\n"
+    }
+   ]
+  },
+  {
+   "machine": "ids",
+   "step": 3,
+   "commands": [
+    {
+     "command": "grep -F '\"signature_id\":1000001,' /var/log/suricata/eve.json 2>/dev/null | tail -n 200",
+     "timeout": 20,
+     "code": 0,
+     "output": "{\"timestamp\":\"2026-11-23T15:10:48.426208+0000\",\"flow_id\":141700412477400,\"in_iface\":\"eth1\",\"event_type\":\"alert\",\"src_ip\":\"198.18.125.201\",\"dest_ip\":\"10.203.228.10\",\"proto\":\"ICMP\",\"icmp_type\":8,\"icmp_code\":0,\"pkt_src\":\"wire/pcap\",\"alert\":{\"action\":\"allowed\",\"gid\":1,\"signature_id\":1000001,\"rev\":1,\"signature\":\"SRE test de la sonde (ping marque)\",\"category\":\"Misc activity\",\"severity\":3},\"direction\":\"to_server\",\"flow\":{\"pkts_toserver\":1,\"pkts_toclient\":0,\"bytes_toserver\":98,\"bytes_toclient\":0,\"start\":\"2026-11-23T15:10:48.426208+0000\",\"src_ip\":\"198.18.125.201\",\"dest_ip\":\"10.203.228.10\"}}\n{\"timestamp\":\"2026-11-23T15:10:48.758660+0000\",\"flow_id\":141700412477400,\"in_iface\":\"eth1\",\"event_type\":\"alert\",\"src_ip\":\"198.18.125.201\",\"dest_ip\":\"10.203.228.10\",\"proto\":\"ICMP\",\"icmp_type\":8,\"icmp_code\":0,\"pkt_src\":\"wire/pcap\",\"alert\":{\"action\":\"allowed\",\"gid\":1,\"signature_id\":1000001,\"rev\":1,\"signature\":\"SRE test de la sonde (ping marque)\",\"category\":\"Misc activity\",\"severity\":3},\"direction\":\"to_server\",\"flow\":{\"pkts_toserver\":2,\"pkts_toclient\":1,\"bytes_toserver\":196,\"bytes_toclient\":98,\"start\":\"2026-11-23T15:10:48.426208+0000\",\"src_ip\":\"198.18.125.201\",\"dest_ip\":\"10.203.228.10\"}}\n{\"timestamp\":\"2026-11-23T15:10:49.059577+0000\",\"flow_id\":141700412477400,\"in_iface\":\"eth1\",\"event_type\":\"alert\",\"src_ip\":\"198.18.125.201\",\"dest_ip\":\"10.203.228.10\",\"proto\":\"ICMP\",\"icmp_type\":8,\"icmp_code\":0,\"pkt_src\":\"wire/pcap\",\"alert\":{\"action\":\"allowed\",\"gid\":1,\"signature_id\":1000001,\"rev\":1,\"signature\":\"SRE test de la sonde (ping marque)\",\"category\":\"Misc activity\",\"severity\":3},\"direction\":\"to_server\",\"flow\":{\"pkts_toserver\":3,\"pkts_toclient\":2,\"bytes_toserver\":294,\"bytes_toclient\":196,\"start\":\"2026-11-23T15:10:48.426208+0000\",\"src_ip\":\"198.18.125.201\",\"dest_ip\":\"10.203.228.10\"}}\n"
+    }
+   ]
+  },
+  {
+   "machine": "intranet",
+   "step": 1,
+   "commands": [
+    {
+     "command": "fail2ban-client unban 198.18.125.206 198.18.125.207 198.18.125.208 198.18.125.209 >/dev/null 2>&1; true",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    },
+    {
+     "command": "fail2ban-client status 2>/dev/null",
+     "timeout": 20,
+     "code": 255,
+     "output": ""
+    },
+    {
+     "command": "tail -n 8 /var/log/fail2ban.log",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    },
+    {
+     "command": "cat /etc/fail2ban/filter.d/intranet.conf",
+     "timeout": 20,
+     "code": 1,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "intranet",
+   "step": 3,
+   "commands": [
+    {
+     "command": "fail2ban-client status intranet 2>/dev/null",
+     "timeout": 20,
+     "code": 255,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "intranet",
+   "step": 4,
+   "commands": [
+    {
+     "command": "fail2ban-client unban 198.18.125.206 198.18.125.207 198.18.125.208 198.18.125.209 >/dev/null 2>&1; true",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "ips",
+   "step": 1,
+   "commands": [
+    {
+     "command": "date +%s.%N",
+     "timeout": 20,
+     "code": 0,
+     "output": "1795446648.049039096\n"
+    },
+    {
+     "command": "pgrep -a -x suricata || pgrep -a Suricata-Main",
+     "timeout": 20,
+     "code": 1,
+     "output": ""
+    },
+    {
+     "command": "nft -j list ruleset",
+     "timeout": 20,
+     "code": 0,
+     "output": "{\"nftables\": [{\"metainfo\": {\"version\": \"1.1.3\", \"release_name\": \"Commodore Bullmoose #4\", \"json_schema_version\": 1}}, {\"table\": {\"family\": \"ip\", \"name\": \"nat\", \"handle\": 1}}, {\"chain\": {\"family\": \"ip\", \"table\": \"nat\", \"name\": \"DOCKER_OUTPUT\", \"handle\": 1}}, {\"chain\": {\"family\": \"ip\", \"table\": \"nat\", \"name\": \"OUTPUT\", \"handle\": 2, \"type\": \"nat\", \"hook\": \"output\", \"prio\": -100, \"policy\": \"accept\"}}, {\"chain\": {\"family\": \"ip\", \"table\": \"nat\", \"name\": \"DOCKER_POSTROUTING\", \"handle\": 4}}, {\"chain\": {\"family\": \"ip\", \"table\": \"nat\", \"name\": \"POSTROUTING\", \"handle\": 5, \"type\": \"nat\", \"hook\": \"postrouting\", \"prio\": 100, \"policy\": \"accept\"}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"DOCKER_OUTPUT\", \"handle\": 9, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.11\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": 53}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"xt\": {\"type\": \"target\", \"name\": \"DNAT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"DOCKER_OUTPUT\", \"handle\": 7, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.11\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"dport\"}}, \"right\": 53}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"xt\": {\"type\": \"target\", \"name\": \"DNAT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"OUTPUT\", \"handle\": 3, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.11\"}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"jump\": {\"target\": \"DOCKER_OUTPUT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"DOCKER_POSTROUTING\", \"handle\": 10, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"127.0.0.11\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"sport\"}}, \"right\": 42579}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"xt\": {\"type\": \"target\", \"name\": \"SNAT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"DOCKER_POSTROUTING\", \"handle\": 8, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"127.0.0.11\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"sport\"}}, \"right\": 46306}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"xt\": {\"type\": \"target\", \"name\": \"SNAT\"}}]}}, {\"rule\": {\"family\": \"ip\", \"table\": \"nat\", \"chain\": \"POSTROUTING\", \"handle\": 6, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.11\"}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"jump\": {\"target\": \"DOCKER_POSTROUTING\"}}]}}]}\n"
+    },
+    {
+     "command": "nft list ruleset",
+     "timeout": 20,
+     "code": 0,
+     "output": "table ip nat {\n\tchain DOCKER_OUTPUT {\n\t\tip daddr 127.0.0.11 tcp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:42579\n\t\tip daddr 127.0.0.11 udp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:46306\n\t}\n\n\tchain OUTPUT {\n\t\ttype nat hook output priority dstnat; policy accept;\n\t\tip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_OUTPUT\n\t}\n\n\tchain DOCKER_POSTROUTING {\n\t\tip saddr 127.0.0.11 tcp sport 42579 counter packets 0 bytes 0 snat to :53\n\t\tip saddr 127.0.0.11 udp sport 46306 counter packets 0 bytes 0 snat to :53\n\t}\n\n\tchain POSTROUTING {\n\t\ttype nat hook postrouting priority srcnat; policy accept;\n\t\tip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_POSTROUTING\n\t}\n}\n"
+    },
+    {
+     "command": "tail -n 5 /var/log/suricata/suricata.log",
+     "timeout": 20,
+     "code": 1,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "ips",
+   "step": 3,
+   "commands": [
+    {
+     "command": "grep -F '\"signature_id\":1000020,' /var/log/suricata/eve.json 2>/dev/null | tail -n 200",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    }
+   ]
+  },
+  {
+   "machine": "probe",
+   "step": 2,
+   "commands": [
+    {
+     "command": "( ( ping -c 3 -i 0.3 -W 1 -I 198.18.125.201 -p 5352452d53454e534f52 10.203.228.10 | grep -c 'bytes from' ) >/tmp/.sre_tcp_sensor 2>&1 & ( echo bad1=$(curl -s -g -m 4 --interface 198.18.125.202 -o /dev/null -w '%{http_code}' 'http://172.20.110.10/products?id=1%20UNION%20SELECT%20login,password%20FROM%20users'); echo bad2=$(curl -s -g -m 4 --interface 198.18.125.202 -o /dev/null -w '%{http_code}' 'http://172.20.110.10/products?id=2%20union%20select%20null,version()'); echo good1=$(curl -s -g -m 4 --interface 198.18.125.203 -o /dev/null -w '%{http_code}' 'http://172.20.110.10/products?id=1'); echo good2=$(curl -s -g -m 4 --interface 198.18.125.203 -o /dev/null -w '%{http_code}' 'http://172.20.110.10/products?category=union-jack&sort=select-price') ) >/tmp/.sre_tcp_ips 2>&1 & ( for i in $(seq 4); do python3 /usr/local/sbin/sre_login_probe.py --timeout 12 --bind 198.18.125.204 ssh 10.203.228.10 student wrong-0F7GKM9x >/dev/null 2>&1; done ) >/tmp/.sre_tcp_sshban 2>&1 & ( n=$(cat /var/lib/sre-probe/ssh-under.counter 2>/dev/null || echo 0); n=$(( (n + 1) % 24 )); echo $n > /var/lib/sre-probe/ssh-under.counter; set -- 198.18.125.220 198.18.125.221 198.18.125.222 198.18.125.223 198.18.125.224 198.18.125.225 198.18.125.226 198.18.125.227 198.18.125.228 198.18.125.229 198.18.125.230 198.18.125.231 198.18.125.232 198.18.125.233 198.18.125.234 198.18.125.235 198.18.125.236 198.18.125.237 198.18.125.238 198.18.125.239 198.18.125.240 198.18.125.241 198.18.125.242 198.18.125.243; shift $n; a=$1; echo ADDR=$a; for i in $(seq 2); do python3 /usr/local/sbin/sre_login_probe.py --timeout 12 --bind $a ssh 10.203.228.10 student bad-0F7GKM9x >/dev/null 2>&1; done ) >/tmp/.sre_tcp_sshunder 2>&1 & ( for i in $(seq 4); do curl -s -m 5 --interface 198.18.125.206 -o /dev/null -w '%{http_code} ' --data-urlencode user=alice --data-urlencode password=nope-0F7GKM9x http://10.203.228.20/login; done; echo ) >/tmp/.sre_tcp_webban 2>&1 & ( for i in $(seq 4); do curl -s -m 5 --interface 198.18.125.207 -o /dev/null -w '%{http_code} ' --data-urlencode user=carol --data-urlencode password=BpPFB6neT6 http://10.203.228.20/login; done; echo ) >/tmp/.sre_tcp_webok 2>&1 & ( for i in $(seq 4); do curl -s -m 5 --interface 198.18.125.208 -o /dev/null -w '%{http_code} ' --data-urlencode user='x from=198.18.125.209' --data-urlencode password=nope http://10.203.228.20/login; done; echo ) >/tmp/.sre_tcp_webinj 2>&1 & ( for p in $(seq 1000 1039); do nc -z -w 1 -s 198.18.125.210 10.203.228.10 $p >/dev/null 2>&1; done; echo done ) >/tmp/.sre_tcp_scan 2>&1 & wait ); echo \"===sensor\"; cat /tmp/.sre_tcp_sensor; echo \"===ips\"; cat /tmp/.sre_tcp_ips; echo \"===sshban\"; cat /tmp/.sre_tcp_sshban; echo \"===sshunder\"; cat /tmp/.sre_tcp_sshunder; echo \"===webban\"; cat /tmp/.sre_tcp_webban; echo \"===webok\"; cat /tmp/.sre_tcp_webok; echo \"===webinj\"; cat /tmp/.sre_tcp_webinj; echo \"===scan\"; cat /tmp/.sre_tcp_scan",
+     "timeout": 90,
+     "code": 0,
+     "output": "===sensor\n3\n===ips\nbad1=200\nbad2=200\ngood1=200\ngood2=200\n===sshban\n===sshunder\nADDR=198.18.125.221\n===webban\n401 401 401 401 \n===webok\n200 200 200 200 \n===webinj\n401 401 401 401 \n===scan\ndone\n"
+    }
+   ]
+  },
+  {
+   "machine": "probe",
+   "step": 3,
+   "commands": [
+    {
+     "command": "sleep 3; if nc -z -w 3 -s 198.18.125.204 10.203.228.10 22 >/dev/null 2>&1; then echo OPEN_sshban; else echo CLOSED_sshban; fi; set -- 198.18.125.220 198.18.125.221 198.18.125.222 198.18.125.223 198.18.125.224 198.18.125.225 198.18.125.226 198.18.125.227 198.18.125.228 198.18.125.229 198.18.125.230 198.18.125.231 198.18.125.232 198.18.125.233 198.18.125.234 198.18.125.235 198.18.125.236 198.18.125.237 198.18.125.238 198.18.125.239 198.18.125.240 198.18.125.241 198.18.125.242 198.18.125.243; n=$(cat /var/lib/sre-probe/ssh-under.counter 2>/dev/null || echo 0); shift $n; if nc -z -w 3 -s $1 10.203.228.10 22 >/dev/null 2>&1; then echo OPEN_sshunder; else echo CLOSED_sshunder; fi; if nc -z -w 3 -s 198.18.125.206 10.203.228.20 80 >/dev/null 2>&1; then echo OPEN_webban; else echo CLOSED_webban; fi; if nc -z -w 3 -s 198.18.125.207 10.203.228.20 80 >/dev/null 2>&1; then echo OPEN_webok; else echo CLOSED_webok; fi; if nc -z -w 3 -s 198.18.125.208 10.203.228.20 80 >/dev/null 2>&1; then echo OPEN_webinj; else echo CLOSED_webinj; fi; if nc -z -w 3 -s 198.18.125.210 10.203.228.10 22 >/dev/null 2>&1; then echo OPEN_scan; else echo CLOSED_scan; fi; if nc -z -w 3 -s 198.18.125.201 10.203.228.10 22 >/dev/null 2>&1; then echo OPEN_sensorpass; else echo CLOSED_sensorpass; fi",
+     "timeout": 60,
+     "code": 0,
+     "output": "OPEN_sshban\nOPEN_sshunder\nOPEN_webban\nOPEN_webok\nOPEN_webinj\nOPEN_scan\nOPEN_sensorpass\n"
+    }
+   ]
+  }
+ ],
+ "errors": [],
+ "answers": {
+  "auto_eval_count": 0
+ },
+ "grades": {
+  "running_lab_name": "20261123161028@@@@var@tmp@sre-stage-ids@lab@sre@_DRAFT_misc@suricata-fail2ban.py@@@root",
+  "eval_date": "2026-11-23T16:10:47.967702",
+  "login": "",
+  "hostname": "",
+  "grade_list": [
+   {
+    "title": "sensor_running",
+    "max_grade": 3,
+    "grade": 3,
+    "grade_letter": null,
+    "description": {
+     "fr": "Suricata tourne sur ids et capture sur eth1"
+    },
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "sensor_home_net",
+    "max_grade": 4,
+    "grade": 4,
+    "grade_letter": null,
+    "description": {
+     "fr": "HOME_NET contient exactement la DMZ et le réseau lan"
+    },
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "sensor_rule_files",
+    "max_grade": 2,
+    "grade": 2,
+    "grade_letter": null,
+    "description": {
+     "fr": "rule-files charge sre.rules et local.rules"
+    },
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "sensor_detects",
+    "max_grade": 6,
+    "grade": 6,
+    "grade_letter": null,
+    "description": {
+     "fr": "le ping marqué de l'évaluation produit l'alerte 1000001 dans eve.json"
+    },
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "q_sensor",
+    "max_grade": 5,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "concentrateur / port miroir ; capture sans adresse ; une sonde passive ne bloque pas"
+    },
+    "scope": 2,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "sig_ua",
+    "max_grade": 6,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "1000010 : User-Agent sqlmap (2), toute casse (2), pas sur le mot dans l'URI (2)"
+    },
+    "scope": 3,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "sig_passwd",
+    "max_grade": 6,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "1000011 : /etc/passwd dans l'URI (2), forme encodée (2), ni en-tête ni page voisine (2)"
+    },
+    "scope": 3,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "sig_c2",
+    "max_grade": 6,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "1000012 : sous-domaine du C2 en casse mélangée (2), le domaine lui-même (2), ni autre nom ni nom le contenant (2)"
+    },
+    "scope": 3,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "sig_ssh",
+    "max_grade": 6,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "1000013 : 8 SYN vers 22 en 4 s (3) ; ni 3 SYN, ni 8 SYN en 3 min, ni un autre port (3)"
+    },
+    "scope": 3,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "q_rules",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "http.uri normalisée ; flow:established,to_server"
+    },
+    "scope": 2,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "tuning_suppress",
+    "max_grade": 6,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "plus d'alerte 1000100 pour admin, toujours pour les autres sources (2 points si la règle est muette pour tous)"
+    },
+    "scope": 3,
+    "grade_part": "part3",
+    "bonus": false
+   },
+   {
+    "title": "q_false_positives",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "faux positif ; supprimer la règle créerait des faux négatifs"
+    },
+    "scope": 2,
+    "grade_part": "part3",
+    "bonus": false
+   },
+   {
+    "title": "ips_queue",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "une règle forward envoie le trafic à une file NFQUEUE avec bypass (2 sans bypass)"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "ips_nfqueue_mode",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "Suricata tourne sur ips en mode NFQUEUE (-q)"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "ips_blocks_injection",
+    "max_grade": 5,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "les deux requêtes UNION SELECT sont bloquées (une requête ordinaire passe)"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "ips_no_false_block",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "une URI contenant union et select séparément passe"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "ips_logged",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "eve.json de ips contient l'alerte 1000020 avec l'action blocked"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "q_ips",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "bypass = fail-open ; reject répond ; un faux positif coupe le service"
+    },
+    "scope": 2,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "f2b_sshd_active",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "fail2ban tourne sur bastion avec la prison sshd"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "f2b_sshd_values",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "maxretry = 3, findtime = 10 min, bantime = 1 h"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "ssh_bans_attacker",
+    "max_grade": 6,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "après 4 échecs, l'adresse de l'évaluation est bannie et ne joint plus le port 22"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "ssh_spares_two_failures",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "2 échecs ne suffisent pas à être banni"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "ssh_spares_admin",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "admin (réseau lan) n'est jamais banni"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "q_f2b_table",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "la table nftables de fail2ban : f2b-table"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "q_f2b_admin",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "unbanip ; ignoreip contre l'enfermement des administrateurs"
+    },
+    "scope": 2,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "q_history",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "l'attaquant le plus actif de l'historique et son nombre d'échecs"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "f2b_intranet_active",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "fail2ban tourne sur intranet avec la prison intranet"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "web_bans_attacker",
+    "max_grade": 6,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "après 4 échecs, l'adresse de l'évaluation est bannie du port 80"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "web_ignores_success",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "4 connexions réussies ne font pas bannir"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "web_resists_injection",
+    "max_grade": 5,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "le nom injecté « x from=... » fait bannir l'attaquant, jamais l'adresse injectée"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "q_filter_traps",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "filtre non ancré = injection ; backend d'un fichier"
+    },
+    "scope": 2,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "bonus_gw_blocks_scanner",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "après son balayage, l'adresse de l'évaluation n'ouvre plus de connexion TCP à travers gw (les autres si)"
+    },
+    "scope": 3,
+    "grade_part": "bonus",
+    "bonus": true
+   },
+   {
+    "title": "bonus_gw_jail",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "une prison de gw a banni l'adresse du balayage"
+    },
+    "scope": 3,
+    "grade_part": "bonus",
+    "bonus": true
+   }
+  ],
+  "grade_parts": [
+   {
+    "title": "part1",
+    "description": {
+     "fr": "Partie 1 — La sonde de détection (IDS)"
+    }
+   },
+   {
+    "title": "part2",
+    "description": {
+     "fr": "Partie 2 — Écrire des signatures"
+    }
+   },
+   {
+    "title": "part3",
+    "description": {
+     "fr": "Partie 3 — Réduire les faux positifs"
+    }
+   },
+   {
+    "title": "part4",
+    "description": {
+     "fr": "Partie 4 — Suricata en coupure (IPS)"
+    }
+   },
+   {
+    "title": "part5",
+    "description": {
+     "fr": "Partie 5 — fail2ban contre la recherche de mots de passe SSH"
+    }
+   },
+   {
+    "title": "part6",
+    "description": {
+     "fr": "Partie 6 — Un filtre fail2ban sur mesure"
+    }
+   },
+   {
+    "title": "bonus",
+    "description": {
+     "fr": "Bonus — Bannir sur alerte Suricata"
+    }
+   }
+  ],
+  "total_grade_self_eval": 15,
+  "total_max_self_eval": 102,
+  "mark_self_eval": 3.0,
+  "total_grade_exo_eval": 15,
+  "total_max_exo_eval": 124,
+  "mark_exo_eval": 2.5,
+  "maximum_mark": 20,
+  "exam_json": null
+ },
+ "files": []
+}

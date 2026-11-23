@@ -34,6 +34,7 @@
     "rsyslog.py": 43,
     "smtp.py": 36,
     "snmp.py": 84,
+    "suricata-fail2ban.py": 64,
     "tc.py": 14,
     "tcp.py": 5,
     "tls.py": 17,
@@ -106,6 +107,10 @@
   "snmp.py": {
     "en": "SNMP: querying, configuring and securing agents",
     "fr": "SNMP : interroger, configurer et sécuriser des agents"
+  },
+  "suricata-fail2ban.py": {
+    "en": "Intrusion detection and prevention: Suricata and fail2ban",
+    "fr": "Détection et prévention d'intrusion : Suricata et fail2ban"
   },
   "vxlan-evpn.py": {
     "en": "VXLAN and EVPN in a data centre",

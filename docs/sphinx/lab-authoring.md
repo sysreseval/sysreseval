@@ -1544,6 +1544,59 @@ from frr import (get_bgp_evpn_summary, get_bgp_evpn_routes, evpn_routes, get_evp
 
 Verified on Debian 13 (Linux 6.12, iproute2 7.3.0, FRR 10.3 in `routing-frr`): creating a VXLAN or VRF device in a container loads the module of the host; the VDE links carry jumbo frames and a tap does not enforce its MTU on receive; a VTEP whose path is too small answers a DF host with an ICMP *fragmentation needed* (PMTU 1450 cached ~10 min) and never fragments, a router behind it fragments the VXLAN packet; a multicast VXLAN packet leaves with TTL 1 unless `ttl` is set, and a PIM router registers only directly connected sources (no `local` on a loopback); FRR imports the routes of another AS whose automatic RT differs (it compares the VNI); a MAC+IP route lives while the leaf's ARP entry is fresh (STALE = withdrawn); the BGP instance of a VRF is needed for type-5 routes only; a border that is also a PE re-originates EVPN ↔ VPNv4 in both directions, and only `route-map vpn export` (not `aggregate-address … summary-only`) keeps the /32 host routes out of VPNv4. Examples: `lab/sre/_DRAFT_misc/vxlan-evpn.py` and `lab/sre/_DRAFT_misc/evpn-mpls.py`.
 
+### Suricata and fail2ban helpers (from `/opt/sre/lib/suricata.py` and `/opt/sre/lib/fail2ban.py`)
+
+```python
+from suricata import (install_pcap_tool, write_pcap, save_offline_config, render_minimal_yaml, offline_alerts,
+                      alert_sources, get_epoch, eve_alerts, alerts_since, get_dump_config, config_list,
+                      rule_file_loaded, address_group, same_networks, get_processes, nfq_mode, af_packet_mode,
+                      queue_statements)
+from fail2ban import (get_jails, get_jail_status, get_jail_value, get_ignoreip, parse_seconds, ssh_failures_cmd,
+                      http_logins_cmd, tcp_open_cmd, parse_tcp_open, unban_cmd, render_jail)
+```
+
+**Suricata** (`lib/suricata.py`; the captures come from `lib/suricata_pcap.py`, a stdlib generator of HTTP
+sessions, DNS queries, SYN bursts and ICMP echoes with consistent sequence numbers and checksums):
+
+| Function | Returns |
+|----------|---------|
+| `install_pcap_tool(ns, m)` / `write_pcap(ns, m, path, spec)` | the generator copied into a machine; a capture left there for the students (`suricata -r`) |
+| `save_offline_config(ns, m)` | a copy of `suricata.yaml` as installed (`/usr/local/share/sre/suricata-offline.yaml`): the grader's offline runs never read the students' configuration |
+| `offline_alerts(grade, m, spec, rule_file, home_net, threshold_file=None, name=)` | writes a fresh capture of *spec* in the machine, runs `suricata -r` on it with **one** rule file (`-S`), `HOME_NET` forced and a threshold file (empty by default): `{'rc', 'alerts': [{sid, src, dst, action}], 'errors'}`; `alert_sources(alerts, sid)` = the sources of a signature. A part graded this way does not depend on the live sensor of another part |
+| `get_epoch(grade, m)` + `eve_alerts(grade, m, sid)` + `alerts_since(events, t0, src=, action=)` | the alerts of one signature in a live `eve.json`, kept when written after the clock read at step 1 (`action='blocked'` for an IPS drop) |
+| `get_dump_config(grade, m)` / `config_list(config, 'rule-files')` / `rule_file_loaded(config, path)` | `suricata --dump-config` as `{key: value}` (`af-packet.0.interface`, `vars.address-groups.HOME_NET`...); a rule file named absolute or relative to `default-rule-path` |
+| `address_group(value)` / `same_networks(value, expected)` | an address group as networks (`None` with a negation, a variable or `any`), compared without order |
+| `get_processes(grade, m)` + `nfq_mode(cmdline)` / `af_packet_mode(cmdline)` | the running Suricata command lines: NFQUEUE (`-q N`), af-packet (`''` for the interfaces of the configuration, or the interface of `--af-packet=X`) |
+| `queue_statements(parsed, hook)` | the `queue` statements of a hook in `firewall.get_nft_json()` (jumped-to chains included): `num`, `flags` (`bypass` = fail-open) |
+| `render_minimal_yaml(home_net, iface, rule_files)` | a complete short `suricata.yaml` for a reference sensor of a lab: af-packet with one thread, alerts only in `eve.json`, no unix socket |
+
+**fail2ban** (`lib/fail2ban.py`): `get_jails` (`fail2ban-client status`), `get_jail_status` (`currently_failed`,
+`total_failed`, `currently_banned`, `banned`), `get_jail_value(grade, m, jail, 'maxretry')` + `parse_seconds`
+(`findtime`, `bantime` in seconds), `get_ignoreip`; the attempts of a probe from a chosen source address:
+`ssh_failures_cmd(host, user, wrong_password, count, bind)` (password logins through
+`lib/login_probe.py --bind`, copied by `openldap.install_login_probe`), `http_logins_cmd(url, user, password,
+count, bind)` (`POST` with `curl --interface`), `tcp_open_cmd(host, port, bind, tag=)` + `parse_tcp_open` (is the
+port still reachable from that address); `unban_cmd(addresses)` (every jail, harmless without fail2ban);
+`render_jail(name, **options)`. `lib/intranet_app.py` is a small login application (stdlib) whose log line puts
+the client's user name before its address (`FAILED login user=<user> from=<ip>`), the classic injectable log.
+
+Verified on Debian 13 (Suricata 7.0.10, fail2ban 1.1.0, nftables 1.1.3, Linux 6.12): Debian's `suricata.yaml`
+captures with af-packet threads `auto` (one per core: set `threads: 1`), loads only `suricata.rules` of
+`suricata-update` (absent offline: a warning) and enables a unix socket that an offline run must disable; the
+service runs `suricata -D --af-packet`; the NFQUEUE modules load on demand from a container and Suricata `-q 0`
+drops inline (`alert.action` `blocked`); `http.uri` is normalised (`%2F` decoded, `../` resolved, in the query
+string too), `http.uri.raw` and a plain `content` are not; `detection_filter: count 5` alerts from the 6th match,
+`threshold: type threshold, count 5` on the 5th; `suppress … track by_src, ip X` silences X only. Debian enables
+fail2ban's `[sshd]` jail on the systemd journal (`backend = systemd`, sshd must run as `ssh.service`) with
+`banaction = nftables` (table `inet f2b-table`, set `addr-set-<jail>`, chain `f2b-chain` on `input`); a jail
+whose filter is missing is skipped, the others start; unbanning does not reset an address's failures (a probe
+checking "not banned below maxretry" must rotate its addresses); the date is cut out of a line before
+`failregex` (the rest starts with a blank: `^\s*`); a greedy `.*` before `<HOST>` takes the last address of the
+line, `.*?` or a bare `from=<HOST>` the first (log injection); `nftables[type=allports, chain_hook=forward]`
+with `chain = f2b-forward` bans routed traffic, on every port of the jail's `protocol` only (`tcp` by default:
+ICMP still passes); `eve.json` lines are dated by the default detector. Example:
+`lab/sre/_DRAFT_misc/suricata-fail2ban.py`.
+
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
 `machine_config(net_scheme, machine_name, config)` — concise helper for wiring a machine inside `NetScheme.build()` (or `initial()`). `config` is a `(interfaces, sysctls)` tuple:

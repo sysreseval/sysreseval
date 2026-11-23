@@ -10,8 +10,9 @@ exists (``pam_mkhomedir``).  One JSON document on stdout: ``{"ok", "login", "hom
 "home_exists", "prompted", "exit", "timeout", "output"}``.
 
 Options: ``--timeout S`` (default 20), ``--as USER`` (the user running ``su``, default
-``student``), ``--port N`` (ssh), ``--klist`` (the session also reports whether it holds a Kerberos
-ticket, ``klist -s``: the JSON gains ``"tgt"``, true / false).
+``student``), ``--port N`` (ssh), ``--bind ADDR`` (ssh: the local address the connection comes from,
+``ssh -b``), ``--klist`` (the session also reports whether it holds a Kerberos ticket, ``klist -s``: the
+JSON gains ``"tgt"``, true / false).
 """
 import json
 import os
@@ -122,6 +123,7 @@ def main(argv):
     timeout = 20.0
     as_user = "student"
     port = 22
+    bind = None
     klist = False
     args = []
     i = 0
@@ -139,6 +141,9 @@ def main(argv):
         elif a == "--port":
             port = int(argv[i + 1])
             i += 2
+        elif a == "--bind":
+            bind = argv[i + 1]
+            i += 2
         else:
             args.append(a)
             i += 1
@@ -154,8 +159,10 @@ def main(argv):
         host, user, password = args[1], args[2], args[3]
         cmd = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                "-o", "LogLevel=ERROR", "-o", "PreferredAuthentications=password,keyboard-interactive",
-               "-o", "PubkeyAuthentication=no", "-o", "NumberOfPasswordPrompts=1", "-o", "ConnectTimeout=5",
-               f"{user}@{host}", script]
+               "-o", "PubkeyAuthentication=no", "-o", "NumberOfPasswordPrompts=1", "-o", "ConnectTimeout=5"]
+        if bind:
+            cmd += ["-b", bind]
+        cmd += [f"{user}@{host}", script]
     else:
         print("usage: login_probe.py su USER PASSWORD | ssh HOST USER PASSWORD", file=sys.stderr)
         return 2
