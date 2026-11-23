@@ -335,6 +335,11 @@ def _networks(client, lab_hash):
     return [n for n in client.networks.list() if (n.attrs.get('Labels') or {}).get('lab_hash') == lab_hash]
 
 
+def _save_repository(lab_hash):
+    """The repository of the images a restore builds for the lab *lab_hash* (Kathara's naming)."""
+    return 'kathara_save_' + re.sub(r'[^a-z0-9]', '', lab_hash.lower())
+
+
 @pytest.fixture
 def projects(docker_client):
     """Registry of the projects a test creates; whatever is left is stopped, and any container,
@@ -509,8 +514,12 @@ class TestSaveRestore:
 
         containers = _containers(docker_client, restored_hash)
         assert {c.labels['name'] for c in containers} == {'router', 'client'}
-        assert all(c.attrs['Config']['Image'].startswith('kathara_save_') for c in containers), \
-            [c.attrs['Config']['Image'] for c in containers]
+        # the restored machines run the images of the lab: their saved files were copied into
+        # their containers, no image was built to hold them (nothing was deleted here)
+        saved_images = {c.labels['name']: c.attrs['Config']['Image'] for c in _containers(docker_client, lab_hash)}
+        assert {c.labels['name']: c.attrs['Config']['Image'] for c in containers} == saved_images
+        assert not any(image.startswith('kathara_save_') for image in saved_images.values()), saved_images
+        assert docker_client.images.list(name=_save_repository(restored_hash)) == []
         r = _sre('exec', restored, 'router', 'sh', '-c',
                  'cat /root/marker /root/from_initial /root/save_hook /root/restore_hook')
         assert r.returncode == 0, (r.stdout, r.stderr)
@@ -524,6 +533,69 @@ class TestSaveRestore:
             assert _containers(docker_client, h) == [], f"containers of {name} left after sre stop"
             assert _networks(docker_client, h) == []
             assert not (PROJECTS / name).exists()
+
+    def test_a_restored_project_saved_again_restores_on_another_host(self, docker_client, labs_dir, projects,
+                                                                     tmp_path):
+        """Save, restore, work on, save again: the second file must restore where nothing of the
+        first restore is left (another host of a pool, or this one after its images were
+        cleaned), with the changes of both sessions.  A save is a diff against the images of the
+        lab, never against an image a restore built here."""
+        def restore(save_file):
+            before = _project_dirs()
+            r = _sre('restore', str(save_file))
+            assert r.returncode == 0, r.stderr[-3000:]
+            name = (_project_dirs() - before).pop()
+            projects.append((name, _lab_hash(name)))
+            return name, _lab_hash(name)
+
+        def run(name, command):
+            return _sre('exec', name, 'router', 'sh', '-c', command)
+
+        first, first_hash = _start(projects, labs_dir / 'non_privileged.py')
+        # a file added, a file of the image changed, a file of the image deleted
+        r = run(first, 'echo one > /root/first && echo changed > /etc/issue && rm /etc/issue.net')
+        assert r.returncode == 0, r.stderr
+        save_a = tmp_path / 'a.sre'
+        r = _sre('save', first, '-o', str(save_a))
+        assert r.returncode == 0, r.stderr
+
+        second, second_hash = restore(save_a)
+        r = run(second, 'cat /root/first /etc/issue; ls /etc/issue.net')
+        assert 'one' in r.stdout and 'changed' in r.stdout and 'issue.net' not in r.stdout, (r.stdout, r.stderr)
+        # the second session: another file, the deleted one made again, another one deleted,
+        # and the file of the first session removed
+        r = run(second, 'echo two > /root/second && echo again > /etc/issue.net && rm /etc/motd /root/first')
+        assert r.returncode == 0, r.stderr
+        save_b = tmp_path / 'b.sre'
+        r = _sre('save', second, '-o', str(save_b))
+        assert r.returncode == 0, r.stderr
+
+        for name, h in ((second, second_hash), (first, first_hash)):
+            r = _sre('stop', name)
+            assert r.returncode == 0, r.stderr
+            assert _containers(docker_client, h) == []
+        # another host: no image of the two projects; what a stop left behind is noted, and removed
+        left = []
+        for h in (first_hash, second_hash):
+            for image in docker_client.images.list(name=_save_repository(h)):
+                left.extend(image.tags)
+                docker_client.images.remove(image.id, force=True)
+
+        third, third_hash = restore(save_b)
+        r = run(third, 'cat /root/second /etc/issue /etc/issue.net /root/from_initial; ls /root/first /etc/motd')
+        assert 'two' in r.stdout and 'changed' in r.stdout and 'again' in r.stdout and 'from-initial' in r.stdout, \
+            (r.stdout, r.stderr)
+        assert '/root/first' not in r.stdout, "a file removed in the second session came back"
+        assert '/etc/motd' not in r.stdout, "a file of the image deleted in the second session came back"
+        # a machine nothing was deleted on runs the image of the lab itself
+        images = {c.labels['name']: c.attrs['Config']['Image'] for c in _containers(docker_client, third_hash)}
+        assert not images['client'].startswith('kathara_save_'), images
+
+        r = _sre('stop', third)
+        assert r.returncode == 0, r.stderr
+        assert _containers(docker_client, third_hash) == []
+        assert docker_client.images.list(name=_save_repository(third_hash)) == [], "images of a restore left by sre stop"
+        assert left == [], f"images of a restore left by sre stop: {left}"
 
     def test_encrypted_round_trip(self, docker_client, labs_dir, projects, tmp_path):
         pytest.importorskip('cryptography')

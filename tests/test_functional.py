@@ -20,7 +20,7 @@ import tarfile
 import threading
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import msgpack
 import pytest
@@ -555,7 +555,10 @@ class Grade:
         with pytest.raises(RuntimeError, match='boom after deploy'):
             do_action_start(lab_cli_arg=str(_LAB_PATH), lab_cli_arg_is_path=True)
 
-        kathara_instance.undeploy_lab.assert_called_once_with('fake-lab-hash-1234')
+        # the undeploy of the rollback, then once more for the images of the lab, which the
+        # container it could not see was still using (wipe.remove_lab_leftovers)
+        assert kathara_instance.undeploy_lab.call_args_list == [call('fake-lab-hash-1234'),
+                                                                call(lab_hash='fake-lab-hash-1234')]
         kathara_instance.get_machines_api_objects.assert_called_once_with(lab_hash='fake-lab-hash-1234', all_users=True)
         kathara_instance.get_links_api_objects.assert_called_once_with(lab_hash='fake-lab-hash-1234', all_users=True)
         container.remove.assert_called_once_with(v=True, force=True)

@@ -43,7 +43,12 @@ def remove_lab_leftovers(lab_hash: str, errors: list[str]) -> list[str]:
     drop to sre, the containers of a privileged lab (labelled with the lab owner) are invisible to
     it and would stay running, with their networks.  This is the last resort for what that undeploy
     could not see, so the shutdown hooks are not run.  Each object that cannot be removed is
-    appended to *errors*; one already gone is simply skipped."""
+    appended to *errors*; one already gone is simply skipped.
+
+    The images a restore built for the devices of the lab (a device that had deleted files of
+    its image runs the image without them, see `sre restore`) are removed by Kathara's undeploy,
+    but not while a container it could not see was still using them: when such a container was
+    removed here, the undeploy is asked again, for the images alone."""
     kathara = Kathara.get_instance()
     removed: list[str] = []
     for container in kathara.get_machines_api_objects(lab_hash=lab_hash, all_users=True):
@@ -62,6 +67,12 @@ def remove_lab_leftovers(lab_hash: str, errors: list[str]) -> list[str]:
             pass
         except Exception as e:
             errors.append(f"network {network.name}: {e}")
+    if removed:
+        try:
+            # nothing is left to undeploy: only the images of the lab are removed
+            kathara.undeploy_lab(lab_hash=lab_hash)
+        except Exception as e:
+            errors.append(f"images of the lab {lab_hash}: {e}")
     return removed
 
 

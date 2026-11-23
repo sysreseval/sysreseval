@@ -164,7 +164,8 @@ class TestStopRunningLab:
     def test_leftover_containers_removed_as_root_before_the_directories(self, privilege_simulator,
                                                                          non_privileged_lab):
         """A container the undeploy could not see (its `user` label does not match) is force-removed,
-        still as root, after the undeploys and before the directories go."""
+        still as root, after the undeploys and before the directories go; the undeploy is then
+        asked once more, for the images a restore built that the container was still using."""
         state = privilege_simulator
         proj, user_public_dir = _make_project(state)
         leftover = MagicMock()
@@ -172,7 +173,7 @@ class TestStopRunningLab:
         leftover.remove.side_effect = lambda **kw: state['events'].append(('remove', leftover.name, state['euid'], kw))
         state['kathara'].get_machines_api_objects.return_value = [leftover]
         assert stop_cmd.stop_running_lab(RLN) == []
-        assert len(state['undeploys']) == 1
+        assert len(state['undeploys']) == 2
         state['kathara'].get_machines_api_objects.assert_called_once_with(lab_hash='hash', all_users=True)
         assert state['events'] == [('remove', leftover.name, 0, {'v': True, 'force': True}),
                                    ('rmtree', user_public_dir, 0),

@@ -4,6 +4,7 @@ patched Kathara ``save_lab`` + the project files) into a single save file.
 In user mode the file is written to stdout (the GUI, running as the student, redirects it
 to the file chosen in the dialog); privileged users may use ``-o FILE``.
 """
+import contextlib
 import datetime
 import os
 import secrets
@@ -57,6 +58,19 @@ def ensure_save_tmp_dir():
         drop_privileges_temporarily()
 
 
+@contextlib.contextmanager
+def kathara_temp_dir(directory: str):
+    """Meanwhile the temporary files of this process go to *directory*: Kathara writes the
+    filesystem diffs of the devices where ``tempfile`` says, /tmp by default, which is a tmpfs
+    on Debian 13 (the memory of the host) and not ``params.save_tmp_dir``."""
+    previous = tempfile.tempdir
+    tempfile.tempdir = directory
+    try:
+        yield
+    finally:
+        tempfile.tempdir = previous
+
+
 def get_save_key(module_rvlab):
     """Return the lab's ``save_key`` (None when the lab does not define one)."""
     save_key = getattr(module_rvlab, 'save_key', None)
@@ -97,8 +111,9 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
             do_action_state(lab=lab, state=params.save_state_name, net_scheme=net_scheme,
                             project_has_directory=params.project_has_directory(running_lab_name))
 
-            Kathara.get_instance().save_lab(kathara_tar, lab_hash=net_scheme.get_lab_hash(),
-                                            filesystem_diff=not full_images)
+            with kathara_temp_dir(tmp):
+                Kathara.get_instance().save_lab(kathara_tar, lab_hash=net_scheme.get_lab_hash(),
+                                                filesystem_diff=not full_images)
 
             meta = SaveMeta(
                 lab_name=params.get_lab_name_from_running_lab_name(running_lab_name),

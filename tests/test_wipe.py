@@ -194,6 +194,17 @@ class TestRemoveLabLeftovers:
         assert networks[0].remove_calls == [{}]
         assert removed == log
         assert errors == []
+        # then the images a restore built for the lab, which the containers Kathara's undeploy
+        # could not see were still using: the undeploy once more, now that they are gone
+        kathara_instance.undeploy_lab.assert_called_once_with(lab_hash='h')
+
+    def test_images_that_cannot_be_removed_are_reported(self, kathara_instance):
+        kathara_instance.get_machines_api_objects.return_value = [_FakeDockerObject('srv', [])]
+        kathara_instance.get_links_api_objects.return_value = []
+        kathara_instance.undeploy_lab.side_effect = docker.errors.APIError('daemon gone')
+        errors = []
+        assert wipe_mod.remove_lab_leftovers('h', errors) == ['srv']
+        assert len(errors) == 1 and errors[0].startswith('images of the lab h') and 'daemon gone' in errors[0]
 
     def test_already_gone_is_skipped_and_failures_are_collected(self, kathara_instance):
         log = []
@@ -214,3 +225,5 @@ class TestRemoveLabLeftovers:
         errors = []
         assert wipe_mod.remove_lab_leftovers('h', errors) == []
         assert errors == []
+        # Kathara's own undeploy saw every container: it has removed the images, nothing is asked again
+        kathara_instance.undeploy_lab.assert_not_called()

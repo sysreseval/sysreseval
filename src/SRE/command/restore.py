@@ -12,7 +12,7 @@ from pathlib import Path
 
 from Kathara.manager.Kathara import Kathara
 
-from .save import ensure_save_tmp_dir, get_save_key
+from .save import ensure_save_tmp_dir, get_save_key, kathara_temp_dir
 from .start import ProjectSetup, check_grade_class, create_project_directories, finalize_project, \
     quit_if_no_switch_modes, rollback_project
 from .. import params
@@ -119,11 +119,12 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
 
             set_sudo_uid_for_username(SRE.username)
             gain_privileges_if_needed(net_scheme)
-            # restore_lab() rebuilds the images and deploys in one go: flag the lab as deployed
-            # beforehand so that a failure half-way through still undeploys what was created
-            # (undeploying a hash with no container is a no-op).
+            # restore_lab() prepares the devices (their image, their saved files) and deploys in
+            # one go: flag the lab as deployed beforehand so that a failure half-way through still
+            # undeploys what was created (undeploying a hash with no container is a no-op).
             setup.lab_deployed = True
-            Kathara.get_instance().restore_lab(os.path.join(tmp, params.save_kathara_name), lab=lab)
+            with kathara_temp_dir(tmp):
+                Kathara.get_instance().restore_lab(os.path.join(tmp, params.save_kathara_name), lab=lab)
 
             # deploy_exetests: refresh exetests.py in the containers (lib may have changed since the save)
             finalize_project(setup, module_rvlab, net_scheme, lab, data,
