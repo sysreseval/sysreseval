@@ -691,6 +691,10 @@ class TestTexts:
         # the course has no summary of the questions and no value of the instance
         for value in (str(data.nets.pub.network_address), str(data.our_as), 'Partie 1', 'rov_r1', 'bh_cust'):
             assert not _mentions(informations, value), value
+        # ... whatever the instance: no example of the course is an AS number the students may draw
+        # (the check above failed one time in four hundred while an example said 64999)
+        for number in range(64600, 65000):
+            assert not _mentions(informations, str(number)), number
 
     def test_values_of_the_instance_in_the_questions(self, lab, data, tmp_pub_dir):
         g0, ns = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)

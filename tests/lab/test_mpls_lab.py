@@ -81,6 +81,17 @@ def _text(t, lang='fr'):
     return t.resolve(lang) if hasattr(t, 'resolve') else str(t)
 
 
+def _other_instance(lab, data, values):
+    """An instance whose *values(d)* all differ from those of *data*.  A course holding no value of
+    the instance is the same text for both, whatever numbers it prints: searching it for a random
+    label found the 100, 200 and 300 of its examples, the TTL 255 and the port 646."""
+    while True:
+        other = lab.Data.generate()
+        other.compute_post_generate()
+        if all(a != b for a, b in zip(values(other), values(data))):
+            return other
+
+
 def _state_ops(ns, name):
     """{(step, machine): [ops]} registered by the state method *name*."""
     ns._ops, ns._host_ops = {}, {}
@@ -756,9 +767,13 @@ class TestTexts:
         for q in g1.get_questions_ordered():
             description = _text(resolve_text(q.description, numbering))
             assert '@@ref' not in description and '@@sec' not in description, _text(q.title)
-        # the course has no summary of the questions and no value of the instance
-        for value in (str(data.nets.instance), str(data.st_push), str(data.sr_srgb_r3), 'Partie 1', 'st_pe1', 'fix_p2'):
+        # the course has no summary of the questions and no value of the instance: it is the text
+        # of an instance that drew another network, other labels and another SRGB
+        for value in ('Partie 1', 'st_pe1', 'fix_p2'):
             assert value not in informations, value
+        other = _other_instance(lab, data, lambda d: (d.nets.instance, d.st_push, d.sr_srgb_r3))
+        _g, other_ns = _simulate(lab, other, tmp_pub_dir, instructor_mode=True)
+        assert _text(resolve_informations(other_ns.informations)[0]) == informations
 
     def test_values_of_the_instance_in_the_first_question(self, lab, data, tmp_pub_dir):
         g0, ns = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)

@@ -83,6 +83,11 @@ def _text(t, lang='fr'):
     return t.resolve(lang) if hasattr(t, 'resolve') else str(t)
 
 
+def _mentions(text, value):
+    """True when *value* appears in *text* as a whole (a random group 239.1.2.3 is not in "239.1.2.30")."""
+    return re.search(r'(?<![0-9A-Za-z.])' + re.escape(value) + r'(?![0-9A-Za-z])', text) is not None
+
+
 def _state_ops(ns, name):
     """{(step, machine): [ops]} registered by the state method *name*."""
     ns._ops, ns._host_ops = {}, {}
@@ -772,7 +777,7 @@ class TestTexts:
         # the course has no summary of the questions and no value of the instance
         for value in (str(data.nets.site), str(data.mac_group), str(data.asm_group), str(data.ips.snoop_sw.ip),
                       'Partie 1', data.token):
-            assert value not in informations
+            assert not _mentions(informations, value), value
 
     def test_values_of_the_instance_in_the_first_question(self, lab, data, tmp_pub_dir):
         g0, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)

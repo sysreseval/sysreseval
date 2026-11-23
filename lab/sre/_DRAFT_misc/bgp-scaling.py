@@ -430,7 +430,7 @@ n'est pas réannoncée à un autre. Deux solutions existent : le **réflecteur d
 - Vu de l'extérieur, la confédération est **un seul AS**, son **identifiant** : les voisins externes
   déclarent `remote-as IDENTIFIANT`.
 - À l'intérieur, l'AS_PATH garde la trace des AS membres traversés dans un segment à part,
-  `AS_CONFED_SEQUENCE`, affiché **entre parenthèses** (`(65202) 64500`) ; il ne compte pas dans la
+  `AS_CONFED_SEQUENCE`, affiché **entre parenthèses** (`(65102) 64500`) ; il ne compte pas dans la
   longueur de l'AS_PATH et sert à détecter les boucles entre membres. Il est **retiré** à la sortie :
   l'extérieur ne voit que l'identifiant.
 - Sur une session eBGP de confédération, les attributs se comportent **comme en iBGP** : le
@@ -440,12 +440,12 @@ n'est pas réannoncée à un autre. Deux solutions existent : le **réflecteur d
   garde dans son AS membre.
 
 ```
-router bgp 65201                                ! le numéro de l'AS membre
+router bgp 65101                                ! le numéro de l'AS membre
  bgp confederation identifier 64512             ! l'AS vu de l'extérieur
- bgp confederation peers 65202                  ! les autres AS membres (voisins de confédération)
- neighbor 10.0.0.2 remote-as 65201              ! iBGP dans l'AS membre
+ bgp confederation peers 65102                  ! les autres AS membres (voisins de confédération)
+ neighbor 10.0.0.2 remote-as 65101              ! iBGP dans l'AS membre
  neighbor 10.0.0.2 update-source lo
- neighbor 10.1.0.2 remote-as 65202              ! eBGP de confédération
+ neighbor 10.1.0.2 remote-as 65102              ! eBGP de confédération
  neighbor 192.0.2.1 remote-as 64500             ! eBGP externe
 ```
 

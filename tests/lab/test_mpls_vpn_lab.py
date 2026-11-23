@@ -82,6 +82,11 @@ def _text(t, lang='fr'):
     return t.resolve(lang) if hasattr(t, 'resolve') else str(t)
 
 
+def _mentions(text, value):
+    """True when *value* appears in *text* as a whole (a random 65000:10 is not in "65000:100")."""
+    return re.search(r'(?<![0-9A-Za-z.])' + re.escape(value) + r'(?![0-9A-Za-z])', text) is not None
+
+
 def _state_ops(ns, name):
     ns._ops, ns._host_ops = {}, {}
     ns.reset_state_results()
@@ -670,7 +675,7 @@ class TestTexts:
             assert '@@ref' not in description and '@@sec' not in description, _text(q.title)
         for value in (str(data.nets.instance), f"65000:{data.rt_a}", str(data.nets.l3_a1_lan), 'Partie 1', 'l3_pe1',
                       'fix_pe2'):
-            assert value not in informations, value
+            assert not _mentions(informations, value), value
 
     def test_values_of_the_instance_in_the_first_question(self, lab, data, tmp_pub_dir):
         g0, ns = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)

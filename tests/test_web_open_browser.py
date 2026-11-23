@@ -427,15 +427,21 @@ COSTS_LAYOUT = """(() => {
           tree: edges(tree), headTop: Math.round(tree.querySelector('.lab-costs-head').getBoundingClientRect().top
                                                  - tree.getBoundingClientRect().top)};
 })()"""
-#: the tree made lower than its content and scrolled: how far it scrolled, where the titles are
-#: below its top, and where the first lab is (the tree is as it was afterwards)
+#: the tree made lower than its content and scrolled: how far it scrolled, where the titles and
+#: the first lab are below its top, before the scroll and after it, and where the titles end (the
+#: tree is as it was afterwards).  Nothing here depends on the height of the titles, which is that
+#: of two lines of the font of the machine.
 COSTS_SCROLLED = """(() => {
   const tree = document.getElementById('labs');
-  const top = (e) => Math.round(e.getBoundingClientRect().top - tree.getBoundingClientRect().top);
+  const below = (y) => Math.round(y - tree.getBoundingClientRect().top);
+  const head = tree.querySelector('.lab-costs-head');
+  const first = tree.querySelector('li');
+  const places = () => ({head: below(head.getBoundingClientRect().top), first: below(first.getBoundingClientRect().top),
+                         headBottom: below(head.getBoundingClientRect().bottom)});
   Object.assign(tree.style, {flex: 'none', minHeight: '0', height: '70px'});
+  const before = places();
   tree.scrollTop = 40;
-  const out = {scrolled: tree.scrollTop, head: top(tree.querySelector('.lab-costs-head')),
-               first: top(tree.querySelector('li'))};
+  const out = {scrolled: tree.scrollTop, before, ...places()};
   Object.assign(tree.style, {flex: '', minHeight: '', height: ''});
   tree.scrollTop = 0;
   return out;
@@ -529,7 +535,11 @@ class TestLabCosts:
                 assert 0 <= layout['headTop'] <= 12
                 # ... and stay at the top of the tree while it scrolls, the labs going under them
                 scrolled = await page.evaluate(COSTS_SCROLLED)
-                assert scrolled['scrolled'] == 40 and 0 <= scrolled['head'] <= 2 and scrolled['first'] < 0, scrolled
+                before = scrolled['before']
+                assert scrolled['scrolled'] == 40 and 0 <= scrolled['head'] <= 2, scrolled
+                assert scrolled['head'] == before['head'] and before['first'] >= before['headBottom'] - 1, scrolled
+                assert abs(scrolled['first'] - (before['first'] - 40)) <= 1, scrolled
+                assert scrolled['first'] < scrolled['headBottom'], scrolled
                 # a lab is still selected by a click, with its costs beside it
                 await page.click(lab_button(DHCP))
                 assert await page.evaluate(SELECTED) == DHCP and await page.evaluate(COSTS_COUNT) == 4

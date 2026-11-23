@@ -58,6 +58,12 @@ def _text(t, lang='fr'):
     return t.resolve(lang) if hasattr(t, 'resolve') else str(t)
 
 
+def _mentions(text, value):
+    """True when *value* appears in *text* as a whole (a secret address x.11 is not in the x.110
+    of a machine shown to the students, a random port 21530 not in a file name …202611121530)."""
+    return re.search(r'(?<![0-9A-Za-z.])' + re.escape(value) + r'(?![0-9A-Za-z])', text) is not None
+
+
 def _state_ops(ns, name):
     ns._ops, ns._host_ops = {}, {}
     ns.reset_state_results()
@@ -264,7 +270,7 @@ class TestTexts:
         student = "\n".join(t for _, t in _all_texts(g0, ns0))
         assert str(data.collector_port) in student and data.ident in student
         for secret in (str(data.ips.heavy.ip), str(data.ips.scanner.ip), str(data.ips.beacon.ip), str(data.beacon_port)):
-            assert secret not in student
+            assert not _mentions(student, secret), secret
 
     def test_texts_are_formatted_and_render(self, lab, data, tmp_pub_dir):
         g1, ns1 = _run(lab, data, {}, lambda m, c: None, instructor_mode=True)
@@ -283,7 +289,7 @@ class TestTexts:
         informations = _text(resolved)
         assert not re.search(r'@@(sec|ref|tag|toc)', informations)
         for value in (str(data.collector_port), str(data.ips.collector.ip), data.ident):
-            assert value not in informations
+            assert not _mentions(informations, value), value
         for q in g1.get_questions_ordered():
             assert '@@ref' not in resolve_text(TranslatedText.from_value(q.description, 'fr'), numbering).resolve('fr')
 

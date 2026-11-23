@@ -635,9 +635,15 @@ class TestTexts:
         for q in g1.get_questions_ordered():
             description = _text(resolve_text(q.description, numbering))
             assert '@@ref' not in description and '@@sec' not in description, _text(q.title)
+        # (the low half of a well-known community, no-export = 65535:65281, is no AS number)
+        generic = re.sub(r'65535:[0-9]+', '', informations)
         for value in (str(data.nets.pub.network_address), str(data.our_as), str(data.cf_sub1), 'Partie 1', 'ne_r1',
                       'cf_r4'):
-            assert not _mentions(informations, value), value
+            assert not _mentions(generic, value), value
+        # ... whatever the instance: no example of the course is an AS number the students may draw,
+        # their AS or a member AS of their confederation (the examples said 65201 and 65202)
+        for number in (*range(64600, 65000), *range(65201, 65300)):
+            assert not _mentions(generic, str(number)), number
 
     def test_values_of_the_instance_in_the_questions(self, lab, data, tmp_pub_dir):
         g0, ns = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)

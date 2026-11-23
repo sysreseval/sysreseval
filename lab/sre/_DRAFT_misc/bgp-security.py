@@ -427,7 +427,7 @@ autres : une grande partie de l'espace d'adressage n'a pas encore de ROA, rejete
   préfixes plus spécifiques que l'on annonce (ingénierie de trafic). La RFC 9319 recommande de ne
   signer que les longueurs réellement annoncées.
 - La ROV ne vérifie **que l'origine** : un AS qui forge un chemin se terminant par l'AS légitime
-  (`… 64999 65020`) passe la validation. ASPA (vérification des relations entre AS) et BGPsec
+  (`… 64500 65020`) passe la validation. ASPA (vérification des relations entre AS) et BGPsec
   (chemins signés) traitent ce point.
 
 ### @@sec:rpki-frr@@ RPKI avec FRR
