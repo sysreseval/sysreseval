@@ -1,3 +1,14 @@
+kathara (3.8.3+git20261123.9f7f5bc-1) unstable; urgency=medium
+
+  * Fork commit 9f7f5bc: a filesystem-diff save stays relative to the image
+    of the device (restore_lab() copies the saved files into the container
+    instead of building an image holding them), so a restored scenario saved
+    again restores on a host that never saw the first restore; the images a
+    restore still builds, for the devices that had deleted files of their
+    image, are removed when the scenario is undeployed.
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Mon, 23 Nov 2026 23:55:02 +0100
+
 kathara (3.8.3+git20261019.b4f5f4b-1) unstable; urgency=medium
 
   * Fork commit b4f5f4b: the non-privileged devices run with
