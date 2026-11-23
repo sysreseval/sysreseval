@@ -68,7 +68,22 @@ Restores a save file as a **new** running project (fresh timestamp, current user
 
 ### `sre wipe`
 
-Stops every running Kathara lab and removes everything under `/var/lib/sre/projects/` and the user public directories. Privileged only: the user-mode form is `sre stop-all`.
+Stops every running Kathara lab and removes everything under `/var/lib/sre/projects/` and the user public directories. Privileged only: the user-mode form is `sre stop-all`. On a pool host of the web site it also stops the projects of the web users placed there: `sre wipe-local` leaves those running.
+
+### `sre wipe-local`
+
+Closes every **local** project of the machine and leaves the **web** ones running. A local project was started on the machine itself (the GUI of the user logged in, or `sre start` run by root); a web project was started by the web agent for a user of the [web front-end](web.md) placed on this host. The origin is the one [`sre status`](#sre-status) shows. Privileged only.
+
+```
+# sre wipe-local
+local projects closed: 2
+```
+
+It is the command for a pool workstation where `sre wipe` and `sre stop-all` run by root would close what the web users do there: the script of a session-end button runs it before `sre set-drain`, without having to act as the student who leaves.
+
+Each local project is stopped as `sre stop-all` does, and like it nothing else is touched: no Kathara wipe, the stray entries of the projects directory stay, and a project without `info.json` (a start in progress or failed) is left alone. `local projects closed: none` when there was none. When the directories of a project cannot be removed they are listed (`cannot remove: …`) and the exit status is 1; the other projects are closed all the same.
+
+A project **without an origin file** (started by a version older than the file, the `?` of `sre status`) cannot be told from a web project: it is left running, and named in a warning on stderr (`warning: <project>: unknown origin (no origin file), left running`). Close it by name with `sre stop`.
 
 ### `sre connect [--shell <shell>] [--exec <argument…>] [--no-records] <running_lab> <device>`
 
@@ -112,13 +127,72 @@ In the GUI all three show only while the *Instructor mode* button is on (see [GU
 
 Both commands write `info.json` again; the question hashes do not depend on the mode, so the answers already given stay attached. `remove-instructor-mode` also deletes `operations.log`, unless the project is a debug project (which also keeps its instructor texts).
 
+### `sre status`
+
+Shows what runs on the machine: the version of SRE, whether the web agent (`sre-agent`, see [Web front-end](web.md)) is running, and every running project with its origin and the user who created it. Read-only, privileged only.
+
+```
+sre 0.17.0
+sre-agent: running (pid 812)
+local drain: allowed, not asked
+running projects: 3
+ORIGIN  USER   PROJECT
+web     alice  20261118091203@@@sre@dhcp.py@@@alice
+local   bob    20261118091540@@@sre@nftables-filter1.py@@@bob
+local   root   20261118100111@@@sre@static_routing.py@@@root
+```
+
+- **`sre-agent`**: `running (pid N)`, `not running`, or `not running (no /etc/sreweb/agent.toml)` on a machine that is not a pool host (the path is the one of the layout). The agent is looked for among the processes (`/proc`), whatever started it: the systemd unit or a command typed by hand.
+- **`local drain`**: only on a pool host whose agent knows the drains asked on the host itself (`sre set-drain` below): `forbidden`, `allowed, not asked`, or `allowed, asked on 2026-11-19 at 17:02:10`.
+- **`ORIGIN`**: `local` for a project started on the machine itself (the GUI of a student, or `sre start` run by root), `web` for a project the web agent started for a browser user.
+- **`USER`**: the user who created the project: the login of the session for a local project (`root` for `sudo sre start`), the login of the web site for a web project.
+- **`PROJECT`**: the running lab name, as `sre stop`, `sre connect` and `sre eval` take it. The projects are listed in start order; `running projects: none` when there is none.
+
+The origin and the user are read from `.private/origin.json`, which `sre start` (as well as `sre restore` and `sre pre-start-exam`) writes when it creates the project. A project created by an older version has no such file: its origin shows as `?` and its user is the one of its name. The web agent names itself with the environment variable `SRE_ORIGIN=web` in every `sre` it runs; `sre` ignores the variable when it was launched through `sre-wrapper` and `sudo`, so a student cannot have a local project listed as a web one. An agent started before the update keeps writing `local` until it is restarted (`sre-web-tool restart --all`).
+
+With `--json` the same information is printed as one line of JSON, easier to read from a script (`sre status --json | jq .`):
+
+```json
+{"sre_version": "0.17.0",
+ "agent": {"running": true, "pids": [812], "configured": true, "config_file": "/etc/sreweb/agent.toml",
+           "local_drain": {"allowed": true, "asked": false, "asked_at": null}},
+ "projects": [
+   {"running_lab_name": "20261118091203@@@sre@dhcp.py@@@alice", "lab_name": "sre@dhcp.py", "origin": "web", "user": "alice"},
+   {"running_lab_name": "20261118100111@@@sre@static_routing.py@@@carol", "lab_name": "sre@static_routing.py", "origin": null, "user": "carol"}
+ ]}
+```
+
+- **`agent`**: `running` is `true` or `false` and `pids` the list of the agent's processes; both are `null` when the processes cannot be listed (no `/proc`). `configured` tells whether `config_file` exists (a pool host). `local_drain` is `null` when the agent says nothing about the drains asked on the host (no agent, or an older one); else `allowed` tells whether `sre set-drain` is accepted, `asked` whether a drain is asked and `asked_at` when (epoch seconds, `null` when not asked).
+- **`projects`**: in start order, an empty list when nothing runs. `origin` is `local`, `web`, or `null` for a project without an origin file (the `?` of the table); `lab_name` is the lab of the running lab name.
+
+### `sre set-drain` and `sre remove-drain`
+
+On a pool host of the web site (see [Web front-end](web.md), *A drain asked on the host*), `sre set-drain` asks for the **drain** of the machine it runs on: the portal places no new web project there and powers the host off once it is empty (nobody logged in, no project left), as *Drain* on the Pool page does. It is meant for the script of a session-end button, in place of a shutdown that would stop the web projects other users run on the workstation. Privileged only.
+
+```
+# sre set-drain
+drain asked: no new web project on this host, powered off once it is empty
+# sre remove-drain
+local drain removed
+```
+
+`sre set-drain` leaves a request for the web agent of the host (`local-drain.json` in `/var/lib/sre`), which tells the portal within a few seconds. It exits with 1 and asks for nothing when no agent would honour the request, so that a script can fall back on a plain shutdown:
+
+- `sre-agent is not running on this host`;
+- `the sre-agent of this host does not handle local drains` (an agent older than this command);
+- `local drains are forbidden on this host`: `allow_local_drain` of `agent.toml` is false, or an instructor forbade it from the Pool page (which holds until the next boot).
+
+It does not know whether the portal has the host **disabled**: there it succeeds too, but the portal never powers a disabled host off, so the machine stays on unless its `agent.toml` has `allow_power_off_when_disabled = true` (a drain then powers the host off whether it is disabled or not).
+
+`sre remove-drain` removes the request, whatever the agent says (`no local drain was asked on this host` when there was none). It only removes the drain asked on the host: a drain an instructor set from the portal is cancelled there (*Enable*), and an instructor can cancel the one of the host too. The request does not survive a reboot. `sre status` shows where the host stands.
+
 ### `sre eval-all [--display-grades / --no-display-grades]`
 
 Evaluates every running lab instance concurrently. `--no-display-grades` suppresses the per-lab grade summary.
 
 ### `sre check [-p] <lab> [<state>]`
 
-Validates a lab module without deploying: imports it, runs `Data.generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`), builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method. The networks that are not hubs are printed with their type and the VLANs of their ports, and the console commands a state sends to a managed switch are listed with its other operations (`switch <network>: cmd …`). The numbered sections of `informations` (`info_subtitle()` / `@@sec@@` markers) are resolved as at `sre start` and printed as an outline (number, title, tag), and the `@@ref@@` references of the question texts are checked: a marker outside a header, a level jump, a tag defined twice or unknown, or languages whose sections differ, is a `FAIL`.
+Validates a lab module without deploying: imports it, runs `Data.generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`), builds `NetScheme` (and prints the weight of every machine and of the lab: `weight: 210 (35 machine(s))`, or the one the module declares with `lab_weight`), runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method. The networks that are not hubs are printed with their type and the VLANs of their ports, and the console commands a state sends to a managed switch are listed with its other operations (`switch <network>: cmd …`). The numbered sections of `informations` (`info_subtitle()` / `@@sec@@` markers) are resolved as at `sre start` and printed as an outline (number, title, tag), and the `@@ref@@` references of the question texts are checked: a marker outside a header, a level jump, a tag defined twice or unknown, or languages whose sections differ, is a `FAIL`.
 
 ### `sre watch [--timeout <sec>] [--interval <sec>] [-H <regexp>] [-S <time>] [-L] <dir…>`
 
@@ -164,6 +238,8 @@ Scans lab `.py` files for `image=` / `'image':` patterns and `docker pull`s each
 ### `sre make-titles [-o <file> | -r] [-d] <directory>`
 
 Generates `titles.json` sidecars so the Open project dialog of the GUI and the Open page of the web front-end show friendly labels (e.g. `static_routing.py` → "Static routing"). Labs without a `title` attribute are skipped.
+
+It also computes the **weight** of every lab (what one project of the lab weighs in the load of a pool host of the web front-end, 1 being one plain idle container: the sum of the weights of its machines, or the `lab_weight` the module declares; see *The weight of a lab* in *Lab authoring*) and stores them under the option `"@weights"` of the same file: `{"@weights": {"dns1.py": 30, "static_routing.py": 13}, …}`. The lab is built without Docker, as `sre check` does, for its default flavor; a lab that cannot be built that way gets a warning and no weight, nothing fails. The weights are computed, never written by hand: every run replaces those of the file, and a directory whose labs have no title gets a `titles.json` holding its weights alone with `-r`.
 
 | Option | Description |
 |--------|-------------|
@@ -219,7 +295,7 @@ What is installed, kept and deleted:
 - `lib/`: the files of the repository are refreshed; the site's extra files are kept.
 - Files the repository dropped are deleted only when a previous update (or the git index of a cloned tree) installed them: the first update of a tree that was not cloned deletes nothing.
 - Never touched: `venv/`, `build/`, `graphics/fonts/`, `bin/sre-wrapper`, `.git/`, the `params.py` backups.
-- `src/SRE/params.py` is merged, not copied. The installed file is backed up as `params.py.bak.<timestamp>` first. A parameter the site never changed takes the new value; a parameter customised here that the new version does not change keeps its value; a parameter both customised here and changed upstream is asked about, the installed value being the default (kept with `--yes`). `sre_version` and `default_docker_image_version` always take the new value; new parameters are added, dropped ones removed. The pristine upstream values come from the state file (or `git show` on a cloned tree); without them, every difference is asked about. The merged file must compile and run before anything is replaced.
+- `src/SRE/params.py` is merged, not copied. The installed file is backed up as `params.py.bak.<timestamp>` first. A parameter the site never changed takes the new value; a parameter customised here that the new version does not change keeps its value; a parameter both customised here and changed upstream is asked about, the installed value being the default (kept with `--yes`). `sre_version`, `default_docker_image_version`, `docker_image_versions` and `legacy_docker_image_versions` always take the new value; new parameters are added, dropped ones removed. The pristine upstream values come from the state file (or `git show` on a cloned tree); without them, every difference is asked about. The merged file must compile and run before anything is replaced.
 
 The state file `.sre-update.json` records the commit, the ref, the date, the previous commit, the manifest of the installed files and the pristine parameter values. Hints printed at the end: the command to go back (`sre update --ref <previous commit>`), `make venv` when the `venv` recipe of the Makefile changed, the `scripts/etc/` templates that changed (system files to reinstall by hand), and the reminder that replicated hosts need their own `sre update` and NFS clients their own `sre wipe`.
 
@@ -336,7 +412,7 @@ The hostname is part of what a student is here (the workstation: the users of a 
 | `-o` / `--output-file` | Output `.ods` summary (omit to skip). |
 | `-d` / `--pdf-directory` | Output dir for PDFs (omit to skip). |
 | `-r` / `--recursive` | Recurse into subdirectories. |
-| `--lang <lang>` | Force PDF language (e.g. `en`, `fr`). |
+| `--lang <lang>` | Force PDF language (`en`, `fr`, `de`); the long date of the header follows it. |
 | `--no-timeline` | Omit the evaluation-history table. |
 | `--remaining-time` | Include the time-remaining column in the history. |
 | `--separate-instances` | One report and one ODS row per running project instance instead of one per student. |
@@ -348,15 +424,17 @@ Name / email resolution: `--users-file` (if provided) → `fullname` / `email` f
 
 ## Internal commands (GUI-only)
 
-### `sre list [--with-titles] [--include-exam-only]`
+### `sre list [--with-titles [--with-readmes]] [--include-exam-only]`
 
 Prints a JSON array of lab names relative to `/opt/sre/lab/` (`s4/tp_ssh`, `s2/lab.py`, …). Labs whose components match `params.exam_only_affix` (`_EXAM_`, `_OLD_`, `_DRAFT_`, `_TESTS_`) are hidden, unless `--include-exam-only` is given (privileged only: the web agent lists them to an instructor programming an exam; a student can still start such a lab by its exact name, which is how an exam project is created).
 
-With `--with-titles`, output becomes the lab tree flattened in display order: `[{"name": <path>, "title": <dict|string|null>, "kind": "dir"|"lab", "sort": <mode>}, …]`, a directory entry (`"dir"`, listed when a lab lies below it) right before its content, the sub-directories of a directory before its labs (a directory lab is a `"lab"`), each group in the order of the effective `"@sort"` of the directory's `titles.json` (see `sre make-titles`; `sort` is that mode, `"name"`, `"title"` or `"manual"`: the GUI and the browser keep this order and only sort the `"title"` mode themselves, since it depends on the language of the user). Titles come from per-directory `titles.json`; stale entries are dropped, and entries without a title get `"title": null` (the front-ends then fall back to the file name).
+With `--with-titles`, output becomes the lab tree flattened in display order: `[{"name": <path>, "title": <dict|string|null>, "kind": "dir"|"lab", "sort": <mode>}, …]`, a directory entry (`"dir"`, listed when a lab lies below it) right before its content, the sub-directories of a directory before its labs (a directory lab is a `"lab"`), each group in the order of the effective `"@sort"` of the directory's `titles.json` (see `sre make-titles`; `sort` is that mode, `"name"`, `"title"` or `"manual"`: the GUI and the browser keep this order and only sort the `"title"` mode themselves, since it depends on the language of the user). Titles come from per-directory `titles.json`; stale entries are dropped, and entries without a title get `"title": null` (the front-ends then fall back to the file name). A `"lab"` entry also has `"weight": <number>` when the `titles.json` of its directory stores one (`"@weights"`, computed by `sre make-titles`): what the web portal first counts a project of the lab for.
+
+With `--with-readmes` (needs `--with-titles`; the output is the one above without it), a directory entry whose directory holds a `README.md` or `README.<lang>.md` also has `"readme": {"": <README.md>, "fr": <README.fr.md>, …}`, the raw markdown by language, `""` being the file without language. When the top of the lab directory holds one, the list starts with an entry of its own, which is no entry of the tree: `{"name": "", "title": null, "kind": "dir", "sort": "name", "readme": {…}}`. Only the directories listed are read (never an exam-only directory in user mode, nor the inside of a directory lab), and a file that is empty, unreadable or bigger than `params.lab_readme_max_size` (64 KiB) is left out. The Open project dialog and the web agent ask for them: both front-ends show the text of the directory being browsed under the lab tree (see *A text for a directory* in [Lab Authoring](lab-authoring.md)).
 
 ### `sre export <running_lab> [--sep <N>] [--curved] [--shapes] [--reverse] [--random-seed <N>]`
 
-Exports a running project as a Kathara zip archive, base64-encoded on stdout. The project name is resolved like the other commands (exact name or unique substring, the ownership check of user mode). Flags tune the embedded schema: `--sep` 0–9 (default 3), `--curved` for curved edges, `--shapes` for geometric nodes, `--reverse` to flip insertion order, `--random-seed` for node-order permutation. The `lab.conf` of the archive carries the type of the networks that are not hubs and the VLANs of the ports (`CD_MODE[lan]="managed"`, `pc1[0]="lan/vlan=10"`, `r1[0]="lan/trunk=10,20"`): this is the syntax of the Kathara fork SRE installs, not of the upstream Kathara.
+Exports a running project as a Kathara zip archive, base64-encoded on stdout. The project name is resolved like the other commands (exact name or unique substring, the ownership check of user mode). The archive holds what the students see: the machines declared `hidden` (probes, mirrors) are left out — no line of `lab.conf`, no command, no file, and a network that only they use is not named — as they are of `schema.pdf`, whatever the project (a debug project included). Flags tune the embedded schema: `--sep` 0–9 (default 3), `--curved` for curved edges, `--shapes` for geometric nodes, `--reverse` to flip insertion order, `--random-seed` for node-order permutation. The `lab.conf` of the archive carries the type of the networks that are not hubs and the VLANs of the ports (`CD_MODE[lan]="managed"`, `pc1[0]="lan/vlan=10"`, `r1[0]="lan/trunk=10,20"`): this is the syntax of the Kathara fork SRE installs, not of the upstream Kathara.
 
 ### `sre report <sheet|outline|summary> [--lang <lang>] [--separate-instances] [--bonus-in-prefix] [--no-timeline] [--remaining-time] [--no-parts] [-o <file>]`
 

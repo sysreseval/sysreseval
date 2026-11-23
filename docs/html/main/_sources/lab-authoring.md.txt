@@ -121,6 +121,7 @@ sre connect alice router      # disambiguate by username
 | `.private/debug_project` | Marker dropped by `sre start --debug-project` (see above). |
 | `.private/instructor_mode` | Marker of the instructor mode (`sre start --instructor-mode`, `sre set-instructor-mode`; see [Instructor-only texts](#instructor-only-texts--instructor)). |
 | `.private/auto_eval.log` | One line per student-triggered self-eval; drives the `self.auto_eval_count` counter exposed to `Grade.grade()`. |
+| `.private/origin.json` | Written once when the project is created: `local` (the GUI, or `sre start` run by root) or `web` (the web agent), and the user who created it. Read by `sre status`. |
 
 Evaluation archives are **not** stored under the project directory — they go to `/var/lib/sre/archives/` (plus any extra `archive_dirs` declared at module level), named `{YYYYmmddHHMMSS}_{running_lab_name}.zst`.
 
@@ -392,10 +393,10 @@ class NetScheme(NetScheme0):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `image` | `params.default_docker_image` | Docker image |
+| `image` | the lab's `default_image`, else `params.default_docker_image` | Docker image: `sre_docker_image(name)` gives `sysreseval/<name>:<version>`, the version being the one of the image when it has its own (`params.docker_image_versions`, from the `VERSION_<image>` lines of `images/Makefile`), else the version of the images (`params.default_docker_image_version`). The default is `base13` (Debian 13); `init13` adds a genuine systemd (with `privileged=True` and `entrypoint="/sbin/init"`); `base12` / `init12` are their Debian 12 counterparts, kept for the labs that still name them; the names of before their renaming (`base`, `init`, `frr`) still give their last published tag, 1.33 (`params.legacy_docker_image_versions`) |
 | `bridged` | `False` | Enable host-network bridging (required for `ports`) |
 | `x11_host` | `False` | Forward X11 to the host: inject `SRE_HOST_IP` (and the host's X magic cookie as `SRE_XAUTH_COOKIE`) so GUI apps launched in the container display on the host's X server (`DISPLAY` is set by the `.bashrc` of the images; needs `bridged=True` to reach the host). On the web site the apps show in the Display tab, a virtual desktop of the project (`SRE_DISPLAY`) |
-| `hidden` | `False` | Hidden from the Machines tab |
+| `hidden` | `False` | Hidden from the Machines tab; left out of the project `sre export` writes |
 | `allow_connection` | `True` | Show *Connect* button in the GUI |
 | `shell` | `None` | Shell launched by `sre connect` (interactive terminal session) |
 | `kathara_shell` | `None` | Shell Kathara uses to execute startup `exec_commands` inside the container |
@@ -408,6 +409,7 @@ class NetScheme(NetScheme0):
 | `ports` | `[]` | Port mappings, e.g. `["80XX:80/tcp"]` (X = wildcard digit) |
 | `ulimits` | `{}` | ulimit settings |
 | `volumes` | `{}` | Volume mounts |
+| `weight` | `None` | What the machine weighs in the load of its project on a host: 1 is one plain idle container. `None`: the weight of its image (`image_weights` of `params.py`: more for an image running systemd or routing daemons), else `default_machine_weight` (1). Set it when a machine is lighter or heavier than its image says (a plain host on the routing image, a server under load). It limits nothing: see [The weight of a lab](#the-weight-of-a-lab) |
 
 Port wildcards: `"80XX:80/tcp"` allocates the first free port in 8000–8099.
 
@@ -890,7 +892,7 @@ Three kinds of questions, registered from `grade()` like the tests and shown in 
 
 The three take `section=` (a prefix of the title, usually `self.section(level)`, see [Grade methods](#grade-methods)), `order=` (an integer sorting the questions in the tab; without it the questions get 100, 200, 300… in registration order, so `order=150` slips one between the first two) and `hash=` (the identity of the question in the answers file and in the archives: by default the SHA-256 of the title for a `question_text`, of the title and the description for the two others, so that a change of a form's description, a field spec included, detaches the stored answers unless `hash=` pins it; the instructor fragments and the numbering markers never count).
 
-**The fields of a form.** A form is a markdown description holding `@@{name:spec}@@` markers; the text between the markers is rendered like the description of a `question_text`, a checkbox taking the row of the text before it. `name` is the key of the field in the returned dict (any characters but `:` and `}`, unique within the form); `spec` gives the kind of input:
+**The fields of a form.** A form is a markdown description holding `@@{name:spec}@@` markers; the text between the markers is rendered like the description of a `question_text`, each input on a row of its own below the text before it (a checkbox at the end of the row of that text; see *Inline fields* below for an input on the row of its label). `name` is the key of the field in the returned dict (any characters but `:` and `}`, unique within the form; a final `~N` is the inline suffix, never part of the name); `spec` gives the kind of input:
 
 | Marker | Input | Value returned |
 |--------|-------|----------------|
@@ -904,6 +906,23 @@ The three take `section=` (a prefix of the title, usually `self.section(level)`,
 - The regex is a Python one, matched with `re.fullmatch()`. The GUI installs it as the validator of the input (a keystroke that can lead to no match is refused), the web front-end marks the input invalid (the `pattern` attribute, so the regex must be a valid JavaScript one too); in both cases the answer is saved as typed, a field left halfway or empty included, so the lab checks the value itself, as it does for a `question_text` answer.
 - The options of a dropdown may hold spaces and accents; `|` separates them and `>>>` a label from its value, so neither can appear inside an option. The labelled form lets the student read a sentence while the lab compares a code.
 - The markers must be the same in every language of a `tr()` description: the field list is read from one of its values.
+
+**Inline fields.** A single-line text or a dropdown takes a row of its own, as wide as the form, below the text before it. With `~N` after its name it is drawn on the row of its label instead, N characters wide (`~` alone: `params.default_inline_field_width` = 10 characters; a dropdown keeps the width of its options whatever N):
+
+```python
+description=tr("""
+- ICMP message revealing each router: type @@{icmp_type~4:[0-9]+}@@, code @@{icmp_code~4:[0-9]+}@@
+- Negotiated hold time: @@{hold~4:[0-9]+}@@ s
+- Number of routers crossed: @@{routers:[0-9]+}@@
+""")
+```
+
+shows `• ICMP message revealing each router: type [____] , code [____]` on one row and `• Negotiated hold time: [____] s` on the next, while `routers` keeps its full-width input below its text. The answers are read as `q.get('icmp_type')`, `q.get('icmp_code')`, `q.get('hold')`: the suffix is not part of the name, in the cheat answers and the archives either.
+
+- An inline row is **one source line** of the description: the text of that line before its first inline field (the lines above are drawn above the row), the inline fields that follow each other without a newline with the text between them, and what follows the last one up to the end of the line. So write the label and its fields on one line; a label too long for the window wraps, the fields staying on its last line.
+- A field without the suffix keeps a row of its own, also when it is written on the line of an inline field. On a checkbox, a multi-line text and a button the suffix is taken off the name and ignored.
+- The GUI, the web front-end and the Flavor forms draw the rows the same way. A form without the suffix is drawn exactly as before.
+- Adding the suffix changes the description, hence the hash of the question (see `hash=` above). A lab using it needs an SRE that knows it: an older one takes `icmp_type~4` for the name of the field.
 
 ```python
 q = self.question_form(
@@ -985,7 +1004,7 @@ Override `mark_exo_eval()` (and/or `mark_self_eval()`) on the `Grade` subclass w
 | `self.test_host(command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Same as `self.test` but the command runs on the host. Refused if `params.execute_commands_on_host is False`. |
 | `self.test_switch(network, command, step=1, default_value='', default_code=0, allow_error=False)` | Same as `self.test` for one command of the management console of the managed switch `network` (`vlan/print`, `port/print @pc1`: `@machine` is the port number of the machine). The exit code is `0`, the error number given by the switch or `-2`. The result is archived with the tests of the machines, under the name of the network. See [Switches and VLANs](#switches-and-vlans). |
 | `self.question_text(title, section='', description='', hash=None, order=None, default_answer='', cheat_answers=None)` | Register a free-text question; returns the student's answer (or `default_answer`). See [Questions](#questions). |
-| `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question: one input per `@@{field:spec}@@` marker of the description — single-line text with a regex, multi-line text, dropdown, checkbox; the grammar is in [Questions](#questions). Returns the student's answers as `{field: value}`, `{}` before the first answer. |
+| `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question: one input per `@@{field:spec}@@` marker of the description — single-line text with a regex, multi-line text, dropdown, checkbox, a field named `name~N` being drawn on the row of its label; the grammar is in [Questions](#questions). Returns the student's answers as `{field: value}`, `{}` before the first answer. |
 | `self.question_dummy(title, section='', description='', hash=None, order=None)` | Display-only block (no input shown to the student). See [Questions](#questions). |
 | `self.add_grade_part(title, description='')` | Register a named group of grade elements and return the resulting `GradePart`. Pass it to `add_grade_element(..., grade_part=...)` to associate elements with this group; parts render in registration order with a subtotal row per part in the GUI Evaluations view and in `sre outline` PDFs. |
 | `self.add_grade_element(title, max_grade, description='', grade=0, scope=params.BOTH_EVAL_SCOPE, grade_part=None, bonus=False)` | Add a graded rubric item. `scope` is a bitmask: `SELF_EVAL_SCOPE` (1) restricts the element to student self-eval, `EXO_EVAL_SCOPE` (2) restricts it to instructor/auto eval / `sre outline` / `sre sheet`, `BOTH_EVAL_SCOPE` (3, default) shows it everywhere. `grade_part` is a `GradePart` returned by `add_grade_part()`. `bonus=True` makes a bonus element: its grade counts, its `max_grade` is shown (with "Bonus") but not counted, and the mark is capped at the maximum (see [Bonus elements](#bonus-elements)). |
@@ -1031,9 +1050,10 @@ from smtp import (install_smtp_probe, smtp_probe, smtp_query, imap_query, get_po
                   render_unbound_records, spf_record_ok, dkim_txt_record, generate_dkim_keypair)
 ```
 
-Helpers of the SMTP labs (Postfix, Dovecot, OpenDKIM, SPF). The evaluation is behavioural: a
-hidden machine runs an **active probe** (`lib/smtp_probe.py`, standard library only) that
-dialogues with the student's servers, and what must arrive is read in the Maildirs.
+Helpers of the mail labs (`lab/sre/_DRAFT_misc/mail1.py`: SMTP, Postfix, aliases, queue, IMAP;
+`mail2.py`: TLS, submission, LMTP / Sieve, SPF / DKIM / DMARC, virtual domains, anti-spam). The
+evaluation is behavioural: a hidden machine runs an **active probe** (`lib/smtp_probe.py`, standard
+library only) that dialogues with the student's servers, and what must arrive is read in the Maildirs.
 
 **Functions used in `NetScheme` (state setup):**
 
@@ -1068,7 +1088,17 @@ just sent). Then `find_messages(messages, token, query=)`, `body_contains(msg, s
 `received_hops(msg)` (most recent first: `from`, `from_ip`, `by`, `with`, `id`, `for`),
 `is_bounce(msg)` / `parse_dsn(msg)`, `parse_received_spf`, `parse_authentication_results`,
 `parse_dkim_signature`; `maildir_cleanup_command(paths, token)` removes the probe's messages at a
-later step, `queue_cleanup_command(sender)` its queued ones.
+later step, `queue_cleanup_command(sender)` its queued ones. A `MaildirMessage` found under
+`.../vhosts/<domain>/<user>/` (a virtual mailbox) has the user `<user>@<domain>`.
+
+`mailbox_cleanup_command(users, maildirs, token, keep=None)` removes the probe's messages through
+`doveadm expunge` first (every mailbox of the Dovecot *users*, so that a running Dovecot's index
+follows), then from the files of *maildirs* (sub-folders included), sparing the messages that carry
+`X-SRE-Keep: keep`; `queue_token_cleanup_command(token)` deletes the queued messages holding *token*,
+`maildrop` included (Postfix may be stopped). `maildir_write_command(maildir, owner, message, name,
+keep_existing=True)` writes a message straight into `new/` (through `tmp/`, Maildir created with the
+right owner) without any MTA: an IMAP check that does not depend on Postfix, a message the students must
+find at start; *name* must be fixed by the lab data.
 
 `get_doveconf(grade, machine)` (`doveconf -n` as nested dicts), `doveconf_listener(conf, path)`,
 `doveconf_value(conf, key)`; `parse_txt_strings(dig_output)`, `parse_spf`, `spf_record_ok(record,
@@ -1078,7 +1108,12 @@ the certificate of a STARTTLS server.
 Facts verified on the mail image: OpenDKIM resolves with its own libunbound starting from the
 root, so a closed lab needs `Nameservers <dns>` in `opendkim.conf`; policyd-spf's `TestOnly = 1`
 still rejects on a `-all` fail (`Mail_From_reject = False` and `HELO_reject = False` give a header-only
-check); `nobody` is a valid local recipient of Postfix.
+check); `nobody` is a valid local recipient of Postfix. Postfix's SMTP client authenticates to a relay
+(`smtp_sasl_auth_enable`) through Cyrus SASL, whose `PLAIN` / `LOGIN` plugins are in
+`libsasl2-modules` (in the `ldap-mail` image; without it: `SASL authentication failure: No worthy mechs
+found`). Debian 13's Dovecot already serves 993 and ManageSieve 4190 with the snakeoil certificate,
+refuses cleartext passwords and declares the special-use mailboxes without `auto`; Debian's `main.cf`
+sets `recipient_delimiter = +`.
 
 ### TLS helpers (from `/opt/sre/lib/tls.py`)
 
@@ -1130,6 +1165,14 @@ wrappers; fixtures in `tests/mock_data/dns/`.
 - **Renderers** for states and instructor texts: `render_zone_file`, `render_tsig_key`,
   `render_root_hints`, `render_rpz_zone`, `render_stubby_yml`, `reverse_zone_name` / `reverse_label`,
   `spki_pin`, `random_tsig_secret`; `tls.generate_ca_pem(cn)` for a lab-provided CA.
+- **Which server answered** (anycast, `lab/sre/_DRAFT_misc/anycast.py`): `get_dns_identity(grade, m,
+  server, step=1, timeout=1)` queries `id.server` (class CH, type TXT, RFC 4892) and returns the
+  identity the server gives (unbound `identity:`, BIND `server-id`), `None` when nothing answered
+  (time-out, refused, or a reply sent from another address than the one queried, which dig 9.20
+  drops and reports as `timed out`); `get_dns_identities(grade, m, server, count=16)` runs `count`
+  queries, each from a new source port (a new flow for an ECMP hash on the ports), and returns the
+  identities in order. Command builders `dns_identity_cmd` / `dns_identities_cmd`, parsers
+  `parse_dns_identity` / `parse_dns_identities`.
 
 ### HTTP proxy helpers (from `/opt/sre/lib/http_proxy.py`)
 
@@ -1203,6 +1246,30 @@ Facts worth knowing (verified in the running lab on 2026-11-11 and 12, Asterisk 
 - a new TLS transport is only opened when Asterisk restarts, not by `pjsip reload`;
 - `media_encryption = sdes` refuses a plain `RTP/AVP` offer with `488`, and an endpoint without it refuses `RTP/SAVP`;
 - baresip finds `~/.baresip` through `$LOGNAME` or `$USER`, which a `docker exec` shell does not set: the image puts a wrapper in `/usr/local/bin`.
+
+### AAA helpers (from `/opt/sre/lib/radius.py`, `/opt/sre/lib/dot1x.py`, `/opt/sre/lib/kerberos.py`)
+
+```python
+from radius import (radius_request, auth_attrs, totp_shell, get_detail_records, render_client, render_users_entry,
+                    render_huntgroup, render_ldap_module, render_eap_module, render_default_site, reset_cmd)
+from dot1x import (get_all_sta, station_authorized, get_wpa_status, supplicant_authorized, eapol_test,
+                   render_hostapd_wired, render_port_control_nft, render_action_script, render_network_block)
+from kerberos import (kinit_test, gssapi_ssh, negotiate_curl, kadmin_cmd, kadmin_local_cmd, get_principal,
+                      get_policy, get_keytab, render_krb5_conf, render_kdc_conf, render_kadm5_acl, create_realm_cmds)
+```
+
+Helpers of the AAA lab (`lab/sre/_DRAFT_misc/aaa.py`: FreeRADIUS with local users, an LDAP directory, TOTP and a per-NAS policy, EAP, 802.1X on a Linux switch, MIT Kerberos with kerberized ssh / HTTP, pam_krb5 and a cross-realm trust); image `sysreseval/aaa` (init13 + FreeRADIUS, hostapd, wpa_supplicant, eapol_test, the MIT KDC and clients, pam_krb5, pam_radius_auth, mod_auth_gssapi, oathtool; the configuration of FreeRADIUS as installed is kept in `/usr/local/share/sre/freeradius-pristine`, which `reset_cmd()` copies back). Every command is one shell line ending with a `===RC <status>` marker, so a registration-pass placeholder never reads as an answer.
+
+**RADIUS**: `radius_request(grade, machine, server, secret, auth_attrs(user, password, chap=False, extra=[...]))` sends an Access-Request with `radclient` and returns a `RadiusResult` (`accepted`, `rejected`, `no_reply`, `attr(name)` without the tag of `Tunnel-*:0`); a password piece may be a shell expression, `(password, totp_shell(secret))` = the password followed by the current TOTP code computed in the container by `oathtool` (`totp_shell(secret, "now + 10 minutes")`: a wrong code that looks right). `get_detail_records()` parses the accounting `detail` files. The renderers write a complete `default` virtual server (`render_default_site(ldap=, ldap_policy=, totp=)`), the `eap` and `ldap` modules, `clients.conf` blocks and `users` entries. **802.1X**: `get_all_sta()` + `station_authorized()` (`hostapd_cli all_sta`), `get_wpa_status()` + `supplicant_authorized(status, 'peap'|'tls')` (`wpa_cli status`), `eapol_test(grade, machine, conf, server, secret)` → `success`, `failure`, the certificate subjects. **Kerberos**: `kinit_test(grade, machine, principal, password, ccache, then=[...])` runs `kinit` (password on stdin) into its own ccache, then each command of `then` with it (`gssapi_ssh('dev2@srv.corp.lan')`, `negotiate_curl(url)`, `kvno …`): `ok`, `error` (`revoked`, `password`, `unknown`, `unreachable`), `then` = `[(output, status)]`; `get_principal()` / `get_policy()` / `get_keytab()` read `kadmin.local getprinc|getpol` and `klist -k`.
+
+Facts worth knowing (verified in the running lab on 2026-11-18, FreeRADIUS 3.2.1, hostapd 2.10, MIT krb5 1.20):
+
+- the `hostapd@` unit is `BindsTo=` the udev device of its interface, which never becomes active in a container: systemd stops hostapd right after starting it (the image ships copies of the units without that dependency);
+- hostapd's `wired` driver authenticates but does not close the port: the lab filters with an nftables `bridge` table and a set filled by a `hostapd_cli -a` script; the EAPOL frames (`01:80:c2:00:00:03`) cross the bridge's `input` hook before reaching hostapd, so that chain must accept `0x888e`; an event that happens before `hostapd_cli` attaches is lost and a station authenticating again while authorized emits no new `AP-STA-CONNECTED`: resynchronise from `all_sta` once `hostapd_cli` runs;
+- rlm_ldap does not set `Auth-Type` itself: without the (commented) block of the installed `default` site after `-ldap`, a user found in the directory gets `No Auth-Type found`;
+- the `totp` module only works in `authenticate` (`&control:TOTP-Secret`, `&request:TOTP-Password`);
+- `pam_radius_auth` sends the NAS-IP-Address of the device: a `huntgroups` line on it works;
+- sshd builds its GSSAPI acceptor name from the short hostname (`host/srv`): with a keytab for `host/srv.corp.lan`, `GSSAPIStrictAcceptorCheck no` is needed; `kadmind` restarted on the KDC while another machine runs `kadmin` gives `Communication failure with server` (put those commands in a later step).
 
 ### SNMP helpers (from `/opt/sre/lib/snmp.py`)
 
@@ -1278,6 +1345,12 @@ from frr import get_ospf_interfaces
 
 `get_ospf_interfaces(grade, machine_name, step=1) → dict` — runs `vtysh -c "show ip ospf interface"` inside the container and parses the output. Returns a dict keyed by interface name, each value containing: `area`, `cost`, `state` (`DR`/`BDR`/`DROther`/…), `dr`, `bdr`, `neighbor_count`, `adj_neighbor_count`.
 
+`get_ospf_external_lsas(grade, machine_name, step=1) → dict` — the AS-external LSAs (type 5) of the
+database (`show ip ospf database external json`), keyed by `(prefix, advertising router)`, each with
+`metric_type` (1 or 2), `metric`, `forward`, `tag`, `age`: who announces an external route and with
+which metric, including the routes a router did not choose (the backup instance of
+`lab/sre/_DRAFT_misc/anycast.py`).
+
 ### BGP helpers (from `/opt/sre/lib/frr.py`)
 
 ```python
@@ -1285,7 +1358,7 @@ from frr import (get_bgp_summary, get_bgp_neighbor, get_bgp_routes, get_bgp_pref
                  get_bgp_advertised_routes, bgp_best_path, bgp_paths, is_bgp_protocol)
 ```
 
-These helpers parse the `json` output of `vtysh` (FRR 9). Like the OSPF ones, each `get_*` registers one command through `grade.test()` (two-pass contract) and returns its empty shape (`{}`) on the registration pass, when BGP is not running or when the output cannot be decoded. Pass `allow_error=True` while BGP may not be configured yet.
+These helpers parse the `json` output of `vtysh` (written on FRR 9, the same on the FRR 10.3 of the Debian 13 image `routing-frr`). Like the OSPF ones, each `get_*` registers one command through `grade.test()` (two-pass contract) and returns its empty shape (`{}`) on the registration pass, when BGP is not running or when the output cannot be decoded. Pass `allow_error=True` while BGP may not be configured yet.
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -1300,7 +1373,30 @@ These helpers parse the `json` output of `vtysh` (FRR 9). Like the OSPF ones, ea
 
 `parse_frr_config` / `get_frr_running_config` also return the BGP configuration: `router_bgp` (`as`, `router_id`, `ebgp_requires_policy`, `network_import_check`, `bestpath`, `neighbors: {peer: {remote_as, description, update_source, timers, shutdown, password, next_hop_self, route_reflector_client, default_originate, route_map_in/out, prefix_list_in/out, ...}}`, `networks`, `aggregate_addresses`, `redistribute`), `prefix_lists`, `route_maps` (`{name: [{seq, action, match: [...], set: [...]}]}`), `as_path_lists`, `community_lists`; interface blocks expose their `ip address` lines in `addresses`.
 
-Verified FRR 9 defaults worth knowing when writing a BGP lab: `bgp ebgp-requires-policy` is on (an eBGP session without route-map/prefix-list exchanges no prefix), `bgp network import-check` is on (a `network` statement needs a matching route, e.g. `ip route X/22 blackhole`), and `interface lo` / `ip address A/32` in `frr.conf` configures the loopback address through zebra.
+Verified FRR 9 defaults worth knowing when writing a BGP lab (FRR 10.3 keeps them: the BGP lab reaches full marks on both): `bgp ebgp-requires-policy` is on (an eBGP session without route-map/prefix-list exchanges no prefix), `bgp network import-check` is on (a `network` statement needs a matching route, e.g. `ip route X/22 blackhole`), and `interface lo` / `ip address A/32` in `frr.conf` configures the loopback address through zebra.
+
+### OSPFv3 and BGP over IPv6 helpers (from `/opt/sre/lib/frr.py`)
+
+```python
+from frr import (get_ospf6_info, get_ospf6_neighbors, get_ospf6_interfaces, get_ospf6_routes,
+                 get_ospf6_border_routers, get_kernel_routes, get_bgp_summary, get_bgp_routes,
+                 bgp_neighbor_activated, neighbor_is_full)
+```
+
+The OSPFv3 helpers parse the `json` output of `ospf6d` (written on FRR 9.1; the lab using them passes unchanged on the FRR 10.3 of the Debian 13 image), with the same two-pass contract and `allow_error` flag; without `ospf6d` (or `router ospf6`) the commands print nothing and every helper returns its empty shape.
+
+| Function | Returns |
+|----------|---------|
+| `get_ospf6_info(grade, machine)` | `show ipv6 ospf6`: `router_id` (`'0.0.0.0'` when none could be chosen), `abr` (interfaces in two areas or more), `areas: {'0.0.0.1': {stub, nssa, no_summary, interfaces, lsa_count}}` (areas normalised to the dotted form) |
+| `get_ospf6_neighbors(grade, machine)` | `show ipv6 ospf6 neighbor`: a list with the keys of `get_ospf_neighbors()` (`neighbor_id`, `state` — `Init`, `Twoway`, `ExStart`, `Full`…, `role`, `interface`, `interface_state`), so `neighbor_is_full(n, interface='eth1')` works; OSPFv3 neighbours are named by router-id |
+| `get_ospf6_interfaces(grade, machine)` | `show ipv6 ospf6 interface`: `{ifname: {enabled, area, cost, state, type, passive, mtu, mtu_ignore, hello_interval, dead_interval, dr, bdr, addresses, auth_type ('NULL' / 'manualkey' / 'keychain'), auth_rx_drops}}` |
+| `get_ospf6_routes(grade, machine)` | `show ipv6 ospf6 route`: `{prefix: {type ('intra-area' / 'inter-area' / 'external-1' / 'external-2'), code ('IA' / 'IE' / 'E1' / 'E2'), best, nexthops: [(link-local or None, ifname)]}}`; the default a stub area receives is `'::/0'` of type `inter-area` |
+| `get_ospf6_border_routers(grade, machine)` | `show ipv6 ospf6 border-routers` (text: no json form): `{router_id: {abr, asbr, path_type, areas}}` |
+| `get_kernel_routes(grade, machine, ipv6=True)` | `ip -j -6 route`: `default` becomes `::/0`, host routes `/128`; ospf6d and bgpd routes have the protocols `ospf` and `bgp` |
+
+The BGP helpers take `afi='ipv6'` for the IPv6 unicast family (`get_bgp_summary`, `get_bgp_neighbor`, `get_bgp_routes`, `get_bgp_prefix`, `get_bgp_advertised_routes`); a path then has `nexthop_global` and `nexthop_link_local` (the two next hops of MP_REACH_NLRI; `nexthop` is the one installed, the link-local for an eBGP neighbour on the link), an unnumbered neighbour is keyed by its interface (`'eth0'`, `id_type: 'interface'`). `parse_frr_config` also returns `static_routes6`, `prefix_lists6`, `router_ospf6` (`router_id`, `areas` with `stub` / `ranges`, `redistribute`, `default_information_originate`), per interface `addresses6` and `ospf6` (`area`, `cost`, `passive`, `mtu_ignore`, `network_type`, `authentication`), and `router_bgp['address_families']` (the statements of each family: `activate`, route-maps, `next-hop-self`, `networks`); `bgp_neighbor_activated(router_bgp, peer, afi='ipv6')` tells whether a neighbour is active in a family.
+
+Verified on FRR 9.1.3 in IPv6-only containers: on an Ethernet link an OSPFv3 interface stays `Waiting` for a Dead interval (40 s) before the DR election, so a reference state waits about 50 s; a router without IPv4 address has no router-id until one is configured, and a new router-id needs `clear ipv6 ospf6 process`; a duplicate router-id gives no neighbour at all, an MTU mismatch blocks the neighbours in `ExStart`; a BGP neighbour activated in no family stays `Idle`. Example: `lab/sre/_DRAFT_misc/ospfv3-bgp-ipv6.py`.
 
 ### RIP helpers (from `/opt/sre/lib/frr.py` and `/opt/sre/lib/rip.py`)
 
@@ -1337,6 +1433,283 @@ from rip import (install_rip_probe, rip_listen_cmd, rip_announce_cmd, get_rip_pr
 
 Only the responses sent to a group address are recorded: the request a passive interface still emits and the unicast answers to a request are counted apart. An evaluation sees a configuration change once the router has sent an update with it, at most one update period later; the student texts must say so. A silence alone does not prove a passive interface: an interface RIP has just been enabled on sends a request, then its first update up to a period later, so pair `not heard()` with `get_rip_status()` (the interface is in `passive_interfaces`, or absent from `interfaces`). A reference state that must remove a route learned under long timers runs `clear ip rip` on every router at the same step: a router cleared alone learns the route again from its neighbours. Since the export of a project replays `initial` for the hidden machines too, a lab with a rogue speaker sets `export_kathara_project = False`.
 
+### Multicast helpers (from `/opt/sre/lib/frr.py`, `/opt/sre/lib/mcast.py` and `/opt/sre/lib/bridging.py`)
+
+```python
+from frr import (get_pim_interfaces, get_pim_neighbors, pim_neighbor_on, get_pim_rp_info, rp_for_group,
+                 get_pim_group_type, get_mroutes, get_pim_upstream, get_igmp_interfaces, igmp_enabled,
+                 get_igmp_groups, get_igmp_sources, get_msdp_peers, get_msdp_sa, get_mld_interfaces,
+                 get_mld_groups, prefix_list_permits)
+from mcast import (install_mcast_probe, mcast_recv_cmd, mcast_sniff_cmd, mcast_send_cmd, get_mcast_dump,
+                   received, group_mac, mac_aliases, multicast_scope)
+from bridging import bridge_mcast_info, get_mdb, mdb_ports
+```
+
+**The state of pimd / pim6d** (`lib/frr.py`). Every helper runs one `vtysh -c "… json"` command (two-pass contract, `allow_error`, `{}` / `[]` when nothing is configured: pimd prints `{}` then) and leaves the register interfaces (`pimreg`, `pim6reg`) out. The ones with `ipv6=True` run the `show ipv6 …` form.
+
+| Function | Returns |
+|----------|---------|
+| `get_pim_interfaces(grade, m, ipv6=False)` | `{ifname: {address, up, neighbors, dr, dr_local}}` for every interface with `ip pim` |
+| `get_pim_neighbors(grade, m, ipv6=False)` + `pim_neighbor_on(neighbors, ifname, address=None)` | `{ifname: [neighbour addresses]}` (link-local addresses with PIMv6) |
+| `get_pim_rp_info(grade, m)` + `rp_for_group(rp_info, group)` | `[{rp, group, source, group_type, iface (the RPF interface towards the RP), i_am_rp}]`; the entry of the longest range holding a group |
+| `get_pim_group_type(grade, m, group)` | `'SSM'` / `'ASM'` (`show ip pim group-type G`) |
+| `get_mroutes(grade, m, ipv6=False)` | `{(source or '*', group): {iif, oil, flags, installed}}`; the `iif` of a last-hop router's (S,G) tells whether it switched to the shortest-path tree |
+| `get_pim_upstream(grade, m)` | `{(source or '*', group): {join_state, reg_state, iif, rpf, spt}}` |
+| `get_igmp_interfaces(grade, m, detail=True)` / `get_mld_interfaces(grade, m)` + `igmp_enabled(interfaces, ifname)` | `{ifname: {version, querier, querier_ip, query_interval (s), query_response_interval, last_member_interval, last_member_count, robustness, mtrace_only}}`; an interface with `mtrace_only` has PIM but no `ip igmp` |
+| `get_igmp_groups(grade, m)` / `get_mld_groups(grade, m)` | `{ifname: {group: {version, mode, sources_count, uptime}}}`; a group a v2 host joined shows `version` 2 |
+| `get_igmp_sources(grade, m)` | `{ifname: {group: [sources]}}` of the IGMPv3 INCLUDE records |
+| `get_msdp_peers(grade, m)` / `get_msdp_sa(grade, m)` | `{peer: {state, established, local, sa_count}}`; `{(source, group): {rp, local, spt}}` |
+| `prefix_list_permits(parse_frr_config(text)['prefix_lists'], name, prefix)` | how a prefix-list treats a group (first match in `seq` order, implicit deny, `None` for a missing list); `parse_frr_config` also returns `pim`, `igmp` and `multicast_boundary` (the list of `ip multicast boundary oil`) per interface |
+
+**What really reaches a host** (`lib/mcast.py`, `lib/mcast_probe.py`, standard library only). The probe runs on the hosts the students see; one evaluation uses three steps:
+
+| Function | Description |
+|----------|-------------|
+| `install_mcast_probe(net_scheme, machine, step=1)` | Copy `lib/mcast_probe.py` to `/usr/local/sbin/mcast_probe.py` |
+| `mcast_recv_cmd(tag, port, joins, iface='eth0', duration=30)` | Step 1: (re)start a receiver daemon that joins each of `joins` (a group, or `(group, source)` for an IGMPv3 / MLDv2 source-specific join) with `IP_MULTICAST_ALL` off, and records per group the count, the sources, the tokens and the TTL of what reaches UDP `port`. It returns at once; the previous state of the tag is removed first |
+| `mcast_sniff_cmd(tag, iface, groups, duration=30)` | Step 1: an `AF_PACKET` sniffer that joins nothing and counts the frames of `groups` seen on `iface` (and the IGMP messages): the proof that a host did **not** get a stream |
+| `mcast_send_cmd(group, port, token, count=20, interval=0.4, delay=2, ttl=16, source=None, iface=None, background=None)` | Step 2: a burst of datagrams carrying `token`, from the address `source` of the machine and / or out of `iface` (a host without a route for 224.0.0.0/4 needs `iface`), blocking for `delay + 19 × interval` s unless `background` (a tag) sends it from a daemon (two bursts of one source at once) |
+| `get_mcast_dump(grade, machine, tags, step=3)` + `received(probe, group, token=None, source=None)` | Step 3: `{tag: McastProbe}` (`ran=False` on the placeholder or for a daemon that did not run); the number of datagrams of a group, with the token, from the source |
+| `group_mac(group)`, `mac_aliases(group, within=224.0.0.0/4)`, `multicast_scope(address)`, `glop_block(asn)` | `01:00:5e` + 23 bits (or `33:33` + 32 bits for IPv6); the 32 groups sharing that MAC; `link-local` / `internetwork-control` / `ssm` / `glop` / `local-scope` / `organization-scope` / `admin-scoped` / `global` (the scope nibble's name for IPv6) |
+
+Use a token and groups of the evaluation that the students do not use, require several datagrams of the burst (a PIM join, an SPT switchover or an MSDP SA loses the first ones), and count an absence (`received(...) == 0`) only when the probe ran **and** the stream it is compared with arrived. Receivers on a host alone are enough to create the IGMP state of its router.
+
+**Snooping of a Linux bridge** (`lib/bridging.py`). `bridge_mcast_info(get_ip_links(grade, m), 'br0')` → `snooping`, `querier`, `query_use_ifaddr`, `igmp_version`, the timers in seconds (`query_interval`, `membership_interval`…) and `ports` (`fast_leave`, `multicast_router`, `mcast_flood`); `get_mdb(grade, m, 'br0')` (`bridge -j -d mdb show dev br0`) + `mdb_ports(entries, group, source=None)`. A Linux bridge with snooping on but **no querier** (neither its own nor another one) still floods every group to every port.
+
+### MPLS helpers (from `/opt/sre/lib/mpls.py` and `/opt/sre/lib/frr.py`)
+
+```python
+from mpls import (trigger_mpls_modules_cmd, get_mpls_sysctls, get_kernel_mpls_routes, mpls_route_is_swap,
+                  mpls_route_is_pop, get_mpls_counters, mpls_counter_delta, parse_labels)
+from frr import (get_ldp_neighbors, ldp_session_up, get_ldp_discovery, get_ldp_bindings, get_mpls_table,
+                 get_ospf_sr_database, get_frr_routes, kernel_route_labels, mpls_label_value)
+```
+
+**The kernel modules.** Linux switches labels with the modules `mpls_router` and `mpls_iptunnel` of the **host**; the `net.mpls.*` sysctls of a container exist only once they are loaded. A lab needs no host command: `trigger_mpls_modules_cmd()` is a state command (run it on every router in `initial`, before any `net.mpls` sysctl) that asks the kernel for an `encap mpls` route, which makes it load both modules through its module autoload (the host's `modprobe`, no capability checked), then waits for `/proc/sys/net/mpls/platform_labels` of the container. Start FRR after it: zebra decides at start-up whether the kernel supports MPLS. `/proc/sys` must be writable (`net_config.remount_proc_sys()`).
+
+**The kernel side** (`lib/mpls.py`, every helper runs one command, `allow_error=True` by default):
+
+| Function | Returns |
+|----------|---------|
+| `get_mpls_sysctls(grade, m)` | `{platform_labels, ip_ttl_propagate, default_ttl, input: {ifname: 0 \| 1}}` (`grep -r . /proc/sys/net/mpls`; only `input` when the modules are missing) |
+| `get_kernel_mpls_routes(grade, m)` | the incoming label map, `ip -j -f mpls route`: `{label: {protocol, nexthops: [{out_labels, via, dev}]}}`; `out_labels == []` is a pop (`dev lo` alone: delivered to the machine) |
+| `mpls_route_is_swap(routes, label, out_labels, via=None)` / `mpls_route_is_pop(routes, label, via=None, dev=None)` | what a router does with a label |
+| `get_mpls_counters(grade, m, step=1)` + `mpls_counter_delta(before, after, ifname, key='rx_packets')` | the MPLS counters of each interface (`ip -j stats show group afstats subgroup mpls`): read at steps 1 and 3 around a ping burst at step 2, the delta proves that labelled packets crossed an interface (the routing protocols speak IP and never count). A packet received on an interface whose `input` is 0 still counts, then is dropped: gate the delta on the ping |
+
+**FRR** (`lib/frr.py`, json of vtysh): `get_ldp_neighbors` (`{lsr_id: {state, operational, transport_address, uptime}}`, `ldp_session_up(neighbors, lsr_id)`), `get_ldp_discovery` (`{ifname: [lsr_id]}`: an adjacency without a session means an unreachable transport address), `get_ldp_bindings` (the LIB: `{prefix: {local, remote: {lsr_id: label}, in_use}}`), `get_mpls_table` (zebra's labels: `{in_label: {installed, nexthops: [{type, out_labels, nexthop, interface}]}}`; zebra may say `installed` while the kernel refused the label), `get_ospf_sr_database` (`{router_id: {srgb: (base, size), srlb, prefixes: {prefix: {index, input_label, routes}}}}`, `{}` when segment routing is off), `get_frr_routes(grade, m, vrf=None)` (`show ip route [vrf X] json`: `{prefix: {protocol, selected, installed, metric, nexthops: [{ip, interface, labels}], backups: [...]}}`, the backups being the TI-LFA repair paths zebra keeps for itself). Labels are values: `imp-null` is 3, `exp-null` 0 (`mpls_label_value`). `parse_kernel_routes` gives each route a `labels` list (the stack pushed by each next hop, `kernel_route_labels(routes, prefix)`), and `parse_frr_config` an `mpls_ldp` block (router-id, transport address, interfaces, `label local allocate` / `advertise`), `access_lists`, and in `router_ospf` the `segment_routing` lines (SRGB, SRLB, prefix-SIDs with `no_php` / `explicit_null`), `capability_opaque` and `ti_lfa` (`'link'` / `'node'`).
+
+**BGP/MPLS L3VPN** (`lib/frr.py`, for `lab/sre/_DRAFT_misc/mpls-vpn.py`): `get_bgp_vpn_summary` (the VPNv4 neighbours, `show bgp ipv4 vpn summary json`, shape of `get_bgp_summary`: `{}` when no neighbour is activated in the family), `get_bgp_vpn_routes` (the VPNv4 table: `{rd: {prefix: [paths of get_bgp_routes]}}`), `vrf=` on `get_bgp_summary` / `get_bgp_routes` (`show bgp vrf X ipv4 unicast …`), on `get_frr_routes` and on `get_kernel_routes` (`ip -j route show vrf X`: the remote site of a VPN has `labels == [[transport, vpn]]`; with no LSP to the remote PE the VPN label alone, which the P router drops). `parse_frr_config` keeps the instances of the VRFs apart: `router_bgp_vrfs` = `{vrf: {…the keys of router_bgp…, vpn: {rd, rt_import, rt_export, label, export_vpn, import_vpn}}}` (`rt vpn both` fills both lists), and `bgp_neighbor_activated(router_bgp, peer, 'ipv4 vpn')` takes a family named in full. The VRF devices themselves are read by `policy_routing.vrf_devices(bridging.get_ip_links(grade, m))` / `vrf_of_port`.
+
+What Linux does that a router of an operator does not: it **drops** an MPLS packet whose TTL expires without any ICMP error (a `*` per core router in traceroute), and it pops the label of a PHP hop with the TTL of the label when `ip_ttl_propagate` is 1 (with propagation off at the ingress, the whole LSP and the egress disappear from traceroute). Setting `platform_labels` to 0 empties the label table of the kernel while zebra still believes its labels installed; zebra installs them again only when its LSPs change (`clear mpls ldp neighbor`). The MPLS lab (`lab/sre/_DRAFT_misc/mpls.py`) and the MPLS VPN lab (`lab/sre/_DRAFT_misc/mpls-vpn.py`) use all of these.
+
+### IS-IS and BFD helpers (from `/opt/sre/lib/frr.py`)
+
+```python
+from frr import (get_isis_neighbors, isis_adjacency_up, isis_adjacency_levels, isis_adjacencies,
+                 get_isis_interfaces, isis_interface_value, get_isis_database, isis_lsps_of, isis_lsp_node,
+                 get_isis_routes, get_bfd_peers, bfd_detection_time, bfd_profile_value, isis_srgb,
+                 isis_system_id_from_ipv4, isis_net, parse_isis_net, normalize_system_id,
+                 is_isis_protocol, ISIS_ROUTE_PROTOCOLS)
+```
+
+Written on the `isisd` / `bfdd` of FRR 10.3 (Debian 13), with the two-pass contract of the other FRR helpers and `allow_error=True` by default: a router without IS-IS gives the empty shape.
+
+| Function | Returns |
+|----------|---------|
+| `get_isis_neighbors(grade, m)` | `show isis neighbor detail` (**text**: the json form keeps one adjacency per broadcast circuit and loses the others): one dict per adjacency, `name` (the hostname, or the system-id when the neighbour announces none), `interface`, `level` (1, 2 or 3 = both), `state` (`Up`, `Initializing`…), `up`, `holdtime`, `snpa`, `circuit_type`, `speaks`, `topologies`, `lan_id`, `priority`, `is_dis`, `areas`, `ipv4`, `ipv6` (link-local), `ipv6_global`, `bfd` (`'Up'`…) |
+| `isis_adjacency_up(neighbors, name=None, interface=None, level=None)` / `isis_adjacency_levels(...)` / `isis_adjacencies(...)` | `name` may be a list (hostname and system-id); the two adjacencies of a broadcast circuit (one per level) count together, so `level=3` asks for both levels and `isis_adjacency_levels(...) == 1` for level 1 only |
+| `get_isis_interfaces(grade, m)` | `show isis interface detail json`: `{ifname: {type ('p2p' / 'lan' / 'loopback'), passive, level, circuit_id, levels: {1 \| 2: {metric, hello_interval, hello_multiplier, padding, csnp_interval, neighbors, priority, is_dis}}, ipv4, ipv6, ipv6_link_local}}` |
+| `get_isis_database(grade, m)` | `show isis database detail json`: `{level: {lsp_id: {node, pseudonode, own, seq, att, p, ol, hostname, areas, protocols, topologies (MT ids), router_id, srgb, srlb, is_reach: [{id, metric, mt, adj_sids}], ip_reach: [{prefix, metric, down, sid: {index, no_php, explicit_null}}], ipv6_reach}}}`; `isis_lsps_of(db, level, node, pseudonode=False)` finds a router's own LSPs |
+| `get_isis_routes(grade, m, ipv6=False)` | `show isis route json`: `{level: {prefix: {metric, nexthops: [(address, ifname)], labels}}}`, the cost IS-IS computed (the kernel metric of an FRR route is always 20) |
+| `get_bfd_peers(grade, m)` | `show bfd peers json`: `{peer: {status, up, interface, local, receive_interval, transmit_interval, detect_multiplier, remote_*}}`; `bfd_detection_time(peer)` in ms |
+
+`parse_frr_config` also returns `router_isis` (`name`, `nets`, `is_type`, `metric_style`, `overload`, `area_password` / `domain_password` (`{type, key}`), `redistribute` (`[(afi, protocol, level)]`), `default_information`, `topologies`, `lsp_gen_interval`, `segment_routing` in the shape of OSPF's; `isis_srgb()` gives FRR's default block when segment routing is on without `global-block`, a line FRR does not write), per interface `isis` (`ipv4` / `ipv6` = the instance of `ip router isis` / `ipv6 router isis`, `circuit_type`, `network_type`, `passive`, per-level `metric` / `priority` / `hello_interval` / `hello_multiplier` read with `isis_interface_value(cfg, key, level)`, `password`, `bfd`, `bfd_profile`, `fast_reroute`) and `bfd` (`{profiles: {name: {...}}}`; `bfd_profile_value()` fills the defaults FRR leaves out: multiplier 3, intervals 300 ms). `isis_system_id_from_ipv4('10.0.31.2')` is `'0100.0003.1002'` (the usual convention), `normalize_system_id()` reads a typed one.
+
+Verified on FRR 10.3: wide metrics by default (`metric-style narrow` is refused while a metric exceeds 63); hello every 3 s, multiplier 10 (30 s); the DIS election is preemptive; FRR announces in level 2 **only the own networks** of a level 1-2 router, never the prefixes it learned in level 1 (no route leaking either way): the labs announce a level 1 area with a redistributed static route (a `blackhole` summary); an MTU mismatch shows the neighbour `Initializing` on the side with the large MTU and nothing on the other (hello padding); a router with `domain-password` drops unsigned LSPs while one without accepts signed ones; FRR waits up to 30 s between two generations of an LSP (`lsp-gen-interval`), which delays a reconvergence and the return to the primary path after a BFD-detected failure; in single topology an IPv4-only link makes IPv6 loop between two routers, the multi-topology (`topology ipv6-unicast`) avoids it. Examples: `lab/sre/_DRAFT_misc/isis.py` and `lab/sre/_DRAFT_misc/isis-ipv6-sr-bfd.py`.
+
+### Bonding, LACP and LLDP helpers (from `/opt/sre/lib/bonding.py` and `/opt/sre/lib/lldp.py`)
+
+```python
+from bonding import (bond_info, get_bond_info, bond_slaves, lacp_aggregated, lacp_partner_is,
+                     parse_proc_bonding, get_proc_bonding, get_tx_packets, packets_delta, hping_flows_cmd)
+from lldp import get_lldp_neighbors, parse_lldp_neighbors, lldp_neighbor, LLDP_NEIGHBORS_CMD, LLDP_MAC
+```
+
+| Function | Returns |
+|----------|---------|
+| `bond_info(links, 'bond0')` / `get_bond_info(grade, m, 'bond0')` | from `ip -j -d link show` (`bridging.get_ip_links`): `mode`, `address`, `up`, `carrier` (none while `min_links` is not reached), `miimon`, `arp_interval`, `arp_ip_target`, `primary`, `active_slave`, `xmit_hash_policy`, `lacp_rate`, `lacp_active`, `min_links`, the active aggregator (`aggregator`, `num_ports`, `actor_key`, `partner_key`, `partner_mac`, `''` without partner) and `slaves` (`state`, `mii_status`, `aggregator_id`, `actor_state` / `actor_state_str`, `partner_state`...); `None` when the bond does not exist |
+| `lacp_aggregated(info)` | the slaves LACP really aggregates (active aggregator, `in_sync` + `collecting` + `distributing`, a partner); `[]` for another mode or a static peer; the carrier is not looked at |
+| `lacp_partner_is(info, macs)` | the partner of the active aggregator is one of *macs* |
+| `parse_proc_bonding(text)` / `get_proc_bonding(grade, m, bond)` | `/proc/net/bonding/<bond>`, with the actor and partner LACPDU of each slave |
+| `get_tx_packets(grade, m, ifaces, step)` + `packets_delta(before, after)` | the transmit counters of interfaces, read around a burst of flows: `hping_flows_cmd(dest)` sends 64 UDP datagrams from one source port (`-s 33000 -k`) to as many destination ports (spread evenly by a `layer3+4` hash, all on one member with `layer2`; hping3 increments its source port by default, and two ports moving together put most flows on one member) |
+| `get_lldp_neighbors(grade, m)` / `parse_lldp_neighbors(text)` | `lldpcli -f json0 show neighbors details` (json0 keeps the same structure whatever the number of neighbours): one dict per neighbour, `interface`, `chassis_id`, `chassis_name`, `descr`, `mgmt_ips`, `capabilities`, `port_id` / `port_id_type`, `port_descr`, `ttl`, `aggregation` (ifindex of the neighbour's bond), `vlans`; `[]` when lldpd does not run |
+| `lldp_neighbor(neighbors, interface=, name=)` | the neighbour seen on a port and / or with a system name |
+
+Verified on Debian 13 (Linux 6.12, lldpd 1.0.18 in the `routing-frr` image, Kathara VDE links): the first `ip link add ... type bond` of a container loads the bonding module (Debian's `max_bonds=0` keeps the host free of a `bond0`); an interface must be down to be enslaved; the bond takes the MAC address of its first member; the tap interfaces report 10 Gbit/s full duplex (LACP key 15, port priority 255, system priority 65535); **a link set down at one end stays up at the other**, so `miimon` never sees a failure beyond the local port while ARP monitoring does (a 6 s silent cut of the active link of an active-backup bond: all lost with `miimon`, 3 s with `arp_interval 1000`, 0.6 s with 200); without `arp_validate` any frame received makes a backup member valid, so a cut must drop the frames the switch sends itself too (an nft `netdev` table with ingress and egress hooks on its port): a bridge-family cut let its BPDUs through every 2 s and the bond flapped back to the cut member and LACP (`lacp_rate fast`) takes the port out of sync after 3 s; a balance-xor server facing an 802.3ad switch leaves the switch without partner, each port alone in its aggregator, and the frames received outside the active aggregator are dropped; `min_links` above the active members removes the carrier of the bond (its bridge port goes `disabled`); a bond is an ordinary STP bridge port (30 s to forward); two members capped at 20 Mbit/s by `tc` give ~19 Mbit/s to one `iperf3` flow and ~38 to four; two Linux bonds with `lacp_active off` still aggregated. lldpd works on the tap interfaces without `interface pattern`, sends every 30 s with a TTL of 120 s, adds the link aggregation TLV on the members of a bond (sent from a fixed source MAC), announces the VLAN sub-interfaces of a port, reads `/etc/lldpd.d/*.conf` when it starts; `rx-only` stops the LLDPDUs without a *shutdown* LLDPDU (the neighbour keeps the entry until its TTL expires) while stopping lldpd sends one. Example: `lab/sre/_DRAFT_misc/lacp-lldp.py`.
+
+### VXLAN and EVPN helpers (from `/opt/sre/lib/vxlan.py` and `/opt/sre/lib/frr.py`)
+
+```python
+from vxlan import (vxlan_devices, vxlan_of_vni, link_mtu, get_fdb_all, get_vxlan_fdb, flood_list, remote_macs,
+                   get_bridge_port_flags, get_frag_creates, frag_delta, df_ping_cmd,
+                   vxlan_cmds, bridge_cmds, flood_cmds, vrf_cmds, l3vni_cmds, VXLAN_PORT)
+from frr import (get_bgp_evpn_summary, get_bgp_evpn_routes, evpn_routes, get_evpn_vnis, get_evpn_macs,
+                 get_evpn_arp_cache, get_vrf_vnis, get_evpn_rmacs, get_bgp_evpn_vni, evpn_family)
+```
+
+**The kernel side** (`lib/vxlan.py`, every `get_*` runs one command):
+
+| Function | Returns |
+|----------|---------|
+| `vxlan_devices(links)` | from `bridging.get_ip_links()`: `{name: {vni, local, group, remote, dev, port, ttl, learning, mtu, master, up, neigh_suppress, address}}`; find the device of a VNI with `vxlan_of_vni(devices, vni)` (students choose their names) |
+| `get_fdb_all(grade, m)` / `get_vxlan_fdb(grade, m, dev)` | `bridge -j fdb show` (every device, with `ifname`) / `bridge -j fdb show dev X`, parsed by `bridging.parse_fdb_json` (entries gained `dst`) |
+| `flood_list(entries, dev)` | the destinations of the `00:00:00:00:00:00` entries: the head-end replication list (static, or installed from EVPN type-3 routes), or the multicast group |
+| `remote_macs(entries, dev, extern_only=False)` | `{mac: remote VTEP}`: learned from the traffic, or installed by EVPN (`extern_learn`, only those with `extern_only`) |
+| `get_bridge_port_flags(grade, m)` | `bridge -j -d link show`: `{port: {master, state, neigh_suppress, learning, flood, mtu}}` (ARP suppression) |
+| `get_frag_creates(grade, m, step)` + `frag_delta()` | `nstat -az IpFragCreates`, read around a 1500-byte ping: a router that fragments VXLAN packets has an underlay MTU too small |
+| `df_ping_cmd(dest)` | flushes the PMTU cache of the host (`/proc/sys` remounted), then `ping -M do -s 1472` |
+| `vxlan_cmds`, `bridge_cmds`, `flood_cmds`, `vrf_cmds`, `l3vni_cmds` | the shell commands of a state: a VXLAN device (`local`, `group` + `dev`, `ttl`, `nolearning`), a bridge (ports, MAC of an anycast gateway, address, VRF, `neigh_suppress`), a static flood list, the kernel side of an L3VNI |
+
+**FRR** (`lib/frr.py`, json of vtysh): `get_bgp_evpn_summary` (shape of `get_bgp_summary`; `policy_blocked` for an eBGP neighbour without route-maps: RFC 8212 applies to the family), `get_bgp_evpn_routes` (`show bgp l2vpn evpn route detail json`, one dict per path: `rd`, `type` 2 / 3 / 5, `mac`, `ip`, `vtep`, `network`, `vnis` (`[200, 4000]` for a MAC+IP route: L2VNI, L3VNI), `rts`, `router_mac`, `nexthop`, `best`, `local`, `pmsi`) filtered by `evpn_routes(routes, route_type=, mac=, ip=, network=, vtep=, nexthop=, rt=, local=)`, `get_evpn_vnis` (zebra's VNIs: L2 with `remote_vteps` / `flood`, L3 with `vrf`, `state`, `router_mac`, `l2_vnis`), `get_evpn_macs`, `get_evpn_arp_cache`, `get_vrf_vnis`, `get_evpn_rmacs`, `get_bgp_evpn_vni` (RD and RTs of each VNI: automatic RD = `router-id:index`, automatic RT = `AS:VNI`). `parse_frr_config` adds `vrfs` (`{vrf: {vni}}`, the L3VNI of the `vrf X` blocks), the `l2vpn evpn` statements of the default and VRF instances (read with `evpn_family(router_bgp)`: `advertise_all_vni`, `advertise_ipv4_unicast`, `vnis` blocks, L3VNI `rd` / `rt_import` / `rt_export`), and `route_map_export` / `route_map_import` (`route-map vpn export|import`) in the VPN block of a VRF instance.
+
+Verified on Debian 13 (Linux 6.12, iproute2 7.3.0, FRR 10.3 in `routing-frr`): creating a VXLAN or VRF device in a container loads the module of the host; the VDE links carry jumbo frames and a tap does not enforce its MTU on receive; a VTEP whose path is too small answers a DF host with an ICMP *fragmentation needed* (PMTU 1450 cached ~10 min) and never fragments, a router behind it fragments the VXLAN packet; a multicast VXLAN packet leaves with TTL 1 unless `ttl` is set, and a PIM router registers only directly connected sources (no `local` on a loopback); FRR imports the routes of another AS whose automatic RT differs (it compares the VNI); a MAC+IP route lives while the leaf's ARP entry is fresh (STALE = withdrawn); the BGP instance of a VRF is needed for type-5 routes only; a border that is also a PE re-originates EVPN ↔ VPNv4 in both directions, and only `route-map vpn export` (not `aggregate-address … summary-only`) keeps the /32 host routes out of VPNv4. Examples: `lab/sre/_DRAFT_misc/vxlan-evpn.py` and `lab/sre/_DRAFT_misc/evpn-mpls.py`.
+
+### BGP operations helpers (from `/opt/sre/lib/frr.py`)
+
+```python
+from frr import (get_rpki_cache_connection, get_rpki_prefix_table, rpki_origin_state,
+                 get_bgp_dampening_parameters, get_bgp_dampened_paths, get_bgp_flap_statistics,
+                 confed_as_list_from_string, BGP_DAMPENING_DEFAULTS)
+```
+
+Helpers of the two BGP operations labs (`bgp-security.py`: RPKI, maximum-prefix, GTSM, RTBH, BFD;
+`bgp-scaling.py`: communities, multipath, confederations, dampening, graceful shutdown), written on
+FRR 10.3 with the RPKI module (`bgpd -M rpki`) and **stayrtr** (in the `routing-frr` image: an RTR
+cache serving a local JSON file of ROAs, `stayrtr -bind :3323 -cache FILE -checktime=false`).
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `get_rpki_cache_connection(grade, machine, step=1, allow_error=True)` | `dict` | `show rpki cache-connection`: `connected` (a cache server in state `connected`), `connections: [{mode, host, port, preference, state}]`, `error` (FRR's message without connection) |
+| `get_rpki_prefix_table(grade, machine, ...)` | `list[dict]` | `show rpki prefix-table`: the VRPs `[{prefix: 'P/len', max_length, asn}]` |
+| `rpki_origin_state(vrps, prefix, origin_as)` | `str` | RFC 6811 validation against VRPs (or the ROAs of a validator file in that shape): `valid` / `invalid` / `notfound` |
+| `get_bgp_dampening_parameters(grade, machine, ...)` | `dict` | `show bgp ipv4 unicast dampening parameters`: `half_life`, `reuse`, `suppress`, `max_suppress` (minutes for the times), `max_penalty`; `{}` without dampening |
+| `get_bgp_dampened_paths` / `get_bgp_flap_statistics(grade, machine, ...)` | `dict` | `{prefix: [{peer, aspath, damped, history, flaps, reuse_ms}]}` |
+| `confed_as_list_from_string(path)` | `list[int]` | The member ASes of a confederation in an AS path (`'(65101) 64500'` → `[65101]`) |
+
+The existing helpers gained: a path of `get_bgp_routes` / `get_bgp_prefix` has `rpki` (`valid` /
+`invalid` / `notfound`, `None` without the module: the whole table says `rpkiValid`…, one prefix
+`rpkiValidationState`), `multipath`, `damped` / `history` / `dampening_penalty` and `confed_as_list`
+(`path_from` is `confed-external` across member ASes); `get_bgp_summary` peers have `peer_state` and
+`prefix_limit_exceeded` (`Idle (PfxCt)`), the summary `dampening_enabled`; `get_bgp_neighbor` has
+`max_prefix`, `max_prefix_threshold`, `max_prefix_warning_only`, `max_prefix_restart` (minutes),
+`max_prefix_exceeded`, `last_notification`, `last_reset`, `bfd_status`, and `link` may be
+`confed-external`; `parse_kernel_routes` gives each route its `type` (`blackhole`…). `parse_frr_config`
+reads `maximum-prefix`, `ttl-security hops`, `bfd [profile]`, `graceful-shutdown` per neighbour,
+`bgp confederation identifier / peers`, `bgp graceful-shutdown`, `maximum-paths [ibgp]`, `bgp dampening`
+(a bare one = `BGP_DAMPENING_DEFAULTS`) and the `rpki` block (`cfg['rpki']['cache_servers']`).
+
+FRR 10.3 facts these labs rely on (all checked live): the whole-table json carries **no communities**
+(read a prefix); a path rejected by `match rpki invalid` comes back only after `clear bgp X soft in`;
+FRR retries a failed RPKI connection after 10 minutes (start the validator first); eBGP multipath is
+on by default; `neighbor X graceful-shutdown` only acts on the routes received from X; FRR keeps a BGP
+session `Idle` while its BFD session is down; a BGP route whose next hop resolves through a `blackhole`
+static route is not installed (RTBH needs a next hop in the connected subnet of a `dummy` interface).
+
+### Suricata and fail2ban helpers (from `/opt/sre/lib/suricata.py` and `/opt/sre/lib/fail2ban.py`)
+
+```python
+from suricata import (install_pcap_tool, write_pcap, save_offline_config, render_minimal_yaml, offline_alerts,
+                      alert_sources, get_epoch, eve_alerts, alerts_since, get_dump_config, config_list,
+                      rule_file_loaded, address_group, same_networks, get_processes, nfq_mode, af_packet_mode,
+                      queue_statements)
+from fail2ban import (get_jails, get_jail_status, get_jail_value, get_ignoreip, parse_seconds, ssh_failures_cmd,
+                      http_logins_cmd, tcp_open_cmd, parse_tcp_open, unban_cmd, render_jail)
+```
+
+**Suricata** (`lib/suricata.py`; the captures come from `lib/suricata_pcap.py`, a stdlib generator of HTTP
+sessions, DNS queries, SYN bursts and ICMP echoes with consistent sequence numbers and checksums):
+
+| Function | Returns |
+|----------|---------|
+| `install_pcap_tool(ns, m)` / `write_pcap(ns, m, path, spec)` | the generator copied into a machine; a capture left there for the students (`suricata -r`) |
+| `save_offline_config(ns, m)` | a copy of `suricata.yaml` as installed (`/usr/local/share/sre/suricata-offline.yaml`): the grader's offline runs never read the students' configuration |
+| `offline_alerts(grade, m, spec, rule_file, home_net, threshold_file=None, name=)` | writes a fresh capture of *spec* in the machine, runs `suricata -r` on it with **one** rule file (`-S`), `HOME_NET` forced and a threshold file (empty by default): `{'rc', 'alerts': [{sid, src, dst, action}], 'errors'}`; `alert_sources(alerts, sid)` = the sources of a signature. A part graded this way does not depend on the live sensor of another part |
+| `get_epoch(grade, m)` + `eve_alerts(grade, m, sid)` + `alerts_since(events, t0, src=, action=)` | the alerts of one signature in a live `eve.json`, kept when written after the clock read at step 1 (`action='blocked'` for an IPS drop) |
+| `get_dump_config(grade, m)` / `config_list(config, 'rule-files')` / `rule_file_loaded(config, path)` | `suricata --dump-config` as `{key: value}` (`af-packet.0.interface`, `vars.address-groups.HOME_NET`...); a rule file named absolute or relative to `default-rule-path` |
+| `address_group(value)` / `same_networks(value, expected)` | an address group as networks (`None` with a negation, a variable or `any`), compared without order |
+| `get_processes(grade, m)` + `nfq_mode(cmdline)` / `af_packet_mode(cmdline)` | the running Suricata command lines: NFQUEUE (`-q N`), af-packet (`''` for the interfaces of the configuration, or the interface of `--af-packet=X`) |
+| `queue_statements(parsed, hook)` | the `queue` statements of a hook in `firewall.get_nft_json()` (jumped-to chains included): `num`, `flags` (`bypass` = fail-open) |
+| `render_minimal_yaml(home_net, iface, rule_files)` | a complete short `suricata.yaml` for a reference sensor of a lab: af-packet with one thread, alerts only in `eve.json`, no unix socket |
+
+**fail2ban** (`lib/fail2ban.py`): `get_jails` (`fail2ban-client status`), `get_jail_status` (`currently_failed`,
+`total_failed`, `currently_banned`, `banned`), `get_jail_value(grade, m, jail, 'maxretry')` + `parse_seconds`
+(`findtime`, `bantime` in seconds), `get_ignoreip`; the attempts of a probe from a chosen source address:
+`ssh_failures_cmd(host, user, wrong_password, count, bind)` (password logins through
+`lib/login_probe.py --bind`, copied by `openldap.install_login_probe`), `http_logins_cmd(url, user, password,
+count, bind)` (`POST` with `curl --interface`), `tcp_open_cmd(host, port, bind, tag=)` + `parse_tcp_open` (is the
+port still reachable from that address); `unban_cmd(addresses)` (every jail, harmless without fail2ban);
+`render_jail(name, **options)`. `lib/intranet_app.py` is a small login application (stdlib) whose log line puts
+the client's user name before its address (`FAILED login user=<user> from=<ip>`), the classic injectable log.
+
+Verified on Debian 13 (Suricata 7.0.10, fail2ban 1.1.0, nftables 1.1.3, Linux 6.12): Debian's `suricata.yaml`
+captures with af-packet threads `auto` (one per core: set `threads: 1`), loads only `suricata.rules` of
+`suricata-update` (absent offline: a warning) and enables a unix socket that an offline run must disable; the
+service runs `suricata -D --af-packet`; the NFQUEUE modules load on demand from a container and Suricata `-q 0`
+drops inline (`alert.action` `blocked`); `http.uri` is normalised (`%2F` decoded, `../` resolved, in the query
+string too), `http.uri.raw` and a plain `content` are not; `detection_filter: count 5` alerts from the 6th match,
+`threshold: type threshold, count 5` on the 5th; `suppress … track by_src, ip X` silences X only. Debian enables
+fail2ban's `[sshd]` jail on the systemd journal (`backend = systemd`, sshd must run as `ssh.service`) with
+`banaction = nftables` (table `inet f2b-table`, set `addr-set-<jail>`, chain `f2b-chain` on `input`); a jail
+whose filter is missing is skipped, the others start; unbanning does not reset an address's failures (a probe
+checking "not banned below maxretry" must rotate its addresses); the date is cut out of a line before
+`failregex` (the rest starts with a blank: `^\s*`); a greedy `.*` before `<HOST>` takes the last address of the
+line, `.*?` or a bare `from=<HOST>` the first (log injection); `nftables[type=allports, chain_hook=forward]`
+with `chain = f2b-forward` bans routed traffic, on every port of the jail's `protocol` only (`tcp` by default:
+ICMP still passes); `eve.json` lines are dated by the default detector. Example:
+`lab/sre/_DRAFT_misc/suricata-fail2ban.py`.
+
+### Ansible helpers (from `/opt/sre/lib/ansible_helpers.py` and `/opt/sre/lib/ansible_trace.py`)
+
+```python
+from ansible_helpers import (install_trace, local_fact_json, read_trace_cmd, parse_runs, iter_tasks, tasks_done_on,
+                             hosts_of_tasks, idempotent_run, normalize_action, parse_inventory_list, group_hosts,
+                             group_children, hostvar, parse_config_dump, config_value, config_list, is_vault,
+                             crypt_check_cmd, crypt_matches, parse_users, parse_group_line, motd_matches)
+```
+
+The module is named `ansible_helpers`, not `ansible`: the lib directory is on the `sys.path` of SRE and would
+shadow the real package. `lib/ansible_trace.py` is an Ansible **callback plugin**, never imported by SRE:
+`install_trace(net_scheme, 'control')` copies it to `/usr/share/ansible/plugins/callback/sre_trace.py` (a default
+callback path) and creates `/var/log/ansible-runs.jsonl` (mode 0666). With `CALLBACK_NEEDS_ENABLED = False` every
+`ansible-playbook` run loads it, whatever the students' `ansible.cfg` (an ad hoc `ansible` command loads no extra
+callback); it prints nothing and appends one JSON line per run: playbook, working directory, check mode, plays, every
+task (name, resolved module, role, handler, loop, `run_once`, `delegate_to`, the status of each host: `ok`, `changed`,
+`failed`, `ignored`, `skipped`, `unreachable`) and the recap. Task arguments are never recorded.
+
+| Function | Returns |
+|----------|---------|
+| `parse_runs(text)` | the runs of `read_trace_cmd()` (`tail -n 200` of the log), oldest first |
+| `iter_tasks(runs, role=, action=, handler=, loop=, run_once=, delegate_to=)` | `(run, task)` matching the filters (`action` and `delegate_to` take a name or a list); `normalize_action()` makes `template`, `ansible.builtin.template`, `ansible.legacy.template` one name |
+| `tasks_done_on(runs, hosts, **filters)` / `hosts_of_tasks(runs, **filters)` | every host has a matching task that ended `ok` or `changed` (in any run) / the hosts that have one |
+| `idempotent_run(runs, role, hosts, min_tasks=3)` | one run applied the tasks of the role to every host with at least *min_tasks* `ok` and no `changed` / `failed` / `unreachable` (a `--check` run counts) |
+| `parse_inventory_list(text)` + `group_hosts()` / `group_children()` / `hostvar()` | `ansible-inventory --list` (children resolved recursively) |
+| `parse_config_dump(text)` + `config_value()` / `config_list()` | `ansible-config dump --only-changed`: `{setting: (origin, value)}` |
+| `is_vault(text)` | a file encrypted by `ansible-vault` |
+| `crypt_check_cmd(user, password)` + `crypt_matches(out)` | a password checked against `/etc/shadow` by libcrypt through `ctypes` (any hash type, yescrypt included; Python 3.13 has no `crypt` module) |
+| `parse_users()` / `parse_group_line()` / `motd_matches()` | `getent passwd`, `getent group`, a motd |
+
+Verified on Debian 13 (ansible-core 2.19.11 and ansible 12.0.0 from Debian in the `ansible` image, init13 managed
+nodes): the callback loads with no warning (2.19 hands the callbacks a `CallbackTaskResult` with public `host` /
+`task` attributes: the private ones would print a deprecation warning); the task names of a role are prefixed
+(`webserver : Reload nginx`); a local fact is `ansible_local` or `ansible_facts['ansible_local']` (the key keeps its
+prefix); a machine without a default route has an empty `default_ipv4` fact; interpreter discovery warns once per host
+unless `interpreter_python = auto_silent`; `ansible-vault encrypt --vault-password-file F` fails when `ansible.cfg`
+already names a password file ("The vault-ids default,default are available to encrypt"). In the images: base13 images
+built before 2026-11-23 ship `/etc/sudoers.d/admin` in mode 0644 (sudo honours it, but a global `visudo -c` fails;
+the lab checks one file with `visudo -cf`, which works with both);
+nginx 1.30 (nginx.org) keeps its upstream connections open without a `keepalive` directive and each worker has its own
+round robin, restarting at the first server after a reload. Example: `lab/sre/_DRAFT_misc/ansible.py`.
+
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
 `machine_config(net_scheme, machine_name, config)` — concise helper for wiring a machine inside `NetScheme.build()` (or `initial()`). `config` is a `(interfaces, sysctls)` tuple:
@@ -1356,6 +1729,23 @@ from utils import random_password, random_sentence
 |----------|-------------|
 | `random_password(length)` | Returns a random alphanumeric password of the given length |
 | `random_sentence(length)` | Returns a random sequence of lowercase words, space-separated, approximately `length` characters long |
+
+### NTP and chrony helpers (from `/opt/sre/lib/ntp.py` and `/opt/sre/lib/ntp_probe.py`)
+
+```python
+from ntp import (get_chrony_snapshot, parse_snapshot, snapshot_cmd, ntp_probe_check, query_spec, burst_spec,
+                 chrony_spec, answered, start_fake_servers, persona, install_ntp_probe, base_chrony_conf,
+                 daemon_defaults, refid_of, key_line, DRIFT_FILE, DRIFT_SEED)
+```
+
+| Function | Returns |
+|----------|---------|
+| `get_chrony_snapshot(grade, m, config=True)` / `parse_snapshot(text)` | one command (`snapshot_cmd()`): `pidof chronyd`, `chronyc -c -n tracking`, `sources`, `authdata` and `chronyd -p` (the configuration with its included files) → `ChronySnapshot`: `running`, `tracking` (`refid` hex, `address`, `stratum`, `leap`, `synced`), `sources` (`mode`, `state` among `* + - x ~ ?`, `address`, `stratum`, `reach` decoded from octal, `offset` of the local clock relative to the source), `authdata` (`mode` `NTS` / `SK` / `-`, `keyid`, `cookies`), `config` (`[[directive, args...]]`); `synced_to(address)`, `source(address)`, `selected()`, `auth(address)`, `directives(name)` |
+| `ntp_probe_check(grade, m, [specs])` | the probes run concurrently by `ntp_probe.py check` on a machine (installed by `install_ntp_probe`): `query_spec(id, server, source=)` → the fields of the answer (`answered`, `leap`, `stratum`, `refid`, `precision`, `root_delay`, `root_dispersion`, `offset`, `delay`), `burst_spec(id, server, source=, count=30)` → `{sent, answered}`, `chrony_spec(id, directives)` → `chronyd -Q` with these directives as its whole configuration (a key file, `nts`, `ntstrustedcerts`...): `{synced, offset, output}`; `answered(result, synchronised=None)` |
+| `start_fake_servers(net_scheme, m, [persona(address, offset=, stratum=, refid=, leap=, precision=, root_delay=, root_dispersion=)])` | a stdlib NTP server (`ntp_probe.py serve`) answering on each address with its own personality: the way to give a lab a falseticker or an unsynchronised server, since every container shares the clock of the host |
+| `base_chrony_conf()`, `daemon_defaults(opts)`, `DRIFT_FILE` / `DRIFT_SEED` | Debian's `chrony.conf` without its `pool` line, `/etc/default/chrony` with `-x -l /var/log/chrony/chronyd.log`, a drift file saying 0 ppm ± 1 ppm |
+
+The image `sysreseval/ntp` (`images/ntp/Dockerfile`, base13 + chrony 4.6) must never be given to a privileged machine: the clock of a container is the clock of the host (Linux has no time namespace for `CLOCK_REALTIME`), a non-privileged Kathara machine lacks `CAP_SYS_TIME` (chronyd without `-x` stops on `adjtimex(0x8001) failed : Operation not permitted`), a privileged one would let a chronyd steer the host's clock. With `-x`, chronyd measures, selects (a falseticker is marked `x`, an unsynchronised server `?`), serves (LI = 3 while unsynchronised, `local stratum` answers at once), authenticates with symmetric keys (`SK`) and NTS (the server key must be readable by `_chrony`, otherwise the TLS handshake of the client fails) exactly as on a real host. Verified on Debian 13 (s17, 2026-11-23): Debian's unit runs chronyd as `User=_chrony` under a sandbox the systemctl stand-in of base13 cannot start, and its init script could not stop a daemon of another user (`--exec` reads `/proc/<pid>/exe`, unreadable without `CAP_SYS_PTRACE`): the image replaces the unit and stops by `--name`; a chronyd starting without a drift file knows its frequency to ±1000000 ppm and, once synchronised, announces a root dispersion growing by one second per second for about a minute, during which its clients and `chronyd -Q` reject it (the image and the lab seed the drift file); `chronyd -Q` works beside a running chronyd and several run in parallel with their own `pidfile`; `ratelimit interval 1 burst 4` answered 12 of 30 requests sent every 50 ms; `tcpdump -v` decodes NTP (a chrony client puts a random transmit timestamp). Example: `lab/sre/_DRAFT_misc/ntp.py`.
 
 ### Network inspection helpers (from `/opt/sre/lib/net_config.py`)
 
@@ -1430,6 +1820,12 @@ from ping import eval_ping
 - `"machine_name:N"` or `"machine_name:ethN"` — resolves to interface index N of that machine (same family rule)
 
 If `net_config` is not provided, `grade.net_scheme.net_config` is used. Raises `ValueError` on resolution failure.
+
+`get_ping_series(grade, src, dest, count, interval, step=1, wait=1) → (transmitted, received)` — a
+quiet series (`ping -n -q -c count -i interval -W wait dest`, `interval` down to 0.002 s as root)
+from the machine `src`; the losses measure an outage (the BFD bonus of
+`lab/sre/_DRAFT_misc/anycast.py` counts the pings lost while an instance is silently cut).
+`parse_ping_summary(output)` reads the summary line (`(None, None)` without it).
 
 ### SSH helpers (from `/opt/sre/lib/ssh.py`)
 
@@ -1564,13 +1960,15 @@ Declare these at the top level of `srelab.py` to customize behavior. They are re
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `ipv6` | `bool` | `params.default_ipv6` (`None`: Kathara's own setting, off) | If `True`, IPv6 is enabled in every machine (`disable_ipv6=0`, forwarding and `accept_ra=0` set by Kathara); `Machine(ipv6=...)` overrides it per machine. The effective value is written to the `lab.conf` of `sre export`. See [IPv6 labs](#ipv6-labs) |
+| `lab_weight` | number | the sum of the weights of the machines | The weight of the lab in the load of a pool host (see [The weight of a lab](#the-weight-of-a-lab)): set it when the machines depend on the flavor (the weight of the largest one), or when the lab cannot be built without Docker |
+| `default_image` | `str` | `params.default_docker_image` | Image of the machines whose spec has no `image` (e.g. `sre_docker_image("base12")`), so that a lab keeps its image when the default of SRE changes. `scripts/keep-images-debian12 [-r] <file_or_dir>...` adds `default_image = sre_docker_image("base12")` to every lab file that does not set it, and replaces the former names `sre_docker_image("init")` / `("base")` and `sre_docker_image()` with `init12` / `base12` |
 
 ### Filesystem and export
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `shared_path` | `bool` | `False` | Create `/home/sre/{running_lab_name}/` (mode `0o777`) and bind-mount it into each container for file exchange between host and containers |
-| `export_kathara_project` | `bool` | `True` | If `False`, disable **File → Export Kathara Project** in the GUI and refuse `sre export` for this lab |
+| `export_kathara_project` | `bool` | `True` | If `False`, disable **File → Export Kathara Project** in the GUI and refuse `sre export` for this lab. The exported project never holds the `hidden` machines; when one of them is part of the network the students work on (a router they do not see), the exported lab lacks it |
 | `export_schema_pdf` | `bool` | `True` | If `False`, disable **File → Export Schema to PDF** in the GUI: the drawing of the *Schema* tab (the visible machines only, with the tab's lines / spacing / order / icons settings) written to a PDF by graphviz. See [Exporting a project](gui.md#exporting-a-project) |
 | `allow_save_restore` | `bool` | `False` | If `True`, students may save a running project to a file (**File → Save Project**, `sre save`) and restore it later as a new instance (**File → Restore Project**, `sre restore`). The save file holds `data.json` and `.private/files` — in clear unless `save_key` is set — so enable it only for labs whose `Data` holds nothing the student must not read, or set `save_key` |
 | `save_key` | `str` | _(unset)_ | Non-empty secret string. When set, the payload of every save file is encrypted (AES-256-GCM, key derived from `save_key`); only a lab with the same key can restore it, and students cannot restore cleartext files. Keep the lab file unreadable by students |
@@ -1719,6 +2117,29 @@ A directory of the tree is shown by its name unless the `titles.json` of its **p
 
 A directory has no title of its own to read, so these titles are written by hand. `sre make-titles` never touches them (a rerun keeps the entry of a sub-directory as it is), and its option `-d` (`--directories`) prepares the files: every sub-directory of the tree is listed in the `titles.json` of its parent with `null` (shown by its name), and with `-r` the levels holding directories only, such as the lab root, get their file too. `sre make-titles -r -d /opt/sre/lab` then reports the sub-directories still without a title, file by file; replace a `null` by a title and the pickers show it. Without `-d` the command writes the labs only.
 
+### The weight of a lab
+
+On the web front-end a project is placed on one host of a pool, and the labs differ a lot: four idle machines for one, more than thirty routers for another. The **weight** of a lab tells the portal, before any project of the lab has run, how much one project loads a host: the sum of the weights of its machines, hidden ones included (they are containers like the others), 1 being one plain idle container. The portal turns it into memory and processors (`[pool] weight_memory_mb` / `weight_cpu` of `web.toml`) and drops it for what the projects of the lab really use once it has measured three of them (*The load of a host* in the web front-end documentation). A weight therefore only needs to be roughly right.
+
+- A machine weighs the `weight` of its spec, else the weight of its image in `image_weights` of `params.py` (keyed by the short name of the image: `routing-frr` for `sysreseval/routing-frr:1.34`), else `default_machine_weight` (1).
+- `sre check <lab>` prints the weight of every machine and of the lab.
+- `sre make-titles` computes the weight of every lab it can build (without Docker, as `sre check` does) and stores them in the `titles.json` of the directory under the option `"@weights"`; `sre list --with-titles` gives each lab its `weight`. They are computed, never written by hand: every run replaces them, so run the command again when a lab gains machines or `image_weights` changes.
+- The machines of a lab may depend on its `Flavor`: the weight computed is the one of the default flavor. Such a lab says its weight itself with the module attribute `lab_weight`, which wins over the sum (and is also the way out for a lab that cannot be built without Docker):
+
+```python
+# 6, 9 or 13 machines by the size of the network: the weight of the largest
+lab_weight = 13
+```
+
+```json
+{
+  "@sort": "title",
+  "@weights": {"dns1.py": 30, "static_routing.py": 13},
+  "dns1.py": "DNS 1",
+  "static_routing.py": {"en": "Static routing", "fr": "Routage statique"}
+}
+```
+
 ### The order of a directory: `"@sort"`
 
 Written by hand in the `titles.json` of a directory, the reserved key `"@sort"` chooses the order of the entries of that directory, the same in the GUI and on the web (every key starting with `@` is an option, never an entry):
@@ -1742,3 +2163,40 @@ In every mode the sub-directories come first, then the labs. A directory without
 ```
 
 What the pickers receive is `sre list --with-titles`: the tree flattened in display order, a directory entry before its content, each entry with its `title`, its `kind` (`dir` / `lab`) and the `sort` mode it is placed by; the front-ends keep that order and only sort the `"title"` mode themselves (see `sre list` and `sre make-titles` in the [CLI reference](cli.md)).
+
+### A text for a directory: `README.md`
+
+A directory of the tree may hold a `README.md`: a few lines of markdown telling the students what its labs are for (which lab for which session, the prerequisites, where the handout is). Both pickers show it **under the lab tree** while the user browses that directory:
+
+- when the picker opens: the `README.md` at the top of the tree (`/opt/sre/lab/README.md`);
+- when a directory is opened (in the GUI, also when it is selected): its own `README.md`;
+- when a directory is closed: the one of the directory holding it;
+- when a lab is selected: the one of the directory of the lab.
+
+A directory without `README.md` shows nothing: the pane disappears, the text of a directory above it is never shown in its place.
+
+```
+/opt/sre/lab/
+├── README.md            ← shown first: "Pick the directory of your course…"
+├── README.fr.md         ← … to the users whose language is French
+├── titles.json
+├── s4/
+│   ├── README.md        ← shown when s4 is opened, and while one of its labs is selected
+│   ├── tp_ssh/srelab.py
+│   └── arp.py
+└── sre/                 ← no README.md: nothing under the tree
+    └── dhcp.py
+```
+
+**Languages.** `README.md` is the text of everybody; a `README.<lang>.md` next to it (`README.fr.md`, `README.en.md`: a two or three letter language code) is the text of the users of that language. A user reads the variant of their language (the first language of the priority of the GUI, the language of the page on the web), else `README.md`, else the variant of another language they know, else any variant. A directory may have variants only.
+
+**Rules.**
+
+- The names are exact, capitals included: `readme.md`, `README.txt` and `README.FR.md` are ignored.
+- The text is markdown rendered like the Informations text of a lab: headings, lists, tables, fenced code. It is plain text for everybody, the `instructor()` fragments and the `@@…@@` markers of a lab file mean nothing here.
+- Links must be absolute (`https://…`); they open in the browser of the user. No file of the lab tree is served: an image can only be a `data:` URI.
+- A file bigger than 64 KiB (`params.lab_readme_max_size`), empty or unreadable by the `sre` user is not shown.
+- Only the directories listed have a text: an exam-only directory (`_DRAFT_`, `_EXAM_`…) shows its `README.md` to those who are listed it (an instructor in the debug mode of the web Open page), a directory without any lab below is not listed at all, and the inside of a directory lab is never read (a `README.md` next to a `srelab.py` stays private).
+- Like the labs, the files must be readable by the `sre` user; nothing else has to be done (`sre make-titles` ignores them, no service is restarted). The web front-end keeps the lab list a minute or two (`lab_list_cache_ttl` of the agents, `labs_cache_ttl` of the portal), so a new text appears there after that delay.
+
+The texts travel with the lab list: `sre list --with-titles --with-readmes` adds them to the directory entries (see the [CLI reference](cli.md)).
