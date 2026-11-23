@@ -154,3 +154,30 @@ class TestCommandAndResult:
         g = make_grade()
         eval_ping(g, 'm1', 'r1', allow_error=True)
         assert _command(g)[3] is True
+
+
+# -- series of pings (the BFD bonus of the anycast lab; iputils of Debian 13) --------------------------
+
+from ping import get_ping_series, parse_ping_summary, ping_series_cmd  # noqa: E402
+
+PING_SERIES = ("PING 172.30.89.53 (172.30.89.53) 56(84) bytes of data.\n\n--- 172.30.89.53 ping statistics ---\n"
+               "120 packets transmitted, 49 received, 59.1667% packet loss, time 6661ms\n"
+               "rtt min/avg/max/mdev = 0.200/0.810/1.172/0.182 ms\n")
+
+
+class TestPingSeries:
+    def test_command(self):
+        assert ping_series_cmd('172.30.89.53', 120, 0.05) == "ping -n -q -c 120 -i 0.05 -W 1 172.30.89.53"
+        assert ping_series_cmd(IPv4Address('10.0.0.1'), 10, 0.2, wait=2) == "ping -n -q -c 10 -i 0.2 -W 2 10.0.0.1"
+
+    def test_summary(self):
+        assert parse_ping_summary(PING_SERIES) == (120, 49)
+        assert parse_ping_summary(PING_KO) == (1, 0)
+        assert parse_ping_summary("connect: Network is unreachable\n") == (None, None)
+        assert parse_ping_summary("") == (None, None)
+
+    def test_wrapper(self):
+        cmd = "ping -n -q -c 120 -i 0.05 -W 1 172.30.89.53"
+        g = make_grade(responses={cmd: (PING_SERIES, 1)})
+        assert get_ping_series(g, 'r1', '172.30.89.53', 120, 0.05, step=2) == (120, 49)
+        assert g.calls == [('r1', cmd, 2, True)]

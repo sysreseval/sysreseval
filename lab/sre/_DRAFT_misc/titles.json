@@ -1,6 +1,7 @@
 {
   "@weights": {
     "aaa.py": 130,
+    "anycast.py": 235,
     "bgp.py": 46,
     "bridge.py": 9,
     "dns2.py": 65,
@@ -48,6 +49,10 @@
   "aaa.py": {
     "en": "AAA: RADIUS, 802.1X, two-factor authentication and Kerberos",
     "fr": "AAA : RADIUS, 802.1X, double authentification et Kerberos"
+  },
+  "anycast.py": {
+    "en": "Anycast: one service announced from several sites (OSPF and BGP)",
+    "fr": "Anycast : un service annoncé depuis plusieurs sites (OSPF et BGP)"
   },
   "evpn-mpls.py": {
     "en": "EVPN and MPLS: data centre interconnection",

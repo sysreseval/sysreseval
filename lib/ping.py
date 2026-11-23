@@ -1,3 +1,4 @@
+import re
 from ipaddress import ip_address, IPv4Address, IPv4Interface, IPv6Address, IPv6Interface
 from typing import Union, Optional, Dict
 
@@ -137,3 +138,31 @@ def eval_ping(grade: Grade0, src: IPArg, dest: IPArg,
     else:
         output, _code = grade.test(src_machine, command, step=step)
     return 'bytes from' in output
+
+
+_PING_SUMMARY_RE = re.compile(r'(\d+) packets transmitted, (\d+) (?:packets )?received')
+
+
+def ping_series_cmd(dest, count: int, interval: float, wait: int = 1) -> str:
+    """A quiet series of *count* pings every *interval* seconds (as root, down to 0.002 s), each
+    reply awaited *wait* seconds at most: the summary line counts the losses."""
+    return f"ping -n -q -c {int(count)} -i {interval} -W {int(wait)} {_literal_ip(str(dest)) or dest}"
+
+
+def parse_ping_summary(output: str) -> tuple[Optional[int], Optional[int]]:
+    """``(transmitted, received)`` of the summary line of ``ping`` (iputils), ``(None, None)``
+    without it."""
+    m = _PING_SUMMARY_RE.search(output or '')
+    if not m:
+        return None, None
+    return int(m.group(1)), int(m.group(2))
+
+
+def get_ping_series(grade: Grade0, src: str, dest, count: int, interval: float, step: int = 1,
+                    wait: int = 1) -> tuple[Optional[int], Optional[int]]:
+    """Run :func:`ping_series_cmd` on the machine *src* (``allow_error=True``: losses are a
+    grading fact) and return ``(transmitted, received)``."""
+    duration = int(count * interval) + int(wait) + 5
+    output, _code = grade.test(src, ping_series_cmd(dest, count, interval, wait), step=step, timeout=duration,
+                               allow_error=True)
+    return parse_ping_summary(output)

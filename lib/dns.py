@@ -1395,6 +1395,58 @@ def dig_query(grade: Grade0, machine: str, server, request: str, step: int = 1, 
     return result
 
 
+# -- identity of the server that answered (anycast) ----------------------------------
+
+def dns_identity_cmd(server, timeout: int = 1, tries: int = 1) -> str:
+    """``dig +short`` of ``id.server`` (class CH, type TXT): the identity of the server that
+    answered (unbound ``identity:``, BIND ``server-id``), what anycast operators query to tell
+    their instances apart (RFC 4892)."""
+    return dig_cmd(server, "id.server CH TXT", timeout=timeout, tries=tries, short=True)
+
+
+def parse_dns_identities(output: str) -> list[str]:
+    """The identities printed by one or more :func:`dns_identity_cmd` runs, in order (one per
+    answered query; the ``;;`` error lines of the queries left unanswered are skipped)."""
+    names = []
+    for line in (output or '').splitlines():
+        line = line.strip()
+        if not line or line.startswith(';'):
+            continue
+        names.append(txt_strings(line))
+    return names
+
+
+def parse_dns_identity(output: str) -> str | None:
+    """The identity of :func:`dns_identity_cmd`, ``None`` when nothing answered (time-out,
+    refused, or a reply sent from another address than the one queried: dig 9.20 drops it and
+    prints ``timed out``)."""
+    names = parse_dns_identities(output)
+    return names[0] if names else None
+
+
+def get_dns_identity(grade: Grade0, machine: str, server, step: int = 1, timeout: int = 1) -> str | None:
+    """The identity of the server that answers *machine*'s query to *server* (``None``: no
+    answer; ``allow_error=True``)."""
+    out, _code = grade.test(machine, dns_identity_cmd(server, timeout=timeout), step=step,
+                            timeout=int(timeout) + 4, allow_error=True)
+    return parse_dns_identity(out)
+
+
+def dns_identities_cmd(server, count: int = 16, timeout: int = 1) -> str:
+    """*count* successive :func:`dns_identity_cmd` queries (each one from a new random source
+    port: a new flow for an ECMP hash on the ports)."""
+    return f"for i in $(seq {int(count)}); do {dns_identity_cmd(server, timeout=timeout)}; done"
+
+
+def get_dns_identities(grade: Grade0, machine: str, server, count: int = 16, step: int = 1,
+                       timeout: int = 1) -> list[str]:
+    """The identities answering *count* successive queries of *machine* (see
+    :func:`dns_identities_cmd`; the queries left unanswered are missing from the list)."""
+    out, _code = grade.test(machine, dns_identities_cmd(server, count=count, timeout=timeout), step=step,
+                            timeout=int(count) * (int(timeout) + 1) + 4, allow_error=True)
+    return parse_dns_identities(out)
+
+
 def kdig_query(grade: Grade0, machine: str, server, name: str, rtype: str = 'A', step: int = 1,
                timeout: int = 3, **opts) -> KdigResult:
     cmd = kdig_cmd(server, name, rtype, timeout=timeout, **opts)

@@ -2617,3 +2617,58 @@ class TestGatewayTables:
         leaf = parse_kernel_routes(load('iproute_vrf_irb_leaf.json'))
         assert leaf['192.168.20.15/32']['nexthops'] == [('10.255.0.12', 'br4000')]
         assert leaf['203.0.113.0/24']['nexthops'] == [('10.255.0.20', 'br4000')]
+
+
+# ---------------------------------------------------------------------------
+# show ip ospf database external json (the anycast lab; captured on FRR 10.3, s15, 2026-11-23:
+# two instances announcing the service address as type 2 externals, metrics 40 and 380)
+# ---------------------------------------------------------------------------
+
+from frr import get_ospf_external_lsas, parse_ospf_external_lsas  # noqa: E402
+
+
+class TestOspfExternalLsas:
+    def test_anycast_capture(self):
+        lsas = parse_ospf_external_lsas(json.loads(load('ospf_external_anycast_prim.json')))
+        assert set(lsas) == {('172.30.89.53/32', '10.30.33.2'), ('172.30.89.53/32', '10.30.34.2')}
+        primary = lsas[('172.30.89.53/32', '10.30.33.2')]
+        assert (primary['prefix'], primary['adv_router']) == ('172.30.89.53/32', '10.30.33.2')
+        assert (primary['metric_type'], primary['metric'], primary['forward'], primary['tag']) == (2, 40, '0.0.0.0', 0)
+        assert lsas[('172.30.89.53/32', '10.30.34.2')]['metric'] == 380
+
+    def test_type_1_and_mask_forms(self):
+        def one(mask, mtype):
+            data = {'asExternalLinkStates': [{'linkStateId': '10.1.0.0', 'advertisingRouter': '1.1.1.1',
+                                              'networkMask': mask, 'metricType': mtype, 'metric': 5}]}
+            (entry,) = parse_ospf_external_lsas(data).values()
+            return entry['prefix'], entry['metric_type']
+        assert one('255.255.0.0', 'E1') == ('10.1.0.0/16', 1)
+        assert one('/16', 'E2 (Larger than any link state path)') == ('10.1.0.0/16', 2)
+        assert one(16, 'E1') == ('10.1.0.0/16', 1)
+
+    def test_nothing(self):
+        assert parse_ospf_external_lsas({}) == {}
+        assert parse_ospf_external_lsas(None) == {}
+        assert parse_ospf_external_lsas({'routerId': '10.0.0.1', 'asExternalLinkStates': []}) == {}
+
+    def test_wrapper(self):
+        grade = MagicMock()
+        grade.test.return_value = (load('ospf_external_anycast_prim.json'), 0)
+        lsas = get_ospf_external_lsas(grade, 'r2')
+        grade.test.assert_called_once_with('r2', 'vtysh -c "show ip ospf database external json"', step=1,
+                                           allow_error=True)
+        assert len(lsas) == 2
+        grade.test.return_value = ('', 0)
+        assert get_ospf_external_lsas(grade, 'r2') == {}
+
+
+class TestBgpPrefixNoExport:
+    def test_community_of_a_local_node(self):
+        """`show bgp ipv4 unicast PREFIX json` of the operator that receives a route marked no-export
+        (the anycast lab, FRR 10.3): the community list holds ``noExport``."""
+        result = parse_bgp_prefix(json.loads(load('bgp_prefix_anycast_noexport.json')))
+        assert result['prefix'] == '198.18.123.0/24'
+        local = [p for p in result['paths'] if p['as_list'] == [64736]]
+        assert len(local) == 1 and local[0]['communities'] == ['noExport'] and local[0]['best']
+        assert sorted(p['as_list'] for p in result['paths'] if p['communities'] == []) == [[65010, 64736],
+                                                                                          [65020, 65010, 64736]]

@@ -21,7 +21,7 @@ then exits non-zero and the error would otherwise be recorded in the archive).
 """
 import json
 import re
-from ipaddress import IPv4Address, ip_address, ip_network
+from ipaddress import IPv4Address, IPv4Network, ip_address, ip_network
 from typing import Any, Dict, List, Optional
 
 from SRE.lib_sre import Grade0
@@ -457,6 +457,73 @@ def get_ospf_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error
     if code != 0 or not output:
         return {}
     return parse_ospf_routes(output)
+
+# ---------------------------------------------------------------------------
+# show ip ospf database external json  (type 5 LSAs)
+# ---------------------------------------------------------------------------
+
+def _external_lsa_entries(data: Any) -> List[Dict[str, Any]]:
+    """Every dict of *data* (nested lists / dicts, whatever the grouping keys of the FRR
+    version) that describes one AS-external LSA."""
+    found: List[Dict[str, Any]] = []
+    if isinstance(data, dict):
+        if 'linkStateId' in data and 'advertisingRouter' in data:
+            return [data]
+        for value in data.values():
+            found += _external_lsa_entries(value)
+    elif isinstance(data, list):
+        for value in data:
+            found += _external_lsa_entries(value)
+    return found
+
+
+def _mask_length(value) -> Optional[int]:
+    """``32``, ``'32'``, ``'/32'`` or ``'255.255.255.255'`` → 32."""
+    if value is None:
+        return None
+    text = str(value).strip().lstrip('/')
+    if '.' in text:
+        try:
+            return IPv4Network(f"0.0.0.0/{text}").prefixlen
+        except ValueError:
+            return None
+    return _int_or_none(text)
+
+
+def parse_ospf_external_lsas(data: Any) -> Dict[tuple, Dict[str, Any]]:
+    """Parse the JSON of ``show ip ospf database external``.
+
+    Returns ``{(prefix, advertising router): {'prefix': '172.20.5.53/32', 'adv_router':
+    '10.0.32.2', 'metric_type': 1 | 2, 'metric': 10, 'forward': '0.0.0.0', 'tag': 0,
+    'age': 12}}`` (``{}`` without OSPF or without external LSA)."""
+    result: Dict[tuple, Dict[str, Any]] = {}
+    for e in _external_lsa_entries(data):
+        length = _mask_length(e.get('networkMask'))
+        lsid = e.get('linkStateId')
+        try:
+            prefix = str(IPv4Network(f"{lsid}/{length if length is not None else 32}", strict=False))
+        except ValueError:
+            continue
+        mtype = str(e.get('metricType') or '')
+        m = re.search(r'E?([12])', mtype)
+        metric_type = int(m.group(1)) if m else None
+        adv = str(e.get('advertisingRouter'))
+        result[(prefix, adv)] = {
+            'prefix': prefix, 'adv_router': adv, 'metric_type': metric_type,
+            'metric': _int_or_none(e.get('metric')),
+            'forward': e.get('forwardAddress'),
+            'tag': _int_or_none(e.get('externalRouteTag', e.get('routeTag'))),
+            'age': _int_or_none(e.get('lsaAge')),
+        }
+    return result
+
+
+def get_ospf_external_lsas(grade: Grade0, machine_name: str, step: int = 1,
+                           allow_error: bool = True) -> Dict[tuple, Dict[str, Any]]:
+    """The AS-external LSAs in the database of *machine_name* (see
+    :func:`parse_ospf_external_lsas`)."""
+    return parse_ospf_external_lsas(_vtysh_json(grade, machine_name, 'show ip ospf database external', step,
+                                                allow_error))
 
 
 # ---------------------------------------------------------------------------

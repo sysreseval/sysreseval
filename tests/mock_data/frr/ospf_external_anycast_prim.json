@@ -1,0 +1,39 @@
+{
+  "routerId":"10.30.47.2",
+  "asExternalLinkStates":[
+    {
+      "lsaAge":22,
+      "options":"*|-|-|-|-|-|E|-",
+      "lsaFlags":6,
+      "lsaType":"AS-external-LSA",
+      "linkStateId":"172.30.89.53",
+      "advertisingRouter":"10.30.33.2",
+      "lsaSeqNumber":"80000001",
+      "checksum":"1ce9",
+      "length":36,
+      "networkMask":32,
+      "metricType":"E2 (Larger than any link state path)",
+      "tos":0,
+      "metric":40,
+      "forwardAddress":"0.0.0.0",
+      "externalRouteTag":0
+    },
+    {
+      "lsaAge":21,
+      "options":"*|-|-|-|-|-|E|-",
+      "lsaFlags":6,
+      "lsaType":"AS-external-LSA",
+      "linkStateId":"172.30.89.53",
+      "advertisingRouter":"10.30.34.2",
+      "lsaSeqNumber":"80000001",
+      "checksum":"6946",
+      "length":36,
+      "networkMask":32,
+      "metricType":"E2 (Larger than any link state path)",
+      "tos":0,
+      "metric":380,
+      "forwardAddress":"0.0.0.0",
+      "externalRouteTag":0
+    }
+  ]
+}

@@ -594,3 +594,42 @@ def test_real_referral_and_dnssec_status():
     assert conf['upstreams'][0]['auth_name'] == 'dns.example.tp' and conf['tls_ca_file'] == '/etc/ssl/certs/ca.tp.pem'
     capture = fixture('root_capture_qname_min.txt')
     assert 'A? tp.' in capture and 'www.partner.tp' not in capture.split('A? partner.tp.')[0]
+
+
+# -- identity of the instance that answered (the anycast lab; dig 9.20.30, unbound 1.26.2) -----------
+
+def test_dns_identity_cmd():
+    assert dns.dns_identity_cmd('198.18.4.53') == "dig +time=1 +tries=1 +short @198.18.4.53 id.server CH TXT 2>&1"
+    series = dns.dns_identities_cmd('198.18.4.53', count=4, timeout=2)
+    assert series == ("for i in $(seq 4); do dig +time=2 +tries=1 +short @198.18.4.53 id.server CH TXT 2>&1; "
+                      "done")
+
+
+@pytest.mark.parametrize('name, expected', [
+    ('dig_id_server_answer.txt', 'near_dns1'),
+    ('dig_id_server_timeout.txt', None),            # unbound frozen (kill -STOP)
+    ('dig_id_server_refused.txt', None),            # unbound stopped: ICMP port unreachable
+    ('dig_id_server_unexpected_source.txt', None),  # reply from the unicast address: dropped by dig
+])
+def test_parse_dns_identity(name, expected):
+    assert dns.parse_dns_identity(fixture(name)) == expected
+
+
+def test_parse_dns_identities():
+    assert dns.parse_dns_identities(fixture('dig_id_server_series.txt')) == [
+        'ecmp_dns1', 'ecmp_dns1', 'ecmp_dns2', 'ecmp_dns2', 'ecmp_dns1', 'ecmp_dns2']
+    mixed = fixture('dig_id_server_answer.txt') + fixture('dig_id_server_timeout.txt')
+    assert dns.parse_dns_identities(mixed) == ['near_dns1']
+    assert dns.parse_dns_identities('') == []
+
+
+def test_get_dns_identity_and_identities():
+    from unittest.mock import MagicMock
+    grade = MagicMock()
+    grade.test.return_value = (fixture('dig_id_server_answer.txt'), 0)
+    assert dns.get_dns_identity(grade, 'r1', '172.25.172.53', step=3) == 'near_dns1'
+    grade.test.assert_called_once_with('r1', dns.dns_identity_cmd('172.25.172.53'), step=3, timeout=5,
+                                       allow_error=True)
+    grade.test.return_value = (fixture('dig_id_server_series.txt'), 0)
+    assert dns.get_dns_identities(grade, 'c1', '172.25.172.53', count=6) == [
+        'ecmp_dns1', 'ecmp_dns1', 'ecmp_dns2', 'ecmp_dns2', 'ecmp_dns1', 'ecmp_dns2']

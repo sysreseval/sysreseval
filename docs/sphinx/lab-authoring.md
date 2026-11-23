@@ -1165,6 +1165,14 @@ wrappers; fixtures in `tests/mock_data/dns/`.
 - **Renderers** for states and instructor texts: `render_zone_file`, `render_tsig_key`,
   `render_root_hints`, `render_rpz_zone`, `render_stubby_yml`, `reverse_zone_name` / `reverse_label`,
   `spki_pin`, `random_tsig_secret`; `tls.generate_ca_pem(cn)` for a lab-provided CA.
+- **Which server answered** (anycast, `lab/sre/_DRAFT_misc/anycast.py`): `get_dns_identity(grade, m,
+  server, step=1, timeout=1)` queries `id.server` (class CH, type TXT, RFC 4892) and returns the
+  identity the server gives (unbound `identity:`, BIND `server-id`), `None` when nothing answered
+  (time-out, refused, or a reply sent from another address than the one queried, which dig 9.20
+  drops and reports as `timed out`); `get_dns_identities(grade, m, server, count=16)` runs `count`
+  queries, each from a new source port (a new flow for an ECMP hash on the ports), and returns the
+  identities in order. Command builders `dns_identity_cmd` / `dns_identities_cmd`, parsers
+  `parse_dns_identity` / `parse_dns_identities`.
 
 ### HTTP proxy helpers (from `/opt/sre/lib/http_proxy.py`)
 
@@ -1336,6 +1344,12 @@ from frr import get_ospf_interfaces
 ```
 
 `get_ospf_interfaces(grade, machine_name, step=1) → dict` — runs `vtysh -c "show ip ospf interface"` inside the container and parses the output. Returns a dict keyed by interface name, each value containing: `area`, `cost`, `state` (`DR`/`BDR`/`DROther`/…), `dr`, `bdr`, `neighbor_count`, `adj_neighbor_count`.
+
+`get_ospf_external_lsas(grade, machine_name, step=1) → dict` — the AS-external LSAs (type 5) of the
+database (`show ip ospf database external json`), keyed by `(prefix, advertising router)`, each with
+`metric_type` (1 or 2), `metric`, `forward`, `tag`, `age`: who announces an external route and with
+which metric, including the routes a router did not choose (the backup instance of
+`lab/sre/_DRAFT_misc/anycast.py`).
 
 ### BGP helpers (from `/opt/sre/lib/frr.py`)
 
@@ -1723,6 +1737,12 @@ from ping import eval_ping
 - `"machine_name:N"` or `"machine_name:ethN"` — resolves to interface index N of that machine (same family rule)
 
 If `net_config` is not provided, `grade.net_scheme.net_config` is used. Raises `ValueError` on resolution failure.
+
+`get_ping_series(grade, src, dest, count, interval, step=1, wait=1) → (transmitted, received)` — a
+quiet series (`ping -n -q -c count -i interval -W wait dest`, `interval` down to 0.002 s as root)
+from the machine `src`; the losses measure an outage (the BFD bonus of
+`lab/sre/_DRAFT_misc/anycast.py` counts the pings lost while an instance is silently cut).
+`parse_ping_summary(output)` reads the summary line (`(None, None)` without it).
 
 ### SSH helpers (from `/opt/sre/lib/ssh.py`)
 
