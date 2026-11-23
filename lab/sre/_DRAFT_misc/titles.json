@@ -4,6 +4,7 @@
     "bgp.py": 46,
     "bridge.py": 9,
     "dns2.py": 65,
+    "evpn-mpls.py": 116,
     "ipsec.py": 53,
     "ipv6.py": 22,
     "isis-ipv6-sr-bfd.py": 101,
@@ -39,11 +40,16 @@
     "vlan.py": 13,
     "voip.py": 46,
     "vrrp.py": 54,
+    "vxlan-evpn.py": 130,
     "wireguard.py": 42
   },
   "aaa.py": {
     "en": "AAA: RADIUS, 802.1X, two-factor authentication and Kerberos",
     "fr": "AAA : RADIUS, 802.1X, double authentification et Kerberos"
+  },
+  "evpn-mpls.py": {
+    "en": "EVPN and MPLS: data centre interconnection",
+    "fr": "EVPN et MPLS : interconnexion de data centres"
   },
   "isis-ipv6-sr-bfd.py": {
     "en": "IS-IS: IPv6 multi-topology, segment routing and BFD",
@@ -100,5 +106,9 @@
   "snmp.py": {
     "en": "SNMP: querying, configuring and securing agents",
     "fr": "SNMP : interroger, configurer et sécuriser des agents"
+  },
+  "vxlan-evpn.py": {
+    "en": "VXLAN and EVPN in a data centre",
+    "fr": "VXLAN et EVPN dans un data centre"
   }
 }

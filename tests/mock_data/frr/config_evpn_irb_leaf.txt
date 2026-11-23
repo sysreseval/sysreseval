@@ -1,0 +1,45 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname l1
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+vrf TENANT
+ vni 4000
+exit-vrf
+!
+interface eth0
+ ip ospf area 0
+ ip ospf network point-to-point
+exit
+!
+interface lo
+ ip ospf area 0
+exit
+!
+router bgp 65000
+ bgp router-id 10.255.0.11
+ no bgp default ipv4-unicast
+ neighbor 10.255.0.1 remote-as 65000
+ neighbor 10.255.0.1 update-source lo
+ !
+ address-family l2vpn evpn
+  neighbor 10.255.0.1 activate
+  advertise-all-vni
+ exit-address-family
+exit
+!
+router bgp 65000 vrf TENANT
+ bgp router-id 10.255.0.11
+exit
+!
+router ospf
+ ospf router-id 10.255.0.11
+exit
+!
+end

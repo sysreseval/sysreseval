@@ -387,12 +387,13 @@ def fdb_cmd(bridge: str) -> str:
 
 def parse_fdb_json(output: str) -> List[Dict[str, Any]]:
     """The entries of a ``bridge -j fdb show`` output: one dict per entry with ``mac``
-    (normalised), ``ifname`` (the port), ``master`` (the bridge, ``None`` for a ``self``
-    entry of a device), ``vlan`` (``None`` when absent), ``flags`` (list: ``self``,
-    ``master``, ``router``, ``extern_learn``...) and ``state`` (``''`` for a learned entry,
-    ``'permanent'`` for the own addresses of the ports and of the bridge, ``'static'``,
-    ``'stale'`` for an expired one).  Each port address appears for VLAN 0 and for the
-    default PVID.  ``[]`` when invalid."""
+    (normalised), ``ifname`` (the port; absent from ``bridge fdb show dev X``), ``master`` (the
+    bridge, ``None`` for a ``self`` entry of a device), ``vlan`` (``None`` when absent), ``flags``
+    (list: ``self``, ``master``, ``router``, ``extern_learn``...), ``state`` (``''`` for a
+    learned entry, ``'permanent'`` for the own addresses of the ports and of the bridge,
+    ``'static'``, ``'stale'`` for an expired one) and ``dst`` (the remote VTEP or multicast group
+    of a ``self`` entry of a VXLAN device, ``None`` otherwise).  Each port address appears for
+    VLAN 0 and for the default PVID.  ``[]`` when invalid."""
     try:
         entries = json.loads(output or '[]')
     except ValueError:
@@ -405,7 +406,8 @@ def parse_fdb_json(output: str) -> List[Dict[str, Any]]:
             continue
         result.append({'mac': normalize_mac(entry.get('mac')), 'ifname': entry.get('ifname'),
                        'master': entry.get('master'), 'vlan': _int_or_none(entry.get('vlan')),
-                       'flags': [str(f) for f in (entry.get('flags') or [])], 'state': str(entry.get('state') or '')})
+                       'flags': [str(f) for f in (entry.get('flags') or [])], 'state': str(entry.get('state') or ''),
+                       'dst': entry.get('dst')})
     return result
 
 

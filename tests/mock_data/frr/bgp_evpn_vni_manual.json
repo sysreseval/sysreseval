@@ -1,0 +1,27 @@
+{
+  "advertiseGatewayMacip":"Disabled",
+  "advertiseSviMacIp":"Disabled",
+  "advertiseAllVnis":"Enabled",
+  "flooding":"Head-end replication",
+  "vxlanFlooding":"Enabled",
+  "numVnis":1,
+  "numL2Vnis":1,
+  "numL3Vnis":0,
+  "300":{
+    "vni":300,
+    "type":"L2",
+    "inKernel":"True",
+    "rd":"10.255.0.31:300",
+    "originatorIp":"10.255.0.31",
+    "mcastGroup":"0.0.0.0",
+    "advertiseGatewayMacip":"Disabled",
+    "advertiseSviMacIp":"Disabled",
+    "importRTs":[
+      "65102:300"
+    ],
+    "exportRTs":[
+      "65101:268435756"
+    ],
+    "siteOfOrigin":""
+  }
+}

@@ -1,0 +1,1 @@
+[{"vni":4000,"type":"L3","tenantVrf":"TENANT","localVtepIp":"10.255.0.20","vxlanIntf":"vxlan4000","sviIntf":"br4000","state":"Up","sysMac":"c2:3b:56:81:89:a8","routerMac":"c2:3b:56:81:89:a8","vniFilter":"none","l2Vnis":[]}]

@@ -806,8 +806,18 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
          # plus their VPN export / import (IPv4 unicast family)
          'router_bgp_vrfs': {vrf: {...router_bgp keys..., 'vpn': {'rd': str | None,
                                    'rt_import': [str], 'rt_export': [str], 'label': str | None,
-                                   'export_vpn': bool, 'import_vpn': bool}}},
+                                   'export_vpn': bool, 'import_vpn': bool,
+                                   'route_map_export': str | None, 'route_map_import': str | None}}},
+         # EVPN: the ``vrf NAME`` blocks of zebra (their L3VNI)
+         'vrfs': {vrf: {'vni': int | None}},
          }
+
+    The ``address-family l2vpn evpn`` statements of ``router bgp`` and of the VRF instances go
+    to ``address_families['l2vpn evpn']`` (read it with :func:`evpn_family`): ``advertise_all_vni``,
+    ``advertise_ipv4_unicast``, ``autort_rfc8365``, ``rd`` / ``rt_import`` / ``rt_export`` (the
+    L3VNI of a VRF instance) and ``vnis`` (the ``vni N`` blocks with their own RD and RTs);
+    ``bgp_neighbor_activated(router_bgp, peer, 'l2vpn evpn')`` tells whether a neighbour is
+    active in the family.
 
     ``router_ospf`` also gets ``'capability_opaque': bool``, ``'ti_lfa': None | 'link' |
     'node'`` (``fast-reroute ti-lfa [node-protection]``) and ``'segment_routing': {'enabled':
@@ -858,9 +868,10 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
         'router_bgp_vrfs': {},
         'router_isis': _empty_router_isis_config(),
         'bfd': {'profiles': {}},
+        'vrfs': {},
     }
     # 'router_ospf' | 'router_ospf6' | 'router_bgp' | 'interface' | 'route_map' | 'mpls_ldp' |
-    # 'router_isis' | 'bfd' | 'other' | None
+    # 'router_isis' | 'bfd' | 'vrf' | 'other' | None
     section: Optional[str] = None
     ri = cfg['router_isis']
     bfd_profile: Dict[str, Any] | None = None   # the open ``profile NAME`` block of bfd
@@ -873,6 +884,8 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
     rb = cfg['router_bgp']
     ml = cfg['mpls_ldp']
     vrb: Dict[str, Any] | None = None   # the open ``router bgp AS vrf NAME`` block
+    vrf_cfg: Dict[str, Any] | None = None   # the open ``vrf NAME`` block (its L3VNI)
+    evpn_vni: Dict[str, Any] | None = None  # the open ``vni N`` block of ``address-family l2vpn evpn``
 
     def vrf_neighbor_cfg(peer: str) -> Dict[str, Any]:
         if peer not in vrb['neighbors']:
@@ -960,6 +973,10 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 continue
             if words == ['bfd']:
                 section, iface, bfd_profile = 'bfd', None, None
+                continue
+            if words[0] == 'vrf' and len(words) >= 2:
+                section, iface = 'vrf', None
+                vrf_cfg = cfg['vrfs'].setdefault(words[1], {'vni': None})
                 continue
             if words[0] == 'router' or words[0] in ('vrf', 'route-map', 'key', 'line', 'segment-routing'):
                 section, iface = 'other', None
@@ -1088,11 +1105,23 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 rm_entry['set'].append(" ".join(words[1:]))
             continue
 
+        if section == 'vrf' and vrf_cfg is not None:
+            if words[0] == 'vni' and len(words) >= 2 and words[1].isdigit():
+                vrf_cfg['vni'] = int(words[1])
+            elif words[:2] == ['no', 'vni']:
+                vrf_cfg['vni'] = None
+            continue
+
         if section == 'router_bgp_vrf' and vrb is not None:
             if words[0] == 'address-family' and len(words) >= 2:
                 bgp_af = " ".join(words[1:3]) if len(words) >= 3 else f"{words[1]} unicast"
+                evpn_vni = None
             elif words[0] == 'exit-address-family':
-                bgp_af = None
+                bgp_af, evpn_vni = None, None
+            if bgp_af == 'l2vpn evpn':
+                handled, evpn_vni = _parse_evpn_line(vrb, words, evpn_vni)
+                if handled:
+                    continue
             if not _parse_bgp_vpn_line(vrb['vpn'], words):
                 _parse_router_bgp_line(vrb, words, vrf_neighbor_cfg, af=bgp_af)
             continue
@@ -1100,8 +1129,13 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
         if section == 'router_bgp':
             if words[0] == 'address-family' and len(words) >= 2:
                 bgp_af = " ".join(words[1:3]) if len(words) >= 3 else f"{words[1]} unicast"
+                evpn_vni = None
             elif words[0] == 'exit-address-family':
-                bgp_af = None
+                bgp_af, evpn_vni = None, None
+            if bgp_af == 'l2vpn evpn':
+                handled, evpn_vni = _parse_evpn_line(rb, words, evpn_vni)
+                if handled:
+                    continue
             _parse_router_bgp_line(rb, words, neighbor_cfg, af=bgp_af)
             continue
 
@@ -1177,7 +1211,7 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
 def _empty_router_bgp_vrf_config() -> Dict[str, Any]:
     cfg = _empty_router_bgp_config()
     cfg['vpn'] = {'rd': None, 'rt_import': [], 'rt_export': [], 'label': None, 'export_vpn': False,
-                  'import_vpn': False}
+                  'import_vpn': False, 'route_map_export': None, 'route_map_import': None}
     return cfg
 
 
@@ -1202,6 +1236,8 @@ def _parse_bgp_vpn_line(vpn: Dict[str, Any], words: List[str]) -> bool:
         vpn['export_vpn'] = not negated
     elif w == ['import', 'vpn']:
         vpn['import_vpn'] = not negated
+    elif w[:2] == ['route-map', 'vpn'] and len(w) >= 3 and w[2] in ('export', 'import'):
+        vpn[f"route_map_{w[2]}"] = None if negated else (w[3] if len(w) >= 4 else None)
     else:
         return False
     return True
@@ -3323,3 +3359,340 @@ def isis_srgb(router_isis: Dict[str, Any]) -> Optional[tuple]:
     if not sr.get('enabled'):
         return None
     return sr.get('srgb') or ISIS_DEFAULT_SRGB
+
+
+# ---------------------------------------------------------------------------
+# EVPN (bgpd l2vpn evpn family, zebra's VNI tables): the VXLAN / EVPN labs
+# (lab/sre/_DRAFT_misc/vxlan-evpn.py, evpn-mpls.py; fixtures tests/mock_data/frr/*evpn*, captured on
+# FRR 10.3 / Debian 13; facts in .claude/rules/lib-vxlan.md).  The kernel side is lib/vxlan.py.
+# ---------------------------------------------------------------------------
+
+_EVPN_TOKEN_RE = re.compile(r'\[([^\]]*)\]')
+
+
+def get_bgp_evpn_summary(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = True) -> Dict[str, Any]:
+    """The neighbours of the ``l2vpn evpn`` family (``show bgp l2vpn evpn summary json``, the shape
+    of :func:`parse_bgp_summary`: ``policy_blocked`` for an eBGP neighbour without route-maps, RFC
+    8212 applies to this family too); {} when no neighbour is active in it."""
+    return parse_bgp_summary(_vtysh_json(grade, machine_name, 'show bgp l2vpn evpn summary', step, allow_error))
+
+
+def parse_evpn_prefix(prefix: str) -> Dict[str, Any]:
+    """An EVPN prefix as bgpd prints it → its fields::
+
+        '[2]:[0]:[48]:[aa:bb:…]'                  → {'type': 2, 'eth_tag': 0, 'mac': 'aa:bb:…', 'ip': None}
+        '[2]:[0]:[48]:[aa:bb:…]:[32]:[10.1.1.5]'  → {'type': 2, …, 'ip': '10.1.1.5'}
+        '[3]:[0]:[32]:[10.255.0.11]'              → {'type': 3, 'eth_tag': 0, 'vtep': '10.255.0.11'}
+        '[5]:[0]:[24]:[203.0.113.0]'              → {'type': 5, 'eth_tag': 0, 'network': '203.0.113.0/24'}
+
+    ``{}`` when the text is not an EVPN prefix; other route types keep ``type`` and ``fields``."""
+    tokens = _EVPN_TOKEN_RE.findall(str(prefix or ''))
+    if not tokens or not tokens[0].isdigit():
+        return {}
+    rtype = int(tokens[0])
+    eth_tag = _int_or_none(tokens[1]) if len(tokens) > 1 else None
+    if rtype == 2 and len(tokens) >= 4:
+        return {'type': 2, 'eth_tag': eth_tag, 'mac': tokens[3].lower(),
+                'ip': tokens[5] if len(tokens) >= 6 else None}
+    if rtype == 3 and len(tokens) >= 4:
+        return {'type': 3, 'eth_tag': eth_tag, 'vtep': tokens[3]}
+    if rtype == 5 and len(tokens) >= 4:
+        return {'type': 5, 'eth_tag': eth_tag, 'network': f"{tokens[3]}/{tokens[2]}"}
+    return {'type': rtype, 'eth_tag': eth_tag, 'fields': tokens[1:]}
+
+
+def _evpn_vnis(value) -> List[int]:
+    return [int(x) for x in re.findall(r'\d+', str(value))] if value not in (None, '') else []
+
+
+def _evpn_path(rd: str, prefix: str, entry: Dict[str, Any], path: Dict[str, Any]) -> Dict[str, Any]:
+    fields = parse_evpn_prefix(prefix)
+    communities = str(((path.get('extendedCommunity') or {}).get('string')) or '').split()
+    best = path.get('bestpath')
+    nexthops = [n.get('ip') for n in (path.get('nexthops') or []) if isinstance(n, dict)]
+    peer = path.get('peer') if isinstance(path.get('peer'), dict) else {}
+    return {
+        'rd': rd, 'prefix': prefix, 'type': fields.get('type'),
+        'mac': fields.get('mac'), 'ip': fields.get('ip'), 'vtep': fields.get('vtep'), 'network': fields.get('network'),
+        'vnis': _evpn_vnis(path.get('vni')),
+        'rts': [c[3:] for c in communities if c.startswith('RT:')],
+        'router_mac': next((c[5:].lower() for c in communities if c.startswith('Rmac:')), None),
+        'nexthop': nexthops[0] if nexthops else None,
+        'best': bool(best.get('overall')) if isinstance(best, dict) else bool(best),
+        'valid': bool(path.get('valid')),
+        'local': bool(path.get('local')) or path.get('peerId') == '(unspec)',
+        'peer': peer.get('peerId') or path.get('peerId'),
+        'pmsi': (path.get('pmsi') or {}).get('tunnelType'),
+    }
+
+
+def parse_bgp_evpn_routes(data: Any) -> List[Dict[str, Any]]:
+    """Parse the JSON of ``show bgp l2vpn evpn route [detail]``: one dict per path::
+
+        {'rd': '10.255.0.12:3', 'type': 2 | 3 | 5, 'prefix': '[2]:[0]:[48]:[…]:[32]:[…]',
+         'mac': str | None, 'ip': str | None,          # type 2 (ip only for a MAC+IP route)
+         'vtep': str | None,                           # type 3: the originating VTEP
+         'network': '203.0.113.0/24' | None,           # type 5
+         'vnis': [200, 4000],     # detail form only: L2VNI, and the L3VNI of a MAC+IP route
+         'rts': ['65000:200', '65000:4000'], 'router_mac': str | None,
+         'nexthop': '10.255.0.12', 'best': bool, 'valid': bool,
+         'local': bool,           # originated by this router
+         'peer': '10.255.0.1', 'pmsi': 'Ingress Replication' | None}
+
+    ``[]`` when there is no route (or when bgpd printed its invalid JSON of a router without
+    EVPN)."""
+    routes: List[Dict[str, Any]] = []
+    if not isinstance(data, dict):
+        return routes
+    for rd, block in data.items():
+        if not isinstance(block, dict):
+            continue
+        for prefix, entry in block.items():
+            if not isinstance(entry, dict) or 'paths' not in entry:
+                continue
+            for group in entry.get('paths') or []:
+                for path in (group if isinstance(group, list) else [group]):
+                    if isinstance(path, dict):
+                        routes.append(_evpn_path(block.get('rd', rd), prefix, entry, path))
+    return routes
+
+
+def get_bgp_evpn_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = True) -> List[Dict[str, Any]]:
+    """Every path of the EVPN table (``show bgp l2vpn evpn route detail json``, see
+    :func:`parse_bgp_evpn_routes`; filter with :func:`evpn_routes`)."""
+    return parse_bgp_evpn_routes(_vtysh_json(grade, machine_name, 'show bgp l2vpn evpn route detail', step,
+                                             allow_error))
+
+
+def evpn_routes(routes: List[Dict[str, Any]], route_type: int = None, mac=None, ip=None, network=None, vtep=None,
+                nexthop=None, rt: str = None, best_only: bool = True, local: bool = None) -> List[Dict[str, Any]]:
+    """The paths of a :func:`parse_bgp_evpn_routes` result that match every given criterion
+    (*mac* compared case-insensitively; ``ip=False`` keeps the MAC-only type-2 routes);
+    *best_only* keeps the best paths."""
+    result = []
+    for r in routes:
+        if best_only and not r['best']:
+            continue
+        if route_type is not None and r['type'] != route_type:
+            continue
+        if mac is not None and (r['mac'] or '') != str(mac).lower():
+            continue
+        if ip is False and r['ip']:
+            continue
+        if ip not in (None, False) and r['ip'] != str(ip):
+            continue
+        if network is not None and r['network'] != str(network):
+            continue
+        if vtep is not None and r['vtep'] != str(vtep):
+            continue
+        if nexthop is not None and r['nexthop'] != str(nexthop):
+            continue
+        if rt is not None and rt not in r['rts']:
+            continue
+        if local is not None and r['local'] != local:
+            continue
+        result.append(r)
+    return result
+
+
+def parse_evpn_vnis(data: Any) -> Dict[int, Dict[str, Any]]:
+    """Parse ``show evpn vni detail json`` (a list; ``{}`` without VNI) or ``show evpn vni json``
+    (an object keyed by VNI) → ``{vni: {...}}``::
+
+        {100: {'type': 'L2', 'vrf': 'TENANT', 'vxlan_if': 'vxlan100', 'svi': 'br100',
+               'vtep_ip': '10.255.0.11', 'mcast_group': None, 'remote_vteps': ['10.255.0.12', …],
+               'flood': {'10.255.0.12': 'HER'}, 'num_macs': 3, 'num_arp': 3,
+               'state': None, 'router_mac': None, 'l2_vnis': []},
+         4000: {'type': 'L3', 'vrf': 'TENANT', 'vxlan_if': 'vxlan4000', 'svi': 'br4000',
+                'vtep_ip': '10.255.0.11', 'state': 'Up', 'router_mac': 'ce:d2:…', 'l2_vnis': [100, 200], …}}
+
+    The brief form has no ``svi`` / ``vtep_ip`` / ``state``; ``mcast_group`` is ``None`` for
+    ``0.0.0.0`` (head-end replication)."""
+    items = data if isinstance(data, list) else list(data.values()) if isinstance(data, dict) else []
+    result: Dict[int, Dict[str, Any]] = {}
+    for v in items:
+        if not isinstance(v, dict) or _int_or_none(v.get('vni')) is None:
+            continue
+        remotes = v.get('remoteVteps') if isinstance(v.get('remoteVteps'), list) else []
+        flood = {}
+        for r in remotes:
+            if isinstance(r, dict):
+                flood[r.get('ip')] = r.get('flood')
+            else:
+                flood[str(r)] = None
+        group = v.get('mcastGroup')
+        result[int(v['vni'])] = {
+            'type': v.get('type'), 'vrf': v.get('tenantVrf'),
+            'vxlan_if': v.get('vxlanInterface') or v.get('vxlanIntf') or v.get('vxlanIf'),
+            'svi': v.get('sviInterface') or v.get('sviIntf'),
+            'vtep_ip': v.get('vtepIp') or v.get('localVtepIp'),
+            'mcast_group': None if group in (None, '', '0.0.0.0') else group,
+            'remote_vteps': sorted(flood), 'flood': flood,
+            'num_macs': _int_or_none(v.get('numMacs')), 'num_arp': _int_or_none(v.get('numArpNd')),
+            'state': v.get('state'), 'router_mac': (v.get('routerMac') or None),
+            'l2_vnis': [int(x) for x in (v.get('l2Vnis') or []) if _int_or_none(x) is not None],
+        }
+    return result
+
+
+def get_evpn_vnis(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = True) -> Dict[int, Dict[str, Any]]:
+    """The VNIs zebra knows (``show evpn vni detail json``, see :func:`parse_evpn_vnis`)."""
+    return parse_evpn_vnis(_vtysh_json_any(grade, machine_name, 'show evpn vni detail', step, allow_error))
+
+
+def parse_evpn_macs(data: Any) -> Dict[int, Dict[str, Dict[str, Any]]]:
+    """``show evpn mac vni all json`` → ``{vni: {mac: {'type': 'local' | 'remote', 'intf': str |
+    None, 'remote_vtep': str | None}}}``."""
+    result: Dict[int, Dict[str, Dict[str, Any]]] = {}
+    for vni, block in (data or {}).items() if isinstance(data, dict) else []:
+        if _int_or_none(vni) is None or not isinstance(block, dict):
+            continue
+        macs = {}
+        for mac, m in (block.get('macs') or {}).items():
+            if isinstance(m, dict):
+                macs[mac.lower()] = {'type': m.get('type'), 'intf': m.get('intf'), 'remote_vtep': m.get('remoteVtep')}
+        result[int(vni)] = macs
+    return result
+
+
+def get_evpn_macs(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = True) -> Dict[int, Dict[str, Dict[str, Any]]]:
+    return parse_evpn_macs(_vtysh_json(grade, machine_name, 'show evpn mac vni all', step, allow_error))
+
+
+def parse_evpn_arp_cache(data: Any) -> Dict[int, Dict[str, Dict[str, Any]]]:
+    """``show evpn arp-cache vni all json`` → ``{vni: {ip: {'type': 'local' | 'remote', 'state':
+    'active' | 'inactive', 'mac', 'remote_vtep'}}}`` (a local entry turns *inactive* when the
+    kernel's neighbour entry goes STALE: its MAC+IP route is then withdrawn)."""
+    result: Dict[int, Dict[str, Dict[str, Any]]] = {}
+    for vni, block in (data or {}).items() if isinstance(data, dict) else []:
+        if _int_or_none(vni) is None or not isinstance(block, dict):
+            continue
+        result[int(vni)] = {ip: {'type': e.get('type'), 'state': e.get('state'), 'mac': (e.get('mac') or '').lower(),
+                                 'remote_vtep': e.get('remoteVtep')}
+                            for ip, e in block.items() if isinstance(e, dict)}
+    return result
+
+
+def get_evpn_arp_cache(grade: Grade0, machine_name: str, step: int = 1,
+                       allow_error: bool = True) -> Dict[int, Dict[str, Dict[str, Any]]]:
+    return parse_evpn_arp_cache(_vtysh_json(grade, machine_name, 'show evpn arp-cache vni all', step, allow_error))
+
+
+def parse_vrf_vnis(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show vrf vni json`` → ``{vrf: {'vni', 'vxlan_if', 'svi', 'state', 'router_mac'}}`` (the
+    L3VNIs; ``{}`` without any)."""
+    result = {}
+    for v in (data or {}).get('vrfs', []) if isinstance(data, dict) else []:
+        if isinstance(v, dict) and v.get('vrf'):
+            result[v['vrf']] = {'vni': _int_or_none(v.get('vni')), 'vxlan_if': v.get('vxlanIntf'),
+                                'svi': v.get('sviIntf'), 'state': v.get('state'),
+                                'router_mac': (v.get('routerMac') or '').lower() or None}
+    return result
+
+
+def get_vrf_vnis(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = True) -> Dict[str, Dict[str, Any]]:
+    return parse_vrf_vnis(_vtysh_json(grade, machine_name, 'show vrf vni', step, allow_error))
+
+
+def parse_evpn_rmacs(data: Any) -> Dict[int, Dict[str, str]]:
+    """``show evpn rmac vni all json`` → ``{l3vni: {router MAC: VTEP}}`` (the remote VTEPs a
+    symmetric IRB leaf routes to)."""
+    result: Dict[int, Dict[str, str]] = {}
+    for vni, block in (data or {}).items() if isinstance(data, dict) else []:
+        if _int_or_none(vni) is None or not isinstance(block, dict):
+            continue
+        result[int(vni)] = {mac.lower(): e.get('vtepIp') for mac, e in block.items() if isinstance(e, dict)}
+    return result
+
+
+def get_evpn_rmacs(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = True) -> Dict[int, Dict[str, str]]:
+    return parse_evpn_rmacs(_vtysh_json(grade, machine_name, 'show evpn rmac vni all', step, allow_error))
+
+
+def parse_bgp_evpn_vni(data: Any) -> Dict[str, Any]:
+    """``show bgp l2vpn evpn vni json`` → ``{'advertise_all_vni': bool, 'flooding': str | None,
+    'vnis': {vni: {'type': 'L2' | 'L3', 'rd', 'import_rts': [...], 'export_rts': [...],
+    'rmac'}}}`` (``{}`` when bgpd has no EVPN instance)."""
+    if not isinstance(data, dict) or not data:
+        return {}
+    vnis = {}
+    for key, v in data.items():
+        if _int_or_none(key) is None or not isinstance(v, dict):
+            continue
+        vnis[int(key)] = {'type': v.get('type'), 'rd': v.get('rd'), 'import_rts': list(v.get('importRTs') or []),
+                          'export_rts': list(v.get('exportRTs') or []), 'rmac': v.get('rmac')}
+    return {'advertise_all_vni': data.get('advertiseAllVnis') == 'Enabled', 'flooding': data.get('flooding'),
+            'vnis': vnis}
+
+
+def get_bgp_evpn_vni(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = True) -> Dict[str, Any]:
+    return parse_bgp_evpn_vni(_vtysh_json(grade, machine_name, 'show bgp l2vpn evpn vni', step, allow_error))
+
+
+def _evpn_af(af: Dict[str, Any]) -> Dict[str, Any]:
+    """The ``l2vpn evpn`` keys of a per-family dict of ``parse_frr_config`` (added on first use)."""
+    for key, default in (('advertise_all_vni', False), ('advertise_ipv4_unicast', False), ('autort_rfc8365', False),
+                         ('advertise_svi_ip', False), ('advertise_default_gw', False), ('rd', None)):
+        af.setdefault(key, default)
+    af.setdefault('rt_import', [])
+    af.setdefault('rt_export', [])
+    af.setdefault('vnis', {})
+    return af
+
+
+def _apply_route_target(target: Dict[str, Any], w: List[str], negated: bool) -> None:
+    # route-target import|export|both RT...
+    keys = ['rt_import', 'rt_export'] if w[1] == 'both' else [f"rt_{w[1]}"]
+    for key in keys:
+        if negated:
+            target[key] = [x for x in target[key] if x not in w[2:]] if w[2:] else []
+        else:
+            target[key] += [x for x in w[2:] if x not in target[key]]
+
+
+def _parse_evpn_line(rb: Dict[str, Any], words: List[str], open_vni: Optional[Dict[str, Any]]):
+    """An ``address-family l2vpn evpn`` statement of a ``router bgp`` block (default instance or
+    VRF instance) → ``(handled, open_vni)``; ``open_vni`` is the dict of the open ``vni N`` block
+    (its ``rd`` / ``route-target`` lines), ``None`` outside one.  Neighbour statements are left to
+    the generic per-family code (``handled`` False)."""
+    negated = bool(words) and words[0] == 'no'
+    w = words[1:] if negated else words
+    if not w or w[0] in ('neighbor', 'address-family', 'exit-address-family'):
+        return False, open_vni
+    af = _evpn_af(rb['address_families'].setdefault('l2vpn evpn', _empty_bgp_af_config()))
+    if w[0] == 'exit-vni':
+        return True, None
+    if w[0] == 'vni' and len(w) >= 2 and w[1].isdigit():
+        if negated:
+            af['vnis'].pop(int(w[1]), None)
+            return True, None
+        vni = af['vnis'].setdefault(int(w[1]), {'rd': None, 'rt_import': [], 'rt_export': []})
+        return True, vni
+    target = open_vni if open_vni is not None else af
+    if w[0] == 'rd' and len(w) >= 2:
+        target['rd'] = None if negated else w[1]
+    elif w[0] == 'route-target' and len(w) >= 2 and w[1] in ('import', 'export', 'both'):
+        _apply_route_target(target, w, negated)
+    elif w[0] == 'advertise-all-vni':
+        af['advertise_all_vni'] = not negated
+    elif w[:3] == ['advertise', 'ipv4', 'unicast']:
+        af['advertise_ipv4_unicast'] = not negated
+    elif w[:2] == ['autort', 'rfc8365-compatible']:
+        af['autort_rfc8365'] = not negated
+    elif w[0] == 'advertise-svi-ip':
+        af['advertise_svi_ip'] = not negated
+    elif w[0] == 'advertise-default-gw':
+        af['advertise_default_gw'] = not negated
+    else:
+        return False, open_vni
+    return True, open_vni
+
+
+def evpn_family(router_bgp: Dict[str, Any]) -> Dict[str, Any]:
+    """The ``l2vpn evpn`` view of a ``router_bgp`` (or ``router_bgp_vrfs[X]``) of
+    :func:`parse_frr_config`, with every EVPN key present: ``advertise_all_vni``,
+    ``advertise_ipv4_unicast``, ``autort_rfc8365``, ``advertise_svi_ip``, ``advertise_default_gw``,
+    ``rd``, ``rt_import``, ``rt_export`` (the L3VNI of a VRF instance), ``vnis`` (``{vni: {'rd',
+    'rt_import', 'rt_export'}}``, the ``vni N`` blocks) and ``neighbors``."""
+    af = dict(((router_bgp or {}).get('address_families') or {}).get('l2vpn evpn') or _empty_bgp_af_config())
+    return _evpn_af(af)

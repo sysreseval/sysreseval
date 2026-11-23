@@ -1,0 +1,38 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname fix_dc1
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+route-map ALL permit 10
+exit
+!
+router bgp 65101
+ bgp router-id 10.116.63.11
+ no bgp default ipv4-unicast
+ neighbor 10.116.48.1 remote-as 65000
+ neighbor 10.116.63.12 remote-as 65102
+ neighbor 10.116.63.12 ebgp-multihop 5
+ neighbor 10.116.63.12 update-source lo
+ !
+ address-family ipv4 unicast
+  network 10.116.63.11/32
+  neighbor 10.116.48.1 activate
+  neighbor 10.116.48.1 route-map ALL in
+  neighbor 10.116.48.1 route-map ALL out
+ exit-address-family
+ !
+ address-family l2vpn evpn
+  neighbor 10.116.63.12 activate
+  neighbor 10.116.63.12 route-map ALL in
+  neighbor 10.116.63.12 route-map ALL out
+  advertise-all-vni
+ exit-address-family
+exit
+!
+end

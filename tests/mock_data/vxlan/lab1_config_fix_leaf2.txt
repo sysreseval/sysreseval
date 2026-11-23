@@ -1,0 +1,37 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname fix_leaf2
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+interface eth0
+ ip ospf area 0
+ ip ospf network point-to-point
+exit
+!
+interface lo
+ ip ospf area 0
+exit
+!
+router bgp 65000
+ bgp router-id 10.7.79.12
+ no bgp default ipv4-unicast
+ neighbor 10.7.79.1 remote-as 65000
+ neighbor 10.7.79.1 update-source lo
+ !
+ address-family l2vpn evpn
+  neighbor 10.7.79.1 activate
+  advertise-all-vni
+ exit-address-family
+exit
+!
+router ospf
+ ospf router-id 10.7.79.12
+exit
+!
+end

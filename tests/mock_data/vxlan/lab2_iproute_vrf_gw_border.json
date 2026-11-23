@@ -1,0 +1,1 @@
+[{"dst":"192.168.55.0/24","nhid":23,"encap":{"encap_type":"mpls","dst":"16/80"},"gateway":"10.116.32.6","dev":"eth1","protocol":"bgp","metric":20,"flags":[]},{"dst":"192.168.120.0/24","nhid":15,"gateway":"10.116.47.11","dev":"br11583","protocol":"bgp","metric":20,"flags":["onlink"]}]

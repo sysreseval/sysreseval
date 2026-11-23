@@ -1,0 +1,36 @@
+{
+  "200":{
+    "vni":200,
+    "type":"L2",
+    "vxlanIf":"vxlan200",
+    "numMacs":2,
+    "numArpNd":2,
+    "numRemoteVteps":1,
+    "tenantVrf":"TENANT",
+    "remoteVteps":[
+      "10.255.0.12"
+    ]
+  },
+  "100":{
+    "vni":100,
+    "type":"L2",
+    "vxlanIf":"vxlan100",
+    "numMacs":3,
+    "numArpNd":3,
+    "numRemoteVteps":2,
+    "tenantVrf":"TENANT",
+    "remoteVteps":[
+      "10.255.0.13",
+      "10.255.0.12"
+    ]
+  },
+  "4000":{
+    "vni":4000,
+    "vxlanIf":"vxlan4000",
+    "numMacs":2,
+    "numArpNd":2,
+    "numRemoteVteps":"n/a",
+    "type":"L3",
+    "tenantVrf":"TENANT"
+  }
+}

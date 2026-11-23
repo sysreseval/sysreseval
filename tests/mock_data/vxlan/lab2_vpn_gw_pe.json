@@ -1,0 +1,10 @@
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 3,
+ "routerId": "10.116.47.3",
+ "defaultLocPrf": 100,
+ "localAS": 65000,
+ "routes": {  "routeDistinguishers" : { "65000:29" : { "192.168.120.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"internal","prefix":"192.168.120.0","prefixLen":24,"network":"192.168.120.0/24","version":1,"metric":0,"locPrf":100,"weight":0,"peerId":"10.116.47.1","path":"","origin":"incomplete","nexthops":[{"ip":"10.116.47.1","hostname":"gw_border","afi":"ipv4","used":true}]}]
+ },  "65000:80" : { "192.168.55.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"192.168.55.0","prefixLen":24,"network":"192.168.55.0/24","version":1,"metric":0,"weight":32768,"peerId":"(unspec)","path":"","origin":"incomplete","announceNexthopSelf":true,"nhVrfName":"TENANT","nhVrfId":2,"nexthops":[{"ip":"0.0.0.0","hostname":"gw_pe","afi":"ipv4","used":true}]}]
+ }  }  } , "totalRoutes": 2, "totalPaths": 2 } 

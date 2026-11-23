@@ -2017,7 +2017,8 @@ class TestFrrConfigVpn:
         a = c['router_bgp_vrfs']['CUST_A']
         assert a['as'] == 65000 and a['router_id'] == '10.133.63.1' and a['redistribute'] == ['connected']
         assert a['vpn'] == {'rd': '65000:35', 'rt_import': ['65000:35', '65000:65'], 'rt_export': ['65000:35'],
-                            'label': 'auto', 'export_vpn': True, 'import_vpn': True}
+                            'label': 'auto', 'export_vpn': True, 'import_vpn': True, 'route_map_export': None,
+                            'route_map_import': None}
 
     def test_vrf_neighbor_and_rt_both(self):
         c = parse_frr_config(load('config_vpn_ce_pe1.txt'))
@@ -2332,3 +2333,287 @@ class TestFrrConfigIsis:
     def test_no_isis(self):
         c = parse_frr_config(load('config_isis_srgb.txt').replace('router isis', 'router ospf'))
         assert not c['router_isis']['present'] and c['bfd'] == {'profiles': {}}
+
+
+# ---------------------------------------------------------------------------
+# EVPN (FRR 10.3 captures of a VXLAN / EVPN probe on Debian 13: evpn_*, bgp_evpn_vni_*, config_evpn_*,
+# bgp_vpn_gw_*, iproute_vrf_gw_*, iproute_vrf_irb_*, mroute_vxlan; and of the solved labs:
+# tests/mock_data/vxlan/lab1_*, lab2_*)
+# ---------------------------------------------------------------------------
+
+from frr import (  # noqa: E402
+    evpn_family, evpn_routes, get_bgp_evpn_routes, get_bgp_evpn_summary, get_bgp_evpn_vni, get_evpn_arp_cache,
+    get_evpn_macs, get_evpn_rmacs, get_evpn_vnis, get_vrf_vnis, parse_bgp_evpn_routes, parse_bgp_evpn_vni,
+    parse_evpn_arp_cache, parse_evpn_macs, parse_evpn_prefix, parse_evpn_rmacs, parse_evpn_vnis, parse_mroutes,
+    parse_vrf_vnis, parse_bgp_vpn_routes, bgp_neighbor_activated,
+)
+
+VXLAN_FIXTURES = Path(__file__).parent / 'mock_data' / 'vxlan'
+
+
+def load_evpn(name: str):
+    return json.loads(load(name))
+
+
+def load_vxlan(name: str) -> str:
+    return (VXLAN_FIXTURES / name).read_text()
+
+
+class TestEvpnPrefix:
+    @pytest.mark.parametrize('prefix, expected', [
+        ('[2]:[0]:[48]:[6E:F5:66:0b:a1:15]', {'type': 2, 'eth_tag': 0, 'mac': '6e:f5:66:0b:a1:15', 'ip': None}),
+        ('[2]:[0]:[48]:[96:ce:35:e9:9b:49]:[32]:[192.168.20.15]',
+         {'type': 2, 'eth_tag': 0, 'mac': '96:ce:35:e9:9b:49', 'ip': '192.168.20.15'}),
+        ('[3]:[0]:[32]:[10.255.0.11]', {'type': 3, 'eth_tag': 0, 'vtep': '10.255.0.11'}),
+        ('[5]:[0]:[24]:[203.0.113.0]', {'type': 5, 'eth_tag': 0, 'network': '203.0.113.0/24'}),
+        ('[4]:[03:44:38:39:ff:ff:01:00:00:01]:[32]:[10.0.0.1]', {'type': 4, 'eth_tag': None,
+                                                                 'fields': ['03:44:38:39:ff:ff:01:00:00:01', '32', '10.0.0.1']}),
+        ('rd', {}), (None, {}), ('[x]:[0]', {}),
+    ])
+    def test_prefixes(self, prefix, expected):
+        assert parse_evpn_prefix(prefix) == expected
+
+
+class TestEvpnRoutes:
+    def test_layer2_fabric(self):
+        routes = parse_bgp_evpn_routes(load_evpn('evpn_route_detail_l2.json'))
+        assert len(routes) == 10 and sum(r['local'] for r in routes) == 4
+        # the type-3 routes build the flood list: one per VNI and VTEP, with ingress replication
+        type3 = evpn_routes(routes, route_type=3, vtep='10.255.0.12')
+        assert sorted(r['rts'][0] for r in type3) == ['65000:100', '65000:200']
+        assert all(r['pmsi'] == 'Ingress Replication' and r['nexthop'] == '10.255.0.12' for r in type3)
+        remote_mac = evpn_routes(routes, route_type=2, mac='FE:91:FB:2E:62:6A')
+        assert remote_mac[0]['rd'] == '10.255.0.12:2' and remote_mac[0]['vnis'] == [100] and not remote_mac[0]['local']
+        assert remote_mac[0]['peer'] == '10.255.0.1'     # reflected by the spine
+        assert evpn_routes(routes, route_type=3, local=True, rt='65000:200')[0]['vtep'] == '10.255.0.11'
+
+    def test_symmetric_irb(self):
+        routes = parse_bgp_evpn_routes(load_evpn('evpn_route_detail_irb.json'))
+        macip = evpn_routes(routes, route_type=2, ip='192.168.20.15')
+        assert len(macip) == 1
+        r = macip[0]
+        # a MAC+IP route carries the L2VNI and the L3VNI, two RTs and the router MAC of its VTEP
+        assert r['vnis'] == [200, 4000] and r['rts'] == ['65000:200', '65000:4000']
+        assert r['router_mac'] == 'fa:97:32:8e:06:48' and r['nexthop'] == '10.255.0.12'
+        assert len(evpn_routes(routes, route_type=2, mac='96:ce:35:e9:9b:49', ip=False)) == 1
+        type5 = evpn_routes(routes, route_type=5)
+        assert [(x['network'], x['nexthop'], x['vnis']) for x in type5] == [('203.0.113.0/24', '10.255.0.20', [4000])]
+
+    def test_brief_form_has_no_vni(self):
+        routes = parse_bgp_evpn_routes(load_evpn('evpn_route_brief_irb.json'))
+        r = evpn_routes(routes, route_type=2, ip='192.168.20.15')[0]
+        assert r['vnis'] == [] and r['rts'] == ['65000:200', '65000:4000'] and r['best']
+        assert sum(x['local'] for x in routes) == 6       # peerId "(unspec)"
+
+    def test_gateway_reoriginates_vpn_routes(self):
+        routes = parse_bgp_evpn_routes(load_evpn('evpn_route_detail_gw.json'))
+        vpn = evpn_routes(routes, route_type=5, network='172.16.9.0/24', nexthop='10.255.0.20')
+        assert vpn and vpn[0]['vnis'] == [4000] and '65000:4000' in vpn[0]['rts']
+
+    def test_ebgp_between_data_centres(self):
+        routes = parse_bgp_evpn_routes(load_evpn('evpn_route_detail_dci.json'))
+        # the automatic RTs differ (AS:VNI), the route is installed all the same
+        assert evpn_routes(routes, route_type=3, vtep='10.255.0.32')[0]['rts'] == ['65102:300']
+        assert evpn_routes(routes, route_type=3, local=True)[0]['rts'] == ['65101:300']
+        lab = parse_bgp_evpn_routes(json.loads(load_vxlan('lab2_route_st_dc1.json')))
+        assert len(evpn_routes(lab, route_type=3)) == 2 and len(evpn_routes(lab, route_type=2)) == 2
+
+    def test_empty_and_invalid(self):
+        assert parse_bgp_evpn_routes({}) == [] and parse_bgp_evpn_routes([]) == []
+        # bgpd with BGP but no EVPN prints invalid json
+        assert get_bgp_evpn_routes(make_grade('{ ,"numPrefix":0,"numPaths":0}'), 'pe1') == []
+        grade = make_grade(load('evpn_route_detail_l2.json'))
+        assert len(get_bgp_evpn_routes(grade, 'l1', step=2)) == 10
+        assert grade.test.call_args[0][1] == 'vtysh -c "show bgp l2vpn evpn route detail json"'
+
+    def test_filters(self):
+        routes = parse_bgp_evpn_routes(load_evpn('evpn_route_detail_irb.json'))
+        not_best = dict(routes[0], best=False)
+        assert evpn_routes([not_best]) == [] and evpn_routes([not_best], best_only=False) == [not_best]
+        assert evpn_routes(routes, route_type=2, ip='192.168.99.1') == []
+        assert evpn_routes(routes, route_type=5, network='203.0.113.0/24', nexthop='10.255.0.11') == []
+
+
+class TestEvpnVnis:
+    def test_detail_layer2(self):
+        vnis = parse_evpn_vnis(load_evpn('evpn_vni_detail_l2.json'))
+        assert set(vnis) == {100, 200}
+        assert vnis[100]['remote_vteps'] == ['10.255.0.12', '10.255.0.13'] and vnis[100]['flood']['10.255.0.12'] == 'HER'
+        assert vnis[100]['svi'] == 'br100' and vnis[100]['vtep_ip'] == '10.255.0.11' and vnis[100]['mcast_group'] is None
+        assert vnis[200]['type'] == 'L2' and vnis[200]['vrf'] == 'default'
+
+    def test_detail_irb_and_border(self):
+        vnis = parse_evpn_vnis(load_evpn('evpn_vni_detail_irb.json'))
+        l3 = vnis[4000]
+        assert (l3['type'], l3['vrf'], l3['state'], l3['svi'], l3['vxlan_if']) == ('L3', 'TENANT', 'Up', 'br4000', 'vxlan4000')
+        assert l3['router_mac'] == 'ce:d2:6c:17:61:1f' and l3['l2_vnis'] == [100, 200] and l3['remote_vteps'] == []
+        assert vnis[100]['vrf'] == 'TENANT'
+        border = parse_evpn_vnis(load_evpn('evpn_vni_detail_border.json'))
+        assert list(border) == [4000] and border[4000]['l2_vnis'] == []
+
+    def test_brief_form_and_empty(self):
+        vnis = parse_evpn_vnis(load_evpn('evpn_vni_irb.json'))
+        assert vnis[100]['remote_vteps'] == ['10.255.0.12', '10.255.0.13'] and vnis[4000]['type'] == 'L3'
+        assert parse_evpn_vnis({}) == {} and parse_evpn_vnis(None) == {}
+
+    def test_wrapper_reads_a_list(self):
+        grade = make_grade(load('evpn_vni_detail_irb.json'))
+        assert set(get_evpn_vnis(grade, 'l1')) == {100, 200, 4000}
+        assert grade.test.call_args[0][1] == 'vtysh -c "show evpn vni detail json"'
+        assert get_evpn_vnis(make_grade('{}'), 'p') == {}
+        lab = parse_evpn_vnis(json.loads(load_vxlan('lab1_vni_l2_leaf2.json')))
+        assert len(lab) == 2 and all(len(v['remote_vteps']) == 1 for v in lab.values())
+
+
+class TestEvpnTables:
+    def test_macs(self):
+        macs = parse_evpn_macs(load_evpn('evpn_mac_leaf.json'))
+        assert macs[100]['6e:f5:66:0b:a1:15'] == {'type': 'local', 'intf': 'eth1', 'remote_vtep': None}
+        assert macs[100]['fe:91:fb:2e:62:6a']['remote_vtep'] == '10.255.0.12'
+        grade = make_grade(load('evpn_mac_leaf.json'))
+        assert set(get_evpn_macs(grade, 'l1')) == {100, 200}
+        assert grade.test.call_args[0][1] == 'vtysh -c "show evpn mac vni all json"'
+
+    def test_arp_cache(self):
+        arp = parse_evpn_arp_cache(load_evpn('evpn_arpcache_irb.json'))
+        assert arp[200]['192.168.20.15'] == {'type': 'remote', 'state': 'active', 'mac': '96:ce:35:e9:9b:49',
+                                             'remote_vtep': '10.255.0.12'}
+        # a STALE neighbour of the leaf: local, inactive (its MAC+IP route is withdrawn)
+        assert arp[100]['192.168.10.13']['state'] == 'inactive'
+        assert get_evpn_arp_cache(make_grade(load('evpn_arpcache_irb.json')), 'l1')[200]['192.168.20.14']['type'] == 'local'
+
+    def test_l3vni_tables(self):
+        assert parse_vrf_vnis(load_evpn('evpn_vrf_vni_irb.json')) == {
+            'TENANT': {'vni': 4000, 'vxlan_if': 'vxlan4000', 'svi': 'br4000', 'state': 'Up',
+                       'router_mac': 'ce:d2:6c:17:61:1f'}}
+        assert parse_vrf_vnis({'vrfs': []}) == {}
+        assert parse_evpn_rmacs(load_evpn('evpn_rmac_irb.json')) == {
+            4000: {'fa:97:32:8e:06:48': '10.255.0.12', 'c2:3b:56:81:89:a8': '10.255.0.20'}}
+        grade = make_grade(load('evpn_vrf_vni_irb.json'))
+        assert get_vrf_vnis(grade, 'l1')['TENANT']['vni'] == 4000
+        assert grade.test.call_args[0][1] == 'vtysh -c "show vrf vni json"'
+        assert get_evpn_rmacs(make_grade(load('evpn_rmac_irb.json')), 'l1')[4000]
+
+    def test_bgp_vni_route_targets(self):
+        info = parse_bgp_evpn_vni(load_evpn('bgp_evpn_vni_irb.json'))
+        assert info['advertise_all_vni'] and info['flooding'] == 'Head-end replication'
+        # automatic RD = router-id:index (not the VNI), automatic RT = AS:VNI
+        assert info['vnis'][100] == {'type': 'L2', 'rd': '10.255.0.11:2', 'import_rts': ['65000:100'],
+                                     'export_rts': ['65000:100'], 'rmac': None}
+        assert info['vnis'][4000]['type'] == 'L3' and info['vnis'][4000]['rmac'] == 'ce:d2:6c:17:61:1f'
+        manual = parse_bgp_evpn_vni(load_evpn('bgp_evpn_vni_manual.json'))
+        assert manual['vnis'][300]['rd'] == '10.255.0.31:300' and manual['vnis'][300]['import_rts'] == ['65102:300']
+        assert parse_bgp_evpn_vni({}) == {}
+        assert get_bgp_evpn_vni(make_grade(load('bgp_evpn_vni_irb.json')), 'l1')['vnis'][200]['rd'] == '10.255.0.11:3'
+
+    def test_multicast_underlay_mroutes(self):
+        routes = parse_mroutes(load_evpn('mroute_vxlan.json'))
+        star = routes[('*', '239.1.1.5')]
+        assert star['oil'] == ['eth0', 'eth1', 'eth2'] and star['iif'] == 'lo'
+        assert any(src == '10.0.1.2' for src, _g in routes)
+        lab = parse_mroutes(json.loads(load_vxlan('lab1_mroute_mc_r.json')))
+        assert {flags for flags in (e['flags'] for e in lab.values())} == {'SC', 'SFT'}
+
+
+class TestEvpnSummary:
+    def test_spine_and_leaf(self):
+        s = parse_bgp_summary(load_evpn('evpn_summary_spine.json'))
+        assert sorted(s['peers']) == ['10.255.0.11', '10.255.0.12', '10.255.0.13']
+        assert all(p['established'] and not p['policy_blocked'] for p in s['peers'].values())
+        grade = make_grade(load('evpn_summary_leaf.json'))
+        assert get_bgp_evpn_summary(grade, 'l1')['peers']['10.255.0.1']['pfx_rcd'] == 6
+        assert grade.test.call_args[0][1] == 'vtysh -c "show bgp l2vpn evpn summary json"'
+
+    def test_rfc8212_applies_to_evpn(self):
+        p = parse_bgp_summary(load_evpn('evpn_summary_policy.json'))['peers']['10.255.0.32']
+        assert p['established'] and p['policy_blocked'] and p['remote_as'] == 65102
+        assert get_bgp_evpn_summary(make_grade('{}'), 'p') == {}
+
+
+class TestFrrConfigEvpn:
+    def test_spine_route_reflector(self):
+        rb = parse_frr_config(load('config_evpn_spine.txt'))['router_bgp']
+        assert not rb['default_ipv4_unicast']
+        af = evpn_family(rb)
+        assert all(bgp_neighbor_activated(rb, p, 'l2vpn evpn') for p in ('10.255.0.11', '10.255.0.12', '10.255.0.13'))
+        assert not bgp_neighbor_activated(rb, '10.255.0.11', 'ipv4')
+        assert all(af['neighbors'][p]['route_reflector_client'] for p in af['neighbors'])
+        assert not af['advertise_all_vni']
+
+    def test_leaf_and_irb(self):
+        c = parse_frr_config(load('config_evpn_leaf.txt'))
+        assert evpn_family(c['router_bgp'])['advertise_all_vni'] and c['vrfs'] == {}
+        irb = parse_frr_config(load('config_evpn_irb_leaf.txt'))
+        assert irb['vrfs'] == {'TENANT': {'vni': 4000}}
+        # the VRF instance of a leaf without type-5
+        assert not evpn_family(irb['router_bgp_vrfs']['TENANT'])['advertise_ipv4_unicast']
+        border = parse_frr_config(load('config_evpn_irb_border.txt'))
+        tenant = border['router_bgp_vrfs']['TENANT']
+        assert evpn_family(tenant)['advertise_ipv4_unicast'] and tenant['redistribute'] == ['connected']
+
+    def test_vni_block_and_autort(self):
+        rb = parse_frr_config(load('config_evpn_vni.txt'))['router_bgp']
+        af = evpn_family(rb)
+        assert af['vnis'] == {300: {'rd': '10.255.0.31:300', 'rt_import': ['65102:300'], 'rt_export': []}}
+        assert af['autort_rfc8365'] and af['advertise_all_vni']
+        assert af['neighbors']['10.255.0.32']['route_map_out'] == 'ALL'
+        assert bgp_neighbor_activated(rb, '10.255.0.32', 'l2vpn evpn')
+
+    def test_gateway_vrf(self):
+        c = parse_frr_config(load('config_evpn_gw.txt'))
+        tenant = c['router_bgp_vrfs']['TENANT']
+        assert tenant['vpn'] == {'rd': '65000:201', 'rt_import': ['65000:200'], 'rt_export': ['65000:200'],
+                                 'label': 'auto', 'export_vpn': True, 'import_vpn': True,
+                                 'route_map_export': 'VPN-OUT', 'route_map_import': None}
+        assert evpn_family(tenant)['advertise_ipv4_unicast']
+        assert bgp_neighbor_activated(c['router_bgp'], '10.255.0.23', 'ipv4 vpn')
+        assert c['prefix_lists']['NO-HOST'][0] == {'seq': 5, 'action': 'deny', 'prefix': '0.0.0.0/0', 'ge': 32,
+                                                   'le': None}
+
+    def test_statements_and_negations(self):
+        text = ("vrf T\n vni 5000\nexit-vrf\nvrf U\n vni 6000\n no vni 6000\nexit-vrf\n"
+                "router bgp 65000\n address-family l2vpn evpn\n advertise-all-vni\n no advertise-all-vni\n"
+                "  vni 10\n   rd 1.1.1.1:10\n   route-target import 65000:10 65000:11\n   route-target both 65000:12\n"
+                "   no route-target import 65000:11\n  exit-vni\n  vni 20\n  exit-vni\n  no vni 20\n"
+                "  advertise-svi-ip\n  advertise-default-gw\n exit-address-family\nexit\n"
+                "router bgp 65000 vrf T\n address-family l2vpn evpn\n  rd 1.1.1.1:5000\n"
+                "  route-target import 65000:5000\n  advertise ipv4 unicast\n exit-address-family\nexit\n")
+        c = parse_frr_config(text)
+        assert c['vrfs'] == {'T': {'vni': 5000}, 'U': {'vni': None}}
+        af = evpn_family(c['router_bgp'])
+        assert not af['advertise_all_vni'] and af['advertise_svi_ip'] and af['advertise_default_gw']
+        assert af['vnis'] == {10: {'rd': '1.1.1.1:10', 'rt_import': ['65000:10', '65000:12'], 'rt_export': ['65000:12']}}
+        vrf = evpn_family(c['router_bgp_vrfs']['T'])
+        assert vrf['rd'] == '1.1.1.1:5000' and vrf['rt_import'] == ['65000:5000'] and vrf['advertise_ipv4_unicast']
+        assert evpn_family({})['vnis'] == {} and evpn_family(None)['advertise_all_vni'] is False
+
+    def test_lab_captures(self):
+        spine = evpn_family(parse_frr_config(load_vxlan('lab1_config_fix_spine.txt'))['router_bgp'])
+        assert sum(bool(n.get('route_reflector_client')) for n in spine['neighbors'].values()) == 2
+        assert evpn_family(parse_frr_config(load_vxlan('lab1_config_fix_leaf2.txt'))['router_bgp'])['advertise_all_vni']
+        dc1 = parse_frr_config(load_vxlan('lab2_config_fix_dc1.txt'))['router_bgp']
+        assert any(n['ebgp_multihop'] == 5 for n in dc1['neighbors'].values())
+        dc2 = parse_frr_config(load_vxlan('lab2_config_fix_dc2.txt'))['router_bgp']
+        evpn_neighbors = evpn_family(dc2)['neighbors']
+        assert len(evpn_neighbors) == 1 and list(evpn_neighbors.values())[0]['route_map_out'] == 'ALL'
+        # the PE-CE neighbour of the VTEP is only active in IPv4 unicast
+        pe = [p for p in dc2['neighbors'] if p not in evpn_neighbors][0]
+        assert bgp_neighbor_activated(dc2, pe, 'ipv4') and not bgp_neighbor_activated(dc2, pe, 'l2vpn evpn')
+
+
+class TestGatewayTables:
+    def test_vpn_routes_with_and_without_host_routes(self):
+        hosts = parse_bgp_vpn_routes(load_evpn('bgp_vpn_gw_hosts_pe2.json'))
+        dc = hosts['65000:201']
+        assert {'192.168.10.0/24', '192.168.10.11/32', '192.168.20.15/32'} <= set(dc)
+        filtered = parse_bgp_vpn_routes(load_evpn('bgp_vpn_gw_pe2.json'))['65000:201']
+        assert not [p for p in filtered if p.endswith('/32')] and '192.168.20.0/24' in filtered
+
+    def test_kernel_routes_of_the_gateway_and_the_leaf(self):
+        border = parse_kernel_routes(load('iproute_vrf_gw_border.json'))
+        # towards the remote site: MPLS (transport + VPN); towards the data centre: the L3VNI bridge
+        assert border['172.16.9.0/24']['labels'] == [[16, 80]]
+        assert border['192.168.10.11/32']['nexthops'] == [('10.255.0.11', 'br4000')]
+        leaf = parse_kernel_routes(load('iproute_vrf_irb_leaf.json'))
+        assert leaf['192.168.20.15/32']['nexthops'] == [('10.255.0.12', 'br4000')]
+        assert leaf['203.0.113.0/24']['nexthops'] == [('10.255.0.20', 'br4000')]
