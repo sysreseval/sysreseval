@@ -1,0 +1,66 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname bp1
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+route-map BW10 permit 10
+exit
+!
+route-map RPKI-IN permit 5
+ match community BLACKHOLE
+ set ip next-hop 192.0.2.66
+exit
+!
+route-map RPKI-IN deny 10
+ match rpki invalid
+exit
+!
+route-map RPKI-IN permit 20
+ match rpki valid
+ set local-preference 200
+exit
+!
+route-map RPKI-IN permit 30
+exit
+!
+ip route 192.0.2.1/32 Null0
+!
+router bgp 65101
+ bgp router-id 1.1.1.1
+ no bgp ebgp-requires-policy
+ bgp confederation identifier 65100
+ bgp confederation peers 65102
+ neighbor 10.0.13.2 remote-as 65102
+ neighbor 10.0.14.2 remote-as 65004
+ neighbor 10.0.14.2 bfd
+ neighbor 10.0.14.2 bfd profile fast
+ !
+ address-family ipv4 unicast
+  bgp dampening 10 800 2500 40
+  neighbor 10.0.13.2 maximum-prefix 1
+  neighbor 10.0.14.2 maximum-prefix 10 60 restart 5
+ exit-address-family
+exit
+!
+bgp community-list standard BH2 seq 5 permit blackhole
+bgp community-list standard BLACKHOLE seq 5 permit blackhole
+!
+rpki
+ rpki cache tcp 10.0.99.2 3323 preference 1
+exit
+!
+bfd
+ profile fast
+  transmit-interval 100
+  receive-interval 100
+ exit
+ !
+exit
+!
+end

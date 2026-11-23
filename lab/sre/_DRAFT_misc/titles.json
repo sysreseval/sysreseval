@@ -3,6 +3,8 @@
     "aaa.py": 130,
     "ansible.py": 50,
     "anycast.py": 235,
+    "bgp-scaling.py": 115,
+    "bgp-security.py": 116,
     "bgp.py": 46,
     "bridge.py": 9,
     "dns2.py": 65,
@@ -58,6 +60,14 @@
   "anycast.py": {
     "en": "Anycast: one service announced from several sites (OSPF and BGP)",
     "fr": "Anycast : un service annoncé depuis plusieurs sites (OSPF et BGP)"
+  },
+  "bgp-scaling.py": {
+    "en": "BGP: communities, multipath, confederations and dampening",
+    "fr": "BGP : communautés, multichemin, confédérations et amortissement"
+  },
+  "bgp-security.py": {
+    "en": "BGP: securing sessions and announcements (RPKI, maximum-prefix, GTSM, RTBH)",
+    "fr": "BGP : sécuriser les sessions et les annonces (RPKI, maximum-prefix, GTSM, RTBH)"
   },
   "evpn-mpls.py": {
     "en": "EVPN and MPLS: data centre interconnection",

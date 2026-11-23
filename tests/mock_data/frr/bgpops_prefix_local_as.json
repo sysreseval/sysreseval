@@ -1,0 +1,49 @@
+
+{
+  "prefix":"172.16.32.0/24",
+  "version":7,
+  "paths":[
+    {
+      "aspath":{
+        "string":"Local",
+        "segments":[],
+        "length":0
+      },
+      "origin":"IGP",
+      "metric":0,
+      "weight":32768,
+      "valid":true,
+      "version":7,
+      "sourced":true,
+      "local":true,
+      "bestpath":{
+        "overall":true,
+        "selectionReason":"First path received"
+      },
+      "community":{
+        "string":"local-AS",
+        "list":[
+          "localAs"
+        ]
+      },
+      "lastUpdate":{
+        "epoch":1795446851,
+        "string":"Mon Nov 23 15:14:11 2026"
+      },
+      "nexthops":[
+        {
+          "ip":"0.0.0.0",
+          "hostname":"bp3",
+          "afi":"ipv4",
+          "metric":0,
+          "accessible":true,
+          "used":true
+        }
+      ],
+      "peer":{
+        "peerId":"0.0.0.0",
+        "routerId":"3.3.3.3"
+      }
+    }
+  ]
+}

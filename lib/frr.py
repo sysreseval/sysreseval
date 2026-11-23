@@ -458,6 +458,7 @@ def get_ospf_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error
         return {}
     return parse_ospf_routes(output)
 
+
 # ---------------------------------------------------------------------------
 # show ip ospf database external json  (type 5 LSAs)
 # ---------------------------------------------------------------------------
@@ -534,7 +535,7 @@ def parse_kernel_routes(output: str, ipv6: bool = False) -> Dict[str, Dict[str, 
     """Parse the JSON of ``ip -j route`` (``ip -j -6 route`` with ``ipv6=True``).
 
     Returns ``{prefix: {'protocol': str, 'metric': int, 'scope': str | None,
-    'nexthops': [(gateway | None, dev)], 'labels': [[int]]}}``; ``default`` becomes
+    'nexthops': [(gateway | None, dev)], 'labels': [[int]], 'type': 'unicast' | 'blackhole' | ...}}``; ``default`` becomes
     ``0.0.0.0/0`` (``::/0``) and host routes get ``/32`` (``/128``).  ECMP routes list every
     next hop.  ``labels`` holds, for each next hop in the same order, the MPLS label stack it
     pushes (``encap mpls 16003/16005`` → ``[16003, 16005]``; ``[]`` without encapsulation).
@@ -570,6 +571,7 @@ def parse_kernel_routes(output: str, ipv6: bool = False) -> Dict[str, Dict[str, 
             'scope': r.get('scope'),
             'nexthops': [(n.get('gateway'), n.get('dev')) for n in hops],
             'labels': [_encap_labels(n.get('encap')) for n in hops],
+            'type': r.get('type') or 'unicast',     # 'blackhole' / 'unreachable' / 'prohibit': no device
         }
     return result
 
@@ -667,6 +669,9 @@ def _empty_bgp_neighbor_config() -> Dict[str, Any]:
         'prefix_list_in': None, 'prefix_list_out': None, 'filter_list_in': None, 'filter_list_out': None,
         'soft_reconfiguration': False, 'send_community': True, 'activate': None,
         'interface': False,
+        # BGP operations: maximum-prefix (address family), GTSM, BFD, graceful shutdown
+        'maximum_prefix': None, 'maximum_prefix_out': None, 'ttl_security': None,
+        'bfd': False, 'bfd_profile': None, 'graceful_shutdown': False,
     }
 
 
@@ -675,11 +680,12 @@ def _empty_bgp_neighbor_config() -> Dict[str, Any]:
 _BGP_AF_NEIGHBOR_KEYS = ('activate', 'next_hop_self', 'route_reflector_client', 'default_originate',
                          'default_originate_route_map', 'route_map_in', 'route_map_out', 'prefix_list_in',
                          'prefix_list_out', 'filter_list_in', 'filter_list_out', 'soft_reconfiguration',
-                         'send_community')
+                         'send_community', 'maximum_prefix', 'maximum_prefix_out')
 
 
 def _empty_bgp_af_config() -> Dict[str, Any]:
-    return {'neighbors': {}, 'networks': [], 'aggregate_addresses': [], 'redistribute': []}
+    return {'neighbors': {}, 'networks': [], 'aggregate_addresses': [], 'redistribute': [],
+            'maximum_paths': None, 'maximum_paths_ibgp': None, 'dampening': None}
 
 
 def _empty_router_bgp_config() -> Dict[str, Any]:
@@ -688,7 +694,14 @@ def _empty_router_bgp_config() -> Dict[str, Any]:
         'network_import_check': True, 'default_ipv4_unicast': True, 'bestpath': [], 'cluster_id': None,
         'default_local_preference': None, 'timers': None, 'neighbors': {}, 'networks': [],
         'aggregate_addresses': [], 'redistribute': [], 'address_families': {},
+        'confederation_identifier': None, 'confederation_peers': [], 'graceful_shutdown': False,
+        'maximum_paths': None, 'maximum_paths_ibgp': None, 'dampening': None,
     }
+
+
+#: values of a bare ``bgp dampening`` (half-life and max-suppress in minutes, the penalties): FRR
+#: prints the statement without its values when they are these defaults
+BGP_DAMPENING_DEFAULTS = (15, 750, 2000, 60)
 
 
 def _parse_router_bgp_line(rb: Dict[str, Any], words: List[str], neighbor_cfg, af: str = None) -> None:
@@ -729,8 +742,7 @@ def _parse_router_bgp_line(rb: Dict[str, Any], words: List[str], neighbor_cfg, a
             if kw == 'activate':
                 per_af['activate'] = not negated
         return
-    _apply_bgp_router_keyword(rb, w, negated, af_cfg if (w[0] in ('network', 'aggregate-address', 'redistribute'))
-                              else None)
+    _apply_bgp_router_keyword(rb, w, negated, af_cfg)
 
 
 def _apply_bgp_neighbor_keyword(n: Dict[str, Any], w: List[str], kw: str, arg, negated: bool) -> None:
@@ -771,6 +783,45 @@ def _apply_bgp_neighbor_keyword(n: Dict[str, Any], w: List[str], kw: str, arg, n
         n['send_community'] = not negated
     elif kw == 'activate':
         n['activate'] = not negated
+    elif kw == 'maximum-prefix':
+        n['maximum_prefix'] = None if negated else _maximum_prefix(w[3:])
+    elif kw == 'maximum-prefix-out':
+        n['maximum_prefix_out'] = None if negated else _int_or_none(arg)
+    elif kw == 'ttl-security':
+        # neighbor X ttl-security hops N
+        n['ttl_security'] = None if negated else (_int_or_none(w[4]) if len(w) >= 5 and w[3] == 'hops' else None)
+    elif kw == 'bfd':
+        if len(w) >= 5 and w[3] == 'profile':
+            n['bfd_profile'] = None if negated else w[4]
+            if not negated:
+                n['bfd'] = True
+        else:
+            n['bfd'] = not negated
+            if negated:
+                n['bfd_profile'] = None
+    elif kw == 'graceful-shutdown':
+        n['graceful_shutdown'] = not negated
+
+
+def _maximum_prefix(words: List[str]) -> Optional[Dict[str, Any]]:
+    """``N [THRESHOLD] [warning-only | restart MIN] [force]`` (the words after ``maximum-prefix``) ->
+    ``{'limit', 'threshold', 'warning_only', 'restart', 'force'}`` (threshold / restart ``None`` when
+    not given; FRR's default threshold is 75 %)."""
+    if not words or not words[0].isdigit():
+        return None
+    result = {'limit': int(words[0]), 'threshold': None, 'warning_only': False, 'restart': None, 'force': False}
+    rest = words[1:]
+    if rest and rest[0].isdigit():
+        result['threshold'] = int(rest[0])
+        rest = rest[1:]
+    for i, word in enumerate(rest):
+        if word == 'warning-only':
+            result['warning_only'] = True
+        elif word == 'restart' and i + 1 < len(rest):
+            result['restart'] = _int_or_none(rest[i + 1])
+        elif word == 'force':
+            result['force'] = True
+    return result
 
 
 def _apply_bgp_router_keyword(rb: Dict[str, Any], w: List[str], negated: bool, af_cfg) -> None:
@@ -791,6 +842,30 @@ def _apply_bgp_router_keyword(rb: Dict[str, Any], w: List[str], negated: bool, a
             rb['bestpath'].append(" ".join(w[2:]))
         elif w[1] == 'cluster-id' and len(w) >= 3:
             rb['cluster_id'] = None if negated else w[2]
+        elif w[1] == 'confederation' and len(w) >= 3 and w[2] == 'identifier':
+            rb['confederation_identifier'] = None if negated else (_int_or_none(w[3]) if len(w) >= 4 else None)
+        elif w[1] == 'confederation' and len(w) >= 3 and w[2] == 'peers':
+            peers = [int(x) for x in w[3:] if x.isdigit()]
+            if negated:
+                rb['confederation_peers'] = [x for x in rb['confederation_peers'] if x not in peers] if peers else []
+            else:
+                rb['confederation_peers'] += [x for x in peers if x not in rb['confederation_peers']]
+        elif w[1] == 'graceful-shutdown':
+            rb['graceful_shutdown'] = not negated
+        elif w[1] == 'dampening':
+            values = None
+            if not negated:
+                numbers = [int(x) for x in w[2:6] if x.isdigit()]
+                values = tuple(numbers) if len(numbers) == 4 else BGP_DAMPENING_DEFAULTS
+            rb['dampening'] = values
+            af_cfg()['dampening'] = values
+        return
+    if w[0] == 'maximum-paths' and len(w) >= 2:
+        key = 'maximum_paths_ibgp' if w[1] == 'ibgp' else 'maximum_paths'
+        value = w[2] if key == 'maximum_paths_ibgp' and len(w) >= 3 else w[1]
+        number = None if negated else _int_or_none(value)
+        rb[key] = number
+        af_cfg()[key] = number
         return
     if w[0] == 'network' and len(w) >= 2:
         for target in (rb, af_cfg()):
@@ -901,6 +976,16 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
     tells whether a neighbour is active in a family.  An unnumbered neighbour
     (``neighbor eth0 interface remote-as external``) has ``'interface': True``.
 
+    BGP operations: a neighbour also has ``'maximum_prefix'`` (``None`` or ``{'limit', 'threshold',
+    'warning_only', 'restart', 'force'}``), ``'maximum_prefix_out'``, ``'ttl_security'`` (the hops of
+    GTSM), ``'bfd'`` / ``'bfd_profile'`` and ``'graceful_shutdown'``; ``router_bgp`` has
+    ``'confederation_identifier'``, ``'confederation_peers'`` (ASNs), ``'graceful_shutdown'`` (the
+    global form), ``'maximum_paths'`` / ``'maximum_paths_ibgp'`` and ``'dampening'`` (``(half-life,
+    reuse, suppress, max-suppress)``, :data:`BGP_DAMPENING_DEFAULTS` for a bare ``bgp dampening``),
+    the last three also in their family's view; ``cfg['rpki']`` = ``{'present', 'cache_servers':
+    [{'mode', 'host', 'port', 'preference'}], 'polling_period', 'retry_interval',
+    'expire_interval'}``.
+
     Area ids are normalised to dotted form (``area 1`` -> ``'0.0.0.1'``).  Both the
     router-level ``passive-interface X`` and the interface-level ``ip ospf passive``
     syntaxes are recognised; ``interfaces[X]['passive']`` reflects only the
@@ -936,9 +1021,11 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
         'router_isis': _empty_router_isis_config(),
         'bfd': {'profiles': {}},
         'vrfs': {},
+        'rpki': {'present': False, 'cache_servers': [], 'polling_period': None, 'retry_interval': None,
+                 'expire_interval': None},
     }
     # 'router_ospf' | 'router_ospf6' | 'router_bgp' | 'interface' | 'route_map' | 'mpls_ldp' |
-    # 'router_isis' | 'bfd' | 'vrf' | 'other' | None
+    # 'router_isis' | 'bfd' | 'vrf' | 'rpki' | 'other' | None
     section: Optional[str] = None
     ri = cfg['router_isis']
     bfd_profile: Dict[str, Any] | None = None   # the open ``profile NAME`` block of bfd
@@ -1041,6 +1128,10 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
             if words == ['bfd']:
                 section, iface, bfd_profile = 'bfd', None, None
                 continue
+            if words == ['rpki']:
+                section, iface = 'rpki', None
+                cfg['rpki']['present'] = True
+                continue
             if words[0] == 'vrf' and len(words) >= 2:
                 section, iface = 'vrf', None
                 vrf_cfg = cfg['vrfs'].setdefault(words[1], {'vni': None})
@@ -1133,6 +1224,10 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
 
         if section == 'router_isis':
             _parse_router_isis_line(ri, words)
+            continue
+
+        if section == 'rpki':
+            _parse_rpki_line(cfg['rpki'], words)
             continue
 
         if section == 'bfd':
@@ -1273,6 +1368,31 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
             continue
 
     return cfg
+
+
+def _parse_rpki_line(rpki: Dict[str, Any], words: List[str]) -> None:
+    """One statement of the ``rpki`` block: ``rpki cache tcp HOST PORT [source A] preference N``,
+    ``rpki polling_period N`` (also the ``retry_interval`` / ``expire_interval`` timers)."""
+    negated = words[0] == 'no'
+    w = words[1:] if negated else words
+    if len(w) < 3 or w[0] != 'rpki':
+        return
+    if w[1] == 'cache':
+        rest = w[2:]
+        mode = 'tcp'
+        if rest and rest[0] in ('tcp', 'ssh'):
+            mode, rest = rest[0], rest[1:]
+        if len(rest) < 2:
+            return
+        server = {'mode': mode, 'host': rest[0], 'port': _int_or_none(rest[1]), 'preference': None}
+        if 'preference' in rest[:-1]:
+            server['preference'] = _int_or_none(rest[rest.index('preference') + 1])
+        rpki['cache_servers'] = [s for s in rpki['cache_servers']
+                                 if (s['host'], s['port']) != (server['host'], server['port'])]
+        if not negated:
+            rpki['cache_servers'].append(server)
+    elif w[1] in ('polling_period', 'retry_interval', 'expire_interval'):
+        rpki[w[1]] = None if negated else _int_or_none(w[2])
 
 
 def _empty_router_bgp_vrf_config() -> Dict[str, Any]:
@@ -1470,10 +1590,37 @@ def _af_key(afi: str) -> str:
 
 
 def as_list_from_string(path) -> List[int]:
-    """``'65100 65000'`` -> ``[65100, 65000]`` (AS sets ``{65100,65000}`` keep their members)."""
+    """``'65100 65000'`` -> ``[65100, 65000]`` (AS sets ``{65100,65000}`` keep their members, and so
+    do the confederation segments ``(65101 65102)``: see :func:`confed_as_list_from_string`)."""
     if not path:
         return []
     return [int(tok) for tok in re.findall(r'\d+', str(path))]
+
+
+def confed_as_list_from_string(path) -> List[int]:
+    """The member ASes of a confederation crossed by a path: the numbers between parentheses
+    (``'(65101 65102) 64500'`` -> ``[65101, 65102]``; ``[]`` outside a confederation)."""
+    if not path:
+        return []
+    return [int(tok) for seg in re.findall(r'\(([^)]*)\)', str(path)) for tok in re.findall(r'\d+', seg)]
+
+
+#: the validation states of a path (``rpki`` of :func:`parse_bgp_routes` / :func:`parse_bgp_prefix`)
+RPKI_STATES = ('valid', 'invalid', 'notfound')
+
+
+def _rpki_state(e: Dict[str, Any]) -> Optional[str]:
+    """``'valid'`` / ``'invalid'`` / ``'notfound'`` from ``rpkiValidationState`` (one prefix: ``'not
+    found'``) or the ``rpkiValid`` / ``rpkiInvalid`` / ``rpkiNotFound`` booleans (whole table);
+    ``None`` without RPKI (bgpd started without ``-M rpki``)."""
+    state = e.get('rpkiValidationState')
+    if isinstance(state, str):
+        state = state.replace(' ', '').lower()
+        return state if state in RPKI_STATES else None
+    for key, value in (('rpkiValid', 'valid'), ('rpkiInvalid', 'invalid'), ('rpkiNotFound', 'notfound')):
+        if e.get(key):
+            return value
+    return None
 
 
 # -- show bgp ipv4 unicast summary ------------------------------------------
@@ -1515,8 +1662,12 @@ def parse_bgp_summary(data: Any) -> Dict[str, Any]:
             'description': p.get('desc'),
             'uptime': p.get('peerUptime'),
             'id_type': p.get('idType'),
+            'peer_state': p.get('peerState'),
+            # the session was closed because the peer sent more prefixes than maximum-prefix
+            'prefix_limit_exceeded': p.get('peerState') == 'PfxCt',
         }
-    return {'router_id': data.get('routerId'), 'as': _int_or_none(data.get('as')), 'peers': peers}
+    return {'router_id': data.get('routerId'), 'as': _int_or_none(data.get('as')), 'peers': peers,
+            'dampening_enabled': bool(data.get('dampeningEnabled'))}
 
 
 def get_bgp_summary(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
@@ -1587,8 +1738,14 @@ def parse_bgp_neighbor(data: Any, peer: str = None, afi: str = 'ipv4') -> Dict[s
         link = 'external'
     elif entry.get('nbrInternalLink'):
         link = 'internal'
+    elif entry.get('nbrConfedExternalLink'):
+        link = 'confed-external'      # a member AS of the same confederation
+    elif entry.get('nbrConfedInternalLink'):
+        link = 'confed-internal'
     else:
         link = None
+    restart_ms = _int_or_none(af.get('prefixAllowedRestartIntervalMsecs'))
+    bfd = entry.get('peerBfdInfo') if isinstance(entry.get('peerBfdInfo'), dict) else {}
     return {
         'peer': peer_ip,
         'remote_as': _int_or_none(entry.get('remoteAs')),
@@ -1619,6 +1776,15 @@ def parse_bgp_neighbor(data: Any, peer: str = None, afi: str = 'ipv4') -> Dict[s
         'send_community': 'commAttriSentToNbr' in af if af else True,
         'nexthop_global': entry.get('nexthopGlobal'),
         'nexthop_local': entry.get('nexthopLocal'),
+        # maximum-prefix (the family's limit) and why the session was last closed
+        'max_prefix': _int_or_none(af.get('prefixAllowedMax')),
+        'max_prefix_threshold': _int_or_none(af.get('prefixAllowedWarningThresh')),
+        'max_prefix_warning_only': bool(af.get('prefixAllowedMaxWarning')),
+        'max_prefix_restart': None if restart_ms is None else restart_ms // 60000,   # minutes
+        'max_prefix_exceeded': bool(entry.get('prefixesConfigExceedMax')),
+        'last_notification': entry.get('lastNotificationReason'),
+        'last_reset': entry.get('lastResetDueTo'),
+        'bfd_status': bfd.get('status'),             # 'Up' / 'Down' / None without BFD
         'af': af,
         'raw': entry,
     }
@@ -1682,6 +1848,12 @@ def _parse_bgp_path_entry(e: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'valid': bool(e.get('valid')),
         'best': best,
+        'multipath': bool(e.get('multipath')),
+        'rpki': _rpki_state(e),
+        # dampening: suppressed (``damped``) or kept only as flap history (``history``)
+        'damped': bool(e.get('damped') or e.get('dampeningSuppressed')),
+        'history': bool(e.get('history') or e.get('dampeningHistoryEntry')),
+        'dampening_penalty': _int_or_none(e.get('dampeningPenalty')),
         'reason': reason,
         'path_from': path_from,
         'nexthop': used.get('ip'),
@@ -1693,6 +1865,7 @@ def _parse_bgp_path_entry(e: Dict[str, Any]) -> Dict[str, Any]:
         'peer_router_id': peer_router_id,
         'aspath': aspath_str,
         'as_list': as_list_from_string(aspath_str),
+        'confed_as_list': confed_as_list_from_string(aspath_str),
         'locprf': _int_or_none(e.get('locPrf')),
         'med': _int_or_none(e.get('metric')),
         'weight': _int_or_none(e.get('weight')) or 0,
@@ -1718,6 +1891,11 @@ def parse_bgp_routes(data: Any) -> Dict[str, List[Dict[str, Any]]]:
 
     A ``network`` statement whose prefix has no route in the RIB (``bgp network
     import-check``) yields a path with ``valid`` and ``best`` both ``False``.
+
+    Every path also has ``multipath`` (installed with the best path, ``=`` in the text),
+    ``rpki`` (``'valid'`` / ``'invalid'`` / ``'notfound'``, ``None`` without the RPKI module),
+    ``damped`` / ``history`` / ``dampening_penalty`` (dampening) and ``confed_as_list`` (the member
+    ASes of a confederation, the ``(65101 65102)`` part of the AS path, also counted in ``as_list``).
     """
     if not isinstance(data, dict):
         return {}
@@ -3763,3 +3941,134 @@ def evpn_family(router_bgp: Dict[str, Any]) -> Dict[str, Any]:
     'rt_import', 'rt_export'}}``, the ``vni N`` blocks) and ``neighbors``."""
     af = dict(((router_bgp or {}).get('address_families') or {}).get('l2vpn evpn') or _empty_bgp_af_config())
     return _evpn_af(af)
+
+
+# ---------------------------------------------------------------------------
+# BGP operations: RPKI (bgpd -M rpki), dampening
+# ---------------------------------------------------------------------------
+
+def parse_rpki_cache_connection(data: Any) -> Dict[str, Any]:
+    """The JSON of ``show rpki cache-connection``: ``{'connected': bool, 'error': str | None,
+    'connections': [{'mode', 'host', 'port', 'preference', 'state'}]}`` (``connected``: one cache
+    server at least in state ``connected``; the error is FRR's message when none is,
+    ``"No connection to RPKI cache server."``)."""
+    result = {'connected': False, 'error': None, 'connections': []}
+    if not isinstance(data, dict):
+        return result
+    result['error'] = data.get('error') if isinstance(data.get('error'), str) else None
+    for c in data.get('connections') or []:
+        if isinstance(c, dict):
+            result['connections'].append({'mode': c.get('mode'), 'host': c.get('host'),
+                                          'port': _int_or_none(c.get('port')),
+                                          'preference': _int_or_none(c.get('preference')),
+                                          'state': c.get('state')})
+    result['connected'] = any(c['state'] == 'connected' for c in result['connections'])
+    return result
+
+
+def get_rpki_cache_connection(grade: Grade0, machine_name: str, step: int = 1,
+                              allow_error: bool = True) -> Dict[str, Any]:
+    """Run 'vtysh -c "show rpki cache-connection json"' (see :func:`parse_rpki_cache_connection`;
+    not connected when bgpd has no RPKI module or no cache server)."""
+    return parse_rpki_cache_connection(_vtysh_json(grade, machine_name, 'show rpki cache-connection', step,
+                                                   allow_error))
+
+
+def parse_rpki_prefix_table(data: Any) -> List[Dict[str, Any]]:
+    """The JSON of ``show rpki prefix-table``: the validated ROA payloads (VRPs) the router got from
+    its cache, ``[{'prefix': '172.16.4.0/22', 'max_length': 24, 'asn': 65002}]`` (``[]`` without
+    connection: ``{"error": ...}``)."""
+    if not isinstance(data, dict):
+        return []
+    result = []
+    for v in data.get('prefixes') or []:
+        if not isinstance(v, dict) or not v.get('prefix'):
+            continue
+        low = _int_or_none(v.get('prefixLenMin'))
+        result.append({'prefix': f"{v['prefix']}/{low}" if low is not None else str(v['prefix']),
+                       'max_length': _int_or_none(v.get('prefixLenMax')), 'asn': _int_or_none(v.get('asn'))})
+    return result
+
+
+def get_rpki_prefix_table(grade: Grade0, machine_name: str, step: int = 1,
+                          allow_error: bool = True) -> List[Dict[str, Any]]:
+    """Run 'vtysh -c "show rpki prefix-table json"' (see :func:`parse_rpki_prefix_table`)."""
+    return parse_rpki_prefix_table(_vtysh_json(grade, machine_name, 'show rpki prefix-table', step, allow_error))
+
+
+def rpki_origin_state(vrps: List[Dict[str, Any]], prefix, origin_as: int) -> str:
+    """Route origin validation (RFC 6811) of *prefix* announced by *origin_as* against a list of
+    VRPs (:func:`parse_rpki_prefix_table`, or the ROAs of a validator file in the same shape):
+    ``'notfound'`` when no VRP covers the prefix, ``'valid'`` when one covering VRP has this origin
+    and a max length at least the prefix length, else ``'invalid'``."""
+    net = ip_network(str(prefix), strict=False)
+    covered = False
+    for v in vrps:
+        try:
+            vnet = ip_network(v["prefix"], strict=False)
+        except (KeyError, ValueError):
+            continue
+        if vnet.version != net.version or not net.subnet_of(vnet):
+            continue
+        covered = True
+        max_length = v.get('max_length') if v.get('max_length') is not None else vnet.prefixlen
+        if v.get('asn') == origin_as and net.prefixlen <= max_length:
+            return 'valid'
+    return 'invalid' if covered else 'notfound'
+
+
+def parse_bgp_dampening_parameters(data: Any) -> Dict[str, Any]:
+    """The JSON of ``show bgp ipv4 unicast dampening parameters``: ``{'half_life': 15, 'reuse': 750,
+    'suppress': 2000, 'max_suppress': 60}`` (half-life and max-suppress in minutes, as configured
+    with ``bgp dampening``); ``{}`` when dampening is off."""
+    if not isinstance(data, dict) or 'halfLifeSecs' not in data:
+        return {}
+    half, max_suppress = _int_or_none(data.get('halfLifeSecs')), _int_or_none(data.get('maxSuppressTimeSecs'))
+    return {'half_life': None if half is None else half // 60, 'reuse': _int_or_none(data.get('reusePenalty')),
+            'suppress': _int_or_none(data.get('suppressPenalty')),
+            'max_suppress': None if max_suppress is None else max_suppress // 60,
+            'max_penalty': _int_or_none(data.get('maxSuppressPenalty'))}
+
+
+def get_bgp_dampening_parameters(grade: Grade0, machine_name: str, step: int = 1,
+                                 allow_error: bool = True) -> Dict[str, Any]:
+    """Run 'vtysh -c "show bgp ipv4 unicast dampening parameters json"' (see
+    :func:`parse_bgp_dampening_parameters`)."""
+    return parse_bgp_dampening_parameters(
+        _vtysh_json(grade, machine_name, 'show bgp ipv4 unicast dampening parameters', step, allow_error))
+
+
+def parse_bgp_dampening_paths(data: Any) -> Dict[str, List[Dict[str, Any]]]:
+    """The JSON of ``show bgp ipv4 unicast dampening dampened-paths`` or ``... flap-statistics``:
+    ``{prefix: [{'peer', 'aspath', 'damped', 'history', 'flaps', 'reuse_ms'}]}`` (``flaps``: only in
+    the flap statistics; ``{}`` when nothing is listed or dampening is off)."""
+    if not isinstance(data, dict) or not isinstance(data.get('routes'), dict):
+        return {}
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for prefix, entries in data['routes'].items():
+        if isinstance(entries, dict):
+            entries = [entries]
+        for e in entries or []:
+            if not isinstance(e, dict):
+                continue
+            result.setdefault(prefix, []).append({
+                'peer': e.get('peerHost') or e.get('peerId'), 'aspath': e.get('asPath') or e.get('path') or '',
+                'damped': bool(e.get('damped')), 'history': bool(e.get('history')),
+                'flaps': _int_or_none(e.get('bdiFlap')), 'reuse_ms': _int_or_none(e.get('reuseTimerMsecs'))})
+    return result
+
+
+def get_bgp_dampened_paths(grade: Grade0, machine_name: str, step: int = 1,
+                           allow_error: bool = True) -> Dict[str, List[Dict[str, Any]]]:
+    """The suppressed paths: 'vtysh -c "show bgp ipv4 unicast dampening dampened-paths json"' (see
+    :func:`parse_bgp_dampening_paths`)."""
+    return parse_bgp_dampening_paths(
+        _vtysh_json(grade, machine_name, 'show bgp ipv4 unicast dampening dampened-paths', step, allow_error))
+
+
+def get_bgp_flap_statistics(grade: Grade0, machine_name: str, step: int = 1,
+                            allow_error: bool = True) -> Dict[str, List[Dict[str, Any]]]:
+    """The paths with a flap history: 'vtysh -c "show bgp ipv4 unicast dampening flap-statistics
+    json"' (see :func:`parse_bgp_dampening_paths`)."""
+    return parse_bgp_dampening_paths(
+        _vtysh_json(grade, machine_name, 'show bgp ipv4 unicast dampening flap-statistics', step, allow_error))

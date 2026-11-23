@@ -1,0 +1,11 @@
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 8,
+ "routerId": "1.1.1.1",
+ "defaultLocPrf": 100,
+ "localAS": 65101,
+ "routes": { "172.16.20.0/24": [{"rpkiNotFound":true,"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"172.16.20.0","prefixLen":24,"network":"172.16.20.0/24","version":2,"metric":0,"locPrf":150,"weight":0,"peerId":"10.0.13.2","path":"(65102)","origin":"IGP","nexthops":[{"ip":"10.0.13.2","hostname":"bp3","afi":"ipv4","used":true}]}]
+,"172.16.31.0/24": [{"rpkiNotFound":true,"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"172.16.31.0","prefixLen":24,"network":"172.16.31.0/24","version":3,"metric":0,"locPrf":100,"weight":0,"peerId":"10.0.13.2","path":"(65102)","origin":"IGP","nexthops":[{"ip":"10.0.13.2","hostname":"bp3","afi":"ipv4","used":true}]}]
+,"172.16.40.0/24": [{"rpkiNotFound":true,"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"172.16.40.0","prefixLen":24,"network":"172.16.40.0/24","version":8,"metric":0,"locPrf":0,"weight":0,"peerId":"10.0.14.2","path":"65004","origin":"IGP","nexthops":[{"ip":"10.0.14.2","hostname":"bp4","afi":"ipv4","used":true}]}]
+ } , "totalRoutes": 3, "totalPaths": 3 } 

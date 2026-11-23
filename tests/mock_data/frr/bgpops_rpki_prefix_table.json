@@ -1,0 +1,30 @@
+{
+  "prefixes":[
+    {
+      "prefix":"172.16.4.0",
+      "prefixLenMin":22,
+      "prefixLenMax":22,
+      "asn":65002
+    },
+    {
+      "prefix":"172.16.1.0",
+      "prefixLenMin":24,
+      "prefixLenMax":24,
+      "asn":65002
+    },
+    {
+      "prefix":"172.16.2.0",
+      "prefixLenMin":24,
+      "prefixLenMax":24,
+      "asn":65002
+    },
+    {
+      "prefix":"172.16.2.0",
+      "prefixLenMin":24,
+      "prefixLenMax":24,
+      "asn":65099
+    }
+  ],
+  "ipv4PrefixCount":4,
+  "ipv6PrefixCount":0
+}

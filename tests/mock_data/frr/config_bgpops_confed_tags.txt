@@ -1,0 +1,59 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 10.3
+frr defaults traditional
+hostname bp3
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+ip prefix-list LOCALAS seq 5 permit 172.16.32.0/24
+ip prefix-list NOADV seq 5 permit 172.16.33.0/24
+ip prefix-list NOEXP seq 5 permit 172.16.31.0/24
+!
+route-map TAG permit 10
+ match ip address prefix-list NOEXP
+ set community no-export
+exit
+!
+route-map TAG permit 20
+ match ip address prefix-list LOCALAS
+ set community local-AS
+exit
+!
+route-map TAG permit 30
+ match ip address prefix-list NOADV
+ set community no-advertise
+exit
+!
+route-map TAG permit 40
+ set local-preference 150
+exit
+!
+ip route 172.16.20.0/24 blackhole
+ip route 172.16.30.0/24 blackhole
+ip route 172.16.31.0/24 blackhole
+ip route 172.16.32.0/24 blackhole
+ip route 172.16.33.0/24 blackhole
+ip route 172.16.34.0/24 blackhole
+ip route 172.16.50.0/24 blackhole
+!
+router bgp 65102
+ bgp router-id 3.3.3.3
+ no bgp ebgp-requires-policy
+ bgp confederation identifier 65100
+ bgp confederation peers 65101
+ neighbor 10.0.13.1 remote-as 65101
+ neighbor 10.0.23.1 remote-as 65002
+ !
+ address-family ipv4 unicast
+  network 172.16.20.0/24 route-map TAG
+  network 172.16.31.0/24 route-map TAG
+  network 172.16.32.0/24 route-map TAG
+  network 172.16.33.0/24 route-map TAG
+ exit-address-family
+exit
+!
+end

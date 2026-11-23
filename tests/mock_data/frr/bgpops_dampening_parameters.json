@@ -1,0 +1,7 @@
+{
+  "halfLifeSecs":600,
+  "reusePenalty":800,
+  "suppressPenalty":2500,
+  "maxSuppressTimeSecs":2400,
+  "maxSuppressPenalty":12800
+}

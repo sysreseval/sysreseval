@@ -1,0 +1,9 @@
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 14,
+ "routerId": "1.1.1.1",
+ "defaultLocPrf": 100,
+ "localAS": 65101,
+ "routes": { "172.16.40.0/24": [{"rpkiNotFound":true,"valid":true,"damped":true,"multipath":true,"pathFrom":"external","peerHost":"10.0.14.2","bdiFlap":5,"peerUptime":"00:00:36","peerUptimeMsec":36000,"peerUptimeEstablishedEpoch":1795446999,"reuseTimerMsecs":1495000,"asPath":"65004","origin":"i"}]
+ } , "totalRoutes": 1, "totalPaths": 1 } 

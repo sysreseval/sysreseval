@@ -493,7 +493,7 @@ class TestKernelRoutes:
         r = parse_kernel_routes(load('iproute_r1_final.json'))
         assert r['0.0.0.0/0']['protocol'] == 'static'
         assert r['10.139.140.0/22'] == {'protocol': 'ospf', 'metric': 20, 'scope': None,
-                                       'nexthops': [('172.22.40.54', 'eth1')], 'labels': [[]]}
+                                       'nexthops': [('172.22.40.54', 'eth1')], 'labels': [[]], 'type': 'unicast'}
         assert r['192.168.226.0/24']['protocol'] == 'kernel'
         assert r['192.168.226.0/24']['nexthops'] == [(None, 'eth0')]
         assert r['192.168.226.0/24']['scope'] == 'link'
@@ -2617,6 +2617,206 @@ class TestGatewayTables:
         leaf = parse_kernel_routes(load('iproute_vrf_irb_leaf.json'))
         assert leaf['192.168.20.15/32']['nexthops'] == [('10.255.0.12', 'br4000')]
         assert leaf['203.0.113.0/24']['nexthops'] == [('10.255.0.20', 'br4000')]
+
+
+# ---------------------------------------------------------------------------
+# BGP operations (RPKI, maximum-prefix, GTSM, confederations, dampening, BFD, graceful shutdown):
+# fixtures captured on FRR 10.3 + stayrtr in a probe lab (s15, 2026-11-23; tests/mock_data/frr/bgpops_*)
+# ---------------------------------------------------------------------------
+
+from frr import (  # noqa: E402
+    BGP_DAMPENING_DEFAULTS, confed_as_list_from_string, get_bgp_dampened_paths, get_bgp_dampening_parameters,
+    get_bgp_flap_statistics, get_rpki_cache_connection, get_rpki_prefix_table, parse_bgp_dampening_parameters,
+    parse_bgp_dampening_paths, parse_rpki_cache_connection, parse_rpki_prefix_table, rpki_origin_state,
+)
+
+
+class TestRpki:
+    def test_cache_connection(self):
+        c = parse_rpki_cache_connection(load_json('bgpops_rpki_connection.json'))
+        assert c['connected'] is True and c['error'] is None
+        assert c['connections'] == [{'mode': 'tcp', 'host': '10.0.99.2', 'port': 3323, 'preference': 1,
+                                     'state': 'connected'}]
+
+    def test_no_connection(self):
+        c = parse_rpki_cache_connection({"error": "No connection to RPKI cache server."})
+        assert c == {'connected': False, 'error': "No connection to RPKI cache server.", 'connections': []}
+        assert parse_rpki_cache_connection(None)['connected'] is False
+        assert get_rpki_cache_connection(make_grade('% Unknown command: show rpki cache-connection json', 1),
+                                         'r1')['connected'] is False
+
+    def test_prefix_table(self):
+        vrps = parse_rpki_prefix_table(load_json('bgpops_rpki_prefix_table.json'))
+        assert {'prefix': '172.16.4.0/22', 'max_length': 22, 'asn': 65002} in vrps
+        assert {'prefix': '172.16.2.0/24', 'max_length': 24, 'asn': 65099} in vrps
+        assert parse_rpki_prefix_table({"error": "No Connection to RPKI cache server."}) == []
+
+    def test_calls(self):
+        grade = make_grade(load('bgpops_rpki_prefix_table.json'))
+        assert get_rpki_prefix_table(grade, 'r1', step=2)
+        grade.test.assert_called_once_with('r1', 'vtysh -c "show rpki prefix-table json"', step=2, allow_error=True)
+
+    def test_origin_validation(self):
+        vrps = [{'prefix': '172.16.4.0/22', 'max_length': 22, 'asn': 65002},
+                {'prefix': '172.16.2.0/24', 'max_length': 24, 'asn': 65099},
+                {'prefix': '172.16.2.0/24', 'max_length': 24, 'asn': 65002}]
+        assert rpki_origin_state(vrps, '172.16.4.0/22', 65002) == 'valid'
+        assert rpki_origin_state(vrps, '172.16.4.0/24', 65002) == 'invalid'    # longer than maxLength
+        assert rpki_origin_state(vrps, '172.16.4.0/22', 65003) == 'invalid'    # wrong origin
+        assert rpki_origin_state(vrps, '172.16.2.0/24', 65002) == 'valid'      # one VRP of two matches
+        assert rpki_origin_state(vrps, '172.16.3.0/24', 65002) == 'notfound'
+
+    def test_route_states(self):
+        routes = parse_bgp_routes(load_json('bgpops_routes_rpki.json'))
+        assert bgp_best_path(routes, '172.16.1.0/24')['rpki'] == 'valid'
+        assert bgp_best_path(routes, '172.16.3.0/24')['rpki'] == 'notfound'
+        assert bgp_best_path(routes, '172.16.1.0/24')['locprf'] == 200     # match rpki valid -> local-pref 200
+        assert '172.16.4.0/24' not in routes                                # match rpki invalid -> deny
+        one = parse_bgp_prefix(load_json('bgpops_prefix_rpki_notfound.json'))
+        assert one['paths'][0]['rpki'] == 'notfound'
+        # the whole table and one prefix name the states differently
+        assert parse_bgp_routes({'routes': {'p': [{'rpkiInvalid': True}]}})['p'][0]['rpki'] == 'invalid'
+        assert parse_bgp_prefix({'paths': [{'rpkiValidationState': 'invalid'}]})['paths'][0]['rpki'] == 'invalid'
+        assert parse_bgp_prefix({'paths': [{}]})['paths'][0]['rpki'] is None
+
+    def test_config(self):
+        cfg = parse_frr_config(load('config_bgpops_r1.txt'))
+        assert cfg['rpki'] == {'present': True, 'polling_period': None, 'retry_interval': None,
+                               'expire_interval': None,
+                               'cache_servers': [{'mode': 'tcp', 'host': '10.0.99.2', 'port': 3323, 'preference': 1}]}
+        rm = cfg['route_maps']['RPKI-IN']
+        assert ('deny', ['rpki invalid']) in [(e['action'], e['match']) for e in rm]
+        assert parse_frr_config("rpki\n rpki polling_period 60\n rpki cache 10.0.0.1 323 preference 2\nexit\n")[
+            'rpki']['cache_servers'][0]['port'] == 323
+        assert parse_frr_config("router bgp 1\n")['rpki']['present'] is False
+
+
+class TestMaximumPrefix:
+    def test_summary_pfxct(self):
+        s = parse_bgp_summary(load_json('bgpops_summary_pfxct.json'))
+        p = s['peers']['10.0.13.2']
+        assert p['state'] == 'Idle (PfxCt)' and p['established'] is False and p['prefix_limit_exceeded'] is True
+        assert s['peers']['10.0.14.2']['prefix_limit_exceeded'] is False and s['dampening_enabled'] is True
+
+    def test_neighbor(self):
+        n = parse_bgp_neighbor(load_json('bgpops_neighbor_pfxct.json'), peer='10.0.13.2')
+        assert n['max_prefix'] == 1 and n['max_prefix_threshold'] == 75 and n['max_prefix_exceeded'] is True
+        assert n['last_notification'] == 'Cease/Maximum Number of Prefixes Reached'
+        assert n['max_prefix_restart'] is None and n['max_prefix_warning_only'] is False
+        r = parse_bgp_neighbor(load_json('bgpops_neighbor_maxpfx_restart.json'), peer='10.0.14.2')
+        assert (r['max_prefix'], r['max_prefix_threshold'], r['max_prefix_restart']) == (10, 60, 5)
+        assert r['max_prefix_exceeded'] is False
+
+    def test_config(self):
+        n = parse_frr_config(load('config_bgpops_r1.txt'))['router_bgp']['neighbors']
+        assert n['10.0.13.2']['maximum_prefix'] == {'limit': 1, 'threshold': None, 'warning_only': False,
+                                                    'restart': None, 'force': False}
+        assert n['10.0.14.2']['maximum_prefix'] == {'limit': 10, 'threshold': 60, 'warning_only': False,
+                                                    'restart': 5, 'force': False}
+        cfg = parse_frr_config("router bgp 1\n neighbor 10.0.0.2 remote-as 2\n address-family ipv4 unicast\n"
+                               "  neighbor 10.0.0.2 maximum-prefix 4 50 warning-only\n"
+                               "  neighbor 10.0.0.2 maximum-prefix-out 3\n exit-address-family\nexit\n")['router_bgp']
+        assert cfg['neighbors']['10.0.0.2']['maximum_prefix']['warning_only'] is True
+        assert cfg['neighbors']['10.0.0.2']['maximum_prefix_out'] == 3
+        assert cfg['address_families']['ipv4 unicast']['neighbors']['10.0.0.2']['maximum_prefix']['limit'] == 4
+
+
+class TestGtsmBfdGracefulShutdown:
+    def test_config(self):
+        rb = parse_frr_config("router bgp 1\n neighbor 10.0.0.2 remote-as 2\n neighbor 10.0.0.2 ttl-security hops 2\n"
+                              " neighbor 10.0.0.2 bfd\n neighbor 10.0.0.2 bfd profile fast\n"
+                              " neighbor 10.0.0.2 graceful-shutdown\n bgp graceful-shutdown\nexit\n")['router_bgp']
+        n = rb['neighbors']['10.0.0.2']
+        assert n['ttl_security'] == 2 and n['ebgp_multihop'] is None
+        assert n['bfd'] is True and n['bfd_profile'] == 'fast' and n['graceful_shutdown'] is True
+        assert rb['graceful_shutdown'] is True
+        cfg = parse_frr_config(load('config_bgpops_r1.txt'))
+        assert cfg['router_bgp']['neighbors']['10.0.14.2']['bfd_profile'] == 'fast'
+        assert cfg['bfd']['profiles']['fast']
+
+    def test_bfd_neighbor(self):
+        n = parse_bgp_neighbor(load_json('bgpops_neighbor_bfd.json'), peer='10.0.14.2')
+        assert n['bfd_status'] == 'Up'
+        assert parse_bfd_peers(load_json('bgpops_bfd_peers.json'))
+
+    def test_graceful_shutdown_community(self):
+        p = parse_bgp_prefix(load_json('bgpops_prefix_gshut.json'))['paths'][0]
+        assert p['communities'] == ['gracefulShutdown'] and p['locprf'] == 0
+
+
+class TestConfederation:
+    def test_as_path(self):
+        assert confed_as_list_from_string('(65101 65102) 64500') == [65101, 65102]
+        assert confed_as_list_from_string('65100 65002') == []
+        assert as_list_from_string('(65102) 65002') == [65102, 65002]
+
+    def test_paths(self):
+        inside = parse_bgp_prefix(load_json('bgpops_prefix_confed.json'))['paths'][0]
+        assert inside['confed_as_list'] == [65102] and inside['path_from'] == 'confed-external'
+        assert inside['locprf'] == 150      # LOCAL_PREF crosses the member-AS boundary
+        outside = parse_bgp_routes(load_json('bgpops_routes_external_of_confed.json'))
+        assert bgp_best_path(outside, '172.16.20.0/24')['as_list'] == [65100]
+        assert bgp_best_path(outside, '172.16.20.0/24')['confed_as_list'] == []
+        local_as = parse_bgp_prefix(load_json('bgpops_prefix_local_as.json'))['paths'][0]
+        assert local_as['communities'] == ['localAs']
+
+    def test_neighbor_and_config(self):
+        n = parse_bgp_neighbor(load_json('bgpops_neighbor_confed.json'), peer='10.0.13.2')
+        assert n['link'] == 'confed-external' and n['remote_as'] == 65102 and n['local_as'] == 65101
+        rb = parse_frr_config(load('config_bgpops_r1.txt'))['router_bgp']
+        assert rb['as'] == 65101 and rb['confederation_identifier'] == 65100 and rb['confederation_peers'] == [65102]
+        rb = parse_frr_config("router bgp 1\n bgp confederation peers 2 3\n no bgp confederation peers 2\nexit\n")[
+            'router_bgp']
+        assert rb['confederation_peers'] == [3]
+
+
+class TestMultipathAndDampening:
+    def test_multipath_flags_and_config(self):
+        routes = parse_bgp_routes(load_json('bgpops_routes_damped.json'))
+        assert bgp_paths(routes, '172.16.40.0/24')[0]['multipath'] is True
+        rb = parse_frr_config("router bgp 1\n bgp bestpath as-path multipath-relax\n address-family ipv4 unicast\n"
+                              "  maximum-paths 4\n  maximum-paths ibgp 2\n exit-address-family\nexit\n")['router_bgp']
+        assert 'as-path multipath-relax' in rb['bestpath']
+        assert (rb['maximum_paths'], rb['maximum_paths_ibgp']) == (4, 2)
+        assert rb['address_families']['ipv4 unicast']['maximum_paths'] == 4
+
+    def test_dampening_outputs(self):
+        assert parse_bgp_dampening_parameters(load_json('bgpops_dampening_parameters.json')) == {
+            'half_life': 10, 'reuse': 800, 'suppress': 2500, 'max_suppress': 40, 'max_penalty': 12800}
+        assert parse_bgp_dampening_parameters({}) == {}
+        damped = parse_bgp_dampening_paths(load_json('bgpops_dampened_paths.json'))
+        assert damped['172.16.40.0/24'][0]['damped'] is True and damped['172.16.40.0/24'][0]['peer'] == '10.0.14.2'
+        flaps = parse_bgp_dampening_paths(load_json('bgpops_flap_statistics.json'))
+        assert flaps['172.16.40.0/24'][0]['flaps'] >= 4
+        p = parse_bgp_prefix(load_json('bgpops_prefix_damped.json'))['paths'][0]
+        assert p['damped'] is True and p['dampening_penalty'] > 2500
+        assert bgp_paths(parse_bgp_routes(load_json('bgpops_routes_damped.json')), '172.16.40.0/24')[0]['damped']
+
+    def test_dampening_calls(self):
+        for fn, cmd in ((get_bgp_dampening_parameters, 'parameters'), (get_bgp_dampened_paths, 'dampened-paths'),
+                        (get_bgp_flap_statistics, 'flap-statistics')):
+            grade = make_grade('{}')
+            fn(grade, 'r1')
+            grade.test.assert_called_once_with('r1', f'vtysh -c "show bgp ipv4 unicast dampening {cmd} json"',
+                                               step=1, allow_error=True)
+
+    def test_dampening_config(self):
+        rb = parse_frr_config(load('config_bgpops_r1.txt'))['router_bgp']
+        assert rb['dampening'] == (10, 800, 2500, 40)
+        assert rb['address_families']['ipv4 unicast']['dampening'] == (10, 800, 2500, 40)
+        bare = parse_frr_config("router bgp 1\n address-family ipv4 unicast\n  bgp dampening\n"
+                                " exit-address-family\nexit\n")['router_bgp']
+        assert bare['dampening'] == BGP_DAMPENING_DEFAULTS == (15, 750, 2000, 60)
+        assert parse_frr_config("router bgp 1\n")['router_bgp']['dampening'] is None
+
+
+def test_kernel_route_type():
+    routes = parse_kernel_routes(json.dumps([
+        {"type": "blackhole", "dst": "192.0.2.1", "protocol": "static", "metric": 20, "flags": []},
+        {"dst": "172.16.9.9", "gateway": "192.0.2.66", "dev": "discard0", "protocol": "bgp", "metric": 20}]))
+    assert routes['192.0.2.1/32']['type'] == 'blackhole' and routes['192.0.2.1/32']['nexthops'] == [(None, None)]
+    assert routes['172.16.9.9/32']['type'] == 'unicast'
+    assert routes['172.16.9.9/32']['nexthops'] == [('192.0.2.66', 'discard0')]
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,58 @@
+{
+  "prefix":"172.16.20.0/24",
+  "version":2,
+  "advertisedTo":{
+    "10.0.13.2":{
+      "hostname":"bp3"
+    },
+    "10.0.14.2":{
+      "hostname":"bp4"
+    }
+  },
+  "paths":[
+    {
+      "aspath":{
+        "string":"(65102)",
+        "segments":[
+          {
+            "type":"as-confed-sequence",
+            "list":[
+              65102
+            ]
+          }
+        ],
+        "length":0
+      },
+      "origin":"IGP",
+      "metric":0,
+      "locPrf":150,
+      "valid":true,
+      "version":2,
+      "rpkiValidationState":"not found",
+      "bestpath":{
+        "overall":true,
+        "selectionReason":"First path received"
+      },
+      "lastUpdate":{
+        "epoch":1795446917,
+        "string":"Mon Nov 23 15:15:17 2026"
+      },
+      "nexthops":[
+        {
+          "ip":"10.0.13.2",
+          "hostname":"bp3",
+          "afi":"ipv4",
+          "metric":0,
+          "accessible":true,
+          "used":true
+        }
+      ],
+      "peer":{
+        "peerId":"10.0.13.2",
+        "routerId":"3.3.3.3",
+        "hostname":"bp3",
+        "type":"confed-external"
+      }
+    }
+  ]
+}

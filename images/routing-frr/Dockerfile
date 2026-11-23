@@ -30,6 +30,13 @@ RUN apt update && apt install -y iperf ssmping smcroute \
 RUN apt update && apt install -y lldpd \
     && rm -f /etc/systemd/system/multi-user.target.wants/lldpd.service /etc/rc*.d/S*lldpd*
 
+# RPKI (the BGP security lab): stayrtr, an RPKI-to-Router cache serving a local JSON file of ROAs to
+# the routers (bgpd -M rpki, frr-rpki-rtrlib above), and rtrclient (rtr-tools) to query it.  stayrtr
+# is a daemon: nothing starts it (its packaged unit would fetch the ROAs from the Internet), a lab
+# runs `stayrtr` itself (about 27 MB, no dependency beyond base13).
+RUN apt update && apt install -y stayrtr rtr-tools \
+    && rm -f /etc/systemd/system/multi-user.target.wants/stayrtr.service /etc/rc*.d/S*stayrtr*
+
 RUN apt clean && \
     rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 

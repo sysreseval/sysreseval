@@ -1574,6 +1574,47 @@ from frr import (get_bgp_evpn_summary, get_bgp_evpn_routes, evpn_routes, get_evp
 
 Verified on Debian 13 (Linux 6.12, iproute2 7.3.0, FRR 10.3 in `routing-frr`): creating a VXLAN or VRF device in a container loads the module of the host; the VDE links carry jumbo frames and a tap does not enforce its MTU on receive; a VTEP whose path is too small answers a DF host with an ICMP *fragmentation needed* (PMTU 1450 cached ~10 min) and never fragments, a router behind it fragments the VXLAN packet; a multicast VXLAN packet leaves with TTL 1 unless `ttl` is set, and a PIM router registers only directly connected sources (no `local` on a loopback); FRR imports the routes of another AS whose automatic RT differs (it compares the VNI); a MAC+IP route lives while the leaf's ARP entry is fresh (STALE = withdrawn); the BGP instance of a VRF is needed for type-5 routes only; a border that is also a PE re-originates EVPN ↔ VPNv4 in both directions, and only `route-map vpn export` (not `aggregate-address … summary-only`) keeps the /32 host routes out of VPNv4. Examples: `lab/sre/_DRAFT_misc/vxlan-evpn.py` and `lab/sre/_DRAFT_misc/evpn-mpls.py`.
 
+### BGP operations helpers (from `/opt/sre/lib/frr.py`)
+
+```python
+from frr import (get_rpki_cache_connection, get_rpki_prefix_table, rpki_origin_state,
+                 get_bgp_dampening_parameters, get_bgp_dampened_paths, get_bgp_flap_statistics,
+                 confed_as_list_from_string, BGP_DAMPENING_DEFAULTS)
+```
+
+Helpers of the two BGP operations labs (`bgp-security.py`: RPKI, maximum-prefix, GTSM, RTBH, BFD;
+`bgp-scaling.py`: communities, multipath, confederations, dampening, graceful shutdown), written on
+FRR 10.3 with the RPKI module (`bgpd -M rpki`) and **stayrtr** (in the `routing-frr` image: an RTR
+cache serving a local JSON file of ROAs, `stayrtr -bind :3323 -cache FILE -checktime=false`).
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `get_rpki_cache_connection(grade, machine, step=1, allow_error=True)` | `dict` | `show rpki cache-connection`: `connected` (a cache server in state `connected`), `connections: [{mode, host, port, preference, state}]`, `error` (FRR's message without connection) |
+| `get_rpki_prefix_table(grade, machine, ...)` | `list[dict]` | `show rpki prefix-table`: the VRPs `[{prefix: 'P/len', max_length, asn}]` |
+| `rpki_origin_state(vrps, prefix, origin_as)` | `str` | RFC 6811 validation against VRPs (or the ROAs of a validator file in that shape): `valid` / `invalid` / `notfound` |
+| `get_bgp_dampening_parameters(grade, machine, ...)` | `dict` | `show bgp ipv4 unicast dampening parameters`: `half_life`, `reuse`, `suppress`, `max_suppress` (minutes for the times), `max_penalty`; `{}` without dampening |
+| `get_bgp_dampened_paths` / `get_bgp_flap_statistics(grade, machine, ...)` | `dict` | `{prefix: [{peer, aspath, damped, history, flaps, reuse_ms}]}` |
+| `confed_as_list_from_string(path)` | `list[int]` | The member ASes of a confederation in an AS path (`'(65101) 64500'` → `[65101]`) |
+
+The existing helpers gained: a path of `get_bgp_routes` / `get_bgp_prefix` has `rpki` (`valid` /
+`invalid` / `notfound`, `None` without the module: the whole table says `rpkiValid`…, one prefix
+`rpkiValidationState`), `multipath`, `damped` / `history` / `dampening_penalty` and `confed_as_list`
+(`path_from` is `confed-external` across member ASes); `get_bgp_summary` peers have `peer_state` and
+`prefix_limit_exceeded` (`Idle (PfxCt)`), the summary `dampening_enabled`; `get_bgp_neighbor` has
+`max_prefix`, `max_prefix_threshold`, `max_prefix_warning_only`, `max_prefix_restart` (minutes),
+`max_prefix_exceeded`, `last_notification`, `last_reset`, `bfd_status`, and `link` may be
+`confed-external`; `parse_kernel_routes` gives each route its `type` (`blackhole`…). `parse_frr_config`
+reads `maximum-prefix`, `ttl-security hops`, `bfd [profile]`, `graceful-shutdown` per neighbour,
+`bgp confederation identifier / peers`, `bgp graceful-shutdown`, `maximum-paths [ibgp]`, `bgp dampening`
+(a bare one = `BGP_DAMPENING_DEFAULTS`) and the `rpki` block (`cfg['rpki']['cache_servers']`).
+
+FRR 10.3 facts these labs rely on (all checked live): the whole-table json carries **no communities**
+(read a prefix); a path rejected by `match rpki invalid` comes back only after `clear bgp X soft in`;
+FRR retries a failed RPKI connection after 10 minutes (start the validator first); eBGP multipath is
+on by default; `neighbor X graceful-shutdown` only acts on the routes received from X; FRR keeps a BGP
+session `Idle` while its BFD session is down; a BGP route whose next hop resolves through a `blackhole`
+static route is not installed (RTBH needs a next hop in the connected subnet of a `dummy` interface).
+
 ### Suricata and fail2ban helpers (from `/opt/sre/lib/suricata.py` and `/opt/sre/lib/fail2ban.py`)
 
 ```python

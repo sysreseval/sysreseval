@@ -1,0 +1,10 @@
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 92,
+ "routerId": "4.4.4.4",
+ "defaultLocPrf": 100,
+ "localAS": 65004,
+ "routes": { "172.16.20.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"172.16.20.0","prefixLen":24,"network":"172.16.20.0/24","version":92,"locPrf":0,"weight":0,"peerId":"10.0.14.1","path":"65100","origin":"IGP","nexthops":[{"ip":"10.0.14.1","hostname":"bp1","afi":"ipv4","used":true}]}]
+,"172.16.40.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"172.16.40.0","prefixLen":24,"network":"172.16.40.0/24","version":1,"metric":0,"weight":32768,"peerId":"(unspec)","path":"","origin":"IGP","nexthops":[{"ip":"0.0.0.0","hostname":"bp4","afi":"ipv4","used":true}]}]
+ } , "totalRoutes": 2, "totalPaths": 2 } 
