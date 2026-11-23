@@ -1747,6 +1747,53 @@ from ntp import (get_chrony_snapshot, parse_snapshot, snapshot_cmd, ntp_probe_ch
 
 The image `sysreseval/ntp` (`images/ntp/Dockerfile`, base13 + chrony 4.6) must never be given to a privileged machine: the clock of a container is the clock of the host (Linux has no time namespace for `CLOCK_REALTIME`), a non-privileged Kathara machine lacks `CAP_SYS_TIME` (chronyd without `-x` stops on `adjtimex(0x8001) failed : Operation not permitted`), a privileged one would let a chronyd steer the host's clock. With `-x`, chronyd measures, selects (a falseticker is marked `x`, an unsynchronised server `?`), serves (LI = 3 while unsynchronised, `local stratum` answers at once), authenticates with symmetric keys (`SK`) and NTS (the server key must be readable by `_chrony`, otherwise the TLS handshake of the client fails) exactly as on a real host. Verified on Debian 13 (s17, 2026-11-23): Debian's unit runs chronyd as `User=_chrony` under a sandbox the systemctl stand-in of base13 cannot start, and its init script could not stop a daemon of another user (`--exec` reads `/proc/<pid>/exe`, unreadable without `CAP_SYS_PTRACE`): the image replaces the unit and stops by `--name`; a chronyd starting without a drift file knows its frequency to ±1000000 ppm and, once synchronised, announces a root dispersion growing by one second per second for about a minute, during which its clients and `chronyd -Q` reject it (the image and the lab seed the drift file); `chronyd -Q` works beside a running chronyd and several run in parallel with their own `pidfile`; `ratelimit interval 1 burst 4` answered 12 of 30 requests sent every 50 ms; `tcpdump -v` decodes NTP (a chrony client puts a random transmit timestamp). Example: `lab/sre/_DRAFT_misc/ntp.py`.
 
+### nmap helpers (from `/opt/sre/lib/nmap_scan.py` and `/opt/sre/lib/asset_service.py`)
+
+```python
+from nmap_scan import (nmap_cmd, run_nmap, read_xml_file, xml_file_cmd, parse_nmap_xml, host_of, hosts_up,
+                       is_host_discovery, scanned_ports, covers_ports, port_info, port_state, open_ports,
+                       script_of, host_script, ssh_algorithms, weak_ssh_algorithms, ssh_auth_methods,
+                       tls_versions, tls_least_strength, http_server_header)
+```
+
+nmap is in every Debian 13 image. The grader scans with nmap itself and reads its XML output (`-oX -`); the same
+parser reads the XML files the students save with `-oX` / `-oA`.
+
+| Function | Returns |
+|----------|---------|
+| `nmap_cmd(targets, ports=None, udp=False, scripts=(), script_args=None, extra='', timing=4, retries=1, host_timeout='90s', discovery=False)` | an nmap command line: `-n -Pn` (unless `discovery=True`), `-sU` for UDP, explicit ports, `--script` / `--script-args`, XML on standard output, standard error discarded. Several of them run concurrently in one test with `tcp.parallel_cmd()` (read back with `tc.section_text()`) |
+| `run_nmap(grade, m, targets, ports, step=, timeout=, **kw)` / `read_xml_file(grade, m, path)` + `xml_file_cmd(path)` | the scan run on a machine, or a student's file (`head -c`, a size cap), parsed |
+| `parse_nmap_xml(text)` | `None` for an empty, oversized or non-nmap text, or one declaring entities (a student's file is parsed as root); a document cut by an interrupted scan is read up to its last complete host. Otherwise `{'args', 'start', 'end', 'version', 'finished', 'scaninfo': [{type, protocol, numservices, services}], 'hosts': {address: {'status', 'reason', 'hostnames', 'ports': {(proto, port): {'state', 'reason', 'service', 'scripts'}}, 'extraports', 'scripts'}}}`; a script is `{'id', 'output', 'data'}`, `data` its `<elem>` / `<table>` tree (dict for keyed children, list otherwise) |
+| `hosts_up(run)`, `is_host_discovery(run)` | the addresses up; a discovery alone (`-sn`: no `<scaninfo>`, no port) |
+| `scanned_ports(run, proto)` / `covers_ports(run, ports, proto)` | the ports the scan covered (`-p-` = 1-65535) |
+| `port_state(run, address, port, proto='tcp')` | the state of a listed port, else the `extraports` state of a covered port, else `None`; `open_ports`, `port_info` (its `service`: `product`, `version`, `method` = `probed` after `-sV`) |
+| `script_of(run, address, port, id, proto)` / `host_script(run, address, id)` | one script result |
+| `ssh_algorithms(script)` + `weak_ssh_algorithms(algos)` | `ssh2-enum-algos` by category; the weak ones: SHA-1 key exchanges, CBC / 3DES / RC4 / Blowfish / CAST ciphers, SHA-1 / MD5 / RIPEMD MACs, `ssh-rsa` / DSA host keys |
+| `ssh_auth_methods(script)` | `ssh-auth-methods` (`--script-args ssh.user=...`): `['publickey', 'password', ...]` |
+| `tls_versions(script)` / `tls_least_strength(script)` | `ssl-enum-ciphers`: `['TLSv1.2', 'TLSv1.3']`, the `least strength` grade (`A` ... `F`) |
+| `http_server_header(script)` | `http-server-header`: the `Server` value |
+
+`lib/asset_service.py` is a stdlib TCP line service (greeting `SRE-ASSET 1.2 ready`, `INVENTORY` →
+`asset=…;serial=…;owner=…`, `HELP`, `QUIT`), detached by itself, with `--lifetime` (a grader starts a fresh
+instance with a new serial at every evaluation and runs the students' NSE script against it).
+
+The image `sysreseval/scan` (`images/scan/Dockerfile`, init13 + vsftpd, openbsd-inetd + inetutils-telnetd,
+snmpd + snmp, redis-server + redis-tools, tftpd-hpa, ndiff, xsltproc; nothing starts by itself) holds the legacy
+services a scan finds and a hardening closes. Verified on Debian 13 (nmap 7.95, s17, 2026-11-23): Kathara sets
+`net.ipv4.icmp_ratelimit = 0` in its containers, so a UDP scan of 100 ports takes about a second in a lab (about
+100 s against an ordinary Linux host); a TFTP server answers from another port, so nmap reports a running
+tftpd `open|filtered` (and `closed` once stopped); nmap's SNMP probe is an SNMPv3 discovery, so UDP 161 is
+`open` whatever the communities; `rsync-list-modules` fails against rsync 3.4 ("your client omitted the digest
+name list", printed with `-d` only); `snmp-brute` stores the community it finds and `snmp-sysdescr` of the same
+run uses it (`--script-args creds.snmp=:COMMUNITY` otherwise; the old `snmpcommunity` argument is ignored);
+`ssl-enum-ciphers` against nginx 1.30 / OpenSSL 3.5 with `ALL:@SECLEVEL=0` lists TLS 1.0 to 1.3 and anonymous ECDH
+suites (`least strength: F`); OpenSSH 10.0 still accepts `diffie-hellman-group1-sha1` / `group14-sha1`,
+`aes128-cbc`, `3des-cbc`, `hmac-md5` and `ssh-rsa` when added with `+`, and keeps `hmac-sha1` in its default
+MACs; vsftpd needs `seccomp_sandbox=NO`, `isolate=NO`, `isolate_network=NO` in an unprivileged container; Debian's
+inetutils-telnetd leaves its `inetd.conf` line disabled (`#<off>#`, through `tcpd`, not installed) and `-sV`
+names the service `telnet` without a product (the probes take about 45 s). Example:
+`lab/sre/_DRAFT_misc/scan-hardening.py`.
+
 ### Network inspection helpers (from `/opt/sre/lib/net_config.py`)
 
 These functions are used inside `Grade.grade()` to read live container state.

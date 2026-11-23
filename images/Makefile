@@ -14,7 +14,7 @@ NAMESPACE ?= sysreseval
 #   is built again on the new version of its parent, under its old tag.
 # VERSION_ldap-mail := 1.35
 
-IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa ansible ntp base12 init12
+IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa ansible ntp scan base12 init12
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
 
@@ -68,6 +68,11 @@ ansible: base13
 ntp: base13
 	$(BUILD)
 
+# The legacy services of the scanning and hardening lab (vsftpd, telnetd under inetd, snmpd, Redis,
+# tftpd-hpa) and ndiff, on init13: its hardening targets run them under systemd.
+scan: init13
+	$(BUILD)
+
 # Debian 12 (bookworm) images, kept for the labs that still name them: base12 on kathara/base,
 # init12 = base12 + a genuine systemd.  No other image is built from them any more.
 base12:
@@ -85,8 +90,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + ansible + ntp + base12 + init12"
-	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | ansible | ntp | base12 | init12  build one image (deps included)"
+	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + ansible + ntp + scan + base12 + init12"
+	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | ansible | ntp | scan | base12 | init12  build one image (deps included)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

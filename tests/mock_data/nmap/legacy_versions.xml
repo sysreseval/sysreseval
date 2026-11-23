@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.95 scan initiated Mon Nov 23 20:17:25 2026 as: nmap -n -Pn -sS -sV -p 21,22,23,80,443,873,6379 -oX sv.xml 172.18.0.2 -->
+<nmaprun scanner="nmap" args="nmap -n -Pn -sS -sV -p 21,22,23,80,443,873,6379 -oX sv.xml 172.18.0.2" start="1795465045" startstr="Mon Nov 23 20:17:25 2026" version="7.95" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="7" services="21-23,80,443,873,6379"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<hosthint><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="172.18.0.2" addrtype="ipv4"/>
+<address addr="66:47:18:18:7E:A8" addrtype="mac"/>
+<hostnames>
+</hostnames>
+</hosthint>
+<host starttime="1795465045" endtime="1795465092"><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="172.18.0.2" addrtype="ipv4"/>
+<address addr="66:47:18:18:7E:A8" addrtype="mac"/>
+<hostnames>
+</hostnames>
+<ports><port protocol="tcp" portid="21"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ftp" product="vsftpd" version="3.0.5" ostype="Unix" method="probed" conf="10"><cpe>cpe:/a:vsftpd:vsftpd:3.0.5</cpe></service></port>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ssh" product="OpenSSH" version="10.0p2 Debian 7+deb13u4" extrainfo="protocol 2.0" ostype="Linux" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:10.0p2</cpe><cpe>cpe:/o:linux:linux_kernel</cpe></service></port>
+<port protocol="tcp" portid="23"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="telnet" servicefp="SF-Port23-TCP:V=7.95%I=7%D=11/23%Time=6B049F5B%P=x86_64-pc-linux-gnu%r(NULL,15,&quot;\xff\xfb%\xff\xfb&amp;\xff\xfd\x18\xff\xfd\x20\xff\xfd#\xff\xfd&apos;\xff\xfd\$&quot;)%r(GenericLines,15,&quot;\xff\xfb%\xff\xfb&amp;\xff\xfd\x18\xff\xfd\x20\xff\xfd#\xff\xfd&apos;\xff\xfd\$&quot;)%r(tn3270,21,&quot;\xff\xfb%\xff\xfb&amp;\xff\xfd\x18\xff\xfd\x20\xff\xfd#\xff\xfd&apos;\xff\xfd\$\xff\xfe\x19\xff\xfc\x19\xff\xfd\0\xff\xfb\0&quot;)%r(GetRequest,15,&quot;\xff\xfb%\xff\xfb&amp;\xff\xfd\x18\xff\xfd\x20\xff\xfd#\xff\xfd&apos;\xff\xfd\$&quot;)%r(RPCCheck,15,&quot;\xff\xfb%\xff\xfb&amp;\xff\xfd\x18\xff\xfd\x20\xff\xfd#\xff\xfd&apos;\xff\xfd\$&quot;)%r(Help,15,&quot;\xff\xfb%\xff\xfb&amp;\xff\xfd\x18\xff\xfd\x20\xff\xfd#\xff\xfd&apos;\xff\xfd\$&quot;)%r(SIPOptions,15,&quot;\xff\xfb%\xff\xfb&amp;\xff\xfd\x18\xff\xfd\x20\xff\xfd#\xff\xfd&apos;\xff\xfd\$&quot;)%r(NCP,15,&quot;\xff\xfb%\xff\xfb&amp;\xff\xfd\x18\xff\xfd\x20\xff\xfd#\xff\xfd&apos;\xff\xfd\$&quot;);" method="probed" conf="10"/></port>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="http" product="nginx" version="1.30.8" method="probed" conf="10"><cpe>cpe:/a:igor_sysoev:nginx:1.30.8</cpe></service></port>
+<port protocol="tcp" portid="443"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="http" product="nginx" version="1.30.8" tunnel="ssl" method="probed" conf="10"><cpe>cpe:/a:igor_sysoev:nginx:1.30.8</cpe></service></port>
+<port protocol="tcp" portid="873"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="rsync" extrainfo="protocol version 32" method="probed" conf="10"/></port>
+<port protocol="tcp" portid="6379"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="redis" product="Redis key-value store" version="8.0.2" method="probed" conf="10"><cpe>cpe:/a:redislabs:redis:8.0.2</cpe></service></port>
+</ports>
+<times srtt="31" rttvar="679" to="100000"/>
+</host>
+<runstats><finished time="1795465092" timestr="Mon Nov 23 20:18:12 2026" summary="Nmap done at Mon Nov 23 20:18:12 2026; 1 IP address (1 host up) scanned in 46.42 seconds" elapsed="46.42" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

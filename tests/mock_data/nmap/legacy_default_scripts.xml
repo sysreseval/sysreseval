@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.95 scan initiated Mon Nov 23 20:18:19 2026 as: nmap -n -Pn -sC -p 21,22,23,80,443,873 -oX default.xml 172.18.0.2 -->
+<nmaprun scanner="nmap" args="nmap -n -Pn -sC -p 21,22,23,80,443,873 -oX default.xml 172.18.0.2" start="1795465099" startstr="Mon Nov 23 20:18:19 2026" version="7.95" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="6" services="21-23,80,443,873"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<hosthint><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="172.18.0.2" addrtype="ipv4"/>
+<address addr="66:47:18:18:7E:A8" addrtype="mac"/>
+<hostnames>
+</hostnames>
+</hosthint>
+<host starttime="1795465099" endtime="1795465106"><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="172.18.0.2" addrtype="ipv4"/>
+<address addr="66:47:18:18:7E:A8" addrtype="mac"/>
+<hostnames>
+</hostnames>
+<ports><port protocol="tcp" portid="21"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ftp" method="table" conf="3"/><script id="ftp-syst" output="&#xa;  STAT: &#xa;FTP server status:&#xa;     Connected to 172.18.0.3&#xa;     Logged in as ftp&#xa;     TYPE: ASCII&#xa;     No session bandwidth limit&#xa;     Session timeout in seconds is 300&#xa;     Control connection is plain text&#xa;     Data connections will be plain text&#xa;     At session startup, client count was 4&#xa;     vsFTPd 3.0.5 - secure, fast, stable&#xa;End of status"><elem key="STAT">&#xa;FTP server status:&#xa;     Connected to 172.18.0.3&#xa;     Logged in as ftp&#xa;     TYPE: ASCII&#xa;     No session bandwidth limit&#xa;     Session timeout in seconds is 300&#xa;     Control connection is plain text&#xa;     Data connections will be plain text&#xa;     At session startup, client count was 4&#xa;     vsFTPd 3.0.5 - secure, fast, stable&#xa;End of status</elem>
+</script><script id="ftp-anon" output="Anonymous FTP login allowed (FTP code 230)&#xa;drwxr-xr-x    1 0        0              42 Nov 23 20:16 pub"/></port>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ssh" method="table" conf="3"/><script id="ssh-hostkey" output="&#xa;  3072 9a:07:28:1b:99:ec:6a:89:56:e8:e0:c4:9e:83:45:52 (RSA)&#xa;  256 4f:bc:80:65:03:fd:2e:15:0a:21:83:2d:3a:e0:93:21 (ECDSA)&#xa;  256 41:b0:ae:ca:5d:21:17:fe:be:62:74:7e:38:8d:43:a3 (ED25519)"><table>
+<elem key="key">AAAAB3NzaC1yc2EAAAADAQABAAABgQDOKOLFqVI62mayCOQXzMvUKFWJPwFrI6rvwnaNOe4EPqDXnjZnBM1Q+MlJ+/FKJWQcoMN9l7RDdh7om/VP4y0R8PoYbpPhVaMLqI3N7uq6uIyndoFdTTYKXsVyaIS04O8BGouUMwlkPoEWGZe1PTCBSeISqhL84nLUbBRtVmj7sBcs0XCk+qY/qRJIHL0QjDcBL1y9yPwjSDX5OaVVUsMxhAf9ziainKxGibAVCoQueSWMabeF/MPlgmkB96mLQZ7WRr805Pfj7QWHlI7eZmhZu8ieK2cf/634NmeTpSOjOK3V0fewwp1Q8WchfM4TCwPwl27OH++gBis4njfbP3CZokxZBsf00b4q0XoBxcqdwWroMh8eM3g+d1qISefAjX4MnOfnTEUpV3Gq6dvhO8O2isZfDqiadjVmiCbzSYH/lcL9lt2BqYTONFa/YuvMM3xd9zyTehJPogDdKCQBQ7uTUE32xJLDJzTQVAb7rf7XmmEdlmO/a9Bx+HInENMrX/8=</elem>
+<elem key="fingerprint">9a07281b99ec6a8956e8e0c49e834552</elem>
+<elem key="type">ssh-rsa</elem>
+<elem key="bits">3072</elem>
+</table>
+<table>
+<elem key="key">AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBA5gY7SvtxspX1KkuGbvmXr1LEwx1KJgMAttTTJcwk57raVh9krFvGwDylH8VqgTke+96Sm8fX4EgwADc9LGHrQ=</elem>
+<elem key="fingerprint">4fbc806503fd2e150a21832d3ae09321</elem>
+<elem key="type">ecdsa-sha2-nistp256</elem>
+<elem key="bits">256</elem>
+</table>
+<table>
+<elem key="key">AAAAC3NzaC1lZDI1NTE5AAAAIKP8fYC1y/tz0+Lemo1NOCSAxHjZ7rBfT9ocrR2TQytj</elem>
+<elem key="fingerprint">41b0aeca5d2117febe62747e388d43a3</elem>
+<elem key="type">ssh-ed25519</elem>
+<elem key="bits">256</elem>
+</table>
+</script></port>
+<port protocol="tcp" portid="23"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="telnet" method="table" conf="3"/></port>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="http" method="table" conf="3"/><script id="http-title" output="Test site"><elem key="title">Test site</elem>
+</script><script id="http-git" output="&#xa;  172.18.0.2:80/.git/&#xa;    Git repository found!&#xa;    .git/COMMIT_EDITMSG matched patterns &apos;key&apos;&#xa;    Repository description: Unnamed repository; edit this file &apos;description&apos; to name the...&#xa;    Last commit message: add the deploy key for prod &#xa;"><table key="172.18.0.2:80/.git/">
+<table key="interesting-matches">
+<table key=".git/COMMIT_EDITMSG">
+<elem>key</elem>
+</table>
+</table>
+<elem key="repository-description">Unnamed repository; edit this file &apos;description&apos; to name the repository.&#xa;</elem>
+<table key="files-found">
+<elem key=".git/config">true</elem>
+<elem key=".git/description">true</elem>
+<elem key=".git/COMMIT_EDITMSG">true</elem>
+<elem key=".git/info/exclude">true</elem>
+<elem key=".gitignore">false</elem>
+</table>
+<elem key="last-commit-message">add the deploy key for prod&#xa;</elem>
+</table>
+</script></port>
+<port protocol="tcp" portid="443"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="https" method="table" conf="3"/><script id="http-title" output="Test site"><elem key="title">Test site</elem>
+</script><script id="tls-alpn" output="&#xa;  http/1.1&#xa;  http/1.0&#xa;  http/0.9"><elem>http/1.1</elem>
+<elem>http/1.0</elem>
+<elem>http/0.9</elem>
+</script><script id="http-git" output="&#xa;  172.18.0.2:443/.git/&#xa;    Git repository found!&#xa;    .git/COMMIT_EDITMSG matched patterns &apos;key&apos;&#xa;    Repository description: Unnamed repository; edit this file &apos;description&apos; to name the...&#xa;    Last commit message: add the deploy key for prod &#xa;"><table key="172.18.0.2:443/.git/">
+<table key="interesting-matches">
+<table key=".git/COMMIT_EDITMSG">
+<elem>key</elem>
+</table>
+</table>
+<elem key="repository-description">Unnamed repository; edit this file &apos;description&apos; to name the repository.&#xa;</elem>
+<table key="files-found">
+<elem key=".git/config">true</elem>
+<elem key=".git/description">true</elem>
+<elem key=".git/COMMIT_EDITMSG">true</elem>
+<elem key=".git/info/exclude">true</elem>
+<elem key=".gitignore">false</elem>
+</table>
+<elem key="last-commit-message">add the deploy key for prod&#xa;</elem>
+</table>
+</script><script id="ssl-cert" output="Subject: commonName=www.test&#xa;Not valid before: 2026-11-23T20:16:52&#xa;Not valid after:  2026-12-23T20:16:52"><table key="subject">
+<elem key="commonName">www.test</elem>
+</table>
+<table key="issuer">
+<elem key="commonName">www.test</elem>
+</table>
+<table key="pubkey">
+<elem key="type">rsa</elem>
+<elem key="bits">2048</elem>
+<elem key="modulus">A023EEB80D4BAB670909847464572D50AED57D46DA4AC4FC4FDEF50E38D66C70EA2E4BFDC3195CB3E070932A6FA64FE10CB1E2C7FD0E019C26C898C9482AE64B2658D19F8743ADD5B7263566744EFAD53917AD3E96E06239DC70CF1BA45BB7706E7FDDFC2C5D48082F34DCD07F63683D8B3EC914F737EFE35C3BEC51F59312D3FC98726B4D51D78F610B30AAB3805B3E6EE87DD57A4AD07D31EA3753E90A50572C2245DC5F3511855B90BD18978D31A4CD0C48580F2C4473C61E9EAA9D5062FD28FF7AC95FBAB4040B70CA47FC2C56B7D3C8EA14A48EE15CD88FB113C272D550C8ED7851CB851E2B65F1A7943255DCB593FB4BA6AB0FD01423A6DF384E1C1EA7</elem>
+<elem key="exponent">65537</elem>
+</table>
+<table key="extensions">
+<table>
+<elem key="name">X509v3 Subject Key Identifier</elem>
+<elem key="value">85:97:24:BC:F5:39:0F:5E:DD:05:C2:94:86:D4:04:9D:A3:3F:3B:98</elem>
+</table>
+<table>
+<elem key="name">X509v3 Authority Key Identifier</elem>
+<elem key="value">85:97:24:BC:F5:39:0F:5E:DD:05:C2:94:86:D4:04:9D:A3:3F:3B:98</elem>
+</table>
+<table>
+<elem key="name">X509v3 Basic Constraints</elem>
+<elem key="value">CA:TRUE</elem>
+<elem key="critical">true</elem>
+</table>
+</table>
+<elem key="sig_algo">sha256WithRSAEncryption</elem>
+<table key="validity">
+<elem key="notBefore">2026-11-23T20:16:52</elem>
+<elem key="notAfter">2026-12-23T20:16:52</elem>
+</table>
+<elem key="md5">21a4562830d47b290768e282cf946123</elem>
+<elem key="sha1">d1c49ebfa95ee5e423872efe820a1955ea18da62</elem>
+<elem key="pem">-&#45;&#45;&#45;&#45;BEGIN CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;MIIDBzCCAe+gAwIBAgIUYE0Pug43dY6nOkkPSwjQRaqYJPowDQYJKoZIhvcNAQEL&#xa;BQAwEzERMA8GA1UEAwwId3d3LnRlc3QwHhcNMjYxMTIzMjAxNjUyWhcNMjYxMjIz&#xa;MjAxNjUyWjATMREwDwYDVQQDDAh3d3cudGVzdDCCASIwDQYJKoZIhvcNAQEBBQAD&#xa;ggEPADCCAQoCggEBAKAj7rgNS6tnCQmEdGRXLVCu1X1G2krE/E/e9Q441mxw6i5L&#xa;/cMZXLPgcJMqb6ZP4Qyx4sf9DgGcJsiYyUgq5ksmWNGfh0Ot1bcmNWZ0TvrVORet&#xa;PpbgYjnccM8bpFu3cG5/3fwsXUgILzTc0H9jaD2LPskU9zfv41w77FH1kxLT/Jhy&#xa;a01R149hCzCqs4BbPm7ofdV6StB9Meo3U+kKUFcsIkXcXzURhVuQvRiXjTGkzQxI&#xa;WA8sRHPGHp6qnVBi/Sj/eslfurQEC3DKR/wsVrfTyOoUpI7hXNiPsRPCctVQyO14&#xa;UcuFHitl8aeUMlXctZP7S6arD9AUI6bfOE4cHqcCAwEAAaNTMFEwHQYDVR0OBBYE&#xa;FIWXJLz1OQ9e3QXClIbUBJ2jPzuYMB8GA1UdIwQYMBaAFIWXJLz1OQ9e3QXClIbU&#xa;BJ2jPzuYMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAJmWQYzW&#xa;uM7Vj17ADGZuB9BFADtGn2YSnx17XNkYN5428K9D13AHX2PWrBSy8OhPJNSnHYMZ&#xa;FONH+ZkVzHp1YrOKCeE1PywNx8gmDBlmcYEiKjhRGc2D4UWymHbBjqeD+Ukq2xWe&#xa;tg/Nypp7cn+uRLtLqws6unT/UR7wOv4xfKcD9Am28b4P9/NqKbCQ90JrnymweaUi&#xa;tBCv4l+ts0yW5ajgfMOpa6E/4M4e9o9KlJtJVm5YsCgaEujgsKHisqgtzlYb+FyD&#xa;BMbmNzer4wQ/XlJghtGDRM3lqSr9NvBjj3mpHc/+bPe0w7XyFPmaQXNBf9kf86Pr&#xa;+iCW0TwY/eem2XE=&#xa;-&#45;&#45;&#45;&#45;END CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;</elem>
+</script><script id="ssl-date" output="TLS randomness does not represent time"></script></port>
+<port protocol="tcp" portid="873"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="rsync" method="table" conf="3"/></port>
+</ports>
+<times srtt="21" rttvar="898" to="100000"/>
+</host>
+<runstats><finished time="1795465106" timestr="Mon Nov 23 20:18:26 2026" summary="Nmap done at Mon Nov 23 20:18:26 2026; 1 IP address (1 host up) scanned in 7.49 seconds" elapsed="7.49" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

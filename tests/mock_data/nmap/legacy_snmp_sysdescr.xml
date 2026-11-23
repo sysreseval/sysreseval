@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.95 scan initiated Mon Nov 23 20:18:18 2026 as: nmap -n -Pn -sU -p 161 -&#45;script snmp-sysdescr -&#45;script-args snmpcommunity=public -oX snmpdescr.xml 172.18.0.2 -->
+<nmaprun scanner="nmap" args="nmap -n -Pn -sU -p 161 -&#45;script snmp-sysdescr -&#45;script-args snmpcommunity=public -oX snmpdescr.xml 172.18.0.2" start="1795465098" startstr="Mon Nov 23 20:18:18 2026" version="7.95" xmloutputversion="1.05">
+<scaninfo type="udp" protocol="udp" numservices="1" services="161"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<hosthint><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="172.18.0.2" addrtype="ipv4"/>
+<address addr="66:47:18:18:7E:A8" addrtype="mac"/>
+<hostnames>
+</hostnames>
+</hosthint>
+<host starttime="1795465098" endtime="1795465098"><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="172.18.0.2" addrtype="ipv4"/>
+<address addr="66:47:18:18:7E:A8" addrtype="mac"/>
+<hostnames>
+</hostnames>
+<ports><port protocol="udp" portid="161"><state state="open" reason="udp-response" reason_ttl="64"/><service name="snmp" method="table" conf="3"/><script id="snmp-sysdescr" output="LaserPro M427 firmware 4.2.7&#xa;  System uptime: 1m26.14s (8614 timeticks)"/></port>
+</ports>
+<times srtt="37" rttvar="3783" to="100000"/>
+</host>
+<runstats><finished time="1795465098" timestr="Mon Nov 23 20:18:18 2026" summary="Nmap done at Mon Nov 23 20:18:18 2026; 1 IP address (1 host up) scanned in 0.30 seconds" elapsed="0.30" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

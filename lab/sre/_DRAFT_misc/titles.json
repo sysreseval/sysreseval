@@ -38,6 +38,7 @@
     "reverse-proxy.py": 45,
     "rip.py": 30,
     "rsyslog.py": 43,
+    "scan-hardening.py": 61,
     "snmp.py": 84,
     "suricata-fail2ban.py": 64,
     "tc.py": 14,
@@ -128,6 +129,10 @@
   "rsyslog.py": {
     "en": "Central logs: syslog, rsyslog and logrotate",
     "fr": "Journaux centralisés : syslog, rsyslog et logrotate"
+  },
+  "scan-hardening.py": {
+    "en": "Scanning and hardening: nmap, NSE scripts and attack surface reduction",
+    "fr": "Scan et durcissement : nmap, scripts NSE et réduction de la surface d'attaque"
   },
   "snmp.py": {
     "en": "SNMP: querying, configuring and securing agents",
