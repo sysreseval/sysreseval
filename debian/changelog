@@ -1,3 +1,12 @@
+sysreseval (0.19.0-1) unstable; urgency=medium
+
+  * sre-web portal use mesured values of a project cost (memory, CPU)
+  * improvement in the "drain" of a machine (wait until no sre project is
+    running and shutdown)
+  * various improvements
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Mon, 23 Nov 2026 22:08:50 +0100
+
 sysreseval (0.18.1-1) unstable; urgency=medium
 
   * Debian packages build again: the GUI form tests need python3-pyside6.qttest,
