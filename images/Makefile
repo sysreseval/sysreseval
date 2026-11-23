@@ -14,7 +14,7 @@ NAMESPACE ?= sysreseval
 #   is built again on the new version of its parent, under its old tag.
 # VERSION_ldap-mail := 1.35
 
-IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa base12 init12
+IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa ntp base12 init12
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
 
@@ -58,6 +58,11 @@ voip: init13
 aaa: init13
 	$(BUILD)
 
+# chrony on base13, without systemd: the NTP lab's machines must not be privileged (see
+# ntp/Dockerfile: a privileged container may change the clock of the host).
+ntp: base13
+	$(BUILD)
+
 # Debian 12 (bookworm) images, kept for the labs that still name them: base12 on kathara/base,
 # init12 = base12 + a genuine systemd.  No other image is built from them any more.
 base12:
@@ -75,8 +80,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + base12 + init12"
-	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | base12 | init12  build one image (deps included)"
+	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + ntp + base12 + init12"
+	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | ntp | base12 | init12  build one image (deps included)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

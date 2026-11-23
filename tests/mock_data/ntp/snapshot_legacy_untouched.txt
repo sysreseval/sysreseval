@@ -1,0 +1,7 @@
+==SRE-NTP==pid
+==SRE-NTP==tracking
+506 Cannot talk to daemon
+==SRE-NTP==sources
+506 Cannot talk to daemon
+==SRE-NTP==authdata
+506 Cannot talk to daemon

@@ -1617,6 +1617,23 @@ from utils import random_password, random_sentence
 | `random_password(length)` | Returns a random alphanumeric password of the given length |
 | `random_sentence(length)` | Returns a random sequence of lowercase words, space-separated, approximately `length` characters long |
 
+### NTP and chrony helpers (from `/opt/sre/lib/ntp.py` and `/opt/sre/lib/ntp_probe.py`)
+
+```python
+from ntp import (get_chrony_snapshot, parse_snapshot, snapshot_cmd, ntp_probe_check, query_spec, burst_spec,
+                 chrony_spec, answered, start_fake_servers, persona, install_ntp_probe, base_chrony_conf,
+                 daemon_defaults, refid_of, key_line, DRIFT_FILE, DRIFT_SEED)
+```
+
+| Function | Returns |
+|----------|---------|
+| `get_chrony_snapshot(grade, m, config=True)` / `parse_snapshot(text)` | one command (`snapshot_cmd()`): `pidof chronyd`, `chronyc -c -n tracking`, `sources`, `authdata` and `chronyd -p` (the configuration with its included files) → `ChronySnapshot`: `running`, `tracking` (`refid` hex, `address`, `stratum`, `leap`, `synced`), `sources` (`mode`, `state` among `* + - x ~ ?`, `address`, `stratum`, `reach` decoded from octal, `offset` of the local clock relative to the source), `authdata` (`mode` `NTS` / `SK` / `-`, `keyid`, `cookies`), `config` (`[[directive, args...]]`); `synced_to(address)`, `source(address)`, `selected()`, `auth(address)`, `directives(name)` |
+| `ntp_probe_check(grade, m, [specs])` | the probes run concurrently by `ntp_probe.py check` on a machine (installed by `install_ntp_probe`): `query_spec(id, server, source=)` → the fields of the answer (`answered`, `leap`, `stratum`, `refid`, `precision`, `root_delay`, `root_dispersion`, `offset`, `delay`), `burst_spec(id, server, source=, count=30)` → `{sent, answered}`, `chrony_spec(id, directives)` → `chronyd -Q` with these directives as its whole configuration (a key file, `nts`, `ntstrustedcerts`...): `{synced, offset, output}`; `answered(result, synchronised=None)` |
+| `start_fake_servers(net_scheme, m, [persona(address, offset=, stratum=, refid=, leap=, precision=, root_delay=, root_dispersion=)])` | a stdlib NTP server (`ntp_probe.py serve`) answering on each address with its own personality: the way to give a lab a falseticker or an unsynchronised server, since every container shares the clock of the host |
+| `base_chrony_conf()`, `daemon_defaults(opts)`, `DRIFT_FILE` / `DRIFT_SEED` | Debian's `chrony.conf` without its `pool` line, `/etc/default/chrony` with `-x -l /var/log/chrony/chronyd.log`, a drift file saying 0 ppm ± 1 ppm |
+
+The image `sysreseval/ntp` (`images/ntp/Dockerfile`, base13 + chrony 4.6) must never be given to a privileged machine: the clock of a container is the clock of the host (Linux has no time namespace for `CLOCK_REALTIME`), a non-privileged Kathara machine lacks `CAP_SYS_TIME` (chronyd without `-x` stops on `adjtimex(0x8001) failed : Operation not permitted`), a privileged one would let a chronyd steer the host's clock. With `-x`, chronyd measures, selects (a falseticker is marked `x`, an unsynchronised server `?`), serves (LI = 3 while unsynchronised, `local stratum` answers at once), authenticates with symmetric keys (`SK`) and NTS (the server key must be readable by `_chrony`, otherwise the TLS handshake of the client fails) exactly as on a real host. Verified on Debian 13 (s17, 2026-11-23): Debian's unit runs chronyd as `User=_chrony` under a sandbox the systemctl stand-in of base13 cannot start, and its init script could not stop a daemon of another user (`--exec` reads `/proc/<pid>/exe`, unreadable without `CAP_SYS_PTRACE`): the image replaces the unit and stops by `--name`; a chronyd starting without a drift file knows its frequency to ±1000000 ppm and, once synchronised, announces a root dispersion growing by one second per second for about a minute, during which its clients and `chronyd -Q` reject it (the image and the lab seed the drift file); `chronyd -Q` works beside a running chronyd and several run in parallel with their own `pidfile`; `ratelimit interval 1 burst 4` answered 12 of 30 requests sent every 50 ms; `tcpdump -v` decodes NTP (a chrony client puts a random transmit timestamp). Example: `lab/sre/_DRAFT_misc/ntp.py`.
+
 ### Network inspection helpers (from `/opt/sre/lib/net_config.py`)
 
 These functions are used inside `Grade.grade()` to read live container state.

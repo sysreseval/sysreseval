@@ -23,6 +23,7 @@
     "nftables-filter2.py": 14,
     "nftables-misc.py": 8,
     "nftables-nat.py": 36,
+    "ntp.py": 13,
     "openvpn.py": 42,
     "ospf.py": 48,
     "ospfv3-bgp-ipv6.py": 210,
@@ -83,6 +84,10 @@
   "netflow.py": {
     "en": "Flow metrology: NetFlow with softflowd and nfdump",
     "fr": "Métrologie des flux : NetFlow avec softflowd et nfdump"
+  },
+  "ntp.py": {
+    "en": "Time synchronisation: NTP and chrony",
+    "fr": "Synchronisation du temps : NTP et chrony"
   },
   "ospfv3-bgp-ipv6.py": {
     "en": "IPv6 routing: OSPFv3 and BGP",

@@ -1,0 +1,17 @@
+==SRE-NTP==pid
+94 93
+==SRE-NTP==tracking
+00000000,,0,0.000000000,0.000000000,0.000000000,0.000000000,0.000,0.000,0.000,1.000000000,1.000000000,0.0,Not synchronised
+==SRE-NTP==sources
+==SRE-NTP==authdata
+==SRE-NTP==config
+sourcedir /run/chrony-dhcp
+sourcedir /etc/chrony/sources.d
+keyfile /etc/chrony/chrony.keys
+driftfile /var/lib/chrony/chrony.drift
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony
+maxupdateskew 100.0
+rtcsync
+makestep 1 3
+leapseclist /usr/share/zoneinfo/leap-seconds.list
