@@ -89,6 +89,28 @@ def _tt_hash_str(v) -> str:
     return json.dumps(dict(sorted(strip_instructor(TranslatedText.from_value(v)).items())), ensure_ascii=False)
 
 
+def _question_hash_str(v, default_language: str | None = None) -> str:
+    """What a text of a question (``TranslatedText`` or plain str) gives to the hash of the
+    question: its text in one language only, so that adding or changing a translation never
+    changes the hash.  The language is *default_language* (the ``default_language`` of the lab)
+    when the text has a non-empty entry for it, else the first language of the text (the source
+    language of ``tr()``): the rule of ``TranslatedText.resolve()``.  The instructor fragments
+    are left out, as in :func:`_tt_hash_str`, whose string this one equals for a text in a
+    single language."""
+    text = strip_instructor(TranslatedText.from_value(v))
+    if not text:
+        return json.dumps({})
+    lang = default_language if text.get(default_language) else next(iter(text))
+    return json.dumps({lang: text[lang]}, ensure_ascii=False)
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode('UTF-8')).hexdigest()
+
+
+QUESTION_HASH_SEPARATOR = '--'      # between the texts of a question in the input of its hash
+
+
 class QuestionType(Enum):
     DUMMY = 0
     TEXT = 1
@@ -102,14 +124,37 @@ class Question:
         self.title = title
         self.description = description
         self.question_hash = question_hash
+        self.legacy_hash = None
         self.order = order
         self.question_type = question_type
+
+    def _set_hashes(self, parts, question_hash, default_language):
+        """Set ``question_hash`` and ``legacy_hash`` of a question identified by the texts
+        *parts* (its title, or its title and its description).
+
+        ``question_hash`` is *question_hash* when given (``hash=`` of the lab, or the hash of a
+        stored question), else the SHA-256 of the texts in the default language
+        (:func:`_question_hash_str`).  ``legacy_hash`` is the hash the question had when every
+        language counted (:func:`_tt_hash_str`), under which the answers files and the archives
+        written at that time store its answer; ``None`` when it is the same hash or when the
+        hash was given.  It is not a field: it is neither serialized nor written to
+        ``info.json``."""
+        self.legacy_hash = None
+        if question_hash is not None:
+            self.question_hash = question_hash
+            return
+        self.question_hash = _sha256(QUESTION_HASH_SEPARATOR.join(
+            _question_hash_str(part, default_language) for part in parts))
+        legacy_hash = _sha256(QUESTION_HASH_SEPARATOR.join(_tt_hash_str(part) for part in parts))
+        if legacy_hash != self.question_hash:
+            self.legacy_hash = legacy_hash
 
 
 
 @dataclass
 class QuestionText(Question):
-    """A free-text answer question.  Hash is derived from *title* if not provided."""
+    """A free-text answer question.  Hash is derived from *title* (its text in
+    *default_language*, see :func:`_question_hash_str`) if not provided."""
 
     title: TranslatedText | str
     description: TranslatedText | str
@@ -117,12 +162,10 @@ class QuestionText(Question):
     order: int
     question_type: int = QuestionType.TEXT.value
 
-    def __init__(self, title, description='', question_hash=None, order=None, **kwargs):
+    def __init__(self, title, description='', question_hash=None, order=None, default_language=None,
+                 **kwargs):
         super().__init__(title, description, question_hash, order, question_type=QuestionType.TEXT)
-        if question_hash is None:
-            self.question_hash = hashlib.sha256(_tt_hash_str(title).encode('UTF-8')).hexdigest()
-        else:
-            self.question_hash = question_hash
+        self._set_hashes((title,), question_hash, default_language)
         self.question_type = QuestionType.TEXT.value
 
     def to_json(self) -> str:
@@ -140,7 +183,8 @@ class QuestionText(Question):
 
 @dataclass
 class QuestionDummy(Question):
-    """A display-only block (no answer input).  Hash derived from title + description."""
+    """A display-only block (no answer input).  Hash derived from title + description (their
+    texts in *default_language*, see :func:`_question_hash_str`)."""
 
     title: TranslatedText | str
     description: TranslatedText | str
@@ -148,14 +192,10 @@ class QuestionDummy(Question):
     order: int
     question_type: int = QuestionType.DUMMY.value
 
-    def __init__(self, title, description, question_hash=None, order=None, **kwargs):
+    def __init__(self, title, description, question_hash=None, order=None, default_language=None,
+                 **kwargs):
         super().__init__(title, description, question_hash, order, question_type=QuestionType.DUMMY)
-        if question_hash is None:
-            self.question_hash = hashlib.sha256(
-                (_tt_hash_str(title) + '--' + _tt_hash_str(description)).encode('UTF-8')
-            ).hexdigest()
-        else:
-            self.question_hash = question_hash
+        self._set_hashes((title, description), question_hash, default_language)
         self.question_type = QuestionType.DUMMY.value
 
     def to_json(self) -> str:
@@ -188,14 +228,10 @@ class QuestionForm(Question):
     fields: list  # [{"name": str, "regex": str}, ...]
     question_type: int = QuestionType.FORM.value
 
-    def __init__(self, title, description, question_hash=None, order=None, fields=None, **kwargs):
+    def __init__(self, title, description, question_hash=None, order=None, fields=None,
+                 default_language=None, **kwargs):
         super().__init__(title, description, question_hash, order, question_type=QuestionType.FORM)
-        if question_hash is None:
-            self.question_hash = hashlib.sha256(
-                (_tt_hash_str(title) + '--' + _tt_hash_str(description)).encode('UTF-8')
-            ).hexdigest()
-        else:
-            self.question_hash = question_hash
+        self._set_hashes((title, description), question_hash, default_language)
         self.fields = fields or []
         self.question_type = QuestionType.FORM.value
 

@@ -204,16 +204,18 @@ def _tr(en: str, fr: str) -> TranslatedText:
 
 def stub_questions() -> list:
     """The two questions of the stub lab: a free-text one and a form with a regex field and a
-    checkbox.  Their hashes are those of the real classes (title, or title + description)."""
+    checkbox.  Their hashes are those of the real classes (title, or title + description, in
+    the default language of the lab)."""
     text = QuestionText(_tr("Gateway of m1", "Passerelle de m1"),
                         _tr("Give the IPv4 address of the default gateway of `m1`.",
                             "Donnez l'adresse IPv4 de la passerelle par défaut de `m1`."),
-                        order=100)
+                        order=100, default_language=DEFAULT_LANGUAGE)
     form = QuestionForm(_tr("Addressing plan", "Plan d'adressage"),
                         _tr("Address of m2: @@{ip:[0-9.]+}@@\n\nConfiguration done: @@{ok:?}@@",
                             "Adresse de m2 : @@{ip:[0-9.]+}@@\n\nConfiguration terminée : @@{ok:?}@@"),
                         order=200,
-                        fields=[{"name": "ip", "regex": "[0-9.]+"}, {"name": "ok", "checkbox": False}])
+                        fields=[{"name": "ip", "regex": "[0-9.]+"}, {"name": "ok", "checkbox": False}],
+                        default_language=DEFAULT_LANGUAGE)
     return [text, form]
 
 

@@ -528,7 +528,9 @@ class TestGrading:
         assert [(by[t].grade, by[t].max_grade) for t in split] == [(1, 1)] * 6
         assert (by['http_vhost'].grade, by['http_vhost'].max_grade) == (2, 2)
         (q1,) = [q for q in grade.get_questions_ordered() if getattr(q, 'fields', None)]
-        stored = grade._answers[q1.question_hash]
+        # the archive keeps the answers under the hash the form had when every language counted
+        assert q1.question_hash not in grade._answers and q1.legacy_hash in grade._answers
+        stored = grade._stored_answer(q1)
         answers = dict(json.loads(stored) if isinstance(stored, str) else stored)
         answers.update({'old_location': '/old-page', 'health_web4': '200', 'form_token': '0'})
         grade._answers[q1.question_hash] = json.dumps(answers) if isinstance(stored, str) else answers

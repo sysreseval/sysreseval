@@ -2087,7 +2087,7 @@ class Grade0:
         else:
             order1 = order
 
-        q = QuestionText(title, description, hash, order1)
+        q = QuestionText(title, description, hash, order1, default_language=self._default_language)
         if order1 not in self._questions_order:
             self._questions_order[order1] = []
         self._questions_order[order1].append(q)
@@ -2102,9 +2102,17 @@ class Grade0:
                     self._cheat_answers[state] = {}
                 self._cheat_answers[state][q.question_hash] = answer
 
-        if q.question_hash in self._answers:
-            return self._answers[q.question_hash]
-        return default_answer
+        answer = self._stored_answer(q)
+        return default_answer if answer is None else answer
+
+    def _stored_answer(self, q):
+        """The stored answer of the question *q*, ``None`` without one: the entry of the answers
+        under its hash, else under its ``legacy_hash`` (the hash it had when every language of
+        its texts counted: the answers files and the archives written at that time)."""
+        for question_hash in (q.question_hash, q.legacy_hash):
+            if question_hash is not None and question_hash in self._answers:
+                return self._answers[question_hash]
+        return None
 
     _FORM_FIELD_RE = _FORM_SPEC_FIELD_RE  # the one regex of the grammar (SRE.form_spec.FIELD_RE)
 
@@ -2134,7 +2142,7 @@ class Grade0:
         else:
             order1 = order
 
-        q = QuestionForm(title, description, hash, order1, fields)
+        q = QuestionForm(title, description, hash, order1, fields, default_language=self._default_language)
         if order1 not in self._questions_order:
             self._questions_order[order1] = []
         self._questions_order[order1].append(q)
@@ -2151,9 +2159,10 @@ class Grade0:
                     field_answers, ensure_ascii=False
                 )
 
-        if q.question_hash in self._answers:
+        answer = self._stored_answer(q)
+        if answer is not None:
             try:
-                return json.loads(self._answers[q.question_hash])
+                return json.loads(answer)
             except (json.JSONDecodeError, TypeError):
                 return {}
         return {}
@@ -2167,7 +2176,7 @@ class Grade0:
         else:
             order1 = order
 
-        q = QuestionDummy(title, description, hash, order1)
+        q = QuestionDummy(title, description, hash, order1, default_language=self._default_language)
         if order1 not in self._questions_order:
             self._questions_order[order1] = []
         self._questions_order[order1].append(q)

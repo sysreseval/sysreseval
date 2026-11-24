@@ -59,6 +59,8 @@ def action_state():
     drop_privileges_temporarily()
 
     grade = module_rvlab.Grade(net_scheme=net_scheme)
+    # the language of the question hashes: the keys of the cheat file are those of info.json
+    grade._default_language = getattr(module_rvlab, 'default_language', 'en')
     grade.reset_before_grade()
     grade.grade()
     cheat = grade.get_cheat_answers(state)

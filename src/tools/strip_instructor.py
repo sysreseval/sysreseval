@@ -48,9 +48,10 @@ Limits:
     their cheat_answers) used are left in the file as well: a warning names them.
   - Only this file is processed, not the state directories of a directory lab (with --full
     a warning names the directory of a removed state next to a `srelab.py`).
-  - A question keeps its hash as long as the removed text has no language that the text it
-    was added to lacks (the usual case: both are tr() texts translated alike). Otherwise
-    the archives of the stripped lab do not match the original lab in `sre re-eval`.
+  - A question keeps its hash as long as the text the removed one was added to has the
+    default language of the lab (the usual case: a tr() text). Otherwise (a plain string to
+    which only the instructor text gave languages) the archives of the stripped lab do not
+    match the original lab in `sre re-eval`.
 
 NOTE: AST col_offset/end_col_offset are UTF-8 byte offsets; all position
 arithmetic is done on UTF-8-encoded source bytes.

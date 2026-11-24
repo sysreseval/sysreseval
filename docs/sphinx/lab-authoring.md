@@ -483,7 +483,7 @@ class Grade(Grade0):
 - In a normal project the function ignores its argument: it returns an empty text, and nothing of it is written to `info.json` (which students can read).
 - In a project in **instructor mode** (`sre start --instructor-mode <lab>`, `sre restore --instructor-mode <file>`, or `sre set-instructor-mode <running_lab>` on a running project — privileged only) the text is kept, and the GUI displays it in red on a light red background while its *Instructor mode* button is on. `color` / `background` (`'#rrggbb'` or a colour name) change the colours of one text; `params.instructor_text_color` / `params.instructor_background_color` are the defaults.
 - A **debug project** (`sre start --debug-project`) keeps the text as well: the same button displays or hides it, so the hints can be checked while the lab is being written.
-- A question hash does not depend on the instructor texts: the answers stay attached when the mode is switched on a running project.
+- A question hash does not depend on the instructor texts (nor on the translations, see [Questions](#questions)): the answers stay attached when the mode is switched on a running project.
 
 Rules:
 
@@ -520,7 +520,7 @@ The stripped lab behaves like the original outside the instructor mode. Limits:
 - a text kept in a variable is not followed: with `note = tr("...")` then `instructor(note)`, the definition of `note` stays in the file. The script warns about such variables; write `note = instructor(tr("..."))` to have the text removed;
 - with `--full`, the helper methods and the variables that only the removed states (or their `cheat_answers`) used stay in the file: a warning names them (`_solution_dhcpd_conf`, `q1_answers`…), to be removed by hand;
 - comments are not examined, and only the lab file is processed (not the state directories of a directory lab: with `--full` a warning names the directory of a removed state standing next to a `srelab.py`);
-- a question keeps its hash as long as the removed text has no language that the text it was added to lacks (the usual case). Otherwise the archives of the stripped lab do not match the original lab in `sre re-eval`.
+- a question keeps its hash as long as the text the removed one was added to has the default language of the lab (the usual case: a `tr()` text; see [Questions](#questions)). Otherwise — a plain string to which only the instructor text gave languages — the archives of the stripped lab do not match the original lab in `sre re-eval`.
 
 In instructor mode every state can be applied from the GUI, as in a debug project: the **Apply Configuration** tab also lists the states that are not `user_allowed` (in red), so the instructor can apply a `final` state in front of the class without making it available to students. The project also gets a **Log** tab listing what every applied state executed (`self.cmd()`, `self.file()`…, with outputs and exit codes), again only while the button is on.
 
@@ -922,6 +922,13 @@ Three kinds of questions, registered from `grade()` like the tests and shown in 
 | `self.question_dummy(title, description='')` | the description alone | nothing: a heading, an instruction block |
 
 The three take `section=` (a prefix of the title, usually `self.section(level)`, see [Grade methods](#grade-methods)), `order=` (an integer sorting the questions in the tab; without it the questions get 100, 200, 300… in registration order, so `order=150` slips one between the first two) and `hash=` (the identity of the question in the answers file and in the archives: by default the SHA-256 of the title for a `question_text`, of the title and the description for the two others, so that a change of a form's description, a field spec included, detaches the stored answers unless `hash=` pins it; the instructor fragments and the numbering markers never count).
+
+**Only the default language counts in a hash.** A text written with `tr()` gives the hash its text in the `default_language` of the lab, and nothing else: a translation may be added, corrected or removed at any time, the stored answers stay attached, and `sre re-eval` still finds them in the archives made before the correction. A text without the default language (a plain string, a text of another module) gives its first language, the one it is written in. Changing the text of the default language, or the `default_language` of the lab, changes the hash.
+
+In the releases up to 0.19.0 every language of the texts counted. A question written in one language has kept its hash; one with a translation got a new hash, and what was stored under the former one is handled as follows:
+
+- an evaluation (`sre eval`, `sre re-eval`, `sre check-eval`) looks for the answer under the hash of the question, then under the former hash. The answers of the older archives are therefore still graded, as long as no text of the question, translations included, changed since the archive was made — the limit those archives always had;
+- the Questions tab only knows the hash of the question. A project that was running during the update of SRE, or that is restored from a save file made before it, shows its questions without their answers once `info.json` is written again (at the next evaluation). The former answers are still graded until the student types in the question: the new answer then replaces the former one for the whole question, every field of a form included. Update SRE when no project is running (`sre update` closes them all).
 
 **The fields of a form.** A form is a markdown description holding `@@{name:spec}@@` markers; the text between the markers is rendered like the description of a `question_text`, each input on a row of its own below the text before it (a checkbox at the end of the row of that text; see *Inline fields* below for an input on the row of its label). `name` is the key of the field in the returned dict (any characters but `:` and `}`, unique within the form; a final `~N` is the inline suffix, never part of the name); `spec` gives the kind of input:
 

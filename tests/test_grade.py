@@ -10,7 +10,7 @@ import pytest
 
 from SRE import params
 from SRE.lib_sre import Grade0, ErrorCategory, build_exetests_string, parse_exetests_output, run_host_command
-from SRE.common import GradeElement, GradePart, _tt_hash_str
+from SRE.common import GradeElement, GradePart, QuestionForm, QuestionText, TranslatedText, _tt_hash_str
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +213,94 @@ class TestQuestionForm:
         g._answers[h] = json.dumps({'notes': 'line 1\nline 2'})
         g.grade()
         assert g.question_form(title='Config', description=desc) == {'notes': 'line 1\nline 2'}
+
+
+# ---------------------------------------------------------------------------
+# Question hashes: the default language of the lab, answers stored under the former hash
+# ---------------------------------------------------------------------------
+
+class TestQuestionHashLanguage:
+    """The hash of a question comes from its texts in the default language of the lab, so a
+    translation may change; an answer stored under the hash that every language gave (the
+    answers files and the archives written before) is still found."""
+
+    TITLE = TranslatedText({'fr': "Passerelle de m1", 'en': "Gateway of m1"})
+    FORM = TranslatedText({'fr': "Adresse : @@{ip:[0-9.]+}@@", 'en': "Address: @@{ip:[0-9.]+}@@"})
+    OTHER_TITLE = TranslatedText({**TITLE, 'en': "Default gateway of m1"})
+    OTHER_FORM = TranslatedText({**FORM, 'en': "IPv4 address: @@{ip:[0-9.]+}@@"})
+
+    @staticmethod
+    def _grade(answers=None, default_language='fr'):
+        g = make_grade()
+        g._default_language = default_language
+        g._answers.update(answers or {})
+        g.grade()
+        return g
+
+    @staticmethod
+    def _former_hash(*parts) -> str:
+        return hashlib.sha256('--'.join(_tt_hash_str(part) for part in parts).encode()).hexdigest()
+
+    def _hashes(self, title, form, default_language='fr') -> list:
+        g = self._grade(default_language=default_language)
+        g.question_text(title=title)
+        g.question_form(title=title, description=form)
+        return [q.question_hash for q in g.get_questions_ordered()]
+
+    def test_hashes_of_the_default_language(self):
+        hashes = self._hashes(self.TITLE, self.FORM)
+        assert hashes == [QuestionText(TranslatedText({'fr': self.TITLE['fr']})).question_hash,
+                          QuestionForm(TranslatedText({'fr': self.TITLE['fr']}),
+                                       TranslatedText({'fr': self.FORM['fr']})).question_hash]
+        assert hashes == self._hashes(self.OTHER_TITLE, self.OTHER_FORM)
+        assert hashes != self._hashes(self.TITLE, self.FORM, default_language='en')
+
+    def test_section_is_part_of_the_title(self):
+        g = self._grade()
+        g.question_text(title=self.TITLE, section='1.2 ')
+        assert g.get_questions_ordered()[0].question_hash \
+            == QuestionText(TranslatedText({'fr': '1.2 ' + self.TITLE['fr']})).question_hash
+
+    def test_text_answer_stored_under_the_former_hash(self):
+        g = self._grade({self._former_hash(self.TITLE): '10.0.0.254'})
+        assert g.question_text(title=self.TITLE, default_answer='unknown') == '10.0.0.254'
+
+    def test_form_answer_stored_under_the_former_hash(self):
+        g = self._grade({self._former_hash(self.TITLE, self.FORM): json.dumps({'ip': '10.0.0.2'})})
+        assert g.question_form(title=self.TITLE, description=self.FORM) == {'ip': '10.0.0.2'}
+
+    def test_the_hash_of_the_question_wins_over_the_former_one(self):
+        text_hash, form_hash = self._hashes(self.TITLE, self.FORM)
+        g = self._grade({self._former_hash(self.TITLE): 'before', text_hash: 'after',
+                         self._former_hash(self.TITLE, self.FORM): json.dumps({'ip': '10.0.0.1'}),
+                         form_hash: json.dumps({'ip': '10.0.0.2'})})
+        assert g.question_text(title=self.TITLE) == 'after'
+        assert g.question_form(title=self.TITLE, description=self.FORM) == {'ip': '10.0.0.2'}
+
+    def test_an_empty_answer_under_the_hash_of_the_question_wins_too(self):
+        # the student emptied the answer after the change of hash: the old one does not come back
+        text_hash, _ = self._hashes(self.TITLE, self.FORM)
+        g = self._grade({self._former_hash(self.TITLE): 'before', text_hash: ''})
+        assert g.question_text(title=self.TITLE, default_answer='unknown') == ''
+
+    def test_answers_survive_a_changed_translation(self):
+        text_hash, form_hash = self._hashes(self.TITLE, self.FORM)
+        g = self._grade({text_hash: '10.0.0.254', form_hash: json.dumps({'ip': '10.0.0.2'})})
+        assert g.question_text(title=self.OTHER_TITLE) == '10.0.0.254'
+        assert g.question_form(title=self.OTHER_TITLE, description=self.OTHER_FORM) == {'ip': '10.0.0.2'}
+
+    def test_the_former_hash_still_depends_on_the_translations(self):
+        # an answer stored before the change of rule, a translation changed since: not found
+        g = self._grade({self._former_hash(self.TITLE): '10.0.0.254'})
+        assert g.question_text(title=self.OTHER_TITLE, default_answer='unknown') == 'unknown'
+
+    def test_cheat_answers_under_the_hash_of_the_question(self):
+        g = self._grade()
+        g.question_text(title=self.TITLE, cheat_answers={'final': '10.0.0.254'})
+        g.question_form(title=self.TITLE, description=self.FORM, cheat_answers={'final': {'ip': '10.0.0.2'}})
+        text_hash, form_hash = [q.question_hash for q in g.get_questions_ordered()]
+        assert g.get_cheat_answers('final') == {text_hash: '10.0.0.254', form_hash: json.dumps({'ip': '10.0.0.2'})}
+        assert self._former_hash(self.TITLE) not in g.get_cheat_answers('final')
 
 
 # ---------------------------------------------------------------------------

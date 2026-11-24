@@ -31,8 +31,8 @@ ALICE = Identity(login='alice', fullname='Alice A', email='a@x.org', language='f
 BOB = Identity(login='bob')
 PROF = Identity(login='prof', role='instructor', view='instructor')
 PROF_NOVIEW = Identity(login='prof', role='instructor')
-TEXT_HASH = 'cfc140584d209e6d8ed82f6db72c91a210cb1f2ded6a6b66f81c17e16ac2b857'
-FORM_HASH = 'e87736964454b2a575c2eb84df9bcb7440abd31fd2a722c99a0e20a8f2c3b4f2'
+TEXT_HASH = 'f7fd58354131624a690845418e983a8dbd470b2140ae8565a094ae322bf11b45'
+FORM_HASH = '55b1262912b314011ea8ac3a19be3c22cc35f03de72fe53790ceed8a1c36d775'
 
 
 def headers(identity=ALICE, token=TOKEN):

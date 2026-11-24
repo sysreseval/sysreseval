@@ -30,7 +30,7 @@ MOCK_XVNC = Path(__file__).parent / 'mock_xvnc.py'
 TOKEN = 't' * 32
 SECRET = 's' * 32
 CSRF = {S.CSRF_HEADER: S.CSRF_VALUE}
-TEXT_HASH = 'cfc140584d209e6d8ed82f6db72c91a210cb1f2ded6a6b66f81c17e16ac2b857'
+TEXT_HASH = 'f7fd58354131624a690845418e983a8dbd470b2140ae8565a094ae322bf11b45'
 TEACHERS = 'cn=teachers,ou=groups,dc=example,dc=org'
 # proxy mode: the test client is the trusted peer (TestServer binds 127.0.0.1); web_over replaces the whole auth dict
 PROXY_OVER = {'auth': {'mode': 'proxy', 'proxy': {'instructor_groups': [TEACHERS], 'header_group': 'X-Remote-Group'}},

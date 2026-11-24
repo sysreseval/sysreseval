@@ -396,11 +396,14 @@ class TestTexts:
     def test_forms_keep_the_identity_they_had_on_debian_12(self, lab, data, tmp_pub_dir):
         """The text of the first form changed with the `ping` of Debian 13 (`local error` became
         `Message too long`); its hash is pinned, so that the answers stored by the projects and
-        the archives of the Debian 12 images stay attached.  The two others did not change."""
+        the archives of the Debian 12 images stay attached.  The two others did not change:
+        their answers of that time are found under the hash every language of their texts gave
+        then (`legacy_hash`, read by `Grade0._stored_answer()`)."""
         grade, _ = _simulate(lab, data, tmp_pub_dir)
         forms = [q for q in grade.get_questions_ordered() if getattr(q, 'fields', None)]
-        assert [q.question_hash for q in forms] == [
-            "45ad0f3beb94abaca480e1d18ae38a974efb74e5b5c48367e3be35eb5bc0086c",
+        assert forms[0].question_hash == "45ad0f3beb94abaca480e1d18ae38a974efb74e5b5c48367e3be35eb5bc0086c"
+        assert forms[0].legacy_hash is None
+        assert [q.legacy_hash for q in forms[1:]] == [
             "f4ad6087a885eee893a5bc0f0036badd5b800981c114671a9dcbff529b7897a9",
             "1071fbc2cf2c08381cdf69cc684760c2c0e48f9e3536da895fc5c738bddb6cd0",
         ]

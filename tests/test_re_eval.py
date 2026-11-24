@@ -5,6 +5,8 @@ Focused on the auto_eval_count round-trip:
   grade.auto_eval_count inside grade() during re-eval
 - the re-saved archive must preserve the value in its answers section
 """
+import hashlib
+import json
 import os
 import stat
 from pathlib import Path
@@ -15,6 +17,7 @@ import zstandard as zstd
 
 from SRE import params, web_updates
 from SRE.command.re_eval import _load_srelab, action_re_eval
+from SRE.common import TranslatedText, _tt_hash_str
 
 
 _RUNNING_LAB_NAME = '20260101000000@@@auto_eval_count_lab@@@user'
@@ -82,6 +85,87 @@ def _make_archive(path, module, *, archived_count, stored_grade,
         grade._answers[params.auto_eval_count_keyword] = archived_count
     if exam_json is not None:
         grade._exam_json = exam_json
+    grade.save_tests_on_file(str(path))
+
+
+# srelab in French with an English translation, whose two grade elements tell whether the
+# answers of its two questions were found.  @GATEWAY_EN@ is the English title of the first one.
+_QUESTIONS_SRELAB = """\
+from dataclasses import dataclass
+from SRE.lib_sre import Data0, NetScheme0, Grade0, make_tr
+
+default_language = 'fr'
+tr = make_tr(default_language)
+_TRANSLATIONS = {'en': {
+    "Passerelle de m1": "@GATEWAY_EN@",
+    "Plan d'adressage": "Addressing plan",
+    "Adresse de m2 : @@{ip:[0-9.]+}@@": "Address of m2: @@{ip:[0-9.]+}@@",
+}}
+
+@dataclass(slots=True)
+class Data(Data0):
+    value: int = 0
+
+    @classmethod
+    def generate(cls):
+        return cls(value=42)
+
+class NetScheme(NetScheme0):
+    _machine_specs = {'router': {}, 'client': {}}
+    _network_specs = {'lan': {}}
+    _topology = {'lan': ['router', 'client']}
+
+    def __init__(self, data, running_lab_name):
+        super().__init__(data=data, running_lab_name=running_lab_name)
+
+class Grade(Grade0):
+    def grade(self):
+        super().grade()
+        gateway = self.question_text(title=tr("Passerelle de m1"))
+        plan = self.question_form(title=tr("Plan d'adressage"),
+                                  description=tr("Adresse de m2 : @@{ip:[0-9.]+}@@"))
+        self.add_grade_element(title='gateway', grade=1 if gateway == '10.0.0.254' else 0, max_grade=1)
+        self.add_grade_element(title='plan', grade=1 if plan.get('ip') == '10.0.0.2' else 0, max_grade=1)
+"""
+GATEWAY_EN = "Gateway of m1"
+QUESTIONS_ANSWERS = ('10.0.0.254', json.dumps({'ip': '10.0.0.2'}))     # the right ones
+
+
+def questions_srelab(gateway_en: str = GATEWAY_EN) -> str:
+    """The source of the questions lab, with *gateway_en* as English title of its first question."""
+    return _QUESTIONS_SRELAB.replace('@GATEWAY_EN@', gateway_en)
+
+
+def former_question_hashes(gateway_en: str = GATEWAY_EN) -> tuple:
+    """``(text, form)``: the hashes the two questions of the questions lab had when every
+    language of their texts counted, computed here from the texts."""
+    gateway = TranslatedText({'fr': "Passerelle de m1", 'en': gateway_en})
+    plan = TranslatedText({'fr': "Plan d'adressage", 'en': "Addressing plan"})
+    address = TranslatedText({'fr': "Adresse de m2 : @@{ip:[0-9.]+}@@", 'en': "Address of m2: @@{ip:[0-9.]+}@@"})
+    return (hashlib.sha256(_tt_hash_str(gateway).encode('UTF-8')).hexdigest(),
+            hashlib.sha256((_tt_hash_str(plan) + '--' + _tt_hash_str(address)).encode('UTF-8')).hexdigest())
+
+
+def make_questions_archive(path, module, *, former_hashes: bool, graded: bool, current_srelab_file=None):
+    """An archive of the questions lab *module* holding the right answers, stored under the
+    former hashes of the questions (*former_hashes*) or under their hashes; its stored grades
+    count the answers (*graded*: 2 / 2) or not (0 / 2)."""
+    data = module.Data(value=42)
+    if current_srelab_file is not None:
+        object.__setattr__(data, '__current_srelab_file', current_srelab_file)
+    net_scheme = module.NetScheme(data=data, running_lab_name=_RUNNING_LAB_NAME)
+    grade = module.Grade(net_scheme=net_scheme)
+    grade._default_language = module.default_language
+    grade.reset_before_grade()
+    grade.grade()
+    hashes = [q.question_hash for q in grade.get_questions_ordered()]
+    if graded:
+        grade._answers.update(zip(hashes, QUESTIONS_ANSWERS))
+        grade.reset_before_grade()
+        grade.grade()
+    grade.compute_total()
+    grade._eval_date = '2026-01-01T00:00:00'
+    grade._answers = dict(zip(former_question_hashes() if former_hashes else hashes, QUESTIONS_ANSWERS))
     grade.save_tests_on_file(str(path))
 
 
@@ -176,6 +260,76 @@ class TestReEvalAutoEvalCount:
         grade_list = list(archive['grade_list'])
         assert grade_list[0]['grade'] == 0
         assert params.auto_eval_count_keyword not in archive['answers']
+
+
+class TestReEvalQuestionHashes:
+    """The answers of an archive are found by re-eval whatever the hashes they are stored
+    under: those of the questions (their texts in the default language of the lab), or those
+    the questions had when every language counted (the archives made before)."""
+
+    @staticmethod
+    def _lab(tmp_path, name: str, gateway_en: str = GATEWAY_EN) -> Path:
+        path = tmp_path / name / 'srelab.py'
+        path.parent.mkdir()
+        path.write_text(questions_srelab(gateway_en))
+        return path
+
+    @staticmethod
+    def _re_eval(mock_sre_args, tmp_path, srelab_file, in_archive) -> dict:
+        """``{title: grade}`` of *in_archive* re-evaluated with *srelab_file*."""
+        out_dir = tmp_path / 'out'
+        out_dir.mkdir()
+        mock_sre_args.srelab = str(srelab_file)
+        mock_sre_args.files = [str(in_archive)]
+        mock_sre_args.output_dir = str(out_dir)
+        mock_sre_args.prefix = 'reeval_'
+        mock_sre_args.recursive = False
+        action_re_eval()
+        archive = _read_archive(out_dir / f'reeval_{_ARCHIVE_STEM}.zst')
+        return {e['title']: e['grade'] for e in archive['grade_list']}
+
+    def _archive(self, tmp_path, srelab_file, *, former_hashes: bool) -> Path:
+        module, _ = _load_srelab(str(srelab_file))
+        in_archive = tmp_path / f'{_ARCHIVE_STEM}.zst'
+        make_questions_archive(in_archive, module, former_hashes=former_hashes, graded=False,
+                               current_srelab_file=str(srelab_file))
+        stored = _read_archive(in_archive)
+        assert {e['title']: e['grade'] for e in stored['grade_list']} == {'gateway': 0, 'plan': 0}
+        return in_archive
+
+    def test_the_hashes_of_the_lab(self, tmp_path):
+        module, _ = _load_srelab(str(self._lab(tmp_path, 'lab')))
+        grade = module.Grade(net_scheme=module.NetScheme(data=module.Data(value=42),
+                                                         running_lab_name=_RUNNING_LAB_NAME))
+        grade._default_language = module.default_language
+        grade.reset_before_grade()
+        grade.grade()
+        questions = grade.get_questions_ordered()
+        assert tuple(q.legacy_hash for q in questions) == former_question_hashes()
+        assert not {q.question_hash for q in questions} & set(former_question_hashes())
+
+    def test_answers_under_the_hashes_of_the_questions(self, mock_sre_args, tmp_path, capsys):
+        lab = self._lab(tmp_path, 'lab')
+        in_archive = self._archive(tmp_path, lab, former_hashes=False)
+        assert self._re_eval(mock_sre_args, tmp_path, lab, in_archive) == {'gateway': 1, 'plan': 1}
+
+    def test_answers_under_the_former_hashes(self, mock_sre_args, tmp_path, capsys):
+        lab = self._lab(tmp_path, 'lab')
+        in_archive = self._archive(tmp_path, lab, former_hashes=True)
+        assert set(_read_archive(in_archive)['answers']) >= set(former_question_hashes())
+        assert self._re_eval(mock_sre_args, tmp_path, lab, in_archive) == {'gateway': 1, 'plan': 1}
+
+    def test_a_translation_changed_since_the_archive(self, mock_sre_args, tmp_path, capsys):
+        in_archive = self._archive(tmp_path, self._lab(tmp_path, 'lab'), former_hashes=False)
+        corrected = self._lab(tmp_path, 'corrected', gateway_en="Default gateway of m1")
+        assert self._re_eval(mock_sre_args, tmp_path, corrected, in_archive) == {'gateway': 1, 'plan': 1}
+
+    def test_a_former_hash_still_depends_on_the_translations(self, mock_sre_args, tmp_path, capsys):
+        # an archive made before the change of rule: the question whose translation changed
+        # since is not matched (as it was not before), the untouched one is
+        in_archive = self._archive(tmp_path, self._lab(tmp_path, 'lab'), former_hashes=True)
+        corrected = self._lab(tmp_path, 'corrected', gateway_en="Default gateway of m1")
+        assert self._re_eval(mock_sre_args, tmp_path, corrected, in_archive) == {'gateway': 0, 'plan': 1}
 
 
 class TestReEvalExamJson:

@@ -688,8 +688,8 @@ class TestState:
 
     def test_question_hashes_are_those_of_the_real_classes(self, pub, project):
         hashes = question_hashes(pub, project)
-        assert hashes[QuestionType.TEXT.value] == 'cfc140584d209e6d8ed82f6db72c91a210cb1f2ded6a6b66f81c17e16ac2b857'
-        assert hashes[QuestionType.FORM.value] == 'e87736964454b2a575c2eb84df9bcb7440abd31fd2a722c99a0e20a8f2c3b4f2'
+        assert hashes[QuestionType.TEXT.value] == 'f7fd58354131624a690845418e983a8dbd470b2140ae8565a094ae322bf11b45'
+        assert hashes[QuestionType.FORM.value] == '55b1262912b314011ea8ac3a19be3c22cc35f03de72fe53790ceed8a1c36d775'
 
     def test_initial_removes_the_cheat_answers(self, pub, project):
         run_mock(pub, 'state', project, 'final')

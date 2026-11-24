@@ -1380,6 +1380,29 @@ class TestInstructorMode:
                 _apply_state(rln, state)
             assert 'state changes are not allowed in user mode for this lab' in capsys.readouterr().err
 
+    def test_state_writes_the_cheat_answers_under_the_hashes_of_info_json(self, instructor_env, tmp_path,
+                                                                          monkeypatch):
+        """A question hash comes from the text of the default language of the lab: `sre state`
+        must compute it as `sre start` did, here in a lab in French whose texts are written
+        in English first (the cheat file was keyed by the English text otherwise)."""
+        from SRE.common import QuestionText, TranslatedText
+
+        def transform(text: str) -> str:
+            text = _with_states(True)(text)
+            text = _replace_once(text, "tr = make_tr('en')\n", "default_language = 'fr'\ntr = make_tr('en')\n")
+            return _replace_once(text, 'Any notation is fine.")))',
+                                 'Any notation is fine.")), cheat_answers={"final": "10.0.0.1"})')
+
+        rln = _start_instructor_lab(False, _instructor_lab_copy(tmp_path, monkeypatch, 'cheat.py', transform))
+        info = _info(rln)
+        gateway = info['questions'][0]
+        assert info['default_language'] == 'fr' and list(gateway['title']) == ['en', 'fr']
+        assert gateway['question_hash'] == QuestionText(TranslatedText({'fr': 'Passerelle'})).question_hash
+
+        _apply_state(rln, 'final')
+        cheat = json.loads(Path(params.cheat_filename(rln)).read_text())
+        assert cheat == {gateway['question_hash']: '10.0.0.1'}
+
     def test_info_json_written_as_root_is_given_to_sre(self, instructor_env, mock_sre_args, monkeypatch):
         """For a lab with privileged machines root is only dropped temporarily, and the Kathara
         calls of save_lab_info() leave the effective uid at 0: `sre set-instructor-mode` then

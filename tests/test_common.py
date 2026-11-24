@@ -1,4 +1,5 @@
 """Tests for common.py: Question/GradeElement/InfoLab serialization."""
+import hashlib
 import json
 
 import pytest
@@ -7,7 +8,7 @@ from SRE import params
 from SRE.common import (
     QuestionText, QuestionDummy, QuestionForm, form_field_lines,
     GradeElement, InfoLab, InfoMachine, InfoInterface, InfoSwitch,
-    QuestionType, TranslatedText,
+    QuestionType, TranslatedText, QUESTION_HASH_SEPARATOR, _tt_hash_str,
     bonus_texts, project_accessible
 )
 
@@ -321,6 +322,138 @@ class TestInstructorFragmentsInHashes:
     def test_public_text_still_counts(self):
         title, description = self._texts(True)
         assert QuestionForm(title, description).question_hash != QuestionForm(title, 'other').question_hash
+
+
+# ---------------------------------------------------------------------------
+# Question hashes and the languages of the texts
+# ---------------------------------------------------------------------------
+
+def all_languages_hash(*parts) -> str:
+    """The hash a question had when every language of its texts counted (the title, or the
+    title and the description)."""
+    return hashlib.sha256(
+        QUESTION_HASH_SEPARATOR.join(_tt_hash_str(part) for part in parts).encode('UTF-8')).hexdigest()
+
+
+class TestQuestionHashLanguages:
+    """A question hash is computed from the text of the default language of the lab only:
+    adding or changing a translation leaves the stored answers attached."""
+
+    TITLE_FR = "Passerelle de m1"
+    FORM_FR = "Adresse : @@{ip:[0-9.]+}@@"
+    TITLE = {'fr': TITLE_FR, 'en': "Gateway of m1"}
+    FORM = {'fr': FORM_FR, 'en': "Address: @@{ip:[0-9.]+}@@"}
+
+    @staticmethod
+    def _questions(title, description, default_language='fr') -> list:
+        """The three kinds of question with these texts (plain dicts stand for tr() texts)."""
+        if isinstance(title, dict):
+            title = TranslatedText(title)
+        if isinstance(description, dict):
+            description = TranslatedText(description)
+        return [QuestionText(title, default_language=default_language),
+                QuestionForm(title, description, default_language=default_language),
+                QuestionDummy(title, description, default_language=default_language)]
+
+    def _hashes(self, title, description, default_language='fr') -> list:
+        return [q.question_hash for q in self._questions(title, description, default_language)]
+
+    def test_a_translation_added_keeps_the_hashes(self):
+        untranslated = self._hashes({'fr': self.TITLE_FR}, {'fr': self.FORM_FR})
+        assert self._hashes(self.TITLE, self.FORM) == untranslated
+        assert self._hashes({**self.TITLE, 'de': "Gateway von m1"}, {**self.FORM, 'de': "Adresse: @@{ip:[0-9.]+}@@"}) \
+            == untranslated
+
+    def test_a_translation_changed_keeps_the_hashes(self):
+        changed = self._hashes({**self.TITLE, 'en': "Default gateway of m1"},
+                               {**self.FORM, 'en': "IPv4 address: @@{ip:[0-9.]+}@@"})
+        assert changed == self._hashes(self.TITLE, self.FORM)
+
+    def test_the_order_of_the_languages_does_not_count(self):
+        reversed_title = dict(reversed(self.TITLE.items()))
+        reversed_form = dict(reversed(self.FORM.items()))
+        assert list(reversed_title) == ['en', 'fr']
+        assert self._hashes(reversed_title, reversed_form) == self._hashes(self.TITLE, self.FORM)
+
+    def test_the_text_of_the_default_language_counts(self):
+        hashes = self._hashes(self.TITLE, self.FORM)
+        other_title = self._hashes({**self.TITLE, 'fr': "Passerelle de m2"}, self.FORM)
+        assert all(a != b for a, b in zip(hashes, other_title))
+        text, form, dummy = self._hashes(self.TITLE, {**self.FORM, 'fr': "IP : @@{ip:[0-9.]+}@@"})
+        assert text == hashes[0]            # a free-text question is its title
+        assert form != hashes[1] and dummy != hashes[2]
+
+    def test_the_default_language_of_the_lab_chooses_the_text(self):
+        in_french = self._hashes(self.TITLE, self.FORM, default_language='fr')
+        in_english = self._hashes(self.TITLE, self.FORM, default_language='en')
+        assert all(a != b for a, b in zip(in_french, in_english))
+        assert in_english == self._hashes({'en': self.TITLE['en']}, {'en': self.FORM['en']}, default_language='en')
+
+    @pytest.mark.parametrize('default_language', ['de', None])
+    def test_a_text_without_the_default_language_gives_its_first_language(self, default_language):
+        # no German text, or no default language given (a question built outside a lab)
+        assert self._hashes(self.TITLE, self.FORM, default_language) == self._hashes(self.TITLE, self.FORM, 'fr')
+
+    def test_an_empty_text_in_the_default_language_gives_the_first_language(self):
+        assert self._hashes({**self.TITLE, 'de': ''}, {**self.FORM, 'de': ''}, 'de') \
+            == self._hashes(self.TITLE, self.FORM, 'fr')
+
+    @pytest.mark.parametrize('default_language', ['fr', 'en', None])
+    def test_texts_in_one_language_keep_the_hash_they_had(self, default_language):
+        title, form = TranslatedText({'fr': self.TITLE_FR}), TranslatedText({'fr': self.FORM_FR})
+        questions = self._questions(title, form, default_language)
+        assert [q.question_hash for q in questions] == [
+            all_languages_hash(title), all_languages_hash(title, form), all_languages_hash(title, form)]
+        assert [q.legacy_hash for q in questions] == [None, None, None]
+
+    @pytest.mark.parametrize('default_language', ['fr', 'en', None])
+    def test_plain_strings_keep_the_hash_they_had(self, default_language):
+        questions = self._questions("What is IP?", "Answer: @@{x:.+}@@", default_language)
+        assert [q.question_hash for q in questions] == [
+            all_languages_hash("What is IP?"), all_languages_hash("What is IP?", "Answer: @@{x:.+}@@"),
+            all_languages_hash("What is IP?", "Answer: @@{x:.+}@@")]
+        assert [q.legacy_hash for q in questions] == [None, None, None]
+        # a question without description, as QuestionText and question_dummy() allow
+        assert QuestionDummy("Note", '', default_language=default_language).question_hash \
+            == all_languages_hash("Note", '')
+
+    def test_legacy_hash_of_translated_texts(self):
+        title, form = TranslatedText(self.TITLE), TranslatedText(self.FORM)
+        text_q, form_q, dummy_q = self._questions(title, form)
+        assert text_q.legacy_hash == all_languages_hash(title) != text_q.question_hash
+        assert form_q.legacy_hash == all_languages_hash(title, form) != form_q.question_hash
+        assert dummy_q.legacy_hash == all_languages_hash(title, form) != dummy_q.question_hash
+
+    def test_a_given_hash_has_no_legacy_hash(self):
+        title, form = TranslatedText(self.TITLE), TranslatedText(self.FORM)
+        for q in (QuestionText(title, question_hash='fixed', default_language='fr'),
+                  QuestionForm(title, form, question_hash='fixed', default_language='fr'),
+                  QuestionDummy(title, form, question_hash='fixed', default_language='fr')):
+            assert (q.question_hash, q.legacy_hash) == ('fixed', None)
+
+    def test_the_legacy_hash_is_not_serialized(self):
+        for q in self._questions(self.TITLE, self.FORM):
+            assert q.legacy_hash is not None
+            stored = json.loads(q.to_json())
+            assert 'legacy_hash' not in stored and 'default_language' not in stored
+            again = type(q).from_json(q.to_json())
+            assert (again.question_hash, again.legacy_hash) == (q.question_hash, None)
+
+    def test_an_instructor_text_bringing_a_language(self):
+        # The public text has no English, the instructor text has: in both modes the question
+        # has the hash of the lab without the instructor() call (the file `strip-instructor`
+        # writes), which was another hash when every language counted.
+        from SRE.instructor_text import instructor, set_instructor_context
+        note = TranslatedText({'fr': " (attendu : 10.0.0.1)", 'en': " (expected: 10.0.0.1)"})
+        stripped_title, stripped_form = TranslatedText({'fr': self.TITLE_FR}), TranslatedText({'fr': self.FORM_FR})
+        stripped = self._hashes(stripped_title, stripped_form)
+        for mode in (True, False):
+            set_instructor_context(mode)
+            title = stripped_title + instructor(note)
+            description = instructor(note) + stripped_form
+            assert list(title) == list(description) == ['fr', 'en']
+            assert self._hashes(title, description) == stripped
+            assert all_languages_hash(title, description) != all_languages_hash(stripped_title, stripped_form)
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,8 @@ from SRE import params
 from SRE.command.check_eval import action_check_eval
 from SRE.command.re_eval import _load_srelab
 
+from test_re_eval import make_questions_archive, questions_srelab, _ARCHIVE_STEM as QUESTIONS_ARCHIVE_STEM
+
 _LAB_PATH = Path(__file__).parent / 'labs' / 'functional_test_lab.py'
 _RUNNING_LAB_NAME = '20260101000000@@@functional_test_lab@@@user'
 _ARCHIVE_STEM = f'20260101000000_{_RUNNING_LAB_NAME}'
@@ -482,3 +484,50 @@ class TestCompareBonus:
         new = [GradeElement(title='x', max_grade=2, grade=1, bonus=True)]
         _compare_and_print('a.zst', old, new, 1, 1, 0, 0)
         assert capsys.readouterr().out == 'a.zst: identical\n'
+
+
+# ---------------------------------------------------------------------------
+# Answers stored under the hashes the questions had when every language counted
+# ---------------------------------------------------------------------------
+
+class TestQuestionHashes:
+    """An archive made when a question hash came from every language of its texts keeps its
+    answers under those hashes: check-eval finds them, as long as the texts did not change."""
+
+    @staticmethod
+    def _lab(tmp_path, name: str, **texts) -> Path:
+        path = tmp_path / name / 'srelab.py'
+        path.parent.mkdir()
+        path.write_text(questions_srelab(**texts))
+        return path
+
+    def _archive(self, tmp_path, lab, *, former_hashes: bool) -> Path:
+        # stored grades 2 / 2: the answers counted when the archive was made
+        module, _ = _load_srelab(str(lab))
+        path = tmp_path / f'{QUESTIONS_ARCHIVE_STEM}.zst'
+        make_questions_archive(path, module, former_hashes=former_hashes, graded=True,
+                               current_srelab_file=str(lab))
+        return path
+
+    @pytest.mark.parametrize('former_hashes', [True, False])
+    def test_identical(self, mock_sre_args, tmp_path, capsys, former_hashes):
+        lab = self._lab(tmp_path, 'lab')
+        mock_sre_args.srelab = str(lab)
+        mock_sre_args.files = [str(self._archive(tmp_path, lab, former_hashes=former_hashes))]
+        action_check_eval()
+        assert 'identical' in capsys.readouterr().out
+
+    def test_a_translation_changed_since_the_archive(self, mock_sre_args, tmp_path, capsys):
+        archive = self._archive(tmp_path, self._lab(tmp_path, 'lab'), former_hashes=False)
+        mock_sre_args.srelab = str(self._lab(tmp_path, 'corrected', gateway_en="Default gateway of m1"))
+        mock_sre_args.files = [str(archive)]
+        action_check_eval()
+        assert 'identical' in capsys.readouterr().out
+
+    def test_a_former_hash_still_depends_on_the_translations(self, mock_sre_args, tmp_path, capsys):
+        archive = self._archive(tmp_path, self._lab(tmp_path, 'lab'), former_hashes=True)
+        mock_sre_args.srelab = str(self._lab(tmp_path, 'corrected', gateway_en="Default gateway of m1"))
+        mock_sre_args.files = [str(archive)]
+        action_check_eval()
+        out = capsys.readouterr().out
+        assert 'DIFFERS' in out and "'gateway'" in out and "'plan'" not in out
