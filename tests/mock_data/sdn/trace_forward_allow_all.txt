@@ -1,0 +1,11 @@
+Flow: tcp,in_port=36,vlan_tci=0x0000,dl_src=02:53:44:64:6f:54,dl_dst=02:53:44:0e:1c:28,nw_src=10.151.178.84,nw_dst=10.151.178.5,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=40000,tp_dst=22,tcp_flags=0
+
+bridge("br0")
+-------------
+ 0. priority 1000
+    NORMAL
+     -> forwarding to learned port
+
+Final flow: unchanged
+Megaflow: recirc_id=0,eth,ip,in_port=36,dl_src=02:53:44:64:6f:54,dl_dst=02:53:44:0e:1c:28,nw_frag=no
+Datapath actions: 2

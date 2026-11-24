@@ -41,6 +41,8 @@
     "rip.py": 30,
     "rsyslog.py": 43,
     "scan-hardening.py": 61,
+    "sdn.py": 23,
+    "sdwan.py": 53,
     "snmp.py": 84,
     "suricata-fail2ban.py": 64,
     "tc.py": 14,
@@ -144,6 +146,14 @@
   "scan-hardening.py": {
     "en": "Scanning and hardening: nmap, NSE scripts and attack surface reduction",
     "fr": "Scan et durcissement : nmap, scripts NSE et réduction de la surface d'attaque"
+  },
+  "sdn.py": {
+    "en": "SDN: Open vSwitch, OpenFlow and controllers",
+    "fr": "SDN : Open vSwitch, OpenFlow et contrôleurs"
+  },
+  "sdwan.py": {
+    "en": "SD-WAN: tunnels, control plane, application-aware routing and SLA",
+    "fr": "SD-WAN : tunnels, contrôle, routage par application et SLA"
   },
   "snmp.py": {
     "en": "SNMP: querying, configuring and securing agents",

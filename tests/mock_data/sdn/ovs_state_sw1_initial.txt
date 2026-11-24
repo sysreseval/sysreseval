@@ -1,0 +1,7 @@
+{"data":[],"headings":["_uuid","auto_attach","controller","datapath_id","datapath_type","datapath_version","external_ids","fail_mode","flood_vlans","flow_tables","ipfix","mcast_snooping_enable","mirrors","name","netflow","other_config","ports","protocols","rstp_enable","rstp_status","sflow","status","stp_enable"]}
+==SRE-SDN==
+{"data":[],"headings":["_uuid","bond_active_slave","bond_downdelay","bond_fake_iface","bond_mode","bond_updelay","cvlans","external_ids","fake_bridge","interfaces","lacp","mac","name","other_config","protected","qos","rstp_statistics","rstp_status","statistics","status","tag","trunks","vlan_mode"]}
+==SRE-SDN==
+{"data":[],"headings":["_uuid","admin_state","bfd","bfd_status","cfm_fault","cfm_fault_status","cfm_flap_count","cfm_health","cfm_mpid","cfm_remote_mpids","cfm_remote_opstate","duplex","error","external_ids","ifindex","ingress_policing_burst","ingress_policing_kpkts_burst","ingress_policing_kpkts_rate","ingress_policing_rate","lacp_current","link_resets","link_speed","link_state","lldp","mac","mac_in_use","mtu","mtu_request","name","ofport","ofport_request","options","other_config","statistics","status","type"]}
+==SRE-SDN==
+{"data":[],"headings":["_uuid","connection_mode","controller_burst_limit","controller_queue_size","controller_rate_limit","enable_async_messages","external_ids","inactivity_probe","is_connected","local_gateway","local_ip","local_netmask","max_backoff","other_config","role","status","target","type"]}

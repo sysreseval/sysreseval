@@ -1919,6 +1919,82 @@ inetutils-telnetd leaves its `inetd.conf` line disabled (`#<off>#`, through `tcp
 names the service `telnet` without a product (the probes take about 45 s). Example:
 `lab/sre/_DRAFT_misc/scan-hardening.py`.
 
+### SDN helpers (from `/opt/sre/lib/sdn.py`)
+
+```python
+from sdn import (ovs_start_cmd, ovs_bridge_cmd, osken_start_cmd, rest_cmd, get_ovs_state, parse_ovs_state,
+                 get_flows, parse_flows, table_miss, get_trace, trace_flow, parse_trace, get_meters, parse_meters,
+                 parse_ofctl_show, normalize_dpid, normalize_decimal_dpid)
+```
+
+The switches and controllers run the image `sysreseval/sdn` (`images/sdn/Dockerfile`, base13 + Open vSwitch 3.5
++ OS-Ken 3.0). OS-Ken 3 (the OpenStack fork of Ryu packaged by Debian) no longer ships Ryu's sample applications:
+the image adds `os_ken.app.simple_switch_13` (a reactive learning switch) and `os_ken.app.ofctl_rest` (Ryu's REST
+API: `/stats/switches`, `/stats/flow/<dpid>`, `/stats/flowentry/add`, `/stats/meterentry/add`... plus
+`/stats/errors/<dpid>`, the last OpenFlow ERROR messages of a switch), written again on `os_ken.lib.ofctl_v1_3`.
+
+| Function | Returns |
+|----------|---------|
+| `ovs_start_cmd()` | starts `ovsdb-server` and `ovs-vswitchd` (`ovs-ctl`) after `ovs-dpctl show`, whose request for the datapath's generic netlink family makes the kernel load the module `openvswitch` (a container cannot load it), then waits for `ovs-vsctl` |
+| `ovs_bridge_cmd(br, [(iface, ofport or None)], protocols=, fail_mode=, dpid=, controller=, tags=)` | one `ovs-vsctl` transaction: the bridge and its settings first (a secure bridge never switches by itself), then the ports with `ofport_request` and access tags |
+| `osken_start_cmd([apps], env=)` / `rest_cmd(controller, 'flowentry/add', body)` | `osken-manager` in the background, waiting for the OpenFlow port; a `curl` call of the REST API (POST with a JSON body, GET without) |
+| `get_ovs_state(grade, m)` / `parse_ovs_state(text)` | `ovs-vsctl --format=json list Bridge / Port / Interface / Controller` → `OvsState` (`running`, `bridges`, `interfaces`; `bridge()`, `bridge_of(iface)`, `port_of(iface)`, `ofport(iface)`); `OvsBridge` (`datapath_id`, `dpid`, `fail_mode`, `protocols`, `ports` with `tag` / `trunks`, `controllers` with `target` / `is_connected`) |
+| `get_flows(grade, m, br)` / `parse_flows(text)` | `ovs-ofctl -O OpenFlow13 --no-names dump-flows` → `Flow` (`table`, `priority` 32768 when absent, `cookie`, `match` as printed, `fields()` with OpenFlow 1.3 names, `actions`, `outputs()`, `meter_ids()`, `n_packets`, timeouts, `is_table_miss`); `table_miss(flows)` |
+| `get_trace(grade, m, br, trace_flow(in_port=, proto=, eth_src=, eth_dst=, ip_src=, ip_dst=, dport=))` | `ovs-appctl ofproto/trace` → `Trace` (`dropped`, `forwarded`, the last `Datapath actions:`): what a switch does of a packet, whatever the hosts filter |
+| `get_meters(grade, m, br)` / `parse_meters(text)`, `parse_ofctl_show(text)` | `dump-meters` → `{id: Meter(flags, bands)}`; `show` → `{'dpid', 'ports': {name: number}}` |
+| `normalize_dpid(answer)` / `normalize_decimal_dpid(answer)` | a datapath ID typed in hexadecimal (`00000000000000a1`, `0xa1`, with colons) / in decimal (the form of the REST API) |
+
+Verified on Debian 13 (s17, 2026-11-24): the kernel datapath works in a non-privileged Kathara container (caps
+`NET_ADMIN`, `SYS_ADMIN`...) and on its VDE interfaces, one `ovs-system` datapath per network namespace; `ovs-ctl`
+only warns (`nice: cannot set niceness`); OVS meters are enforced by the kernel datapath (`meter(0)` in `ovs-dpctl
+dump-flows`) and a meter without `burst_size` gets a bucket of one second of traffic: a 3 s UDP test at 1.27 times
+the rate loses nothing, so measure with three times the rate (≤ 1.33 times the rate received in 3 s);
+`ofproto/trace` refuses `tp_src` / `tp_dst` after `udp` (`prerequisites not met`) while `add-flow` takes them:
+`udp_dst` / `tcp_dst` work in both; a flow refused by the switch (`ipv4_dst` without `eth_type`) makes the REST call
+succeed and comes back as an ERROR (`OFPBMC_BAD_PREREQ`); `osken-manager` also listens on 6633. Example:
+`lab/sre/_DRAFT_misc/sdn.py`.
+
+### SD-WAN helpers (from `/opt/sre/lib/sdwan.py` and `/opt/sre/lib/sdwan_agent.py`)
+
+```python
+from sdwan import (counter_ruleset, get_counters, parse_counters, tunnel_delta, carried_by, probe_cmd,
+                   install_agent, get_agent_status, parse_agent_status, brownout_cmd, restore_cmd, policy_json)
+```
+
+Which transport carried which application? A hub that terminates the tunnels of the branches sees their
+**decrypted** inner packets: `counter_ruleset({host: address}, ef_port)` is an nftables table of its own (`inet
+sre_count`, hook prerouting priority raw) with one counting rule per (branch host, tunnel `wg-mpls` / `wg-inet`,
+probe) whose comment is `host|tunnel|app`. The grader reads the counters (`get_counters`, one `host|tunnel|app
+packets` line each through jq), has the branch hosts send a burst (`probe_cmd(app, dst)`: hping3, 20 packets 10 ms
+apart; `sip` UDP 5060, `ef` UDP with `-o b8`, `udp` the same unmarked, `erp` / `bulk` / `web` TCP SYN to 8443 / 873
+/ 80, `icmp`), reads them again and compares the tunnels: `carried_by(tunnel_delta(before, after, host, app),
+'mpls')` (at least 75 % of the burst on that tunnel, at most 3 packets on the other). Keepalives, BGP, BFD and
+probes of any agent are never counted.
+
+`sdwan_agent.py` is a small SD-WAN edge agent (stdlib, installed by `install_agent(ns, m, controller, site)` as
+`/usr/local/sbin/sdwan-agent`, configuration `/etc/sdwan-agent.conf`, commands `start` / `stop` / `status
+[--json]` / `run` / `check FILE`): it pulls `<controller>/<site>.json` every 5 s (`validate_policy`: `version`,
+`paths` = device + probe address, `sla_classes` = `max_latency_ms` / `max_loss_pct` / `max_jitter_ms`,
+`applications` = `name`, `match` (`proto`, `dports` with ranges `"a-b"`, `dscp` number or name, `dst`),
+`sla_class`, ordered `paths`; an invalid document is refused and the previous policy stays), pings each path
+every second (window of 5), picks for each application the first path that meets its SLA (else the alive path
+with the lowest latency), leaves a failing path at once and comes back after `hold_down_s` (5 s), and programs
+the kernel itself: table `inet sdwan` (one `meta mark set 0x10N accept` per application), `ip rule fwmark 0x10N
+lookup 20N` (priorities 2000 + N), table `20N` = `default dev <tunnel>`.
+
+Verified on Debian 13 (s17, 2026-11-24, FRR 10.3): `wg-quick` with `Table = off` and `AllowedIPs = 0.0.0.0/0`
+works in a non-privileged container (no `src_valid_mark` sysctl without routes); hping3 reads the TOS in
+hexadecimal without `0x` (`-o b8` is EF; `184` and `0xb8` are not); a TCP probe to an open port is counted twice
+(the SYN, then the RST of the host after the SYN-ACK); with `bgp listen range` + `neighbor PG bfd`, BFD bringing a
+session down deletes the dynamic neighbour **and its BFD session**: the edge, whose BGP waits for BFD to come back
+up, stays `Idle` for good; a static neighbour with `bfd` stays `Idle` while its BFD session never came up (an edge
+without BFD); hence the lab's hub: static neighbours **without** `bfd`, BFD peers of their own in the `bfd` node,
+and the return traffic sent through the tunnel its last packet came in on (`ct mark` per tunnel, a table per
+tunnel). FRR's best path carries its `selectionReason` (`AS Path`, `Local Pref`, `Older Path`...): a preference
+is graded only when the reason is a policy, not a tie-break. Docker's embedded DNS leaves a `table ip nat` in
+every container: a lab table must not be named `ip nat` if it is deleted and re-created. Example:
+`lab/sre/_DRAFT_misc/sdwan.py`.
+
 ### Network inspection helpers (from `/opt/sre/lib/net_config.py`)
 
 These functions are used inside `Grade.grade()` to read live container state.

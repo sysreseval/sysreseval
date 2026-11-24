@@ -1,0 +1,79 @@
+{
+ "site": "edge6",
+ "controller": "http://172.16.239.20/edge6.json",
+ "updated": 1795535899.5,
+ "pid": 187,
+ "fetch": {
+  "status": "ok",
+  "detail": "732 bytes"
+ },
+ "policy": {
+  "version": 1,
+  "sha": "f11993d90952877a",
+  "loaded_at": 1795535836,
+  "hold_down_s": 5.0
+ },
+ "refused": null,
+ "paths": {
+  "mpls": {
+   "alive": true,
+   "latency_ms": 1.8,
+   "loss_pct": 0.0,
+   "jitter_ms": 0.6,
+   "device": "wg-mpls",
+   "probe": "192.168.243.1",
+   "samples": [
+    1.88,
+    1.61,
+    2.48,
+    1.83,
+    1.26
+   ]
+  },
+  "inet": {
+   "alive": true,
+   "latency_ms": 1.7,
+   "loss_pct": 0.0,
+   "jitter_ms": 0.9,
+   "device": "wg-inet",
+   "probe": "192.168.108.1",
+   "samples": [
+    2.02,
+    1.58,
+    2.55,
+    1.84,
+    0.414
+   ]
+  }
+ },
+ "applications": [
+  {
+   "name": "voice",
+   "path": "mpls",
+   "mark": "0x101",
+   "table": 201,
+   "sla_class": "realtime",
+   "paths": [
+    "mpls",
+    "inet"
+   ],
+   "meets_sla": {
+    "mpls": true,
+    "inet": true
+   }
+  },
+  {
+   "name": "bulk",
+   "path": "inet",
+   "mark": "0x102",
+   "table": 202,
+   "sla_class": null,
+   "paths": [
+    "inet"
+   ],
+   "meets_sla": {
+    "inet": true
+   }
+  }
+ ]
+}

@@ -1,0 +1,10 @@
+Flow: tcp,in_port=30,vlan_tci=0x0000,dl_src=02:53:44:95:a1:c3,dl_dst=02:53:44:0f:90:0d,nw_src=10.73.90.180,nw_dst=10.73.90.210,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=40000,tp_dst=22,tcp_flags=0
+
+bridge("br0")
+-------------
+ 0. priority 0
+    drop
+
+Final flow: unchanged
+Megaflow: recirc_id=0,eth,tcp,in_port=30,nw_src=10.73.90.180,nw_dst=10.73.90.210,nw_frag=no,tp_dst=0x0/0xffc0
+Datapath actions: drop

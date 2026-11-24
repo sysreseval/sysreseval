@@ -1,0 +1,14 @@
+{
+ "site": "edge6",
+ "controller": "http://172.28.155.20/edge6.json",
+ "updated": 1795535867.5,
+ "pid": 187,
+ "fetch": {
+  "status": "not found",
+  "detail": "HTTP 404"
+ },
+ "policy": null,
+ "refused": null,
+ "paths": {},
+ "applications": []
+}

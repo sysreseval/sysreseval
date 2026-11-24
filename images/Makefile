@@ -14,7 +14,7 @@ NAMESPACE ?= sysreseval
 #   is built again on the new version of its parent, under its old tag.
 # VERSION_ldap-mail := 1.35
 
-IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa ansible ntp scan docker vagrant base12 init12
+IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa ansible ntp scan sdn docker vagrant base12 init12
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help docker-hub-images
 
@@ -73,6 +73,11 @@ ntp: base13
 scan: init13
 	$(BUILD)
 
+# Open vSwitch 3.5 and the OS-Ken 3.0 controller (with the applications simple_switch_13 and ofctl_rest
+# written again for it, see sdn/Dockerfile) on base13: the switches and controllers of the SDN lab.
+sdn: base13
+	$(BUILD)
+
 # A Docker host inside a lab machine (the Docker and Docker Compose labs): docker-ce, containerd,
 # the compose and buildx plugins from download.docker.com (or docker/cache/*.deb), and the Docker
 # Hub images of DOCKER_HUB_IMAGES saved as tarballs (the lab machines have no Internet access).
@@ -120,8 +125,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + ansible + ntp + scan + docker + vagrant + base12 + init12"
-	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | ansible | ntp | scan | docker | vagrant | base12 | init12  build one image (deps included)"
+	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + ansible + ntp + scan + sdn + docker + vagrant + base12 + init12"
+	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | ansible | ntp | scan | sdn | docker | vagrant | base12 | init12  build one image (deps included)"
 	@echo "  docker-hub-images the Docker Hub tarballs of the docker image (docker/cache/)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
