@@ -386,8 +386,9 @@ class TestTexts:
     def test_course(self, lab, fresh):
         ns = lab.NetScheme(data=fresh, running_lab_name=_running_name())
         from SRE.informations import resolve_informations
-        text = resolve_informations(ns.informations).resolve('fr') if hasattr(
-            resolve_informations(ns.informations), 'resolve') else _text(resolve_informations(ns.informations))
+        resolved, _numbering = resolve_informations(ns.informations)      # (text, numbering)
+        text = _text(resolved)
+        assert '\n## <a id="why"></a>1. Pourquoi automatiser\n' in text      # the course itself, not a repr
         for word in ('ansible.cfg', 'inventaire', 'Vault', 'handler', 'delegate_to', 'Aide-mémoire'):
             assert word in text
         html = markdown_to_html(text)
