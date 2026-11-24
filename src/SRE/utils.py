@@ -433,17 +433,56 @@ def _sort_mode(titles: dict, inherited: str) -> str:
     return mode if isinstance(mode, str) and mode in params.titles_sort_modes else inherited
 
 
-def _ordered_names(names: list, mode: str, titles: dict) -> list:
-    """*names* (the sub-directories, or the labs, of one directory) in the order of *mode*:
-    ``manual`` = the entries of ``titles.json`` in their order, those among *names* only, then
-    the others by name; ``name`` and ``title`` = by name (the consumers of ``title`` sort by
-    label themselves, in the user's language)."""
+def is_subtitle_key(key) -> bool:
+    """*key* of a ``titles.json`` is a subtitle of the manual order
+    (``params.titles_subtitle_prefix``: ``"@subtitle"``, ``"@subtitle routing"``…)."""
+    return isinstance(key, str) and key.startswith(params.titles_subtitle_prefix)
+
+
+def subtitle_of(key, value):
+    """The text of the subtitle the entry *key*: *value* of a ``titles.json`` sets: a string, or
+    a ``{lang: text}`` dict like a title (its texts only: what is no text is left out); ``None``
+    when *key* is no subtitle key, or when its value holds no text (such a key is ignored: it
+    starts no group)."""
+    if not is_subtitle_key(key):
+        return None
+    if isinstance(value, str):
+        return value if value.strip() else None
+    if isinstance(value, dict):
+        texts = {lang: text for lang, text in value.items()
+                 if isinstance(lang, str) and isinstance(text, str) and text.strip()}
+        return texts or None
+    return None
+
+
+def _ordered_groups(subdirs: list, labs: list, mode: str, titles: dict) -> list:
+    """The sub-directories and the labs of one directory in the order of *mode*, group by
+    group: ``[(subtitle, subdirs, labs), ...]``, *subtitle* being the text heading the group
+    (``subtitle_of``) or ``None``.
+
+    ``name`` and ``title`` = one group without subtitle, by name (the consumers of ``title``
+    sort by label themselves, in the user's language).  ``manual`` = the entries of
+    ``titles.json`` in their order, cut into groups at each of its subtitle keys (the entries
+    written before the first one form a group without subtitle); in each group the
+    sub-directories then the labs, those of the directory only; the names the file does not
+    list come last, by name, in the last group.  A file without subtitle gives one group: the
+    listed sub-directories then the others by name, and the labs the same way."""
     if mode != params.titles_sort_manual:
-        return sorted(names)
-    wanted = set(names)
-    listed = [key for key in titles
-              if not key.startswith(params.titles_reserved_prefix) and key in wanted]
-    return listed + sorted(wanted.difference(listed))
+        return [(None, sorted(subdirs), sorted(labs))]
+    groups = [(None, [])]
+    for key, value in titles.items():
+        subtitle = subtitle_of(key, value)
+        if subtitle is not None:
+            groups.append((subtitle, []))
+        elif not key.startswith(params.titles_reserved_prefix):
+            groups[-1][1].append(key)
+    subdir_names, lab_names = set(subdirs), set(labs)
+    result = [(subtitle, [key for key in keys if key in subdir_names], [key for key in keys if key in lab_names])
+              for subtitle, keys in groups]
+    listed = {key for _, keys in groups for key in keys}
+    result[-1][1].extend(sorted(subdir_names.difference(listed)))
+    result[-1][2].extend(sorted(lab_names.difference(listed)))
+    return result
 
 
 def _weight_of(titles: dict, local_name: str):
@@ -511,11 +550,18 @@ def get_lab_list_with_titles(include_exam_only_labs=False, with_readmes=False):
     A directory (``kind`` ``dir``, listed only when a lab lies below) comes right before its
     content; the sub-directories of a directory come before its labs (a directory lab is a
     ``lab``); each group is in the order of the effective ``@sort`` of the directory: its own
-    ``titles.json``, else the nearest ancestor's, else by name (``_ordered_names``), and
+    ``titles.json``, else the nearest ancestor's, else by name (``_ordered_groups``), and
     ``sort`` is that mode, the one the entry is placed among its siblings by (the consumers
     sort the ``title`` mode themselves). The titles come from the ``titles.json`` of the parent
     directory; the file system is the source of truth, so its entries that match nothing on
     disk are silently ignored.
+
+    In the ``manual`` mode the subtitle keys of the ``titles.json`` (``subtitle_of``) cut the
+    entries of the directory into groups, shown one after the other, each with its
+    sub-directories then its labs: the ``dir`` and ``lab`` entries of one directory may then
+    alternate.  The first entry shown of a group has ``"subtitle": str|dict``
+    (``params.lab_list_subtitle_key``), the text to show right before it; a group with nothing
+    to show gives none.
 
     With *with_readmes* (``sre list --with-titles --with-readmes``; the output is the one above
     without it), a ``dir`` entry whose directory holds a README also has
@@ -541,12 +587,16 @@ def get_lab_list_with_titles(include_exam_only_labs=False, with_readmes=False):
         titles = load_titles(dirpath)
         mode = _sort_mode(titles, inherited)
         result = []
-        for d in _ordered_names(subdirs, mode, titles):
-            result.append(dir_entry(os.path.join(dirpath, d), os.path.join(rel, d), _title_of(titles, d), mode))
-            result.extend(entries_of(os.path.join(dirpath, d), os.path.join(rel, d), mode))
-        for name in _ordered_names(labs, mode, titles):
-            result.append(_lab_list_entry(os.path.join(rel, name), _title_of(titles, name),
-                                          params.lab_list_kind_lab, mode, weight=_weight_of(titles, name)))
+        for subtitle, group_subdirs, group_labs in _ordered_groups(subdirs, labs, mode, titles):
+            first = len(result)
+            for d in group_subdirs:
+                result.append(dir_entry(os.path.join(dirpath, d), os.path.join(rel, d), _title_of(titles, d), mode))
+                result.extend(entries_of(os.path.join(dirpath, d), os.path.join(rel, d), mode))
+            for name in group_labs:
+                result.append(_lab_list_entry(os.path.join(rel, name), _title_of(titles, name),
+                                              params.lab_list_kind_lab, mode, weight=_weight_of(titles, name)))
+            if subtitle is not None and len(result) > first:
+                result[first][params.lab_list_subtitle_key] = subtitle
         return result
 
     entries = entries_of(lab_dir_abs, '', params.titles_sort_name)

@@ -1963,7 +1963,8 @@ default): a shorter value lets the machines empty sooner.
 - **Projects**: the user's running projects on the whole pool (Open, Close), "Open a lab" (the
   lab tree with its titles, in the order the `titles.json` of each directory sets, by file name,
   by title in the language of the page or by hand, the sub-directories first, the same tree as
-  the Qt GUI's; under the tree, the `README.md` of the directory being browsed, in the language
+  the Qt GUI's, with the subtitles a hand-made order may cut its list into, each a row of text
+  above the first entry of its group; under the tree, the `README.md` of the directory being browsed, in the language
   of the page when the directory has a `README.<lang>.md`: the top of the lab directory at
   first, a directory once it is opened, the directory holding it once it is closed, the
   directory of a lab once the lab is clicked, nothing for a directory without one, see *A text

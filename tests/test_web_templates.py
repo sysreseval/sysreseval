@@ -1105,6 +1105,86 @@ class TestLabTreeOrder:
         assert json.loads(js.run(tmp_path, runner, json.dumps(LAB_TREE_IN), 'fr')) == LAB_TREE_OUT
 
 
+#: what GET /api/labs gives for directories in the manual mode cut into groups by subtitles (the
+#: first entry of a group carries the text, a string or texts by language): the top directory
+#: (a lab, then a group of one directory, then a group of a directory and a lab), s4 (two groups,
+#: the second one a sub-directory then a lab); "tools" is in the name mode, its lab listed before
+#: its sub-directory (what no CLI does), and a subtitle outside the manual mode is not one
+SUBTITLE_TREE_IN = [
+    {'name': 'intro.py', 'title': 'Introduction', 'kind': 'lab', 'sort': 'manual'},
+    {'name': 's4', 'title': None, 'kind': 'dir', 'sort': 'manual',
+     'subtitle': {'en': 'Second year', 'fr': 'Deuxième année'}},
+    {'name': 's4/dhcp.py', 'title': 'DHCP', 'kind': 'lab', 'sort': 'manual', 'subtitle': 'Addressing'},
+    {'name': 's4/dns.py', 'title': None, 'kind': 'lab', 'sort': 'manual'},
+    {'name': 's4/routing', 'title': None, 'kind': 'dir', 'sort': 'manual', 'subtitle': {'fr': 'Routage'}},
+    {'name': 's4/routing/ospf.py', 'title': None, 'kind': 'lab', 'sort': 'title', 'subtitle': 'Not manual'},
+    {'name': 's4/rip.py', 'title': 'RIP', 'kind': 'lab', 'sort': 'manual'},
+    {'name': 'tools', 'title': None, 'kind': 'dir', 'sort': 'manual', 'subtitle': 'Tools'},
+    {'name': 'tools/ssh.py', 'title': None, 'kind': 'lab', 'sort': 'name', 'subtitle': 'Not manual'},
+    {'name': 'tools/deep', 'title': None, 'kind': 'dir', 'sort': 'name'},
+    {'name': 'tools/deep/z.py', 'title': None, 'kind': 'lab', 'sort': 'name'},
+    {'name': 'last.py', 'title': None, 'kind': 'lab', 'sort': 'manual'},
+]
+
+
+def subtitle_tree_out(year, routing):
+    """[subtitle, kind, name, children] of each node, in the order drawn."""
+    return [
+        ['', 'lab', 'intro.py', []],
+        [year, 'dir', 's4', [
+            ['Addressing', 'lab', 's4/dhcp.py', []], ['', 'lab', 's4/dns.py', []],
+            [routing, 'dir', 's4/routing', [['', 'lab', 's4/routing/ospf.py', []]]],
+            ['', 'lab', 's4/rip.py', []]]],
+        ['Tools', 'dir', 'tools', [
+            ['', 'dir', 'tools/deep', [['', 'lab', 'tools/deep/z.py', []]]], ['', 'lab', 'tools/ssh.py', []]]],
+        ['', 'lab', 'last.py', []],
+    ]
+
+
+SUBTITLE_TREE_RUNNER = """\
+globalThis.document = {documentElement: {lang: process.argv[3]}};
+globalThis.fetch = async () => ({ok: false});
+const {init} = await import('./i18n.js');
+await init();
+const {labTree} = await import('./tree.js');
+
+const outline = (node) => node.children.map((child) => [child.subtitle, child.kind, child.name, outline(child)]);
+const root = labTree(JSON.parse(process.argv[2]));
+process.stdout.write(JSON.stringify({
+  outline: outline(root),
+  lists: [root.dirs.map((dir) => dir.name), root.leaves.map((leaf) => leaf.name)],
+}));
+"""
+
+
+class TestLabTreeSubtitles:
+    """``labTree()`` of tree.js under the ``js`` runtime: the subtitle of the first entry of a
+    group of a "manual" directory, in the language of the page, and ``children``, the content of
+    a directory as it is drawn: the order of the entries in the "manual" mode (its
+    sub-directories and its labs may alternate), the sub-directories first otherwise."""
+
+    def _run(self, tmp_path, js, lang):
+        runner = js_project(tmp_path, SUBTITLE_TREE_RUNNER, 'tree.js', 'i18n.js', 'ui.js')
+        return json.loads(js.run(tmp_path, runner, json.dumps(SUBTITLE_TREE_IN), lang))
+
+    def test_groups_in_the_order_of_the_entries(self, tmp_path, js):
+        out = self._run(tmp_path, js, 'en')
+        assert out['outline'] == subtitle_tree_out('Second year', 'Routage')     # no English text: the one there is
+        # the two lists stay: the sub-directories, the labs
+        assert out['lists'] == [['s4', 'tools'], ['intro.py', 'last.py']]
+
+    def test_language_of_the_page(self, tmp_path, js):
+        assert self._run(tmp_path, js, 'fr')['outline'] == subtitle_tree_out('Deuxième année', 'Routage')
+
+    def test_the_other_trees_list_their_children_too(self, tmp_path, js):
+        """Without subtitle nor manual mode, ``children`` is the sub-directories then the labs
+        (the tree of ``TestLabTreeOrder``, whose labels are the English ones)."""
+        runner = js_project(tmp_path, SUBTITLE_TREE_RUNNER, 'tree.js', 'i18n.js', 'ui.js')
+        out = json.loads(js.run(tmp_path, runner, json.dumps(LAB_TREE_IN), 'en'))
+        assert [[name, [child[2] for child in children]] for _, _, name, children in out['outline']] == [
+            [entry[0], [child[0] for child in entry[3]] if len(entry) > 3 else []] for entry in LAB_TREE_OUT]
+
+
 #: resolveText() of i18n.js for a page language (argv[2]) on [value, defaultLanguage] pairs (argv[3])
 RESOLVE_TEXT_RUNNER = """\
 globalThis.document = {documentElement: {lang: process.argv[2]}};

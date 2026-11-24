@@ -297,6 +297,137 @@ class TestDirectories:
         assert _tree_of(tmp_lab_dir) == before
 
 
+class TestSubtitles:
+    """The subtitles of the manual order ("@subtitle…" keys written among the entries) are
+    positional: a rerun keeps each one where it is, unlike the options, which come first."""
+
+    ROUTING = {"fr": "Routage", "en": "Routing"}
+
+    def _labs(self, tmp_lab_dir, *names):
+        for name in names:
+            _write(tmp_lab_dir / name, f'title = "{Path(name).stem.upper()}"\n')
+
+    def test_subtitles_stay_in_place(self, tmp_lab_dir, capsys):
+        self._labs(tmp_lab_dir, 'dhcp.py', 'dns.py', 'ospf.py', 'rip.py')
+        target = tmp_lab_dir / 'titles.json'
+        target.write_text(json.dumps(
+            {"@subtitle addressing": "Addressing", "dns.py": "Old", "dhcp.py": "DHCP", "@sort": "manual",
+             "@subtitle routing": self.ROUTING, "rip.py": "RIP", "gone.py": "Gone", "@future": 1}))
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=False)
+        data = _read_titles(target)
+        # the options first, as before; the subtitles among the entries; the new lab at the end
+        assert list(data) == ['@sort', '@future', '@subtitle addressing', 'dns.py', 'dhcp.py',
+                              '@subtitle routing', 'rip.py', 'ospf.py']
+        assert data["@subtitle addressing"] == "Addressing" and data["dns.py"] == "DNS"
+        assert data["@subtitle routing"] == {"en": "Routing", "fr": "Routage"}
+        assert list(data["@subtitle routing"]) == ['en', 'fr']         # languages sorted, as a title
+        assert "wrote 4 title(s)" in capsys.readouterr().err           # the subtitles are no titles
+        before = target.read_bytes()
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=False)
+        assert target.read_bytes() == before                           # a second run changes nothing
+
+    def test_the_subtitle_of_a_group_gone_is_kept(self, tmp_lab_dir):
+        self._labs(tmp_lab_dir, 'a.py')
+        (tmp_lab_dir / 'titles.json').write_text(json.dumps(
+            {"@sort": "manual", "@subtitle 1": "One", "gone.py": "Gone", "@subtitle 2": "Two", "a.py": "A"}))
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=False)
+        assert list(_read_titles(tmp_lab_dir / 'titles.json')) == ['@sort', '@subtitle 1', '@subtitle 2', 'a.py']
+
+    def test_the_tree_shown_is_the_same_after_a_rerun(self, tmp_lab_dir):
+        self._labs(tmp_lab_dir, 'a.py', 'b.py', 'c.py', 's4/x.py')
+        (tmp_lab_dir / 'titles.json').write_text(json.dumps(
+            {"@sort": "manual", "@subtitle 1": "One", "c.py": "C", "s4": "Semester 4",
+             "@subtitle 2": self.ROUTING, "a.py": "A"}))
+        def shown():        # the names in their order, each with the subtitle before it
+            return [(e["name"], e.get("subtitle")) for e in _tree_of(tmp_lab_dir)]
+
+        before = shown()
+        assert before == [('s4', "One"), ('s4/x.py', None), ('c.py', None), ('a.py', self.ROUTING), ('b.py', None)]
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=True)
+        assert shown() == before                        # the run only wrote the titles of the labs
+
+    def test_a_subtitle_without_text_is_kept_and_warned_about(self, tmp_lab_dir, capsys):
+        self._labs(tmp_lab_dir, 'a.py', 'b.py')
+        target = tmp_lab_dir / 'titles.json'
+        target.write_text(json.dumps({"@sort": "manual", "@subtitle 1": None, "b.py": "B",
+                                      "@subtitle 2": {"en": ""}, "a.py": "A"}))
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=False)
+        data = _read_titles(target)
+        assert list(data) == ['@sort', '@subtitle 1', 'b.py', '@subtitle 2', 'a.py']
+        assert data["@subtitle 1"] is None and data["@subtitle 2"] == {"en": ""}
+        err = capsys.readouterr().err
+        assert f"{target}: the subtitle '@subtitle 1' has no text" in err
+        assert f"{target}: the subtitle '@subtitle 2' has no text" in err
+
+    def test_a_key_written_twice_is_warned_about(self, tmp_lab_dir, capsys):
+        """JSON keeps the last value of a repeated key, at the place of the first: two subtitles
+        under one key are one, and the command says so."""
+        self._labs(tmp_lab_dir, 'a.py', 'b.py')
+        target = tmp_lab_dir / 'titles.json'
+        target.write_text('{"@sort": "manual", "@subtitle": "One", "b.py": {"en": "B", "en": "B again"},\n'
+                          ' "@subtitle": "Two", "a.py": "A"}\n')
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=False)
+        err = capsys.readouterr().err
+        assert f"{target}: the key '@subtitle' is written more than once, only its last value is read " \
+               '(each subtitle needs a key of its own: "@subtitle 1", "@subtitle 2"…)' in err
+        assert f"{target}: the key 'en' is written more than once, only its last value is read\n" in err
+        assert _read_titles(target) == {"@sort": "manual", "@subtitle": "Two", "b.py": "B", "a.py": "A"}
+
+    def test_no_warning_on_a_plain_file(self, tmp_lab_dir, capsys):
+        self._labs(tmp_lab_dir, 'a.py', 'b.py')
+        (tmp_lab_dir / 'titles.json').write_text(json.dumps(
+            {"@sort": "manual", "@subtitle 1": "One", "b.py": "B", "@subtitle 2": self.ROUTING, "a.py": "A"}))
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=False)
+        assert capsys.readouterr().err == f"wrote 2 title(s) to {tmp_lab_dir / 'titles.json'}\n"
+
+    def test_new_directories_go_into_the_last_group(self, tmp_lab_dir):
+        """``-d``: the lab tree shows an unlisted sub-directory in the last group of the file,
+        after the sub-directories listed there: that is where its entry is written."""
+        self._labs(tmp_lab_dir, 'a.py', 'b.py', 's1/x.py', 's2/x.py', 's3/x.py', 's4/x.py')
+        target = tmp_lab_dir / 'titles.json'
+        target.write_text(json.dumps(
+            {"@sort": "manual", "@subtitle 1": "One", "s1": "First", "a.py": "A",
+             "@subtitle 2": "Two", "b.py": "B", "s3": None}))
+        before = _tree_of(tmp_lab_dir)
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=False, directories=True)
+        assert list(_read_titles(target)) == ['@sort', '@subtitle 1', 's1', 'a.py',
+                                              '@subtitle 2', 'b.py', 's3', 's2', 's4']
+        assert _tree_of(tmp_lab_dir) == before
+
+    def test_new_directories_start_a_last_group_without_any(self, tmp_lab_dir):
+        self._labs(tmp_lab_dir, 'a.py', 'b.py', 's1/x.py', 's2/x.py')
+        target = tmp_lab_dir / 'titles.json'
+        target.write_text(json.dumps(
+            {"@sort": "manual", "@subtitle 1": "One", "s1": None, "a.py": "A", "@subtitle 2": "Two", "b.py": "B"}))
+        before = _tree_of(tmp_lab_dir)
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=False, directories=True)
+        assert list(_read_titles(target)) == ['@sort', '@subtitle 1', 's1', 'a.py', '@subtitle 2', 's2', 'b.py']
+        assert _tree_of(tmp_lab_dir) == before
+
+    def test_a_subtitle_without_text_starts_no_group_for_the_directories(self, tmp_lab_dir):
+        """``sre list`` ignores it, so the last group begins before it."""
+        self._labs(tmp_lab_dir, 'a.py', 'b.py', 's1/x.py', 's2/x.py')
+        target = tmp_lab_dir / 'titles.json'
+        target.write_text(json.dumps(
+            {"@sort": "manual", "@subtitle 1": "One", "s1": None, "a.py": "A", "@subtitle 2": None, "b.py": "B"}))
+        before = _tree_of(tmp_lab_dir)
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=False, directories=True)
+        assert list(_read_titles(target)) == ['@sort', '@subtitle 1', 's1', 's2', 'a.py', '@subtitle 2', 'b.py']
+        assert _tree_of(tmp_lab_dir) == before
+
+    @pytest.mark.parametrize('mode', ['name', 'manual', 'title'])
+    def test_the_lab_tree_is_the_same_after_directories(self, tmp_lab_dir, mode):
+        self._labs(tmp_lab_dir, 'm.py', 'c.py', 'n.py', 's4/x.py', 's4/deep/y.py', 'a1/x.py', 'late/x.py')
+        (tmp_lab_dir / 'titles.json').write_text(json.dumps(
+            {"@sort": mode, "@subtitle 1": "One", "m.py": "M", "late": {"en": "Late"},
+             "@subtitle 2": "Two", "c.py": "C"}))
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=True)
+        before = _tree_of(tmp_lab_dir)
+        action_make_titles(str(tmp_lab_dir), output_file=None, recursive=True, directories=True)
+        assert _read_titles(tmp_lab_dir / 'titles.json')["a1"] is None
+        assert _tree_of(tmp_lab_dir) == before
+
+
 # --- the weights of the labs ("@weights") -------------------------------------------------------
 
 _FIXTURE_LAB = (Path(__file__).parent / 'labs' / 'functional_test_lab.py').read_text()

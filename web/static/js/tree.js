@@ -5,6 +5,12 @@
 // The directories are collapsible (<details>, closed at first like the Qt dialog); a directory
 // or a lab shows its title, else its name (without ".py" for a lab).
 //
+// In the "manual" mode the titles.json of a directory may cut its entries into groups headed by a
+// subtitle: the first entry of such a group carries it (subtitle: a text or {language: text}),
+// a row of that text is drawn right before the entry, and the sub-directories and the labs of
+// the directory come in the order of the entries, group after group, no longer the
+// sub-directories first.
+//
 // A directory entry may carry the README of its directory (readme_html: {language: html}, ""
 // being README.md, rendered by the agent), and the entry without name is the top of the lab
 // directory, kept for its README only: the Open page shows the README of the directory being
@@ -14,13 +20,17 @@ import {el} from './ui.js';
 import {resolveText, currentLanguage} from './i18n.js';
 
 const KIND_DIR = 'dir';
+const KIND_LAB = 'lab';
 const SORT_TITLE = 'title';
+const SORT_MANUAL = 'manual';
+const SUBTITLE_KEY = 'subtitle';
 const README_KEY = 'readme_html';
 const README_DEFAULT = '';        // the language of README.md
 const README_FALLBACK = 'en';
 
-function newNode(segment, name, label) {
-  return {segment, name, label, titled: false, childSort: 'name', readme: '', dirs: [], leaves: []};
+function newNode(kind, segment, name, label) {
+  return {kind, segment, name, label, titled: false, childSort: 'name', readme: '', subtitle: '',
+          dirs: [], leaves: [], children: []};
 }
 
 // The README a user of the language lang reads among {language: html} (the rule of
@@ -41,18 +51,22 @@ export function pickReadme(readme, lang = currentLanguage()) {
   return '';
 }
 
-// The tree of the entries: {segment, name, label, titled, childSort, readme, dirs: [node],
-// leaves: [node]}, the lists in display order, readme the html of the README of a directory
-// (the root included: the entry without name) in the language lang, '' without one; lang: the
+// The tree of the entries: {kind, segment, name, label, titled, childSort, readme, subtitle,
+// dirs: [node], leaves: [node], children: [node]}, the lists in display order: children is the
+// content of a directory as it is drawn, its sub-directories (dirs) then its labs (leaves), or,
+// in the "manual" mode, both in the order of the entries.  readme: the html of the README of a
+// directory (the root included: the entry without name) in the language lang, '' without one;
+// subtitle: the text of the row drawn right before the node, '' without one; lang: the
 // language of the "title" sort and of the README (the page's by default).
 // Pure: importable without a document.
 export function labTree(labs, lang = currentLanguage()) {
-  const root = newNode('', '', '');
+  const root = newNode(KIND_DIR, '', '', '');
   const dirOf = (node, segment, name) => {
     let dir = node.dirs.find((d) => d.segment === segment);
     if (!dir) {
-      dir = newNode(segment, name, segment);
+      dir = newNode(KIND_DIR, segment, name, segment);
       node.dirs.push(dir);
+      node.children.push(dir);
     }
     return dir;
   };
@@ -69,15 +83,19 @@ export function labTree(labs, lang = currentLanguage()) {
     const segment = parts[parts.length - 1];
     const title = resolveText(entry.title);
     node.childSort = entry.sort || 'name';
+    const subtitle = entry.sort === SORT_MANUAL ? resolveText(entry[SUBTITLE_KEY]) : '';
     if (entry.kind === KIND_DIR) {
       const dir = dirOf(node, segment, entry.name);
       dir.label = title || segment;
       dir.titled = Boolean(title);
       dir.readme = pickReadme(entry[README_KEY], lang);
+      dir.subtitle = subtitle;
     } else {
-      const leaf = newNode(segment, entry.name, title || segment.replace(/\.py$/, ''));
+      const leaf = newNode(KIND_LAB, segment, entry.name, title || segment.replace(/\.py$/, ''));
       leaf.titled = Boolean(title);
+      leaf.subtitle = subtitle;
       node.leaves.push(leaf);
+      node.children.push(leaf);
     }
   }
   orderNodes(root, lang);
@@ -91,6 +109,9 @@ function orderNodes(node, lang) {
     node.dirs.sort(byLabel);
     node.leaves.sort(byLabel);
   }
+  if (node.childSort !== SORT_MANUAL) {
+    node.children = [...node.dirs, ...node.leaves];   // "manual": the order of the entries
+  }
   for (const dir of node.dirs) {
     orderNodes(dir, lang);
   }
@@ -100,7 +121,8 @@ function orderNodes(node, lang) {
 // double click; selected: the name of the lab drawn selected from the start (the selection kept
 // across a rebuild of the tree), its directories opened, when the list holds it.
 // A lab is `li.leaf > button.lab[data-lab=<its name>]`: what the Open page hangs the costs of
-// the lab on (open.js).
+// the lab on (open.js).  A subtitle is `li.subtitle`, a row of text right before the first entry
+// of its group: nothing to click.
 // onDirectory(node) (optional) follows the directory being browsed, node being its node of
 // labTree (node.readme: the html of its README, '' without one): the root when the tree is
 // built (the directory of the lab drawn selected when there is one), a directory when it is
@@ -114,38 +136,44 @@ export function buildTree(container, labs, {onSelect, onOpen, selected: initial 
       onDirectory(node);
     }
   };
-  const render = (node) => {
-    const list = el('ul');
-    for (const dir of node.dirs) {
-      const summary = el('summary', {}, dir.label, dir.titled ? el('small', {}, ' ' + dir.segment) : null);
-      const details = el('details', {}, summary, render(dir));
-      // on the click, not on "toggle": that event comes later, and also for the directories
-      // opened below for the lab drawn selected; details.open is still the state before the click
-      summary.addEventListener('click', () => browse(details.open ? node : dir));
-      list.append(el('li', {class: 'dir'}, details));
+  const renderDir = (node, dir) => {
+    const summary = el('summary', {}, dir.label, dir.titled ? el('small', {}, ' ' + dir.segment) : null);
+    const details = el('details', {}, summary, render(dir));
+    // on the click, not on "toggle": that event comes later, and also for the directories
+    // opened below for the lab drawn selected; details.open is still the state before the click
+    summary.addEventListener('click', () => browse(details.open ? node : dir));
+    return el('li', {class: 'dir'}, details);
+  };
+  const renderLeaf = (node, leaf) => {
+    const button = el('button', {type: 'button', class: 'lab', title: leaf.name, dataset: {lab: leaf.name}},
+                      leaf.label, leaf.titled ? el('small', {}, ' ' + leaf.segment.replace(/\.py$/, '')) : null);
+    if (initial !== null && leaf.name === initial) {
+      selected = button;
+      browsed = node;
+      button.setAttribute('aria-selected', 'true');
     }
-    for (const leaf of node.leaves) {
-      const button = el('button', {type: 'button', class: 'lab', title: leaf.name, dataset: {lab: leaf.name}},
-                        leaf.label, leaf.titled ? el('small', {}, ' ' + leaf.segment.replace(/\.py$/, '')) : null);
-      if (initial !== null && leaf.name === initial) {
-        selected = button;
-        browsed = node;
-        button.setAttribute('aria-selected', 'true');
+    button.addEventListener('click', () => {
+      if (selected) {
+        selected.removeAttribute('aria-selected');
       }
-      button.addEventListener('click', () => {
-        if (selected) {
-          selected.removeAttribute('aria-selected');
-        }
-        selected = button;
-        button.setAttribute('aria-selected', 'true');
-        onSelect(leaf.name);
-        browse(node);
-      });
-      button.addEventListener('dblclick', () => onOpen(leaf.name));
-      list.append(el('li', {class: 'leaf'}, button));
+      selected = button;
+      button.setAttribute('aria-selected', 'true');
+      onSelect(leaf.name);
+      browse(node);
+    });
+    button.addEventListener('dblclick', () => onOpen(leaf.name));
+    return el('li', {class: 'leaf'}, button);
+  };
+  function render(node) {
+    const list = el('ul');
+    for (const child of node.children) {
+      if (child.subtitle) {
+        list.append(el('li', {class: 'subtitle'}, child.subtitle));
+      }
+      list.append(child.kind === KIND_DIR ? renderDir(node, child) : renderLeaf(node, child));
     }
     return list;
-  };
+  }
   const root = labTree(labs);
   container.textContent = '';
   container.append(render(root));

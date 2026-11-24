@@ -8,7 +8,8 @@ from pathlib import Path
 from .. import params
 from ..common import TranslatedText
 from ..utils import (_iter_labs, _lab_tree, error_quit, user_not_allowed, generate_default_data,
-                     offline_net_scheme, lab_module_as_srelab, normalized_weight, declared_lab_weight)
+                     offline_net_scheme, lab_module_as_srelab, normalized_weight, declared_lab_weight,
+                     is_subtitle_key, subtitle_of)
 
 
 def _import_lab_module(srelab_file: str):
@@ -92,10 +93,22 @@ def _weight_of_module(module, lab_path: str, srelab_file: str):
 
 def _read_existing(path: str) -> dict:
     """The ``titles.json`` already at *path*, in its order: ``{}`` when there is none, or (with
-    a warning) when it is not a JSON object."""
+    a warning) when it is not a JSON object.  A key written more than once is warned about:
+    JSON reads its last value only, at the place of the first (two subtitles written under the
+    same key give one)."""
+    repeated: list = []
+
+    def pairs(items):
+        seen = set()
+        for key, _ in items:
+            if key in seen and key not in repeated:
+                repeated.append(key)
+            seen.add(key)
+        return dict(items)
+
     try:
         with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+            data = json.load(f, object_pairs_hook=pairs)
     except FileNotFoundError:
         return {}
     except (OSError, json.JSONDecodeError) as e:
@@ -104,6 +117,11 @@ def _read_existing(path: str) -> dict:
     if not isinstance(data, dict):
         print(f"sre make-titles: ignoring {path}: not a JSON object", file=sys.stderr)
         return {}
+    for key in repeated:
+        hint = (f' (each subtitle needs a key of its own: "{params.titles_subtitle_prefix} 1", '
+                f'"{params.titles_subtitle_prefix} 2"…)') if is_subtitle_key(key) else ''
+        print(f"sre make-titles: {path}: the key {key!r} is written more than once, "
+              f"only its last value is read{hint}", file=sys.stderr)
     return data
 
 
@@ -118,33 +136,50 @@ def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=(), 
     *found* now when the lab has one, else as they were (a title written by hand, a lab that
     lost its ``title``, a sub-directory); then the labs *found* that were not listed, by name.
 
+    The subtitles of the manual order (``utils.is_subtitle_key``) are no option of that first
+    block: their place among the entries is what they say, so each one stays where it is, as it
+    is (one whose value is no text is warned about: ``sre list`` ignores it).  The labs appended
+    at the end are thus in the last group of the file.
+
     *subdirs* (``--directories``: the sub-directories of the lab tree) not listed yet are added
     without title (``null``: shown by their name until a title is written by hand), by name,
     right after the last sub-directory entry of the file, else before its first entry: a fresh
     file lists the sub-directories then the labs, as the lab tree shows them, and the order of
     the entries already there, the labs among themselves and the sub-directories among
-    themselves, is never changed."""
+    themselves, is never changed.  In a file with subtitles, "the file" is here its last group
+    (what follows the last subtitle), the one the lab tree shows the unlisted sub-directories
+    in: the tree shown is the same before and after."""
     labs_on_disk = {name for _, name in _iter_labs(parent_dir_abs, include_exam_only_labs=True,
                                                    recursive=False)}
+    titles_file = os.path.join(parent_dir_abs, params.titles_file_name)
 
     def is_subdirectory(key):
         return (not key.startswith(params.titles_reserved_prefix) and key not in labs_on_disk
                 and os.path.isdir(os.path.join(parent_dir_abs, key)))
 
+    def is_option(key):
+        return key.startswith(params.titles_reserved_prefix) and not is_subtitle_key(key)
+
     merged: dict = {}
     for key, value in existing.items():
-        if key.startswith(params.titles_reserved_prefix) and key != params.titles_weights_key:
+        if is_option(key) and key != params.titles_weights_key:
             if key == params.titles_sort_key and value not in params.titles_sort_modes:
-                print(f"sre make-titles: {os.path.join(parent_dir_abs, params.titles_file_name)}: "
+                print(f"sre make-titles: {titles_file}: "
                       f"unknown {key} value {value!r} (one of {', '.join(params.titles_sort_modes)} "
                       f"expected, the value is kept)", file=sys.stderr)
             merged[key] = value
     if weights:
         merged[params.titles_weights_key] = dict(weights)
     for key, value in existing.items():
-        if key.startswith(params.titles_reserved_prefix):
+        if is_subtitle_key(key):
+            if subtitle_of(key, value) is None:
+                print(f"sre make-titles: {titles_file}: the subtitle {key!r} has no text (a string or "
+                      f"a {{language: text}} table is expected): it is ignored, the key is kept",
+                      file=sys.stderr)
+            merged[key] = value
+        elif key.startswith(params.titles_reserved_prefix):
             continue
-        if key in labs_on_disk or os.path.isdir(os.path.join(parent_dir_abs, key)):
+        elif key in labs_on_disk or os.path.isdir(os.path.join(parent_dir_abs, key)):
             merged[key] = found.get(key, value)
     for key in sorted(found):
         if key not in merged:
@@ -155,9 +190,10 @@ def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=(), 
     if not missing:
         return merged
     keys = list(merged)
-    position = sum(1 for key in keys if key.startswith(params.titles_reserved_prefix))
+    position = sum(1 for key in keys if is_option(key))
     for index, key in enumerate(keys):
-        if is_subdirectory(key):
+        # a subtitle starts a group: the sub-directory entries before it are those of another one
+        if is_subdirectory(key) or subtitle_of(key, merged[key]) is not None:
             position = index + 1
     return {key: merged.get(key) for key in keys[:position] + missing + keys[position:]}
 

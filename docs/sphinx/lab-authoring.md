@@ -2428,9 +2428,9 @@ Written by hand in the `titles.json` of a directory, the reserved key `"@sort"` 
 |-------|----------------------|
 | `"name"` | By file name, byte-wise (capitals first). The default. |
 | `"title"` | By title in the language of the user (the language priority of the GUI, the language of the page on the web): case and accents ignored, numbers compared as numbers so that "TP 2" comes before "TP 10"; an entry without title sorts by its name. |
-| `"manual"` | The entries of the file in their order, then the unlisted ones by name. |
+| `"manual"` | The entries of the file in their order, then the unlisted ones by name. Subtitles may cut the list into groups (see *Groups of a manual order* below). |
 
-In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor: `/opt/sre/lab/titles.json` sets the whole tree, a sub-directory may override it. A key may also name a sub-directory, with a title (shown instead of the directory name, see above) or `null` (listed for its place in the manual order only); this is the way to order a level that holds directories only, such as the root. An unknown value is ignored; `sre make-titles` warns about it and keeps the file as it is.
+In every mode the sub-directories come first, then the labs (inside each group, when a manual order has subtitles). A directory without the option takes the one of the nearest ancestor: `/opt/sre/lab/titles.json` sets the whole tree, a sub-directory may override it. A key may also name a sub-directory, with a title (shown instead of the directory name, see above) or `null` (listed for its place in the manual order only); this is the way to order a level that holds directories only, such as the root. An unknown value is ignored; `sre make-titles` warns about it and keeps the file as it is.
 
 ```json
 {
@@ -2443,6 +2443,33 @@ In every mode the sub-directories come first, then the labs. A directory without
 ```
 
 What the pickers receive is `sre list --with-titles`: the tree flattened in display order, a directory entry before its content, each entry with its `title`, its `kind` (`dir` / `lab`) and the `sort` mode it is placed by; the front-ends keep that order and only sort the `"title"` mode themselves (see `sre list` and `sre make-titles` in the [CLI reference](cli.md)).
+
+### Groups of a manual order: subtitles
+
+In a directory whose order is `"manual"` (set in its own `titles.json` or taken from an ancestor), subtitles cut the list into groups. A subtitle is a key starting with `@subtitle`, written **among the entries**, at the place where it is shown; its value is its text, a plain string or a `{lang: text}` dict resolved in the language of the user like a title. It heads the entries that follow it in the file, up to the next subtitle:
+
+```json
+{
+  "@sort": "manual",
+  "@subtitle addressing": {"en": "Addressing", "fr": "Adressage"},
+  "dhcp.py":              "DHCP",
+  "dns1.py":              "DNS 1",
+  "@subtitle routing":    {"en": "Routing", "fr": "Routage"},
+  "static_routing.py":    {"en": "Static routing", "fr": "Routage statique"},
+  "ospf.py":              "OSPF"
+}
+```
+
+Both pickers then show a row *Addressing* above the DHCP lab and a row *Routing* above the static routing lab. A subtitle is a row of text only: it cannot be selected, opened or folded, and it changes neither the name nor the path of a lab.
+
+- **Each subtitle needs a key of its own.** JSON allows a key once per file: what follows `@subtitle` is free and only tells the keys apart (`"@subtitle 1"`, `"@subtitle routing"`); it is never shown. Of two subtitles written under the same key, only the last one is read; `sre make-titles` warns about a key written twice.
+- The entries written before the first subtitle form a first group without subtitle.
+- The entries the file does not list come last, by name, as in any manual order: they end the last group. To keep them apart, end the file with a subtitle of their own (`"@subtitle other": "Other labs"`).
+- A directory holding both sub-directories and labs is shown group by group, each group with its sub-directories first, then its labs.
+- A group with nothing to show has no row: a group of exam-only labs does not appear to the students, nor a group whose labs are gone.
+- A subtitle without text (`null`, an empty string) is ignored, and so are the subtitles of a directory whose order is `"name"` or `"title"`: those orders are not the one of the file.
+
+`sre make-titles` keeps each subtitle at its place when it is run again. The labs it adds go to the end of the file, hence into the last group: move their line to the group they belong to.
 
 ### A text for a directory: `README.md`
 

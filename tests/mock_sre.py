@@ -31,6 +31,11 @@ Environment variables (all optional but the first):
   MOCK_LAB_WEIGHTS    JSON {lab name: weight}: the "weight" key `list --with-titles` gives the
                       entry of a lab whose titles.json stores one (`sre make-titles`); none by
                       default, and a lab the list does not hold is ignored
+  MOCK_LAB_SUBTITLES  JSON {entry name: subtitle} (a text or {language: text}): the "subtitle" key
+                      `list --with-titles` gives the first entry of a group of a titles.json in
+                      the "manual" mode; the entries of the directory of a named entry are then
+                      in the "manual" mode (their order unchanged); none by default, and an
+                      entry the list does not hold is ignored
   MOCK_FLAVOR_FORM    when set, `start` without --flavor-json (user mode) exits 3 with the
                       flavor_form event, `form` being its value
   MOCK_FLAVOR_REFUSE  when set, `start --flavor-json` exits 4 with the flavor_error event carrying
@@ -121,6 +126,7 @@ ENV_LOG = 'MOCK_SRE_LOG'
 ENV_LAB_LIST = 'MOCK_LAB_LIST'
 ENV_LAB_READMES = 'MOCK_LAB_READMES'
 ENV_LAB_WEIGHTS = 'MOCK_LAB_WEIGHTS'
+ENV_LAB_SUBTITLES = 'MOCK_LAB_SUBTITLES'
 ENV_FLAVOR_FORM = 'MOCK_FLAVOR_FORM'
 ENV_FLAVOR_REFUSE = 'MOCK_FLAVOR_REFUSE'
 ENV_FLAVOR_PRESETS = 'MOCK_FLAVOR_PRESETS'
@@ -347,9 +353,12 @@ class Mock:
         """The entries of `list --with-titles` as the real CLI prints them: the tree of the lab
         names flattened in display order, a directory entry (no title) right before its content,
         the sub-directories of a directory before its labs, each group by name; a lab named by
-        MOCK_LAB_WEIGHTS has its "weight"."""
+        MOCK_LAB_WEIGHTS has its "weight"; an entry named by MOCK_LAB_SUBTITLES has its
+        "subtitle", and it and its siblings the "manual" mode."""
         value = self.env.get(ENV_LAB_WEIGHTS)
         weights = json.loads(value) if value else {}
+        value = self.env.get(ENV_LAB_SUBTITLES)
+        subtitles = json.loads(value) if value else {}
         tree: dict = {}
         for lab in labs:
             parts = lab.split('/')
@@ -369,7 +378,18 @@ class Mock:
                 if prefix + name in weights:
                     result[-1]["weight"] = weights[prefix + name]
             return result
-        return flatten(tree, '')
+
+        def directory(name):
+            return name.rpartition('/')[0]
+
+        entries = flatten(tree, '')
+        manual = {directory(entry["name"]) for entry in entries if entry["name"] in subtitles}
+        for entry in entries:
+            if directory(entry["name"]) in manual:
+                entry["sort"] = "manual"
+            if entry["name"] in subtitles:
+                entry["subtitle"] = subtitles[entry["name"]]
+        return entries
 
     def with_readmes(self, entries: list) -> list:
         """The entries of `list --with-titles --with-readmes`: the "readme" texts of

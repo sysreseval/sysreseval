@@ -99,7 +99,11 @@ LAB_KIND_DIR = 'dir'
 LAB_KIND_LAB = 'lab'
 LAB_KINDS = (LAB_KIND_DIR, LAB_KIND_LAB)
 LAB_SORT_NAME = 'name'
-LAB_SORT_MODES = (LAB_SORT_NAME, 'title', 'manual')
+LAB_SORT_MANUAL = 'manual'
+LAB_SORT_MODES = (LAB_SORT_NAME, 'title', LAB_SORT_MANUAL)
+#: The subtitle shown right before an entry placed by the ``manual`` mode: the entry is the first
+#: one of a group of its ``titles.json`` (a text, or ``{language: text}`` like a title).
+LAB_SUBTITLE_KEY = 'subtitle'
 #: The weight of a ``lab`` entry of the list (``sre make-titles``), when its host tells one: the
 #: first estimate of what a project of the lab costs (``costs.CostBook.declare``).
 LAB_WEIGHT_KEY = 'weight'
@@ -115,6 +119,19 @@ def readme_of(entry: dict) -> dict:
     if not isinstance(readme, dict):
         return {}
     return {lang: html for lang, html in readme.items() if isinstance(lang, str) and isinstance(html, str) and html}
+
+
+def subtitle_of(entry: dict):
+    """The subtitle of an entry of ``GET /v1/labs`` (``LAB_SUBTITLE_KEY``): a string that is not
+    blank, or the texts of a ``{language: text}`` table that are such strings; ``None`` when
+    the entry has none (an older agent, no subtitle before it)."""
+    subtitle = entry.get(LAB_SUBTITLE_KEY)
+    if isinstance(subtitle, str):
+        return subtitle if subtitle.strip() else None
+    if isinstance(subtitle, dict):
+        return {lang: text for lang, text in subtitle.items()
+                if isinstance(lang, str) and isinstance(text, str) and text.strip()} or None
+    return None
 
 
 class PoolError(Exception):
@@ -1465,7 +1482,9 @@ class Pool:
         keeps its ``weight`` when the host tells one that is a number (``LAB_WEIGHT_KEY``).  A directory
         entry keeps its README (``readme_of``: ``LAB_README_KEY``, shown under the tree of the
         Open page when the directory is opened), and the entry without name, the top of the lab
-        directory, is kept for its README only: it is no entry of the tree."""
+        directory, is kept for its README only: it is no entry of the tree.  An entry of the
+        ``manual`` mode keeps its subtitle (``subtitle_of``: ``LAB_SUBTITLE_KEY``, the text shown
+        right before it)."""
         try:
             async with self.session.get(f"{host.url}/v1/labs", headers=self.headers(host, identity), params=params,
                                         timeout=aiohttp.ClientTimeout(total=30)) as resp:
@@ -1495,6 +1514,9 @@ class Pool:
                                    'sort': mode if mode in LAB_SORT_MODES else LAB_SORT_NAME}
             if readme:
                 seen[entry['name']][LAB_README_KEY] = readme
+            subtitle = subtitle_of(entry) if mode == LAB_SORT_MANUAL and entry['name'] else None
+            if subtitle is not None:
+                seen[entry['name']][LAB_SUBTITLE_KEY] = subtitle
             weight = figure(entry.get(LAB_WEIGHT_KEY)) if kind != LAB_KIND_DIR else None
             if weight is not None:
                 seen[entry['name']][LAB_WEIGHT_KEY] = weight

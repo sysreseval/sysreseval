@@ -314,6 +314,147 @@ class TestLabTree:
         assert utils._lab_tree(str(tmp_lab_dir / 'empty'), include_exam_only_labs=True) == {}
 
 
+class TestSubtitles:
+    """The subtitles of the manual order: a key of titles.json starting with "@subtitle",
+    written among the entries, heads those that follow it up to the next one.  `sre list
+    --with-titles` gives its text as the `subtitle` of the first entry shown of the group."""
+
+    ROUTING = {"en": "Routing", "fr": "Routage"}
+
+    @staticmethod
+    def _shown(result):
+        """The list as a user reads it: the subtitles (in brackets) and the names."""
+        shown = []
+        for entry in result:
+            if params.lab_list_subtitle_key in entry:
+                subtitle = entry[params.lab_list_subtitle_key]
+                shown.append(f"[{subtitle if isinstance(subtitle, str) else subtitle['en']}]")
+            shown.append(entry["name"])
+        return shown
+
+    def test_params(self):
+        assert params.titles_subtitle_prefix.startswith(params.titles_reserved_prefix)
+        assert utils.is_subtitle_key("@subtitle") and utils.is_subtitle_key("@subtitle routing")
+        assert not utils.is_subtitle_key("@sort") and not utils.is_subtitle_key("subtitle.py")
+        assert not utils.is_subtitle_key(None)
+
+    def test_groups_of_labs(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'dhcp.py', 'dns.py', 'ospf.py', 'rip.py', 'intro.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "intro.py": "Introduction",
+                                  "@subtitle addressing": "Addressing", "dhcp.py": "DHCP", "dns.py": None,
+                                  "@subtitle routing": self.ROUTING, "rip.py": "RIP", "ospf.py": "OSPF"})
+        result = get_lab_list_with_titles()
+        # the entries written before the first subtitle form a group without one
+        assert self._shown(result) == ['intro.py', '[Addressing]', 'dhcp.py', 'dns.py',
+                                       '[Routing]', 'rip.py', 'ospf.py']
+        by_name = {e["name"]: e for e in result}
+        assert by_name['dhcp.py'] == {"name": "dhcp.py", "title": "DHCP", "kind": "lab", "sort": "manual",
+                                      "subtitle": "Addressing"}
+        assert by_name['rip.py']["subtitle"] == self.ROUTING           # a text by language, as a title
+        assert by_name['dns.py'] == {"name": "dns.py", "title": None, "kind": "lab", "sort": "manual"}
+
+    def test_without_subtitle_nothing_changes(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'a.py', 'b.py', 'c.py', 'late/x.py', 'first/x.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "c.py": "C", "late": None, "a.py": None})
+        result = get_lab_list_with_titles()
+        assert [e["name"] for e in result] == ['late', 'late/x.py', 'first', 'first/x.py', 'c.py', 'a.py', 'b.py']
+        assert all(params.lab_list_subtitle_key not in e for e in result)
+
+    def test_unlisted_entries_end_the_last_group(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'a.py', 'b.py', 'z.py', 'new2.py', 'new1.py', 'extra/x.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "@subtitle 1": "One", "z.py": None,
+                                  "@subtitle 2": "Two", "b.py": None, "a.py": None})
+        # the last group: its sub-directories (the unlisted one), then its labs, the unlisted by name
+        assert self._shown(get_lab_list_with_titles()) == [
+            '[One]', 'z.py', '[Two]', 'extra', 'extra/x.py', 'b.py', 'a.py', 'new1.py', 'new2.py']
+
+    def test_directories_and_labs_group_by_group(self, tmp_lab_dir):
+        """A directory with both: each group shows its sub-directories then its labs, whatever
+        their order inside the group in the file."""
+        _touch(tmp_lab_dir, 'lab1.py', 'lab2.py', 'lab3.py', 'dir1/x.py', 'dir2/y.py', 'dir3/z.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual",
+                                  "@subtitle a": "Group A", "lab1.py": None, "dir1": "First",
+                                  "@subtitle b": "Group B", "dir3": None, "lab3.py": None, "dir2": None,
+                                  "lab2.py": None})
+        result = get_lab_list_with_titles()
+        assert self._shown(result) == ['[Group A]', 'dir1', 'dir1/x.py', 'lab1.py',
+                                       '[Group B]', 'dir3', 'dir3/z.py', 'dir2', 'dir2/y.py', 'lab3.py', 'lab2.py']
+        by_name = {e["name"]: e for e in result}
+        # the subtitle is on the directory entry, the first one of its group, not on its content
+        assert by_name['dir1']["subtitle"] == "Group A" and by_name['dir1']["kind"] == 'dir'
+        assert params.lab_list_subtitle_key not in by_name['dir1/x.py']
+        assert params.lab_list_subtitle_key not in by_name['lab1.py']
+
+    def test_a_group_with_nothing_to_show_has_no_subtitle(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'a.py', 'draft_DRAFT_.py', 'b.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "@subtitle ready": "Ready", "a.py": None,
+                                  "@subtitle drafts": "Drafts", "draft_DRAFT_.py": None, "gone.py": "Gone",
+                                  "@subtitle more": "More", "b.py": None})
+        assert self._shown(get_lab_list_with_titles()) == ['[Ready]', 'a.py', '[More]', 'b.py']
+        assert self._shown(get_lab_list_with_titles(include_exam_only_labs=True)) == [
+            '[Ready]', 'a.py', '[Drafts]', 'draft_DRAFT_.py', '[More]', 'b.py']
+
+    def test_the_subtitle_follows_the_first_entry_shown(self, tmp_lab_dir):
+        """The first entry of a group in the file may be hidden: the next one carries the text."""
+        _touch(tmp_lab_dir, 'first_EXAM_.py', 'second.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "@subtitle": "Group", "first_EXAM_.py": None,
+                                  "second.py": None})
+        assert self._shown(get_lab_list_with_titles()) == ['[Group]', 'second.py']
+        assert self._shown(get_lab_list_with_titles(include_exam_only_labs=True)) == [
+            '[Group]', 'first_EXAM_.py', 'second.py']
+
+    @pytest.mark.parametrize('value', [None, "", "   ", 3, True, [], ["Text"], {}, {"en": ""}, {"en": 5}])
+    def test_a_subtitle_without_text_starts_no_group(self, tmp_lab_dir, value):
+        _touch(tmp_lab_dir, 'a.py', 'b.py', 'c.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "@subtitle 1": "One", "b.py": None,
+                                  "@subtitle 2": value, "a.py": None})
+        result = get_lab_list_with_titles()
+        assert self._shown(result) == ['[One]', 'b.py', 'a.py', 'c.py']
+        assert utils.subtitle_of("@subtitle 2", value) is None
+
+    def test_only_the_texts_of_a_table_are_kept(self):
+        assert utils.subtitle_of("@subtitle x", {"en": "Routing", "fr": "", "de": 4}) == {"en": "Routing"}
+        assert utils.subtitle_of("@subtitle x", "Routing") == "Routing"
+        assert utils.subtitle_of("@sort", "Routing") is None            # not a subtitle key
+        assert utils.subtitle_of("x.py", "Routing") is None
+
+    @pytest.mark.parametrize('mode', ["name", "title", None])
+    def test_ignored_outside_the_manual_mode(self, tmp_lab_dir, mode):
+        _touch(tmp_lab_dir, 'a.py', 'b.py', 'sub/x.py')
+        titles = {"@subtitle 1": "One", "b.py": "B", "@subtitle 2": "Two", "sub": None, "a.py": "A"}
+        if mode is not None:
+            titles["@sort"] = mode
+        _titles(tmp_lab_dir, '', titles)
+        result = get_lab_list_with_titles()
+        assert self._shown(result) == ['sub', 'sub/x.py', 'a.py', 'b.py']
+        assert {e["sort"] for e in result} == {mode or 'name'}
+
+    def test_inherited_manual_mode(self, tmp_lab_dir):
+        """The mode may come from an ancestor: the subtitles of the directory count all the same."""
+        _touch(tmp_lab_dir, 's4/a.py', 's4/b.py', 's5/a.py', 's5/b.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "@subtitle year 2": "Second year", "s4": None, "s5": None})
+        _titles(tmp_lab_dir, 's4', {"@subtitle 1": "Basics", "b.py": None, "@subtitle 2": "More", "a.py": None})
+        _titles(tmp_lab_dir, 's5', {"@sort": "name", "@subtitle 1": "Never shown", "b.py": None})
+        assert self._shown(get_lab_list_with_titles()) == [
+            '[Second year]', 's4', '[Basics]', 's4/b.py', '[More]', 's4/a.py', 's5', 's5/a.py', 's5/b.py']
+
+    def test_subtitles_are_no_entries_and_keep_the_weights(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'a.py', 'b.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "@weights": {"a.py": 4, "b.py": 9},
+                                  "@subtitle 1": "One", "b.py": "B", "a.py": "A"})
+        assert get_lab_list_with_titles() == [
+            {"name": "b.py", "title": "B", "kind": "lab", "sort": "manual", "weight": 9, "subtitle": "One"},
+            {"name": "a.py", "title": "A", "kind": "lab", "sort": "manual", "weight": 4}]
+
+    def test_readme_and_subtitle_on_a_directory_entry(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's4/a.py')
+        (tmp_lab_dir / 's4' / 'README.md').write_text('# S4')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "@subtitle 1": "Year 2", "s4": "Semester 4"})
+        result = get_lab_list_with_titles(with_readmes=True)
+        assert result[0] == {"name": "s4", "title": "Semester 4", "kind": "dir", "sort": "manual",
+                             "readme": {"": "# S4"}, "subtitle": "Year 2"}
+
+
 class TestSymbolicLinks:
     """The Debian package links its labs into the lab directory: /var/lib/sre/lab/sre."""
 

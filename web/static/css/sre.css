@@ -208,6 +208,15 @@ input:invalid { border-color: var(--danger); }
 .lab-tree button.lab:hover { background: #eef3fa; }
 .lab-tree button.lab[aria-selected="true"] { background: #d6e4f7; border-color: #90a4ae; }
 .lab-tree button.lab small, .lab-tree summary small { color: var(--muted); }
+/* a subtitle of the manual order of a titles.json: a row of text heading the entries of its group */
+.lab-tree li.subtitle {
+  margin: 10px 0 2px;
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--muted);
+  font-weight: 600;
+}
+.lab-tree li.subtitle:first-child { margin-top: 0; }
 /* the lab costs an instructor shows beside the labs (the Lab costs button of the Open page): six
    columns of a fixed width at the right of each lab, the same for the row of their titles, which
    stays at the top of the tree while it scrolls.  The lists are indented on the left only, so

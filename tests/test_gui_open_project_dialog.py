@@ -3,8 +3,9 @@ The lab tree of the Open project dialog: the entries of `sre list --with-titles`
 (the display order of the CLI: a directory entry before its content, the sub-directories of a
 directory first), the titles resolved against the language priority (the directories' too), the
 children of a directory in the "title" mode reordered by label, the raw path rebuilt from the
-segments; and the README of the directory being browsed (`--with-readmes`), shown under the
-tree by the dialog, built here on a fake `sre-wrapper`.  Offscreen Qt.
+segments; the README of the directory being browsed (`--with-readmes`), shown under the
+tree by the dialog, built here on a fake `sre-wrapper`; and the subtitle rows of the manual
+order of a titles.json.  Offscreen Qt.
 """
 import json
 import os
@@ -14,13 +15,15 @@ import pytest
 pytest.importorskip('PySide6')
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
+from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QTreeWidget  # noqa: E402
 
 from SRE import params  # noqa: E402
 from sysreseval import settings  # noqa: E402
 from sysreseval.open_project_dialog import (  # noqa: E402
     _populate_tree, _full_path, _is_leaf, _readme_of, _has_readme, OpenProjectDialog,
-    ROLE_SEGMENT, ROLE_README, DIALOG_SIZE, DIALOG_SIZE_WITH_README)
+    ROLE_SEGMENT, ROLE_KIND, ROLE_README, KIND_SUBTITLE, DIALOG_SIZE, DIALOG_SIZE_WITH_README)
 
 _app = QApplication.instance() or QApplication([])
 
@@ -280,3 +283,114 @@ class TestReadmeInTheDialog:
         monkeypatch.setattr(params, 'sre_wrapper', str(script))
         dialog = OpenProjectDialog()
         assert 'nope' in dialog.status_label.text() and _shown(dialog) is None
+
+
+def _manual(name, title=None, kind='lab', subtitle=None, readme=None):
+    entry = _entry(name, title, kind=kind, sort='manual')
+    if subtitle is not None:
+        entry['subtitle'] = subtitle
+    if readme is not None:
+        entry['readme'] = readme
+    return entry
+
+
+#: A directory in the manual mode cut into groups by subtitles, as `sre list --with-titles`
+#: gives it: the first entry of a group carries its subtitle; s4 has groups of its own, the
+#: second one holding a sub-directory then a lab.
+SUBTITLE_ENTRIES = [
+    _manual('intro.py', 'Introduction'),
+    _manual('s4', {'en': 'Semester 4'}, kind='dir', subtitle={'en': 'Second year', 'fr': 'Deuxième année'},
+            readme={'': '# Semester 4'}),
+    _manual('s4/dhcp.py', 'DHCP', subtitle='Addressing'),
+    _manual('s4/dns.py', 'DNS'),
+    _manual('s4/routing', kind='dir', subtitle={'en': 'Routing', 'fr': 'Routage'}),
+    _manual('s4/routing/ospf.py', 'OSPF'),
+    _manual('s4/rip.py', 'RIP'),
+    _manual('ssh.py', 'SSH', subtitle='Tools'),
+]
+
+
+def _subtitle_rows(item):
+    return [child for child in (item.child(i) for i in range(item.childCount()))
+            if child.data(0, ROLE_KIND) == KIND_SUBTITLE]
+
+
+class TestSubtitles:
+    """A subtitle of the manual order of a titles.json is a row of the tree right before the
+    first entry of its group: its text in the user's language, nothing to select or to open."""
+
+    def test_rows_before_the_first_entry_of_each_group(self):
+        _, tree = _tree(SUBTITLE_ENTRIES)
+        assert tree == [
+            ('Introduction', 'intro.py', []),
+            ('Second year', None, []),
+            ('Semester 4', 's4', [
+                ('Addressing', None, []), ('DHCP', 'dhcp.py', []), ('DNS', 'dns.py', []),
+                ('Routing', None, []), ('routing', 'routing', [('OSPF', 'ospf.py', [])]), ('RIP', 'rip.py', [])]),
+            ('Tools', None, []),
+            ('SSH', 'ssh.py', [])]
+
+    def test_text_in_the_language_of_the_user(self):
+        _, tree = _tree(SUBTITLE_ENTRIES, ('fr', 'en'))
+        assert tree[1][0] == 'Deuxième année' and tree[2][2][3][0] == 'Routage'
+        assert tree[3][0] == 'Tools' and tree[2][2][0][0] == 'Addressing'      # a plain string
+
+    def test_a_row_is_no_entry(self):
+        widget, _ = _tree(SUBTITLE_ENTRIES)
+        root = widget.invisibleRootItem()
+        rows = _subtitle_rows(root) + _subtitle_rows(widget.topLevelItem(2))
+        assert [row.text(0) for row in rows] == ['Second year', 'Tools', 'Addressing', 'Routing']
+        for row in rows:
+            assert row.flags() == Qt.NoItemFlags                 # not selectable, not enabled
+            assert row.font(0).bold() and not _is_leaf(row) and row.childCount() == 0
+        s4 = widget.topLevelItem(2)
+        assert not s4.font(0).bold() and s4.flags() & Qt.ItemIsSelectable
+        # the paths are those of the entries: a row adds no segment
+        assert _full_path(s4.child(1)) == 's4/dhcp.py'
+        assert _full_path(s4.child(4).child(0)) == 's4/routing/ospf.py'
+
+    @pytest.mark.parametrize('sort', ['name', 'title'])
+    def test_ignored_outside_the_manual_mode(self, sort):
+        entries = [dict(_entry('a.py', 'A', sort=sort), subtitle='One'),
+                   dict(_entry('b.py', 'B', sort=sort), subtitle={'en': 'Two'})]
+        _, tree = _tree(entries)
+        assert tree == [('A', 'a.py', []), ('B', 'b.py', [])]
+
+    @pytest.mark.parametrize('subtitle', [None, '', {}, {'en': ''}])
+    def test_no_row_without_text(self, subtitle):
+        _, tree = _tree([dict(_manual('a.py', 'A'), subtitle=subtitle)])
+        assert tree == [('A', 'a.py', [])]
+
+    def test_only_labs_are_opened(self, dialog_of):
+        dialog, _ = dialog_of(SUBTITLE_ENTRIES)
+        s4 = dialog.tree.topLevelItem(2)
+        dialog.tree.setCurrentItem(dialog.tree.topLevelItem(1))        # the row "Second year"
+        assert dialog.tree.selectedItems() == [] and not dialog.open_button.isEnabled()
+        dialog.accept()
+        assert dialog.selected_project is None
+        dialog.tree.setCurrentItem(s4.child(5))
+        assert dialog.open_button.isEnabled()
+        dialog.accept()
+        assert dialog.selected_project == 's4/rip.py'
+
+    def test_the_arrow_keys_step_over_a_row(self, dialog_of):
+        dialog, _ = dialog_of(SUBTITLE_ENTRIES)
+        dialog.tree.setCurrentItem(dialog.tree.topLevelItem(0))
+        QTest.keyClick(dialog.tree, Qt.Key_Down)
+        assert dialog.tree.currentItem().text(0) == 'Semester 4'      # not the row "Second year"
+        dialog.tree.currentItem().setExpanded(True)
+        QTest.keyClick(dialog.tree, Qt.Key_Down)
+        assert dialog.tree.currentItem().text(0) == 'DHCP'            # not the row "Addressing"
+        QTest.keyClick(dialog.tree, Qt.Key_Up)
+        assert dialog.tree.currentItem().text(0) == 'Semester 4'
+
+    def test_the_readme_is_the_one_of_the_directory_of_the_row(self, dialog_of):
+        dialog, _ = dialog_of(SUBTITLE_ENTRIES)
+        s4 = dialog.tree.topLevelItem(2)
+        assert _shown(dialog) is None                                   # the top directory has none
+        s4.setExpanded(True)
+        assert 'Semester 4' in _shown(dialog)
+        dialog._on_clicked(s4.child(0), 0)                              # a click on "Addressing"
+        assert 'Semester 4' in _shown(dialog)
+        dialog._on_clicked(dialog.tree.topLevelItem(3), 0)              # on "Tools": the top directory
+        assert _shown(dialog) is None

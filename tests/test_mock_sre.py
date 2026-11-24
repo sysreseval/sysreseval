@@ -261,6 +261,21 @@ class TestList:
         assert [{k: v for k, v in entry.items() if k != 'weight'} for entry in data] == plain
         assert json.loads(run_mock(pub, 'list', extra_env=env).stdout) == ['sre/dhcp.py', 's4/tp_ssh']
 
+    def test_subtitles(self, pub):
+        """MOCK_LAB_SUBTITLES: the "subtitle" `list --with-titles` gives the first entry of a
+        group of a titles.json in the manual mode, like the real CLI: the entry named has it,
+        and the entries of its directory are in the "manual" mode; none by default."""
+        routing = {'en': 'Routing', 'fr': 'Routage'}
+        env = {'MOCK_LAB_SUBTITLES': json.dumps({'sre': 'Shipped', 'sre/dhcp.py': routing, 'gone/x.py': 'Gone'})}
+        plain = json.loads(run_mock(pub, 'list', '--with-titles').stdout)
+        assert all('subtitle' not in entry and entry['sort'] == 'name' for entry in plain)
+        data = json.loads(run_mock(pub, 'list', '--with-titles', extra_env=env).stdout)
+        assert [entry['name'] for entry in data] == [entry['name'] for entry in plain]      # the same order
+        assert {entry['name']: (entry['sort'], entry.get('subtitle')) for entry in data} == {
+            's4': ('manual', None), 's4/tp_ssh': ('name', None),
+            'sre': ('manual', 'Shipped'), 'sre/dhcp.py': ('manual', routing)}
+        assert json.loads(run_mock(pub, 'list', extra_env=env).stdout) == ['sre/dhcp.py', 's4/tp_ssh']
+
     def test_exam_only_labs_need_the_flag(self, pub):
         """The exam-only labs (a component holding one of params.exam_only_affix) are listed with
         --include-exam-only only, which user mode refuses, like the real CLI."""

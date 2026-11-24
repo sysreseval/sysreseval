@@ -4,8 +4,10 @@ the portal of test_web_portal.py (proxy mode behind an identity proxy, a real ag
 ``sre``): the project mode of the instructors (Standard / Instructor mode / Debug mode; the
 students have none), the lab tree listing every lab of the host in debug mode and the student
 catalog otherwise, the selection kept across the reload while the lab is still listed, a
-debug project started from the page, and the Projects page saying the mode of each project of
-an instructor (the Mode line of the cards, the suffix of the title)."""
+debug project started from the page, the Projects page saying the mode of each project of
+an instructor (the Mode line of the cards, the suffix of the title), the README of the directory
+being browsed, the lab costs of the instructors, and the subtitles of the manual order of a
+titles.json."""
 import asyncio
 import contextlib
 import json
@@ -657,4 +659,126 @@ class TestLabCosts:
                 assert await page.evaluate("document.getElementById('costs-table')") is None
                 assert await page.evaluate("document.querySelector('#lab-costs-note, #lab-costs-head, .lab-costs')") is None
                 assert (await h.client.get('/api/pool/costs', headers=ALICE)).status == 403
+        P.run(go())
+
+
+# -- the subtitles of the manual order -----------------------------------------------------------
+
+#: the lab tree of the subtitle tests: three directories and a lab at the top, cut into three
+#: groups, and a group inside "sre"; the first entry of a group carries its subtitle
+DNS = 'sre/dns.py'
+SUBTITLE_LABS = ['top.py', DHCP, DNS, 's4/tp_ssh', 'a/x.py']
+FIRST_YEAR = {'en': 'First year', 'fr': 'Première année'}
+NAMING = {'en': 'Naming', 'fr': 'Nommage'}
+SUBTITLE_ENV = {'MOCK_LAB_LIST': json.dumps(SUBTITLE_LABS),
+                'MOCK_LAB_SUBTITLES': json.dumps({'a': FIRST_YEAR, 's4': 'Second year', 'top.py': 'Tools',
+                                                  DNS: NAMING})}
+
+
+def tree_rows(directory_name: str | None = None) -> str:
+    """The rows of a directory of the tree (the top one by default), in the order drawn, as a
+    JavaScript expression: ``[class, text]``, the text of a subtitle, the label of a directory,
+    the name of a lab."""
+    holder = ("document.querySelector('#labs > ul')" if directory_name is None
+              else f"{directory(directory_name)}.parentElement.querySelector(':scope > ul')")
+    return f"""[...{holder}.children].map((li) => [li.className,
+      li.className === 'subtitle' ? li.textContent
+        : li.className === 'dir' ? li.querySelector('summary').textContent.trim()
+        : li.querySelector('button.lab').title])"""
+
+
+#: every subtitle row: its font weight, and whether it comes below the row before it and above
+#: the row after it
+SUBTITLE_BOXES = """[...document.querySelectorAll('#labs > ul > li.subtitle')].map((li) => {
+  const top = (e) => (e ? e.getBoundingClientRect().top : null);
+  const before = top(li.previousElementSibling), after = top(li.nextElementSibling);
+  return [getComputedStyle(li).fontWeight, before === null || before < top(li), top(li) < after,
+          li.getBoundingClientRect().height > 0];
+})"""
+
+
+class TestSubtitles:
+    """A subtitle of the manual order of a titles.json is a row of text of the lab tree, right
+    before the first entry of its group, in the language of the page: nothing to click."""
+
+    def test_rows_of_the_tree(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, ALICE, mock_env=SUBTITLE_ENV) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                language = await page.evaluate(LANGUAGE)
+                assert await page.evaluate(tree_rows()) == [
+                    ['subtitle', FIRST_YEAR[language]], ['dir', 'a'],
+                    ['subtitle', 'Second year'], ['dir', 's4'], ['dir', 'sre'],
+                    ['subtitle', 'Tools'], ['leaf', 'top.py']]
+                assert await page.evaluate(tree_rows('sre')) == [
+                    ['leaf', DHCP], ['subtitle', NAMING[language]], ['leaf', DNS]]
+                assert await page.evaluate(tree_rows('s4')) == [['leaf', 's4/tp_ssh']]
+                # drawn as a heading, each one between its neighbours
+                assert await page.evaluate(SUBTITLE_BOXES) == [['600', True, True, True]] * 3
+                # the labs are those of the list: a subtitle is none
+                assert sorted(await page.evaluate(LABS)) == sorted(SUBTITLE_LABS)
+                assert await page.evaluate(
+                    "document.querySelectorAll('#labs li.subtitle button, #labs li.subtitle [tabindex]').length") == 0
+        P.run(go())
+
+    def test_a_subtitle_selects_nothing(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, ALICE, mock_env=SUBTITLE_ENV) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                await page.click('#labs li.subtitle')
+                assert await page.evaluate(SELECTED) == '' and await page.evaluate(START_DISABLED)
+                assert await page.evaluate(HIGHLIGHTED) == []
+                # the lab after a subtitle is selected as any other one, and the subtitle changes nothing
+                await toggle(page, 'sre')
+                await page.click(lab_button(DNS))
+                assert await page.evaluate(SELECTED) == DNS and not await page.evaluate(START_DISABLED)
+                await page.click('#labs details[open] li.subtitle')
+                assert await page.evaluate(SELECTED) == DNS and await page.evaluate(HIGHLIGHTED) == [DNS]
+        P.run(go())
+
+    def test_directories_and_labs_group_by_group(self, tmp_path):
+        """A manual directory holding sub-directories and labs: the list of the CLI goes group
+        after group, each with its sub-directories then its labs, so the two kinds alternate in
+        one directory; the tree draws that order (the fake ``sre`` only lists the
+        sub-directories first: the list of the pool is replaced)."""
+        def entry(name, kind='lab', subtitle=None):
+            entry = {'name': name, 'title': None, 'kind': kind, 'sort': 'manual'}
+            return dict(entry, subtitle=subtitle) if subtitle else entry
+
+        mixed = [entry('intro.py'),
+                 entry('a', 'dir', 'Group A'), entry('a/x.py'), entry('top.py'),
+                 entry('sre', 'dir', 'Group B'), entry(DHCP, subtitle='Inside'), entry('sre/deep', 'dir'),
+                 entry('sre/deep/y.py'), entry('last.py')]
+
+        async def go():
+            async with browser_of(tmp_path, ALICE) as (h, browser, url):
+                async def labs(identity, *, all_labs=False):
+                    return mixed
+                h.portal.pool.labs = labs
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                assert await page.evaluate(tree_rows()) == [
+                    ['leaf', 'intro.py'],
+                    ['subtitle', 'Group A'], ['dir', 'a'], ['leaf', 'top.py'],
+                    ['subtitle', 'Group B'], ['dir', 'sre'], ['leaf', 'last.py']]
+                assert await page.evaluate(tree_rows('sre')) == [
+                    ['subtitle', 'Inside'], ['leaf', DHCP], ['dir', 'deep']]
+                # a lab below two directories is still found, selected and its directories opened
+                await toggle(page, 'sre')
+                await toggle(page, 'deep')
+                await page.click(lab_button('sre/deep/y.py'))
+                assert await page.evaluate(SELECTED) == 'sre/deep/y.py'
+        P.run(go())
+
+    def test_no_subtitle_no_row(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, ALICE, mock_env={'MOCK_LAB_LIST': json.dumps(SUBTITLE_LABS)}) as (
+                    h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                assert await page.evaluate(tree_rows()) == [['dir', 'a'], ['dir', 's4'], ['dir', 'sre'],
+                                                            ['leaf', 'top.py']]
+                assert await page.evaluate("document.querySelectorAll('#labs li.subtitle').length") == 0
         P.run(go())

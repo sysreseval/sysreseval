@@ -514,6 +514,10 @@ titles_sort_name = "name"           # by file name (the default)
 titles_sort_title = "title"         # by title, in the user's language
 titles_sort_manual = "manual"       # the order of the entries in titles.json
 titles_sort_modes = (titles_sort_name, titles_sort_title, titles_sort_manual)
+# A subtitle of the manual order: a key starting with titles_subtitle_prefix written among the
+# entries (the rest of the key only makes it unique: "@subtitle routing"), its value a text
+# (str / {lang: text}); it heads the entries that follow it in the file, up to the next subtitle
+titles_subtitle_prefix = "@subtitle"
 # The weights of the labs of the directory, {local name: number}: computed by `sre make-titles`
 # (never written by hand: every run replaces them), see image_weights
 titles_weights_key = "@weights"
@@ -525,6 +529,7 @@ lab_list_title_key = "title"
 lab_list_kind_key = "kind"
 lab_list_sort_key = "sort"          # the titles_sort_* mode the entry is placed among its siblings by
 lab_list_weight_key = "weight"      # the weight of a "lab" entry, when titles.json has one
+lab_list_subtitle_key = "subtitle"  # the subtitle shown right before the entry (the first one shown of its group)
 lab_list_kind_dir = "dir"
 lab_list_kind_lab = "lab"
 # The README of a directory of the lab tree, shown under the tree when the directory is opened in

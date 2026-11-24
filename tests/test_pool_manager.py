@@ -1468,6 +1468,34 @@ class TestLabs:
         # the titles of the labs the exams read are those of the labs only
         assert pool.lab_titles() == {}
 
+    def test_subtitles_of_the_manual_order(self):
+        """The subtitle an agent gives with the first entry of a group (`subtitle`: a text, or
+        texts by language) is kept on the entries of the manual mode, directories and labs, its
+        texts that are strings only; anything else is dropped, and so is the subtitle of an
+        entry of another mode."""
+        pool, session = self._pool()
+        session.labs['http://a'] = [
+            {'name': 's4', 'kind': 'dir', 'sort': 'manual', 'subtitle': {'fr': 'Deuxième année', 'en': '', 'de': 3}},
+            {'name': 's4/a.py', 'kind': 'lab', 'sort': 'manual', 'subtitle': 'Addressing', 'weight': 5},
+            {'name': 's4/b.py', 'kind': 'lab', 'sort': 'manual', 'subtitle': '   '},
+            {'name': 's4/c.py', 'kind': 'lab', 'sort': 'manual', 'subtitle': {'en': ''}},
+            {'name': 's4/d.py', 'kind': 'lab', 'sort': 'manual', 'subtitle': ['Routing']},
+            {'name': 's4/e.py', 'kind': 'lab', 'sort': 'manual', 'subtitle': 7},
+            {'name': 's5', 'kind': 'dir', 'sort': 'title', 'subtitle': 'Not manual'},
+            {'name': 's6.py', 'kind': 'lab', 'sort': 'bogus', 'subtitle': 'Not manual'},
+            {'name': 's7.py', 'kind': 'lab', 'subtitle': 'No mode'}]
+        pool.status['a'] = HostStatus(reachable=True, load1=0.0)
+        assert run(pool.labs(Identity(login='bob'))) == [
+            {'name': 's4', 'title': None, 'kind': 'dir', 'sort': 'manual', 'subtitle': {'fr': 'Deuxième année'}},
+            {'name': 's4/a.py', 'title': None, 'kind': 'lab', 'sort': 'manual', 'subtitle': 'Addressing', 'weight': 5},
+            {'name': 's4/b.py', 'title': None, 'kind': 'lab', 'sort': 'manual'},
+            {'name': 's4/c.py', 'title': None, 'kind': 'lab', 'sort': 'manual'},
+            {'name': 's4/d.py', 'title': None, 'kind': 'lab', 'sort': 'manual'},
+            {'name': 's4/e.py', 'title': None, 'kind': 'lab', 'sort': 'manual'},
+            {'name': 's5', 'title': None, 'kind': 'dir', 'sort': 'title'},
+            {'name': 's6.py', 'title': None, 'kind': 'lab', 'sort': 'name'},
+            {'name': 's7.py', 'title': None, 'kind': 'lab', 'sort': 'name'}]
+
     def test_top_entry_without_readme_dropped(self):
         """An entry without name is nothing but the README of the top directory."""
         pool, session = self._pool()

@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
     QPushButton, QLabel, QMessageBox, QSplitter, QTextBrowser
 )
-from PySide6.QtGui import Qt
+from PySide6.QtGui import Qt, QGuiApplication, QPalette
 
 from SRE import params
 from SRE.common import TranslatedText, order_tree_entries, resolve_readme
@@ -21,6 +21,10 @@ ROLE_KIND = Qt.UserRole + 1
 ROLE_INDEX = Qt.UserRole + 2
 ROLE_CHILD_SORT = Qt.UserRole + 3
 ROLE_README = Qt.UserRole + 4
+
+#: ``ROLE_KIND`` of a subtitle row (a subtitle of the manual order of a ``titles.json``): no
+#: entry of the lab list, a row of text heading the entries that follow it in their directory.
+KIND_SUBTITLE = "subtitle"
 
 #: The size of the dialog: the one it always had, and the one it opens with when a directory
 #: of the tree has a README to show under the tree.
@@ -47,6 +51,12 @@ def _populate_tree(root: QTreeWidgetItem | QTreeWidget, entries: list[dict], lan
     the text of the user's language (``resolve_readme``) is kept in ``ROLE_README`` of its node.
     The entry without name is the top of the lab directory: no node, its README goes on the
     root item.
+
+    An entry of the ``manual`` mode may carry ``"subtitle": dict|str``, the subtitle its
+    ``titles.json`` writes before the group it is the first entry of: a row of that text
+    (``KIND_SUBTITLE``) comes right before its node, among the children of its directory.  The
+    sub-directories and the labs of such a directory may alternate: the order of the CLI is
+    kept as it is.
     """
     root_item = root.invisibleRootItem() if isinstance(root, QTreeWidget) else root
 
@@ -55,6 +65,13 @@ def _populate_tree(root: QTreeWidgetItem | QTreeWidget, entries: list[dict], lan
 
     def readme(entry) -> str:
         return resolve_readme(entry.get(params.lab_list_readme_key), lang_priority)
+
+    def add_subtitle(parent, entry):
+        if entry.get(params.lab_list_sort_key) != params.titles_sort_manual:
+            return
+        text = resolved(entry.get(params.lab_list_subtitle_key))
+        if text:
+            parent.addChild(_subtitle_item(text, parent.childCount()))
 
     def find_or_create(parent, segment, label, kind):
         for i in range(parent.childCount()):
@@ -80,6 +97,7 @@ def _populate_tree(root: QTreeWidgetItem | QTreeWidget, entries: list[dict], lan
                 node = find_or_create(node, segment, segment, params.lab_list_kind_dir)
                 continue
             node.setData(0, ROLE_CHILD_SORT, entry.get(params.lab_list_sort_key))
+            add_subtitle(node, entry)
             if kind == params.lab_list_kind_dir:
                 item = find_or_create(node, segment, segment, params.lab_list_kind_dir)
                 item.setText(0, resolved(entry.get("title")) or segment)
@@ -88,6 +106,21 @@ def _populate_tree(root: QTreeWidgetItem | QTreeWidget, entries: list[dict], lan
                 label = resolved(entry.get("title")) or segment.removesuffix('.py')
                 find_or_create(node, segment, label, params.lab_list_kind_lab)
     _reorder(root_item)
+
+
+def _subtitle_item(text: str, index: int) -> QTreeWidgetItem:
+    """The row of a subtitle: its text in bold, no path segment, and no item flag: it cannot be
+    selected and the arrow keys step over it.  Its colour is set by hand, to the one of the
+    text of the tree: a row without flag is drawn greyed, as a disabled one."""
+    item = QTreeWidgetItem([text])
+    item.setData(0, ROLE_KIND, KIND_SUBTITLE)
+    item.setData(0, ROLE_INDEX, index)
+    item.setFlags(Qt.NoItemFlags)
+    font = item.font(0)
+    font.setBold(True)
+    item.setFont(0, font)
+    item.setForeground(0, QGuiApplication.palette().brush(QPalette.Active, QPalette.Text))
+    return item
 
 
 def _reorder(item: QTreeWidgetItem):
@@ -120,9 +153,9 @@ def _is_leaf(item: QTreeWidgetItem) -> bool:
 
 def _readme_directory(item: QTreeWidgetItem | None) -> QTreeWidgetItem | None:
     """The directory a user is browsing when *item* is opened or selected: itself for a
-    directory, the directory holding it for a lab; ``None`` is the top of the lab directory
-    (no item, or a lab at the top)."""
-    if item is None or not _is_leaf(item):
+    directory, the directory holding it for a lab (and for a subtitle row, should a click reach
+    one); ``None`` is the top of the lab directory (no item, or a lab at the top)."""
+    if item is None or item.data(0, ROLE_KIND) == params.lab_list_kind_dir:
         return item
     return item.parent()
 
