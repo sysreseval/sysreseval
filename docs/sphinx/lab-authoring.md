@@ -1741,6 +1741,53 @@ the lab checks one file with `visudo -cf`, which works with both);
 nginx 1.30 (nginx.org) keeps its upstream connections open without a `keepalive` directive and each worker has its own
 round robin, restarting at the first server after a reload. Example: `lab/sre/_DRAFT_misc/ansible.py`.
 
+### Vagrant helpers (from `/opt/sre/lib/vagrant_helpers.py`)
+
+```python
+from vagrant_helpers import (start_docker_cmd, import_rootfs_cmd, docker_box_files, box_catalog_json, build_box_cmd,
+                             vagrant_cmd, vagrant_machines_cmd, parse_vagrant_machines, docker_containers_cmd,
+                             parse_docker_containers, docker_networks_cmd, parse_docker_networks,
+                             parse_vagrant_inventory, strip_ruby_comments, started_after_creation, parse_timestamp,
+                             INSECURE_KEY_BLOBS)
+```
+
+A container has no hypervisor, so the image `sysreseval/vagrant` (`images/vagrant/Dockerfile`: init13 + Debian 13's
+`vagrant` 2.3.7, `docker.io` + `docker-cli`, `fuse-overlayfs`, `ansible-core`, `zstd`) runs Vagrant with its **docker
+provider** against a Docker daemon of its own: a privileged machine with `entrypoint: /sbin/init`. `/var/lib/docker` is
+a `VOLUME`: Docker gives the container an anonymous volume on the host's own filesystem, where the inner daemon uses
+overlay2 (it refuses an overlayfs backing filesystem), and Kathara removes it with the container (`remove(v=True)`).
+`/etc/docker/daemon.json` puts the default bridge on `10.250.0.1/24` and the pool of networks in `10.251.0.0/16`:
+draw the lab networks elsewhere. The image also holds a small Debian 13 root filesystem for the boxes
+(`/usr/share/sre-vagrant/debian13-rootfs.tar.zst`: debian:13-slim + sshd, sudo, python3, nginx, curl; a user
+`vagrant` with sudo and Vagrant's insecure public keys). Docker does not start at boot.
+
+| Function | Returns |
+|----------|---------|
+| `start_docker_cmd(timeout=60)` | `systemctl start docker`, then wait until `docker info` answers |
+| `import_rootfs_cmd(rootfs, image, cmd=BOX_CMD)` | `docker import` of the tarball as *image* (`name:tag`) with a CMD that makes the host keys and runs sshd in the foreground; nothing done if the image exists (about 2 s, 160 MB) |
+| `docker_box_files(image, has_ssh=True, extra='')` | `(metadata.json, Vagrantfile)` of a **docker box**: `{"provider": "docker"}` and a Vagrantfile setting `d.image`, `d.has_ssh`, `d.remains_running` (+ *extra* lines in the provider block) |
+| `box_catalog_json(name, [(version, url, sha256)], description='')` + `build_box_cmd(build_dir, box_file)` | the catalog (metadata) of a versioned box and the `tar -czf` of a box: `vagrant box add <catalog file>` installs it as from a registry (`metadata_url` recorded, `box outdated` works) |
+| `vagrant_cmd(directory, args)` | `cd <dir> && vagrant <args> --no-color --no-tty 2>&1` (exit code kept) |
+| `vagrant_machines_cmd(roots)` / `parse_vagrant_machines(out)` | the machines Vagrant recorded under the project directories (globs): `{(project, name): VagrantMachine(id, box, private_key)}` from `.vagrant/machines/<name>/docker/{id,box_meta,private_key}` (a destroyed machine leaves an empty directory: skipped) |
+| `docker_containers_cmd()` / `parse_docker_containers(out)` | `docker inspect` of every container reduced by jq: `{id: Container}` (`name`, `running`, `started` / `created`, `hostname`, `image`, `env`, `mounts`, `ports`, `networks` → `{ip, prefix, mac}`; `mount_at()`, `host_ports()`, `published(exclude=(22,))`) |
+| `docker_networks_cmd()` / `parse_docker_networks(out)` | `{name: DockerNetwork(driver, subnets, parent)}` |
+| `parse_vagrant_inventory(text)` | the INI inventory of Vagrant's ansible provisioner: `{'hosts': {name: vars}, 'groups': {group: [hosts]}}` |
+| `strip_ruby_comments(text)` | a Vagrantfile without its comments (`#` outside strings, `=begin` / `=end`) |
+| `started_after_creation(container, min_gap=1.0)` | the container was started again after its creation: `vagrant halt` + `up` and `vagrant reload` stop and start the **same** container |
+
+Verified on Debian 13 (s16, 2026-11-24): Debian's vagrant is a git snapshot of 2023-07-31 calling itself
+`2.3.8.dev` (the last release under the MPL); its docker provider breaks every `private_network` with Docker ≥ 24
+(`network_defined?` reads `IPAM.Config.size`, `null` for the `host` / `none` networks: "undefined method `size' for
+nil", shown as "No such object: preparing") — the image patches that line. `vagrant up` of one machine takes about
+7 s (SSH through `127.0.0.1:2222`, then 2200, 2201...; the insecure key replaced by an ed25519 key);
+`action_provision` exists even without a provisioner; `forwarded_port` is a `-p` publication reachable from the other
+machines of the lab; `private_network` creates `vagrant_network_<subnet>`; `public_network` creates a **macvlan**
+network on the `bridge:` interface (it works on a `switch` network, the guest answers with its own MAC; the parent
+machine cannot reach it) and asks two questions on a TTY unless `docker_network__gateway` and
+`docker_network__ip_range` are given; the ansible provisioner works with ansible-core 2.19 (inventory with the legacy
+`ansible_ssh_*` variables); triggers `ruby` (`machine.id`) and `run_remote` work; Vagrant creates the machines of a
+docker project in parallel. A project with 14 guests: ~370 MiB. Example: `lab/sre/_DRAFT_misc/vagrant.py`.
+
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
 `machine_config(net_scheme, machine_name, config)` — concise helper for wiring a machine inside `NetScheme.build()` (or `initial()`). `config` is a `(interfaces, sysctls)` tuple:

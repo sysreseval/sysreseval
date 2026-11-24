@@ -44,6 +44,7 @@
     "tc.py": 14,
     "tcp.py": 5,
     "tls.py": 17,
+    "vagrant.py": 121,
     "vlan.py": 13,
     "voip.py": 46,
     "vrrp.py": 54,
@@ -141,6 +142,10 @@
   "suricata-fail2ban.py": {
     "en": "Intrusion detection and prevention: Suricata and fail2ban",
     "fr": "Détection et prévention d'intrusion : Suricata et fail2ban"
+  },
+  "vagrant.py": {
+    "en": "Reproducible environments with Vagrant",
+    "fr": "Environnements reproductibles avec Vagrant"
   },
   "vxlan-evpn.py": {
     "en": "VXLAN and EVPN in a data centre",

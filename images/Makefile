@@ -14,7 +14,7 @@ NAMESPACE ?= sysreseval
 #   is built again on the new version of its parent, under its old tag.
 # VERSION_ldap-mail := 1.35
 
-IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa ansible ntp scan base12 init12
+IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa ansible ntp scan vagrant base12 init12
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
 
@@ -73,6 +73,12 @@ ntp: base13
 scan: init13
 	$(BUILD)
 
+# The developer workstation of the Vagrant lab: vagrant (docker provider), its own Docker daemon
+# (privileged init machine, /var/lib/docker a VOLUME), ansible-core and a small Debian 13 box root
+# filesystem built from debian:13-slim (see vagrant/Dockerfile).
+vagrant: init13
+	$(BUILD)
+
 # Debian 12 (bookworm) images, kept for the labs that still name them: base12 on kathara/base,
 # init12 = base12 + a genuine systemd.  No other image is built from them any more.
 base12:
@@ -90,8 +96,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + ansible + ntp + scan + base12 + init12"
-	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | ansible | ntp | scan | base12 | init12  build one image (deps included)"
+	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + ansible + ntp + scan + vagrant + base12 + init12"
+	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | ansible | ntp | scan | vagrant | base12 | init12  build one image (deps included)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

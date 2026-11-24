@@ -1,0 +1,237 @@
+{
+ "captured": "s16, 2026-11-24",
+ "data": {
+  "__type__": "srelab.Data",
+  "data": {
+   "company": "boreal",
+   "box_version": "3.0.17",
+   "hello_hostname": "poste-66",
+   "web_port": 8226,
+   "web_token": "BOREAL-494524",
+   "cluster_port": 8857,
+   "app_user": "david",
+   "app_port": 5646,
+   "app_env": "preprod",
+   "sync_name": "boreal-sync",
+   "sync_mode": "readonly",
+   "probe_token": "probe-789557",
+   "kiosk_token": "KIOSK-224979",
+   "fleet": [
+    {
+     "name": "mike",
+     "ip": "192.168.164.130"
+    },
+    {
+     "name": "bravo",
+     "ip": "192.168.164.27"
+    },
+    {
+     "name": "charlie",
+     "ip": "192.168.164.101"
+    }
+   ],
+   "ips": {
+    "dev": "10.120.95.10/24",
+    "client": "10.120.95.100/24",
+    "gateway": "10.120.95.1/24",
+    "kiosk": "10.120.95.68/24"
+   },
+   "nets": {
+    "lan": "10.120.95.0/24",
+    "kiosk_range": "10.120.95.64/29",
+    "cluster": "192.168.158.0/24",
+    "fleet": "192.168.164.0/24"
+   },
+   "ips6": {},
+   "nets6": {},
+   "macs": {},
+   "__current_srelab_file": "/var/tmp/sre-stage-vagrant/lab/sre/_DRAFT_misc/vagrant.py"
+  }
+ },
+ "untouched": [
+  [
+   "client",
+   1,
+   "curl -s -m 5 http://dev:8226/",
+   "",
+   7
+  ],
+  [
+   "client",
+   1,
+   "curl -s -m 10 http://dev:8857/ http://dev:8857/ http://dev:8857/ http://dev:8857/ http://dev:8857/ http://dev:8857/",
+   "",
+   7
+  ],
+  [
+   "client",
+   1,
+   "curl -s -m 5 http://10.120.95.68/; echo; echo '=== neigh'; ip neigh show 10.120.95.68",
+   "\n=== neigh\n10.120.95.68 dev eth0 FAILED \n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "for f in /root/vagrant/*/.vagrant/machines/*/docker/id /root/vagrant/*/*/.vagrant/machines/*/docker/id; do [ -s \"$f\" ] || continue; dir=${f%/id}; p=${f%%/.vagrant/machines/*}; n=${f#*/.vagrant/machines/}; n=${n%%/*}; k=0; [ -s \"$dir/private_key\" ] && k=1; printf 'M\\t%s\\t%s\\t%s\\t%s\\t%s\\n' \"$p\" \"$n\" \"$(cat \"$f\")\" \"$k\" \"$(cat \"$dir/box_meta\" 2>/dev/null)\"; done; true",
+   "",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "docker ps -aq | xargs -r docker inspect | jq -c '[.[] | {id: .Id, name: (.Name | ltrimstr(\"/\")), status: .State.Status, running: .State.Running, started: .State.StartedAt, created: .Created, hostname: .Config.Hostname, image: .Config.Image, env: (.Config.Env // []), mounts: [(.Mounts // [])[] | {type: .Type, source: .Source, destination: .Destination}], ports: (.HostConfig.PortBindings // {}), networks: ((.NetworkSettings.Networks // {}) | with_entries(.value |= {ip: .IPAddress, prefix: .IPPrefixLen, mac: .MacAddress}))}]'; true",
+   "",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "docker network ls -q | xargs -r docker network inspect | jq -c '[.[] | {name: .Name, driver: .Driver, subnets: [(.IPAM.Config // [])[] | .Subnet], parent: ((.Options // {}).parent // \"\")}]'; true",
+   "[{\"name\":\"bridge\",\"driver\":\"bridge\",\"subnets\":[\"10.250.0.0/24\"],\"parent\":\"\"},{\"name\":\"host\",\"driver\":\"host\",\"subnets\":[],\"parent\":\"\"},{\"name\":\"none\",\"driver\":\"null\",\"subnets\":[],\"parent\":\"\"}]\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "echo '=== cluster_vf'; cat /root/vagrant/cluster/Vagrantfile 2>/dev/null; echo; echo '=== inventory'; cat /root/vagrant/provision/.vagrant/provisioners/ansible/inventory/vagrant_ansible_inventory 2>/dev/null; echo; echo '=== triggers_vf'; cat /root/vagrant/triggers/Vagrantfile 2>/dev/null; echo; echo '=== triggers_log'; cat /root/vagrant/triggers/up.log 2>/dev/null; echo; echo '=== fleet_vf'; cat /root/vagrant/fleet/Vagrantfile 2>/dev/null; echo; echo '=== metadata_url'; cat /root/.vagrant.d/boxes/boreal-VAGRANTSLASH-base/metadata_url 2>/dev/null; echo; true; echo '=== boxes'; ls -d /root/.vagrant.d/boxes/*/*/docker 2>/dev/null; true",
+   "=== cluster_vf\n\n=== inventory\n\n=== triggers_vf\n\n=== triggers_log\n\n=== fleet_vf\n\n=== metadata_url\n\n=== boxes\n/root/.vagrant.d/boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "ID=$(cat /root/vagrant/hello/.vagrant/machines/default/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'cat /home/vagrant/.ssh/authorized_keys'; true",
+   "",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "ID=$(cat /root/vagrant/cluster/.vagrant/machines/lb/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'echo '\"'\"'=== app1'\"'\"'; curl -s -m 3 http://192.168.158.11/; echo; echo '\"'\"'=== app2'\"'\"'; curl -s -m 3 http://192.168.158.12/; echo'; true",
+   "",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "ID=$(cat /root/vagrant/provision/.vagrant/machines/db/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'echo '\"'\"'=== user'\"'\"'; id -nu david; echo '\"'\"'=== conf'\"'\"'; cat /etc/app.conf; echo; echo '\"'\"'=== http'\"'\"'; curl -s -m 3 http://127.0.0.1:5646/'; true",
+   "",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "[ -d /root/vagrant/sync/src ] && echo probe-789557 > /root/vagrant/sync/src/.sre-probe && ID=$(cat /root/vagrant/sync/.vagrant/machines/default/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'cat /srv/app/.sre-probe'; true; rm -f /root/vagrant/sync/src/.sre-probe; true",
+   "",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "echo '=== build'; ID=$(cat /root/vagrant/triggers/.vagrant/machines/build/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'cat /etc/vagrant-up'; true; echo; echo '=== test'; ID=$(cat /root/vagrant/triggers/.vagrant/machines/test/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'cat /etc/vagrant-up'; true; echo",
+   "=== build\n\n=== test\n\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "cat /sys/class/net/eth0/address",
+   "2a:7c:70:a3:45:98\n",
+   0
+  ]
+ ],
+ "final": [
+  [
+   "client",
+   1,
+   "curl -s -m 5 http://dev:8226/",
+   "<!doctype html>\n<html><head><title>Intranet Boreal</title></head>\n<body><h1>BOREAL-494524</h1><p>Servi par une machine Vagrant.</p></body></html>\n",
+   0
+  ],
+  [
+   "client",
+   1,
+   "curl -s -m 10 http://dev:8857/ http://dev:8857/ http://dev:8857/ http://dev:8857/ http://dev:8857/ http://dev:8857/",
+   "app1\napp2\napp1\napp2\napp1\napp2\n",
+   0
+  ],
+  [
+   "client",
+   1,
+   "curl -s -m 5 http://10.120.95.68/; echo; echo '=== neigh'; ip neigh show 10.120.95.68",
+   "KIOSK-224979\n\n=== neigh\n10.120.95.68 dev eth0 lladdr 02:42:0a:78:5f:44 REACHABLE \n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "for f in /root/vagrant/*/.vagrant/machines/*/docker/id /root/vagrant/*/*/.vagrant/machines/*/docker/id; do [ -s \"$f\" ] || continue; dir=${f%/id}; p=${f%%/.vagrant/machines/*}; n=${f#*/.vagrant/machines/}; n=${n%%/*}; k=0; [ -s \"$dir/private_key\" ] && k=1; printf 'M\\t%s\\t%s\\t%s\\t%s\\t%s\\n' \"$p\" \"$n\" \"$(cat \"$f\")\" \"$k\" \"$(cat \"$dir/box_meta\" 2>/dev/null)\"; done; true",
+   "M\t/root/vagrant/cluster\tapp1\te6ded2ab8d361a6f7ae169f351903c7d0e31b3e4aa6fa680f518e7d4d7a679c6\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/cluster\tapp2\tf34587d928ec510b5603fba1457099f400acefc5606f35292146586919f3e82f\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/cluster\tlb\tbc737a0e2a1f2318013e8d0e3aa3b7e7b29f4559929c808c6e132773cd9c0658\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/fleet\tbravo\t9e89685adeb903721f1da2820f4e3063450d25910e9b3dd7ff923ca704577e59\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/fleet\tcharlie\tb53d5e954e78793a03b3dc36ca33528f3722784c7c2b49dbc497335ddc4545ec\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/fleet\tmike\t650462fc9748441d0878b2ddcd51ca68a66ddd9c35facd12a09fe140ae767caf\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/hello\tdefault\t5e8549f376b7e60b8dc60897f1e11f465154d0b8fc9facfb3402cd3576ff4a50\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/kiosk\tdefault\t7af7b98e1778726f5c7f78fe7d498cd67c3c4031a78c1c1f0ed3ecdd526e09a8\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/provision\tdb\t71808ebe5148b167773174123d88a4932f8c246f206ceba3627aa89c297b175f\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/sync\tdefault\t0eb240dc65ea4cd2237edf59968280b64d74a44b6432941c5abbf3089678400c\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/triggers\tbuild\t58edae6a9183094f34b0839280441b717df5b47861dff4654d39c09107f823b2\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/triggers\ttest\t903d24952be1312983fea6e1c89d7d6fcafcf34654d119562a9ea6c4e3461a7a\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/web\tweb\tbd2bcdecf4bf09076d8918715b2acbc8fc1d43fe9b702df04ca1ee8f00051aa2\t1\t{\"name\":\"sre/debian13\",\"version\":\"3.0.17\",\"provider\":\"docker\",\"directory\":\"boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\"}\nM\t/root/vagrant/boxes/app\tdefault\t06ec9816df7319ca72f543d6c65277ef2e174558c6c8ef99f17060e7e9467297\t1\t{\"name\":\"boreal/base\",\"version\":\"1.0.0\",\"provider\":\"docker\",\"directory\":\"boxes/boreal-VAGRANTSLASH-base/1.0.0/docker\"}\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "docker ps -aq | xargs -r docker inspect | jq -c '[.[] | {id: .Id, name: (.Name | ltrimstr(\"/\")), status: .State.Status, running: .State.Running, started: .State.StartedAt, created: .Created, hostname: .Config.Hostname, image: .Config.Image, env: (.Config.Env // []), mounts: [(.Mounts // [])[] | {type: .Type, source: .Source, destination: .Destination}], ports: (.HostConfig.PortBindings // {}), networks: ((.NetworkSettings.Networks // {}) | with_entries(.value |= {ip: .IPAddress, prefix: .IPPrefixLen, mac: .MacAddress}))}]'; true",
+   "[{\"id\":\"b53d5e954e78793a03b3dc36ca33528f3722784c7c2b49dbc497335ddc4545ec\",\"name\":\"fleet_charlie_1795530557\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:29:17.64540537Z\",\"created\":\"2026-11-24T14:29:17.308406745Z\",\"hostname\":\"charlie\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/fleet\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2212\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.15\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:0f\"},\"vagrant_network_192.168.164.0/24\":{\"ip\":\"192.168.164.101\",\"prefix\":24,\"mac\":\"02:42:c0:a8:a4:65\"}}},{\"id\":\"9e89685adeb903721f1da2820f4e3063450d25910e9b3dd7ff923ca704577e59\",\"name\":\"fleet_bravo_1795530557\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:29:17.470342682Z\",\"created\":\"2026-11-24T14:29:17.219496072Z\",\"hostname\":\"bravo\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/fleet\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2211\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.14\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:0e\"},\"vagrant_network_192.168.164.0/24\":{\"ip\":\"192.168.164.27\",\"prefix\":24,\"mac\":\"02:42:c0:a8:a4:1b\"}}},{\"id\":\"650462fc9748441d0878b2ddcd51ca68a66ddd9c35facd12a09fe140ae767caf\",\"name\":\"fleet_mike_1795530557\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:29:17.470568178Z\",\"created\":\"2026-11-24T14:29:17.14574159Z\",\"hostname\":\"mike\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/fleet\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2210\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.13\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:0d\"},\"vagrant_network_192.168.164.0/24\":{\"ip\":\"192.168.164.130\",\"prefix\":24,\"mac\":\"02:42:c0:a8:a4:82\"}}},{\"id\":\"58edae6a9183094f34b0839280441b717df5b47861dff4654d39c09107f823b2\",\"name\":\"triggers_build_1795530549\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:29:09.502000791Z\",\"created\":\"2026-11-24T14:29:09.299276995Z\",\"hostname\":\"build\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/triggers\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2209\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.12\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:0c\"}}},{\"id\":\"903d24952be1312983fea6e1c89d7d6fcafcf34654d119562a9ea6c4e3461a7a\",\"name\":\"triggers_test_1795530548\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:29:09.071989305Z\",\"created\":\"2026-11-24T14:29:08.853270202Z\",\"hostname\":\"test\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/triggers\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2208\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.11\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:0b\"}}},{\"id\":\"06ec9816df7319ca72f543d6c65277ef2e174558c6c8ef99f17060e7e9467297\",\"name\":\"app_default_1795530541\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:29:01.939163885Z\",\"created\":\"2026-11-24T14:29:01.711728074Z\",\"hostname\":\"06ec9816df73\",\"image\":\"sre/debian13:3.0.17\",\"env\":[\"BOX_RELEASE=1.0.0\"],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/boxes/app\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2207\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.10\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:0a\"}}},{\"id\":\"7af7b98e1778726f5c7f78fe7d498cd67c3c4031a78c1c1f0ed3ecdd526e09a8\",\"name\":\"kiosk_default_1795530533\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:28:53.407565531Z\",\"created\":\"2026-11-24T14:28:53.205773211Z\",\"hostname\":\"kiosk\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/kiosk\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2206\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.9\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:09\"},\"vagrant_network_public_eth0\":{\"ip\":\"10.120.95.68\",\"prefix\":24,\"mac\":\"02:42:0a:78:5f:44\"}}},{\"id\":\"0eb240dc65ea4cd2237edf59968280b64d74a44b6432941c5abbf3089678400c\",\"name\":\"boreal-sync\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:28:46.454615504Z\",\"created\":\"2026-11-24T14:28:46.266828935Z\",\"hostname\":\"0eb240dc65ea\",\"image\":\"sre/debian13:3.0.17\",\"env\":[\"APP_MODE=readonly\"],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/sync/src\",\"destination\":\"/srv/app\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2205\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.8\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:08\"}}},{\"id\":\"71808ebe5148b167773174123d88a4932f8c246f206ceba3627aa89c297b175f\",\"name\":\"provision_db_1795530516\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:28:36.480319142Z\",\"created\":\"2026-11-24T14:28:36.286570658Z\",\"hostname\":\"db\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/provision\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2204\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.7\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:07\"}}},{\"id\":\"bc737a0e2a1f2318013e8d0e3aa3b7e7b29f4559929c808c6e132773cd9c0658\",\"name\":\"cluster_lb_1795530508\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:28:28.888205246Z\",\"created\":\"2026-11-24T14:28:28.664459351Z\",\"hostname\":\"lb\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/cluster\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2203\"}],\"80/tcp\":[{\"HostIp\":\"\",\"HostPort\":\"8857\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.6\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:06\"},\"vagrant_network_192.168.158.0/24\":{\"ip\":\"192.168.158.10\",\"prefix\":24,\"mac\":\"02:42:c0:a8:9e:0a\"}}},{\"id\":\"f34587d928ec510b5603fba1457099f400acefc5606f35292146586919f3e82f\",\"name\":\"cluster_app2_1795530508\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:28:28.577048265Z\",\"created\":\"2026-11-24T14:28:28.367119189Z\",\"hostname\":\"app2\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/cluster\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2202\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.5\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:05\"},\"vagrant_network_192.168.158.0/24\":{\"ip\":\"192.168.158.12\",\"prefix\":24,\"mac\":\"02:42:c0:a8:9e:0c\"}}},{\"id\":\"e6ded2ab8d361a6f7ae169f351903c7d0e31b3e4aa6fa680f518e7d4d7a679c6\",\"name\":\"cluster_app1_1795530508\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:28:28.575900347Z\",\"created\":\"2026-11-24T14:28:28.287562124Z\",\"hostname\":\"app1\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/cluster\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2201\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.4\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:04\"},\"vagrant_network_192.168.158.0/24\":{\"ip\":\"192.168.158.11\",\"prefix\":24,\"mac\":\"02:42:c0:a8:9e:0b\"}}},{\"id\":\"bd2bcdecf4bf09076d8918715b2acbc8fc1d43fe9b702df04ca1ee8f00051aa2\",\"name\":\"web_web_1795530499\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:29:25.392273498Z\",\"created\":\"2026-11-24T14:28:19.087471018Z\",\"hostname\":\"web\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/web\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2200\"}],\"80/tcp\":[{\"HostIp\":\"\",\"HostPort\":\"8226\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.3\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:03\"}}},{\"id\":\"5e8549f376b7e60b8dc60897f1e11f465154d0b8fc9facfb3402cd3576ff4a50\",\"name\":\"hello_default_1795530492\",\"status\":\"running\",\"running\":true,\"started\":\"2026-11-24T14:28:12.408577236Z\",\"created\":\"2026-11-24T14:28:12.149499452Z\",\"hostname\":\"poste-66\",\"image\":\"sre/debian13:3.0.17\",\"env\":[],\"mounts\":[{\"type\":\"bind\",\"source\":\"/root/vagrant/hello\",\"destination\":\"/vagrant\"}],\"ports\":{\"22/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"2222\"}]},\"networks\":{\"bridge\":{\"ip\":\"10.250.0.2\",\"prefix\":24,\"mac\":\"02:42:0a:fa:00:02\"}}}]\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "docker network ls -q | xargs -r docker network inspect | jq -c '[.[] | {name: .Name, driver: .Driver, subnets: [(.IPAM.Config // [])[] | .Subnet], parent: ((.Options // {}).parent // \"\")}]'; true",
+   "[{\"name\":\"bridge\",\"driver\":\"bridge\",\"subnets\":[\"10.250.0.0/24\"],\"parent\":\"\"},{\"name\":\"host\",\"driver\":\"host\",\"subnets\":[],\"parent\":\"\"},{\"name\":\"none\",\"driver\":\"null\",\"subnets\":[],\"parent\":\"\"},{\"name\":\"vagrant_network_192.168.158.0/24\",\"driver\":\"bridge\",\"subnets\":[\"192.168.158.0/24\"],\"parent\":\"\"},{\"name\":\"vagrant_network_192.168.164.0/24\",\"driver\":\"bridge\",\"subnets\":[\"192.168.164.0/24\"],\"parent\":\"\"},{\"name\":\"vagrant_network_public_eth0\",\"driver\":\"macvlan\",\"subnets\":[\"10.120.95.0/24\"],\"parent\":\"eth0\"}]\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "echo '=== cluster_vf'; cat /root/vagrant/cluster/Vagrantfile 2>/dev/null; echo; echo '=== inventory'; cat /root/vagrant/provision/.vagrant/provisioners/ansible/inventory/vagrant_ansible_inventory 2>/dev/null; echo; echo '=== triggers_vf'; cat /root/vagrant/triggers/Vagrantfile 2>/dev/null; echo; echo '=== triggers_log'; cat /root/vagrant/triggers/up.log 2>/dev/null; echo; echo '=== fleet_vf'; cat /root/vagrant/fleet/Vagrantfile 2>/dev/null; echo; echo '=== metadata_url'; cat /root/.vagrant.d/boxes/boreal-VAGRANTSLASH-base/metadata_url 2>/dev/null; echo; true; echo '=== boxes'; ls -d /root/.vagrant.d/boxes/*/*/docker 2>/dev/null; true",
+   "=== cluster_vf\nVagrant.configure(\"2\") do |config|\n  config.vm.box = \"sre/debian13\"\n\n  (1..2).each do |i|\n    config.vm.define \"app#{i}\" do |app|\n      app.vm.hostname = \"app#{i}\"\n      app.vm.network \"private_network\", ip: \"192.168.158.#{10 + i}\"\n      app.vm.provision \"shell\", run: \"always\", inline: <<~SHELL\n        hostname > /var/www/html/index.html\n        rm -f /var/www/html/index.nginx-debian.html\n        pgrep -x nginx >/dev/null || nginx\n      SHELL\n    end\n  end\n\n  config.vm.define \"lb\" do |lb|\n    lb.vm.hostname = \"lb\"\n    lb.vm.network \"private_network\", ip: \"192.168.158.10\"\n    lb.vm.network \"forwarded_port\", guest: 80, host: 8857\n    lb.vm.provision \"shell\", run: \"always\", inline: <<~SHELL\n      cat > /etc/nginx/sites-enabled/default <<'EOF'\n      upstream apps {\n          server 192.168.158.11;\n          server 192.168.158.12;\n      }\n      server {\n          listen 80;\n          location / { proxy_pass http://apps; }\n      }\n      EOF\n      nginx -t && (nginx -s reload 2>/dev/null || nginx)\n    SHELL\n  end\nend\n\n=== inventory\n# Generated by Vagrant\n\ndb ansible_ssh_host=127.0.0.1 ansible_ssh_port=2204 ansible_ssh_user='vagrant' ansible_ssh_private_key_file='/root/vagrant/provision/.vagrant/machines/db/docker/private_key'\n\n[databases]\ndb\n\n=== triggers_vf\nVagrant.configure(\"2\") do |config|\n  config.vm.box = \"sre/debian13\"\n\n  config.trigger.after :up do |t|\n    t.info = \"machine démarrée\"\n    t.ruby do |env, machine|\n      File.open(File.join(__dir__, \"up.log\"), \"a\") do |f|\n        f.puts \"#{Time.now.to_i} #{machine.name} #{machine.id}\"\n      end\n    end\n  end\n\n  config.trigger.after :up do |t|\n    t.run_remote = { inline: \"date +%s > /etc/vagrant-up\" }\n  end\n\n  [\"build\", \"test\"].each do |name|\n    config.vm.define name do |m|\n      m.vm.hostname = name\n    end\n  end\nend\n\n=== triggers_log\n1795530554 build 58edae6a9183094f34b0839280441b717df5b47861dff4654d39c09107f823b2\n1795530554 test 903d24952be1312983fea6e1c89d7d6fcafcf34654d119562a9ea6c4e3461a7a\n\n=== fleet_vf\nrequire \"yaml\"\nmachines = YAML.load_file(File.join(__dir__, \"machines.yml\"))\n\nVagrant.configure(\"2\") do |config|\n  config.vm.box = \"sre/debian13\"\n  machines.each do |m|\n    config.vm.define m[\"name\"] do |node|\n      node.vm.hostname = m[\"name\"]\n      node.vm.network \"private_network\", ip: m[\"ip\"]\n    end\n  end\nend\n\n=== metadata_url\nfile:///root/vagrant/boxes/catalog.json\n=== boxes\n/root/.vagrant.d/boxes/boreal-VAGRANTSLASH-base/1.0.0/docker\n/root/.vagrant.d/boxes/boreal-VAGRANTSLASH-base/1.1.0/docker\n/root/.vagrant.d/boxes/sre-VAGRANTSLASH-debian13/3.0.17/docker\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "ID=$(cat /root/vagrant/hello/.vagrant/machines/default/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'cat /home/vagrant/.ssh/authorized_keys'; true",
+   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE50KqAb6DgovIE8BDpCaEvh3P3m7/XVsk2V36uG24E1 vagrant\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "ID=$(cat /root/vagrant/cluster/.vagrant/machines/lb/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'echo '\"'\"'=== app1'\"'\"'; curl -s -m 3 http://192.168.158.11/; echo; echo '\"'\"'=== app2'\"'\"'; curl -s -m 3 http://192.168.158.12/; echo'; true",
+   "=== app1\napp1\n\n=== app2\napp2\n\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "ID=$(cat /root/vagrant/provision/.vagrant/machines/db/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'echo '\"'\"'=== user'\"'\"'; id -nu david; echo '\"'\"'=== conf'\"'\"'; cat /etc/app.conf; echo; echo '\"'\"'=== http'\"'\"'; curl -s -m 3 http://127.0.0.1:5646/'; true",
+   "=== user\ndavid\n=== conf\nuser=david\nport=5646\nenv=preprod\n\n=== http\ndb preprod\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "[ -d /root/vagrant/sync/src ] && echo probe-789557 > /root/vagrant/sync/src/.sre-probe && ID=$(cat /root/vagrant/sync/.vagrant/machines/default/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'cat /srv/app/.sre-probe'; true; rm -f /root/vagrant/sync/src/.sre-probe; true",
+   "probe-789557\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "echo '=== build'; ID=$(cat /root/vagrant/triggers/.vagrant/machines/build/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'cat /etc/vagrant-up'; true; echo; echo '=== test'; ID=$(cat /root/vagrant/triggers/.vagrant/machines/test/docker/id 2>/dev/null) && [ -n \"$ID\" ] && docker exec \"$ID\" sh -c 'cat /etc/vagrant-up'; true; echo",
+   "=== build\n1795530554\n\n=== test\n1795530555\n\n",
+   0
+  ],
+  [
+   "dev",
+   1,
+   "cat /sys/class/net/eth0/address",
+   "2a:7c:70:a3:45:98\n",
+   0
+  ]
+ ]
+}
