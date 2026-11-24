@@ -55,8 +55,8 @@ import hidden_mirror
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Pare-feu d'un réseau avec nftables : client, serveur, routeur et DMZ",
-           en="Network firewall with nftables: client, server, router and DMZ")
+title = tr("nftables : pare-feu d'un réseau (client, serveur, routeur et DMZ)",
+           en="nftables: network firewall (client, server, router and DMZ)")
 allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 60
@@ -4536,7 +4536,7 @@ the first. What is this device for? Test it:
         'Observer et tester': 'Observing and testing',
         'Organisation du TP': 'Organisation of the lab',
         "Pare-feu d'un poste client : les paquets entrants": 'Firewall of a client: incoming packets',
-        "Pare-feu d'un réseau avec nftables : client, serveur, routeur et DMZ": 'Network firewall with nftables: client, server, router and DMZ',
+        "nftables : pare-feu d'un réseau (client, serveur, routeur et DMZ)": 'nftables: network firewall (client, server, router and DMZ)',
         "Pare-feu d'un serveur : ouvrir des services": 'Firewall of a server: opening services',
         'Partie 1 — Avant les pare-feux (question 1)': 'Part 1 — Before the firewalls (question 1)',
         "Partie 2 — Pare-feu d'un poste client (question 2)": 'Part 2 — Firewall of a client (question 2)',

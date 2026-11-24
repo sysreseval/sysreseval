@@ -48,7 +48,7 @@ from frr import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Routage IPv6 : OSPFv3 et BGP", en="IPv6 routing: OSPFv3 and BGP")
+title = tr("OSPFv3 et BGP : routage IPv6", en="OSPFv3 and BGP: IPv6 routing")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

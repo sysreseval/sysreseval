@@ -35,7 +35,7 @@ from state_helpers import create_hosts_file
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Contrôle de trafic : tc (netem, tbf, htb, cake)")
+title = tr("tc : contrôle de trafic (netem, tbf, htb, cake)")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

@@ -48,7 +48,7 @@ from vxlan import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("VXLAN et EVPN dans un data centre", en="VXLAN and EVPN in a data centre")
+title = tr("VXLAN et EVPN : réseau overlay d'un data centre", en="VXLAN and EVPN: data centre overlay network")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

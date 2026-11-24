@@ -38,7 +38,7 @@ from tcp import netem_cmd
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Routage dynamique : RIP", en="Dynamic routing: RIP")
+title = tr("RIP : routage dynamique", en="RIP: dynamic routing")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

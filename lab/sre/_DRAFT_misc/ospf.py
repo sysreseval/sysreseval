@@ -26,7 +26,7 @@ from frr import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Routage dynamique : OSPF", en="Dynamic routing: OSPF")
+title = tr("OSPF : routage dynamique", en="OSPF: dynamic routing")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

@@ -70,7 +70,7 @@ from bridging import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Ponts Ethernet et STP")
+title = tr("Ponts Ethernet : pont Linux, table MAC, filtrage et STP")
 allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 30

@@ -30,7 +30,7 @@ from frr import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Routage inter-domaine : BGP", en="Inter-domain routing: BGP")
+title = tr("BGP : routage inter-domaine", en="BGP: inter-domain routing")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

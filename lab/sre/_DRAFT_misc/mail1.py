@@ -64,7 +64,7 @@ from utils import random_password, random_sentence
 default_language = "fr"
 tr = make_tr(default_language)
 
-title = tr("Le courrier électronique : SMTP, Postfix et IMAP", en="Electronic mail: SMTP, Postfix and IMAP")
+title = tr("SMTP et IMAP : courrier électronique avec Postfix", en="SMTP and IMAP: electronic mail with Postfix")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

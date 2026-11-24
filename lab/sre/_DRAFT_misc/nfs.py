@@ -50,7 +50,7 @@ from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Partage de fichiers en réseau : NFS", en="Network file sharing: NFS")
+title = tr("NFS : partage de fichiers en réseau", en="NFS: network file sharing")
 # No /shared directory: it lives on the host, where a root-owned directory created from a
 # container cannot be removed by `sre stop` (and students would try to export it).
 shared_path = False
@@ -3305,7 +3305,7 @@ service account of the server.
         'Observations sur les montages et les pannes': 'Observations on mounts and outages',
         "Observations sur les options d'export": 'Observations on the export options',
         'Organisation du TP': 'Organisation of the lab',
-        'Partage de fichiers en réseau : NFS': 'Network file sharing: NFS',
+        'NFS : partage de fichiers en réseau': 'NFS: network file sharing',
         'Partie 1 - Mise en service du serveur NFS': 'Part 1 - Bringing the NFS server into service',
         'Partie 2 - Un client NFSv3': 'Part 2 - An NFSv3 client',
         "Partie 3 - Contrôle d'accès et options d'export": 'Part 3 - Access control and export options',

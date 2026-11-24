@@ -44,8 +44,8 @@ from mpls import get_mpls_counters, mpls_counter_delta, trigger_mpls_modules_cmd
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("VPN MPLS/BGP et ingénierie de trafic segment routing",
-           en="BGP/MPLS VPNs and segment routing traffic engineering")
+title = tr("MPLS : VPN BGP/MPLS et ingénierie de trafic segment routing",
+           en="MPLS: BGP/MPLS VPNs and segment routing traffic engineering")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

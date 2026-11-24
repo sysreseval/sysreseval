@@ -79,8 +79,8 @@ from utils import random_password, random_sentence
 default_language = "fr"
 tr = make_tr(default_language)
 
-title = tr("Service de courrier sécurisé d'une entreprise : TLS, soumission, LMTP, SPF/DKIM, anti-spam",
-           en="A company's secure mail service: TLS, submission, LMTP, SPF/DKIM, anti-spam")
+title = tr("Courrier sécurisé : TLS, soumission, LMTP, SPF/DKIM, anti-spam",
+           en="Secure mail: TLS, submission, LMTP, SPF/DKIM, anti-spam")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

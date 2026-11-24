@@ -55,7 +55,7 @@ from docker_helpers import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Conteneurs avec Docker", en="Containers with Docker")
+title = tr("Docker : conteneurs, images, volumes et réseaux", en="Docker: containers, images, volumes and networks")
 allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 30

@@ -65,7 +65,7 @@ from ansible_helpers import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Automatisation avec Ansible", en="Automation with Ansible")
+title = tr("Ansible : automatisation de la configuration", en="Ansible: configuration automation")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

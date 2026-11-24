@@ -57,7 +57,7 @@ from vagrant_helpers import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Environnements reproductibles avec Vagrant", en="Reproducible environments with Vagrant")
+title = tr("Vagrant : environnements reproductibles", en="Vagrant: reproducible environments")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

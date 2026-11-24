@@ -58,7 +58,7 @@ from bridging import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("VLAN, ponts et brouter")
+title = tr("VLAN : 802.1Q, routeur « on a stick », ponts et brouter")
 allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 30

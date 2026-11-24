@@ -60,8 +60,8 @@
     "fr": "AAA : RADIUS, 802.1X, double authentification et Kerberos"
   },
   "ansible.py": {
-    "en": "Automation with Ansible",
-    "fr": "Automatisation avec Ansible"
+    "en": "Ansible: configuration automation",
+    "fr": "Ansible : automatisation de la configuration"
   },
   "anycast.py": {
     "en": "Anycast: one service announced from several sites (OSPF and BGP)",
@@ -75,57 +75,97 @@
     "en": "BGP: securing sessions and announcements (RPKI, maximum-prefix, GTSM, RTBH)",
     "fr": "BGP : sécuriser les sessions et les annonces (RPKI, maximum-prefix, GTSM, RTBH)"
   },
+  "bgp.py": {
+    "en": "BGP: inter-domain routing",
+    "fr": "BGP : routage inter-domaine"
+  },
+  "bridge.py": "Ponts Ethernet : pont Linux, table MAC, filtrage et STP",
+  "dns2.py": "DNS 2 : racine privée, résolveur, délégation, secondaires, DNSSEC, DoT/DoH, vues et pannes",
   "docker-compose.py": {
-    "en": "Multi-container applications with Docker Compose",
-    "fr": "Applications multi-conteneurs avec Docker Compose"
+    "en": "Docker Compose: multi-container applications",
+    "fr": "Docker Compose : applications multi-conteneurs"
   },
   "docker.py": {
-    "en": "Containers with Docker",
-    "fr": "Conteneurs avec Docker"
+    "en": "Docker: containers, images, volumes and networks",
+    "fr": "Docker : conteneurs, images, volumes et réseaux"
   },
   "evpn-mpls.py": {
     "en": "EVPN and MPLS: data centre interconnection",
     "fr": "EVPN et MPLS : interconnexion de data centres"
+  },
+  "ipsec.py": "IPsec et IKEv2 : ESP, tunnels site à site, nomade, certificats",
+  "ipv6.py": {
+    "en": "IPv6: addressing, static routing, SLAAC, DHCPv6, MTU and 6in4 tunnel",
+    "fr": "IPv6 : adressage, routage statique, SLAAC, DHCPv6, MTU et tunnel 6in4"
   },
   "isis-ipv6-sr-bfd.py": {
     "en": "IS-IS: IPv6 multi-topology, segment routing and BFD",
     "fr": "IS-IS : IPv6 multi-topologie, segment routing et BFD"
   },
   "isis.py": {
-    "en": "Dynamic routing: IS-IS",
-    "fr": "Routage dynamique : IS-IS"
+    "en": "IS-IS: dynamic routing",
+    "fr": "IS-IS : routage dynamique"
   },
   "lacp-lldp.py": {
-    "en": "Link aggregation (bonding, LACP) and LLDP",
-    "fr": "Agrégation de liens (bonding, LACP) et LLDP"
+    "en": "LACP and LLDP: link aggregation (bonding) and neighbour discovery",
+    "fr": "LACP et LLDP : agrégation de liens (bonding) et découverte des voisins"
   },
   "lan-attacks.py": {
-    "en": "LAN layer-2 attacks and defences (ARP, MITM, rogue DHCP, ICMP redirect)",
-    "fr": "Attaques et parades sur un réseau local (niveau 2)"
+    "en": "LAN attacks: ARP, MITM, rogue DHCP, ICMP redirect and defences",
+    "fr": "Attaques LAN : ARP, homme du milieu, DHCP pirate, redirect ICMP et parades"
+  },
+  "ldap.py": "LDAP : annuaire OpenLDAP, comptes Unix centralisés, ACL, TLS et réplication",
+  "mail1.py": {
+    "en": "SMTP and IMAP: electronic mail with Postfix",
+    "fr": "SMTP et IMAP : courrier électronique avec Postfix"
+  },
+  "mail2.py": {
+    "en": "Secure mail: TLS, submission, LMTP, SPF/DKIM, anti-spam",
+    "fr": "Courrier sécurisé : TLS, soumission, LMTP, SPF/DKIM, anti-spam"
   },
   "mpls-vpn.py": {
-    "en": "BGP/MPLS VPNs and segment routing traffic engineering",
-    "fr": "VPN MPLS/BGP et ingénierie de trafic segment routing"
+    "en": "MPLS: BGP/MPLS VPNs and segment routing traffic engineering",
+    "fr": "MPLS : VPN BGP/MPLS et ingénierie de trafic segment routing"
   },
   "mpls.py": {
     "en": "MPLS: label switching, LDP and segment routing",
     "fr": "MPLS : commutation de labels, LDP et segment routing"
+  },
+  "multicast.py": {
+    "en": "IP multicast: IGMP, PIM and MSDP",
+    "fr": "Multicast IP : IGMP, PIM et MSDP"
   },
   "nagios.py": {
     "en": "Nagios: supervising hosts and services",
     "fr": "Nagios : superviser des hôtes et des services"
   },
   "netflow.py": {
-    "en": "Flow metrology: NetFlow with softflowd and nfdump",
-    "fr": "Métrologie des flux : NetFlow avec softflowd et nfdump"
+    "en": "NetFlow: flow metrology with softflowd and nfdump",
+    "fr": "NetFlow : métrologie des flux avec softflowd et nfdump"
   },
+  "nfs.py": {
+    "en": "NFS: network file sharing",
+    "fr": "NFS : partage de fichiers en réseau"
+  },
+  "nftables-filter1.py": "nftables : pare-feu d'une machine",
+  "nftables-filter2.py": {
+    "en": "nftables: network firewall (client, server, router and DMZ)",
+    "fr": "nftables : pare-feu d'un réseau (client, serveur, routeur et DMZ)"
+  },
+  "nftables-misc.py": "nftables : aspects avancés (sets, limit, reject) (misc)",
+  "nftables-nat.py": "nftables : NAT, répartition de charge et proxy (nat)",
   "ntp.py": {
-    "en": "Time synchronisation: NTP and chrony",
-    "fr": "Synchronisation du temps : NTP et chrony"
+    "en": "NTP and chrony: time synchronisation",
+    "fr": "NTP et chrony : synchronisation du temps"
+  },
+  "openvpn.py": "OpenVPN : tunnels, PKI, accès distant, site à site",
+  "ospf.py": {
+    "en": "OSPF: dynamic routing",
+    "fr": "OSPF : routage dynamique"
   },
   "ospfv3-bgp-ipv6.py": {
-    "en": "IPv6 routing: OSPFv3 and BGP",
-    "fr": "Routage IPv6 : OSPFv3 et BGP"
+    "en": "OSPFv3 and BGP: IPv6 routing",
+    "fr": "OSPFv3 et BGP : routage IPv6"
   },
   "policy-routing.py": {
     "en": "Policy routing: ip rule, two ISPs and VRFs",
@@ -139,9 +179,17 @@
     "en": "QUIC and HTTP/3: handshake, encryption, migration, 0-RTT",
     "fr": "QUIC et HTTP/3 : poignée de main, chiffrement, migration, 0-RTT"
   },
+  "reverse-proxy.py": {
+    "en": "HTTP: reverse proxy, cache, load balancing and high availability",
+    "fr": "HTTP : reverse proxy, cache, répartition de charge et haute disponibilité"
+  },
+  "rip.py": {
+    "en": "RIP: dynamic routing",
+    "fr": "RIP : routage dynamique"
+  },
   "rsyslog.py": {
-    "en": "Central logs: syslog, rsyslog and logrotate",
-    "fr": "Journaux centralisés : syslog, rsyslog et logrotate"
+    "en": "Syslog: central logs with rsyslog and logrotate",
+    "fr": "Syslog : journaux centralisés avec rsyslog et logrotate"
   },
   "scan-hardening.py": {
     "en": "Scanning and hardening: nmap, NSE scripts and attack surface reduction",
@@ -160,15 +208,28 @@
     "fr": "SNMP : interroger, configurer et sécuriser des agents"
   },
   "suricata-fail2ban.py": {
-    "en": "Intrusion detection and prevention: Suricata and fail2ban",
-    "fr": "Détection et prévention d'intrusion : Suricata et fail2ban"
+    "en": "Suricata and fail2ban: intrusion detection and prevention",
+    "fr": "Suricata et fail2ban : détection et prévention d'intrusion"
   },
+  "tc.py": "tc : contrôle de trafic (netem, tbf, htb, cake)",
+  "tcp.py": "TCP : connexions, fenêtres, Nagle, congestion, MPTCP",
+  "tls.py": "TLS : autorité de certification, nginx, apache2, CRL, step-ca et ACME",
   "vagrant.py": {
-    "en": "Reproducible environments with Vagrant",
-    "fr": "Environnements reproductibles avec Vagrant"
+    "en": "Vagrant: reproducible environments",
+    "fr": "Vagrant : environnements reproductibles"
+  },
+  "vlan.py": "VLAN : 802.1Q, routeur « on a stick », ponts et brouter",
+  "voip.py": {
+    "en": "VoIP: SIP and RTP with Asterisk",
+    "fr": "Voix sur IP : SIP et RTP avec Asterisk"
+  },
+  "vrrp.py": {
+    "en": "VRRP and keepalived: gateway redundancy",
+    "fr": "VRRP et keepalived : redondance de la passerelle"
   },
   "vxlan-evpn.py": {
-    "en": "VXLAN and EVPN in a data centre",
-    "fr": "VXLAN et EVPN dans un data centre"
-  }
+    "en": "VXLAN and EVPN: data centre overlay network",
+    "fr": "VXLAN et EVPN : réseau overlay d'un data centre"
+  },
+  "wireguard.py": "WireGuard : tunnels, pairs, site à site, tunnel complet"
 }

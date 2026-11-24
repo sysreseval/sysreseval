@@ -58,7 +58,7 @@ from lldp import LLDP_MAC, get_lldp_neighbors, lldp_neighbor
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Agrégation de liens (bonding, LACP) et LLDP", en="Link aggregation (bonding, LACP) and LLDP")
+title = tr("LACP et LLDP : agrégation de liens (bonding) et découverte des voisins", en="LACP and LLDP: link aggregation (bonding) and neighbour discovery")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

@@ -80,8 +80,8 @@ from tls import generate_ca_pem, generate_server_cert_pem
 default_language = "fr"
 tr = make_tr(default_language)
 
-title = tr("Journaux centralisés : syslog, rsyslog et logrotate",
-           en="Central logs: syslog, rsyslog and logrotate")
+title = tr("Syslog : journaux centralisés avec rsyslog et logrotate",
+           en="Syslog: central logs with rsyslog and logrotate")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

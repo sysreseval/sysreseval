@@ -785,7 +785,7 @@ def test_french_and_english_differ(lab, data, tmp_pub_dir):
     texts += [q.title for q in grade.get_questions_ordered()] + [e.description for e in grade.get_grade_list()]
     for text in texts:
         assert _text(text, 'fr') != _text(text, 'en'), _text(text, 'fr')[:60]
-    assert _text(lab.title, 'en') == "Network firewall with nftables: client, server, router and DMZ"
+    assert _text(lab.title, 'en') == "nftables: network firewall (client, server, router and DMZ)"
     assert check_sre_translations.check_file(_LAB_PATH) == 0
     # the forms of both languages have the same fields and the same choice values (the answers are stored once)
     with_fields = 0

@@ -54,8 +54,8 @@ from traffic import beacon_job, dns_job, install_traffic_gen, listener, scan_job
 default_language = "fr"
 tr = make_tr(default_language)
 
-title = tr("Métrologie des flux : NetFlow avec softflowd et nfdump",
-           en="Flow metrology: NetFlow with softflowd and nfdump")
+title = tr("NetFlow : métrologie des flux avec softflowd et nfdump",
+           en="NetFlow: flow metrology with softflowd and nfdump")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

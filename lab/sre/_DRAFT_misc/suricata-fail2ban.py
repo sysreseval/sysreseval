@@ -1,4 +1,4 @@
-"""Détection et prévention d'intrusion : Suricata et fail2ban.
+"""Suricata et fail2ban : détection et prévention d'intrusion.
 
 The lab: an operator network with a WAN (`wan`, "the Internet": `attacker` for the students, the
 hidden grader `probe`), a router `gw` towards a DMZ (`dmz`, a **hub**: `bastion`, an SSH server, and
@@ -55,8 +55,8 @@ from utils import random_password
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Détection et prévention d'intrusion : Suricata et fail2ban",
-           en="Intrusion detection and prevention: Suricata and fail2ban")
+title = tr("Suricata et fail2ban : détection et prévention d'intrusion",
+           en="Suricata and fail2ban: intrusion detection and prevention")
 allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 30

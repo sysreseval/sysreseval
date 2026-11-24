@@ -63,7 +63,7 @@ from tls import generate_ca_pem, generate_server_cert_pem
 default_language = "fr"
 tr = make_tr(default_language)
 
-title = tr("Synchronisation du temps : NTP et chrony", en="Time synchronisation: NTP and chrony")
+title = tr("NTP et chrony : synchronisation du temps", en="NTP and chrony: time synchronisation")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

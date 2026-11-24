@@ -60,7 +60,7 @@ import hidden_mirror
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Pare-feu d'une machine avec nftables")
+title = tr("nftables : pare-feu d'une machine")
 allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 30

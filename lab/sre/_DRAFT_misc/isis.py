@@ -42,7 +42,7 @@ from frr import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Routage dynamique : IS-IS", en="Dynamic routing: IS-IS")
+title = tr("IS-IS : routage dynamique", en="IS-IS: dynamic routing")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

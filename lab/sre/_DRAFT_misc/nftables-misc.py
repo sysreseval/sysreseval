@@ -26,7 +26,7 @@ import hidden_mirror
 default_language = "fr"
 tr = make_tr(default_language)
 
-title = no_tr("nftables — aspects avancés (sets, limit, reject) (misc)")
+title = no_tr("nftables : aspects avancés (sets, limit, reject) (misc)")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True

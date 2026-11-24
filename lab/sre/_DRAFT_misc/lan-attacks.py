@@ -1,5 +1,5 @@
-"""Attaques et parades sur un réseau local (niveau 2) — ARP, homme du milieu, DHCP pirate, redirect
-ICMP (élargi du TP5 « Attaques et parades autour du protocole ARP », Réseau S3, IUT d'Orsay).
+"""Attaques LAN : ARP, homme du milieu, DHCP pirate, redirect ICMP et parades (élargi du TP5
+« Attaques et parades autour du protocole ARP », Réseau S3, IUT d'Orsay).
 
 Fil conducteur : un attaquant du réseau local dispose de **plusieurs** moyens de se placer en
 homme du milieu (empoisonnement ARP, serveur DHCP pirate, redirection ICMP) ; chaque attaque est
@@ -44,7 +44,7 @@ from server_echo_helpers import install_echo_server
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Attaques et parades sur un réseau local (niveau 2)")
+title = tr("Attaques LAN : ARP, homme du milieu, DHCP pirate, redirect ICMP et parades")
 allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 30

@@ -52,7 +52,7 @@ from docker_helpers import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("Applications multi-conteneurs avec Docker Compose", en="Multi-container applications with Docker Compose")
+title = tr("Docker Compose : applications multi-conteneurs", en="Docker Compose: multi-container applications")
 allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 30
