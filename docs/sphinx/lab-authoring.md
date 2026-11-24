@@ -930,6 +930,31 @@ In the releases up to 0.19.0 every language of the texts counted. A question wri
 - an evaluation (`sre eval`, `sre re-eval`, `sre check-eval`) looks for the answer under the hash of the question, then under the former hash. The answers of the older archives are therefore still graded, as long as no text of the question, translations included, changed since the archive was made — the limit those archives always had;
 - the Questions tab only knows the hash of the question. A project that was running during the update of SRE, or that is restored from a save file made before it, shows its questions without their answers once `info.json` is written again (at the next evaluation). The former answers are still graded until the student types in the question: the new answer then replaces the former one for the whole question, every field of a form included. Update SRE when no project is running (`sre update` closes them all).
 
+#### Fixing the hashes of a lab — `scripts/pin-question-hashes`
+
+Rewording a question in the default language still gives it another hash, unless the lab names it with `hash=`. `scripts/pin-question-hashes` writes that keyword on every `question_text()`, `question_form()` and `question_dummy()` call of a lab file, so that the texts can change afterwards:
+
+```bash
+venv/bin/python3 scripts/pin-question-hashes -n --diff lab/s4/mylab.py   # show what would be written
+venv/bin/python3 scripts/pin-question-hashes lab/s4/mylab.py             # write the hashes
+venv/bin/python3 scripts/pin-question-hashes --hash former -r lab/s4     # every lab file below a directory
+```
+
+The hash cannot be read from the source (section prefix, `tr()`, `format()`): the script builds the lab without Docker, as `sre check` does, and matches each question `grade()` registers with its call in the file. It therefore runs with the Python of SRE (`/opt/sre/venv/bin/python3` on an installed system) and executes the module of the lab. `--hash` chooses the value:
+
+| `--hash` | Value written | Answers already stored |
+|---|---|---|
+| `current` (default) | the hash the question has now (its texts in the default language) | still found, for those stored since SRE computes the hash that way |
+| `former` | the hash of the releases up to 0.19.0 (every language of the texts) | still found, for those stored by these releases |
+| `random` | 16 random hexadecimal characters | no longer found |
+
+A question without translation has one hash, the same in the first two modes. With `hash=` an evaluation no longer looks under the former hash: for a lab whose archives were made by the releases up to 0.19.0, use `former` (with `current` the report counts the questions concerned). On the web front-end, the agents up to 0.19.0 refuse the answers of a question whose hash is not 64 characters long: `random` needs newer ones.
+
+- **Texts depending on the drawn values.** The lab is built with several generated `Data`. A question whose hash differs from one to the other (an address drawn at random in its description) has a different hash in every project, which `sre re-eval` finds again from the `Data` kept in each archive: a fixed hash detaches the answers already stored for it. It is pinned like the others and named in the report; `--keep-variable` leaves it without `hash=`. A `question_dummy()` stores no answer: it is always pinned.
+- **Calls left alone**, each named in the report: a call that already has `hash=` (a second run changes nothing), a call `grade()` does not reach or reaches several times (a loop, a helper method: give each question its own `hash=` by hand), a call without a plain title argument (`*args`, `**kwargs`).
+- **Checks.** Formatting and comments are kept: `hash="…"` is written after the title, on a line of its own when the title ends its line. Before a file is written, the result must be the same program but for the added keywords, and its questions must have the expected hashes; otherwise the file is left unchanged and the exit status is 1.
+- **Limits.** The lab is built with its default flavor: a call that only another flavor reaches is left alone, and a text that only changes with another flavor, or with the results of the tests, is not seen as depending on the drawn values.
+
 **The fields of a form.** A form is a markdown description holding `@@{name:spec}@@` markers; the text between the markers is rendered like the description of a `question_text`, each input on a row of its own below the text before it (a checkbox at the end of the row of that text; see *Inline fields* below for an input on the row of its label). `name` is the key of the field in the returned dict (any characters but `:` and `}`, unique within the form; a final `~N` is the inline suffix, never part of the name); `spec` gives the kind of input:
 
 | Marker | Input | Value returned |

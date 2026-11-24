@@ -52,7 +52,6 @@ from ..identity import Identity
 
 log = logging.getLogger('sreweb.agent')
 
-HASH_LENGTH = 64   # sha256 hex
 LOCK_TIMEOUT = 2.0   # s: the GUI holds the file lock for a millisecond; a stopped one must not block the agent
 
 
@@ -88,7 +87,8 @@ class AnswersStore:
         result = {}
         for q_hash, value in patch.items():
             q = questions.get(q_hash)
-            if not isinstance(q_hash, str) or len(q_hash) != HASH_LENGTH or q is None:
+            # a hash is whatever the lab gives it (``hash=``): only the questions of the project count
+            if not isinstance(q_hash, str) or q is None:
                 raise AccessError(400, f"unknown question {q_hash!r}")
             if q.get('question_type') == QuestionType.FORM.value:
                 if isinstance(value, str):

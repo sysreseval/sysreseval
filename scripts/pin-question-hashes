@@ -1,0 +1,804 @@
+#!/usr/bin/env python3
+"""Write hash="..." on the questions of SRE lab files.
+
+usage: pin-question-hashes [--hash current|former|random] [--keep-variable] [-n] [--diff] [-r] <file_or_dir>...
+
+A question is known by its hash in the answers file of a project, in the save files and in the
+archives.  Without hash=, the hash comes from the texts of the question (the title of a
+question_text(); the title and the description of a question_form() or question_dummy()): changing
+the wording gives the question another identity, and `sre eval`, `sre re-eval` and `sre check-eval`
+no longer find its answers.  This script gives every question_text(), question_form() and
+question_dummy() call of a lab file the keyword hash="...", so that the texts and their
+translations can change afterwards.
+
+Every lab file (a Python file that defines a subclass of Grade0) named on the command line, or found
+in a directory named on the command line (its own *.py files, every *.py file below it with -r), is
+processed.  The value written is chosen with --hash:
+
+* current (the default): the hash the question has now, from its texts in the default language of
+  the lab.  The answers stored since SRE computes the hash that way stay attached;
+* former: the hash the question had in the releases up to 0.19.0, where every language of the texts
+  counted.  For a lab whose archives were made by those releases.  A question without translation
+  has the same hash in both modes;
+* random: 16 random hexadecimal characters.  The answers already stored are no longer found.
+
+The hash cannot be read from the source (section prefix, tr(), format()): the lab is built without
+Docker, as `sre check` does, with several generated Data, and each question registered by grade() is
+matched with its call in the source.  It must therefore be run with the Python of SRE:
+
+    /opt/sre/venv/bin/python3 /opt/sre/scripts/pin-question-hashes lab/s4/mylab.py
+
+A question whose hash differs from one generated Data to another (an address drawn at random in its
+description) has a different hash in every project: `sre re-eval` finds it again from the Data kept
+in each archive.  A fixed hash detaches the answers already stored for it.  Such a question is
+pinned like the others, with a warning; --keep-variable leaves it without hash=.  A display-only
+block (question_dummy()) stores no answer: it is always pinned, without warning.
+
+Calls left alone, each named in the report: a call that already has hash=, a call grade() did not
+reach or reaches several times (a loop, a helper method: one literal cannot name several
+questions), a call without a plain title argument (*args, **kwargs).
+
+The changes are idempotent: a second run changes nothing.  Formatting and comments are kept.  Before
+a file is written, the result is checked: it must be the same program but for the added keywords,
+and its questions must have the expected hashes; otherwise the file is left unchanged.  -n reports
+without writing, --diff prints the changes as a unified diff.
+
+Limits:
+  - The lab is built with its default flavor.  A call only another flavor reaches is left alone, and
+    a text that only changes with another flavor, or with the results of the tests, is not seen as
+    depending on the generated data.
+  - The module of the lab is executed: only run it on lab files you trust.
+
+Exit status: 0, 1 when a path does not exist or a file could not be processed (the other files are
+still processed), 2 on a usage error or when SRE cannot be imported.
+"""
+import argparse
+import ast
+import bisect
+import contextlib
+import difflib
+import functools
+import importlib.abc
+import importlib.util
+import io
+import itertools
+import secrets
+import sys
+import tokenize
+import types
+from dataclasses import dataclass, field
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+LAB_BASE_CLASS = "Grade0"
+LAB_GRADE_CLASS = "Grade"
+QUESTION_METHODS = ("question_text", "question_form", "question_dummy")
+DISPLAY_ONLY_METHODS = ("question_dummy",)    # no answer is stored for these
+HASH_KEYWORD = "hash"
+TITLE_KEYWORD = "title"
+
+MODE_CURRENT = "current"
+MODE_FORMER = "former"
+MODE_RANDOM = "random"
+MODES = (MODE_CURRENT, MODE_FORMER, MODE_RANDOM)
+
+DRAWS = 8                 # generated Data compared to tell whether a hash depends on the drawn values
+RANDOM_HASH_BYTES = 8     # --hash random: 16 hexadecimal characters
+MAX_LINE = 120            # an inline hash= is put on a line of its own beyond this width
+TITLE_WIDTH = 60          # of a title in the report
+
+# What becomes of a call
+ADDED = "added"                      # hash= written
+ADDED_VARIABLE = "added-variable"    # hash= written although the hash depends on the generated data
+ALREADY_SET = "already-set"
+KEPT_VARIABLE = "kept-variable"      # --keep-variable
+NOT_REACHED = "not-reached"
+SOMETIMES = "sometimes"
+SEVERAL = "several"
+NO_TITLE = "no-title"
+PINNED = (ADDED, ADDED_VARIABLE)
+
+REASONS = {
+    ADDED_VARIABLE: "its text depends on the generated data: the answers already stored for it are no longer found",
+    KEPT_VARIABLE: "its text depends on the generated data, left without hash= (--keep-variable)",
+    NOT_REACHED: "not reached by grade() (another flavor, a condition), left without hash=",
+    SOMETIMES: "not reached by grade() for every generated data, left without hash=",
+    SEVERAL: "registers several questions (a loop, a helper method), left without hash=: give each its own",
+    NO_TITLE: "no plain title argument (*args, **kwargs), left without hash=",
+}
+
+
+class FileError(Exception):
+    """A file that cannot be read, run, changed or rewritten."""
+
+
+class SetupError(Exception):
+    """SRE cannot be imported."""
+
+
+# ── SRE ──────────────────────────────────────────────────────────────────────────────────────
+
+@functools.cache
+def sre():
+    """The parts of SRE the script uses, imported on first use (so that --help needs nothing)."""
+    try:
+        import SRE  # noqa: F401            (the tests, a Python that already finds it)
+    except ImportError:
+        sys.path.insert(0, str(ROOT / "src"))    # a checkout or /opt/sre: ../src
+    try:
+        from SRE import params, utils
+        from SRE.common import TranslatedText
+        from SRE.lib_sre import Grade0
+    except ImportError as e:
+        raise SetupError(f"cannot import SRE ({e}): run this script with the Python of SRE, "
+                         f"{ROOT / 'venv' / 'bin' / 'python3'} {Path(__file__).resolve()} ...") from e
+    if str(params.lib_dir) not in sys.path:
+        sys.path.insert(0, str(params.lib_dir))    # the grading helpers the labs import
+    if params.SRE.args is None:
+        params.SRE.args = types.SimpleNamespace(user=False, debug=False)
+    return types.SimpleNamespace(params=params, utils=utils, TranslatedText=TranslatedText, Grade0=Grade0)
+
+
+# ── the lab, run without Docker ──────────────────────────────────────────────────────────────
+
+class _TextLoader(importlib.abc.Loader):
+    """Runs a source text as the module of the file it comes from (or will be written to)."""
+
+    def __init__(self, text: str, filename: str):
+        self.text = text
+        self.filename = filename
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        exec(compile(self.text, self.filename, "exec", dont_inherit=True), module.__dict__)
+
+
+@contextlib.contextmanager
+def lab_module(text: str, path: Path):
+    """The lab of source *text* imported under the name of a lab module (`srelab`, where the core
+    library reads the options of the lab being built) for the time of the block.  The text is given
+    rather than read: the one parsed here is the one executed, and a changed text can be tried
+    before it is written."""
+    name = sre().params.srelab_py_name.removesuffix(".py")
+    spec = importlib.util.spec_from_file_location(name, str(path), loader=_TextLoader(text, str(path)))
+    module = importlib.util.module_from_spec(spec)
+    absent = object()
+    previous = sys.modules.get(name, absent)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+        yield module
+    finally:
+        if previous is absent:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = previous
+
+
+@dataclass
+class Record:
+    """One question registered by grade(): where the call is, and the question."""
+    filename: str
+    lineno: int
+    end: tuple | None       # (end line, end column in UTF-8 bytes) of the call, None without columns
+    method: str
+    question: object
+
+
+def call_position(frame) -> tuple:
+    """(line, end) of the call the suspended *frame* is in: the line of the method name and the
+    (end line, end column) of the whole call, None when the code has no columns."""
+    end = None
+    positions = getattr(frame.f_code, "co_positions", None)
+    if positions is not None and frame.f_lasti >= 0:
+        position = next(itertools.islice(positions(), frame.f_lasti // 2, None), None)
+        if position is not None and position[1] is not None and position[3] is not None:
+            end = (position[1], position[3])
+    return frame.f_lineno, end
+
+
+@contextlib.contextmanager
+def recorded_questions():
+    """The list of the questions registered during the block, in order, each with the place of
+    the call that registered it (question_text(), question_form() and question_dummy() of Grade0
+    are wrapped for that time)."""
+    grade_base = sre().Grade0
+    records = []
+    originals = {name: grade_base.__dict__[name] for name in QUESTION_METHODS}
+
+    def wrap(name, original):
+        @functools.wraps(original)
+        def wrapper(self, *args, **kwargs):
+            frame = sys._getframe(1)
+            lineno, end = call_position(frame)
+            known = {id(q) for q in self.get_questions_ordered()}
+            result = original(self, *args, **kwargs)
+            for question in self.get_questions_ordered():
+                if id(question) not in known:
+                    records.append(Record(frame.f_code.co_filename, lineno, end, name, question))
+            return result
+        return wrapper
+
+    for name, original in originals.items():
+        setattr(grade_base, name, wrap(name, original))
+    try:
+        yield records
+    finally:
+        for name, original in originals.items():
+            setattr(grade_base, name, original)
+
+
+def registered_questions(module, data, path: Path) -> list:
+    """The questions grade() registers for *data*, as Records (the steps of `sre check`)."""
+    s = sre()
+    lab_name = s.params.get_lab_name_from_cli_arg(str(path), is_path=True)
+    net_scheme = s.utils.offline_net_scheme(module, data, lab_name)
+    # The initial state, as `sre start` applies it before any evaluation: without containers it
+    # only registers its commands, and some labs complete their Data there.
+    initial = getattr(net_scheme, s.params.initial_state_name, None)
+    if callable(initial):
+        net_scheme._ops = {}
+        net_scheme._host_ops = {}
+        initial()
+    grade = module.Grade(net_scheme=net_scheme)
+    grade._default_language = getattr(module, "default_language", "en")
+    with recorded_questions() as records:
+        grade.grade()
+    return records
+
+
+@contextlib.contextmanager
+def _quiet():
+    """What the lab prints is dropped (the first run already showed it)."""
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        yield
+
+
+def run_lab(text: str, path: Path, draws: int) -> tuple:
+    """(list of Records per generated Data, the first Data as JSON, default language) of the lab."""
+    s = sre()
+    runs = []
+    with lab_module(text, path) as module:
+        default_language = getattr(module, "default_language", "en")
+        first = s.utils.generate_default_data(module)
+        data_json = first.to_json()
+        runs.append(registered_questions(module, first, path))
+        with _quiet():
+            for _ in range(draws - 1):
+                runs.append(registered_questions(module, s.utils.generate_default_data(module), path))
+    return runs, data_json, default_language
+
+
+def run_lab_again(text: str, path: Path, data_json: str) -> list:
+    """The Records of the lab of source *text* for the Data of *data_json*."""
+    with _quiet(), lab_module(text, path) as module:
+        return registered_questions(module, module.Data.from_json(data_json), path)
+
+
+# ── the source ───────────────────────────────────────────────────────────────────────────────
+
+def _name_of(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def is_lab(tree: ast.Module) -> bool:
+    """True when the module defines, at its top level, the class Grade or a subclass of Grade0."""
+    return any(isinstance(node, ast.ClassDef)
+               and (node.name == LAB_GRADE_CLASS or any(_name_of(b) == LAB_BASE_CLASS for b in node.bases))
+               for node in tree.body)
+
+
+def question_calls(tree: ast.Module) -> list:
+    """The `<object>.question_text|form|dummy(...)` calls of the module, in the order of the source."""
+    calls = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+             and node.func.attr in QUESTION_METHODS]
+    return sorted(calls, key=lambda c: (c.lineno, c.col_offset))
+
+
+def has_hash(call: ast.Call) -> bool:
+    return any(k.arg == HASH_KEYWORD for k in call.keywords)
+
+
+def anchor_argument(call: ast.Call):
+    """The argument hash= is written after: the title (the keyword `title`, else the first
+    positional argument), or the last positional argument when others follow the title (a keyword
+    cannot stand before them).  None when the call has no plain title (*args, **kwargs)."""
+    if any(k.arg is None for k in call.keywords) or any(isinstance(a, ast.Starred) for a in call.args):
+        return None
+    for keyword in call.keywords:
+        if keyword.arg == TITLE_KEYWORD:
+            return keyword
+    return call.args[-1] if call.args else None
+
+
+def _split_lines(text: str) -> list:
+    """Lines with their endings, split as the parser does (\\n, \\r\\n, \\r only, unlike str.splitlines)."""
+    return io.StringIO(text, newline="").readlines()
+
+
+def _newline_of(lines: list) -> str:
+    for line in lines:
+        for ending in ("\r\n", "\n", "\r"):
+            if line.endswith(ending):
+                return ending
+    return "\n"
+
+
+_INSIGNIFICANT = (tokenize.NL, tokenize.COMMENT, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT)
+
+
+class Source:
+    """A source text with its lines and tokens.  The positions of the AST count columns in UTF-8
+    bytes, those of the tokens in characters: everything here is in characters."""
+
+    def __init__(self, text: str):
+        self.text = text
+        self.lines = _split_lines(text)
+        self.newline = _newline_of(self.lines)
+        self.starts = [0]
+        for line in self.lines:
+            self.starts.append(self.starts[-1] + len(line))
+        reader = iter(self.lines)
+        self.tokens = list(tokenize.generate_tokens(lambda: next(reader, "")))
+        self._token_starts = [t.start for t in self.tokens]
+
+    def column(self, lineno: int, byte_column: int) -> int:
+        """The column in characters of a column in UTF-8 bytes of the AST."""
+        return len(self.lines[lineno - 1].encode("utf-8")[:byte_column].decode("utf-8"))
+
+    def offset(self, position: tuple) -> int:
+        return self.starts[position[0] - 1] + position[1]
+
+    def indentation(self, lineno: int) -> str:
+        line = self.lines[lineno - 1]
+        return line[:len(line) - len(line.lstrip(" \t\f"))]
+
+    def token_at(self, position: tuple) -> int:
+        """Index of the first token starting at *position* or after."""
+        return bisect.bisect_left(self._token_starts, position)
+
+    def significant(self, index: int, step: int) -> int:
+        """Index of the nearest token that is not a comment nor a line break, from *index* on in
+        the direction *step*."""
+        while self.tokens[index].type in _INSIGNIFICANT:
+            index += step
+        return index
+
+    def starts_its_line(self, index: int) -> bool:
+        token = self.tokens[index]
+        return not self.lines[token.start[0] - 1][:token.start[1]].strip()
+
+
+def _is_op(token, strings) -> bool:
+    return token.type == tokenize.OP and token.string in strings
+
+
+@dataclass
+class Argument:
+    """Where an argument of a call stands among the tokens."""
+    first: int          # index of its first token
+    last: int           # index of its last token (a closing parenthesis around it included)
+    separator: int      # index of the comma after it, or of the closing parenthesis of the call
+    opening: int        # index of the opening parenthesis of the call
+
+
+def locate_argument(source: Source, call: ast.Call, argument) -> Argument:
+    """The tokens of *argument* (an ast.keyword or a positional expression) of *call*."""
+    func_end = (call.func.end_lineno, source.column(call.func.end_lineno, call.func.end_col_offset))
+    opening = source.token_at(func_end)
+    while not _is_op(source.tokens[opening], "("):
+        opening += 1
+    node_start = (argument.lineno, source.column(argument.lineno, argument.col_offset))
+    node_end = (argument.end_lineno, source.column(argument.end_lineno, argument.end_col_offset))
+    # The comma or the closing parenthesis of the call after the argument: the first one at the
+    # depth of the call once the node has ended (a comma inside the node, of a lambda for
+    # instance, comes before), and the separator before it likewise.
+    depth = 0
+    before = opening
+    separator = None
+    for index in range(opening, len(source.tokens)):
+        token = source.tokens[index]
+        if _is_op(token, "([{"):
+            depth += 1
+        elif _is_op(token, ")]}"):
+            depth -= 1
+            if depth == 0:
+                separator = index
+                break
+        elif _is_op(token, ",") and depth == 1:
+            if token.start >= node_end:
+                separator = index
+                break
+            if token.start < node_start:
+                before = index
+    if separator is None:
+        raise FileError(f"line {call.lineno}: cannot find the end of the call")
+    return Argument(first=source.significant(before + 1, 1), last=source.significant(separator - 1, -1),
+                    separator=separator, opening=opening)
+
+
+def _aligned(source: Source, index: int) -> str:
+    """Whitespace as wide as what stands before the token *index* on its line (its tabs kept)."""
+    token = source.tokens[index]
+    before = source.lines[token.start[0] - 1][:token.start[1]]
+    return "".join(c if c in " \t\f" else " " for c in before)
+
+
+def hash_edit(source: Source, call: ast.Call, argument, value: str) -> tuple:
+    """(start, end, text) of the replacement giving *call* the keyword hash=*value* after
+    *argument*: an insertion (start = end), or the blanks between two arguments replaced."""
+    where = locate_argument(source, call, argument)
+    tokens = source.tokens
+    keyword = f'{HASH_KEYWORD}="{value}"'
+    separator = tokens[where.separator]
+    first_of_call = source.significant(where.opening + 1, 1)
+    # the indentation of a continuation line of the call
+    if tokens[first_of_call].start[0] == tokens[where.opening].start[0]:
+        continuation = _aligned(source, first_of_call)        # under the first argument
+    else:
+        continuation = source.indentation(tokens[where.first].start[0])
+
+    if _is_op(separator, ",") and tokens[where.separator + 1].type in (tokenize.NL, tokenize.COMMENT):
+        # The argument ends its line: hash= on the next one.
+        following = source.significant(where.separator + 1, 1)
+        if source.starts_its_line(where.first):
+            indent = source.indentation(tokens[where.first].start[0])
+        elif not _is_op(tokens[following], ")"):
+            indent = source.indentation(tokens[following].start[0])    # as the next argument
+        else:
+            indent = continuation
+        at = source.starts[separator.start[0]]
+        return at, at, f"{indent}{keyword},{source.newline}"
+
+    end = tokens[where.last].end
+    at = source.offset(end)
+    line = source.lines[end[0] - 1].rstrip("\r\n")
+    if len(line) + len(f", {keyword}") <= MAX_LINE:
+        return at, at, f", {keyword}"
+    # Too long for the line: hash= on a line of its own, and what follows it on the next one.
+    if _is_op(separator, ","):
+        following = tokens[source.significant(where.separator + 1, 1)]
+        return (source.offset(separator.end), source.offset(following.start),
+                f"{source.newline}{continuation}{keyword},{source.newline}{continuation}")
+    return at, at, f",{source.newline}{continuation}{keyword}"
+
+
+def apply_edits(text: str, edits: list) -> str:
+    for start, end, replacement in sorted(edits, reverse=True):
+        text = text[:start] + replacement + text[end:]
+    return text
+
+
+# ── one file ─────────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class Site:
+    """A question call of the source and what the runs say of it."""
+    call: ast.Call
+    status: str = NOT_REACHED
+    value: str | None = None        # the hash written
+    question: object = None         # the question of the first run
+    stored: list = field(default_factory=list)    # per run, the hashes the answers are stored under
+
+    @property
+    def line(self) -> int:
+        return self.call.func.end_lineno
+
+    @property
+    def method(self) -> str:
+        return self.call.func.attr
+
+
+def _stored_hash(question, mode: str) -> str:
+    """The hash the answers of *question* are stored under, as the mode sees it."""
+    if mode == MODE_FORMER:
+        return question.legacy_hash or question.question_hash
+    return question.question_hash
+
+
+def _match(records: list, sites: list, path: Path) -> tuple:
+    """([Site or None of each record], [records registered from elsewhere])."""
+    by_end = {(s.call.end_lineno, s.call.end_col_offset): s for s in sites}
+    by_line = {}
+    for site in sites:
+        by_line.setdefault(site.line, []).append(site)
+    matched, elsewhere = [], []
+    for record in records:
+        site = None
+        if record.filename == str(path):
+            if record.end is not None:
+                site = by_end.get(record.end)
+            elif len(by_line.get(record.lineno, [])) == 1:
+                site = by_line[record.lineno][0]
+        matched.append(site)
+        if site is None:
+            elsewhere.append(record)
+    return matched, elsewhere
+
+
+@dataclass
+class Result:
+    path: Path                  # the file the lab was run as
+    text: str
+    new_text: str
+    sites: list
+    elsewhere: list             # questions of the first run registered by no call of the file
+    default_language: str
+    mode: str
+
+    def count(self, *statuses) -> int:
+        return sum(1 for s in self.sites if s.status in statuses)
+
+
+def _random_hash(used: set) -> str:
+    while True:
+        value = secrets.token_hex(RANDOM_HASH_BYTES)
+        if value not in used:
+            used.add(value)
+            return value
+
+
+def convert(text: str, path: Path, mode: str = MODE_CURRENT, keep_variable: bool = False,
+            draws: int = DRAWS) -> Result | None:
+    """What the lab file of source *text* becomes, None when it is not a lab file."""
+    try:
+        tree = ast.parse(text, filename=str(path))
+    except SyntaxError as e:
+        raise FileError(f"cannot parse: {e}") from e
+    if not is_lab(tree):
+        return None
+    sites = [Site(call) for call in question_calls(tree)]
+    for site in sites:
+        if has_hash(site.call):
+            site.status = ALREADY_SET
+    if all(site.status == ALREADY_SET for site in sites):
+        return Result(path, text, text, sites, [], "en", mode)    # nothing to add: the lab is not run
+
+    try:
+        source = Source(text)
+    except (tokenize.TokenError, SyntaxError) as e:
+        raise FileError(f"cannot read the tokens: {e}") from e
+    try:
+        runs, data_json, default_language = run_lab(text, path, draws)
+    except SetupError:
+        raise
+    except Exception as e:
+        raise FileError(f"cannot run the lab: {type(e).__name__}: {e}") from e
+
+    elsewhere = []
+    for number, records in enumerate(runs):
+        matched, unmatched = _match(records, sites, path)
+        if number == 0:
+            elsewhere = unmatched
+        for site in sites:
+            site.stored.append([])
+        for record, site in zip(records, matched):
+            if site is not None:
+                site.stored[-1].append(_stored_hash(record.question, mode))
+                if number == 0 and site.question is None:
+                    site.question = record.question
+
+    used = {record.question.question_hash for record in runs[0]}
+    for site in sites:
+        if site.status == ALREADY_SET:
+            continue
+        reached = [len(hashes) for hashes in site.stored]
+        if not any(reached):
+            site.status = NOT_REACHED
+        elif max(reached) > 1:
+            site.status = SEVERAL
+        elif min(reached) == 0:
+            site.status = SOMETIMES
+        elif anchor_argument(site.call) is None:
+            site.status = NO_TITLE
+        elif len({hashes[0] for hashes in site.stored}) > 1 and site.method not in DISPLAY_ONLY_METHODS:
+            site.status = KEPT_VARIABLE if keep_variable else ADDED_VARIABLE
+        else:
+            site.status = ADDED
+        if site.status in PINNED:
+            site.value = _random_hash(used) if mode == MODE_RANDOM else site.stored[0][0]
+
+    pinned = [site for site in sites if site.status in PINNED]
+    edits = [hash_edit(source, site.call, anchor_argument(site.call), site.value) for site in pinned]
+    new_text = apply_edits(text, edits)
+    if pinned:
+        check(text, new_text, path, sites, runs[0], data_json)
+    return Result(path, text, new_text, sites, elsewhere, default_language, mode)
+
+
+def _without_added_hashes(tree: ast.Module, expected: dict) -> ast.Module:
+    """*tree* without the hash= keywords of *expected* ({index of the question call: value}), which
+    must all be there with their value."""
+    for index, call in enumerate(question_calls(tree)):
+        if index not in expected:
+            continue
+        added = [k for k in call.keywords if k.arg == HASH_KEYWORD]
+        if len(added) != 1 or not isinstance(added[0].value, ast.Constant) or added[0].value.value != expected[index]:
+            raise FileError(f"line {call.lineno}: the hash was not written as expected, file left unchanged")
+        call.keywords.remove(added[0])
+    return tree
+
+
+def check(text: str, new_text: str, path: Path, sites: list, first_run: list, data_json: str):
+    """Refuse *new_text* unless it is the program of *text* with the hash= keywords added, and
+    its questions have the expected hashes for the Data of the first run."""
+    try:
+        new_tree = ast.parse(new_text, filename=str(path))
+    except SyntaxError as e:
+        raise FileError(f"the changed file does not parse, left unchanged: {e}") from e
+    expected = {index: site.value for index, site in enumerate(sites) if site.status in PINNED}
+    if len(question_calls(new_tree)) != len(sites):
+        raise FileError("the changed file has other question calls, left unchanged")
+    if ast.dump(_without_added_hashes(new_tree, expected)) != ast.dump(ast.parse(text, filename=str(path))):
+        raise FileError("the changed file is another program, left unchanged")
+
+    # The same questions, in the same order, under the hashes written (the hash of a question
+    # that was left with a text depending on the data or on the run is not compared).
+    new_sites = [Site(call) for call in question_calls(ast.parse(new_text, filename=str(path)))]
+    try:
+        records = run_lab_again(new_text, path, data_json)
+    except Exception as e:
+        raise FileError(f"the changed lab cannot be run, left unchanged: {type(e).__name__}: {e}") from e
+    before, _ = _match(first_run, sites, path)
+    after, _ = _match(records, new_sites, path)
+    if len(records) != len(first_run):
+        raise FileError(f"the changed lab registers {len(records)} question(s) instead of {len(first_run)}, "
+                        "left unchanged")
+    index_of = {id(site): index for index, site in enumerate(sites)}
+    new_index_of = {id(site): index for index, site in enumerate(new_sites)}
+    for old, new, old_site, new_site in zip(first_run, records, before, after):
+        old_index = index_of.get(id(old_site))
+        if old_index != new_index_of.get(id(new_site)):
+            raise FileError("the changed lab registers its questions from other calls, left unchanged")
+        if old_site is not None and old_site.status in PINNED:
+            wanted = old_site.value
+        elif old_site is None or old_site.status in (ALREADY_SET, ADDED):
+            wanted = old.question.question_hash
+        else:
+            continue
+        if new.question.question_hash != wanted:
+            raise FileError(f"line {new.lineno}: the question has the hash {new.question.question_hash} "
+                            f"instead of {wanted}, file left unchanged")
+
+
+def _title(result: Result, site: Site) -> str:
+    if site.question is None:
+        return ""
+    title = sre().TranslatedText.from_value(site.question.title).resolve(result.default_language)
+    title = " ".join(str(title).split())
+    if len(title) > TITLE_WIDTH:
+        title = title[:TITLE_WIDTH - 1] + "…"
+    return f" {title!r}"
+
+
+def report(result: Result, dry_run: bool, name: str | None = None) -> list:
+    """The lines printed for a lab file, shown under *name* (its path by default)."""
+    name = str(result.path) if name is None else name
+    sites = result.sites
+    added = result.count(*PINNED)
+    left = len(sites) - added - result.count(ALREADY_SET)
+    summary = [f"{len(sites)} question call(s)",
+               f"{added} hash(es) {'to add' if dry_run else 'added'}" + (f" ({result.mode})" if added else "")]
+    if result.count(ALREADY_SET):
+        summary.append(f"{result.count(ALREADY_SET)} already set")
+    if left:
+        summary.append(f"{left} left without")
+    lines = [f"{name}: " + ", ".join(summary)]
+    for site in sites:
+        if site.status in REASONS and not (site.status == ADDED_VARIABLE and result.mode == MODE_RANDOM):
+            lines.append(f"  line {site.line}: {site.method}(){_title(result, site)}: {REASONS[site.status]}")
+    for record in result.elsewhere:
+        where = f"line {record.lineno}" if record.filename == str(result.path) else f"{record.filename}:{record.lineno}"
+        lines.append(f"  {record.method}() called at {where}: not a call this script can change, "
+                     "left without hash=")
+    if not added:
+        return lines
+    if result.mode == MODE_RANDOM:
+        lines.append("  random hashes: the answers already stored for these questions are no longer found")
+    elif result.mode == MODE_CURRENT:
+        former = sum(1 for s in sites if s.status in PINNED and s.question.legacy_hash)
+        if former:
+            lines.append(f"  {former} of these questions had another hash in the releases up to 0.19.0 (their "
+                         f"translations counted): the answers stored at that time need --hash {MODE_FORMER}")
+    return lines
+
+
+def process_file(path: Path, explicit: bool, args) -> str:
+    """Process one file: 'modified', 'unchanged' or 'skipped' (not a lab file)."""
+    try:
+        with open(path, encoding="utf-8", newline="") as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError) as e:
+        raise FileError(f"cannot read: {e}") from e
+    result = convert(text, path.resolve(), mode=args.hash, keep_variable=args.keep_variable)
+    if result is None:
+        if explicit:
+            print(f"{path}: skipped, not a lab file (no class {LAB_GRADE_CLASS})")
+        return "skipped"
+    changed = result.new_text != text
+    if changed or explicit or any(site.status != ALREADY_SET for site in result.sites):
+        print("\n".join(report(result, args.dry_run, str(path))))
+    if changed and args.diff:
+        sys.stdout.writelines(difflib.unified_diff(_split_lines(text), _split_lines(result.new_text),
+                                                   fromfile=str(path), tofile=str(path)))
+    if not changed:
+        return "unchanged"
+    if not args.dry_run:
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(result.new_text)
+        except OSError as e:
+            raise FileError(f"cannot write: {e}") from e
+    return "modified"
+
+
+def collect_files(arg: str, recursive: bool) -> list:
+    """(file, named explicitly) of one command-line argument."""
+    path = Path(arg)
+    if path.is_dir():
+        found = path.rglob("*.py") if recursive else path.glob("*.py")
+        return [(f, False) for f in sorted(found) if f.is_file() and "__pycache__" not in f.parts]
+    if path.is_file():
+        return [(path, True)]
+    raise FileError("no such file or directory")
+
+
+def main(argv: list | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="pin-question-hashes",
+        description="Write hash=\"...\" on every question_text(), question_form() and question_dummy() call of "
+                    "the lab files, so that the texts of the questions can change without detaching the answers "
+                    "already stored.")
+    parser.add_argument("--hash", choices=MODES, default=MODE_CURRENT,
+                        help=f"the value written: {MODE_CURRENT} = the hash the question has now (default language "
+                             f"of the lab; the default), {MODE_FORMER} = the hash of the releases up to 0.19.0 "
+                             f"(every language), {MODE_RANDOM} = {2 * RANDOM_HASH_BYTES} random hexadecimal "
+                             "characters")
+    parser.add_argument("--keep-variable", action="store_true",
+                        help="leave without hash= the questions whose text depends on the generated data")
+    parser.add_argument("-n", "--dry-run", action="store_true", help="report only, write nothing")
+    parser.add_argument("--diff", action="store_true", help="print the changes as a unified diff")
+    parser.add_argument("-r", dest="recursive", action="store_true",
+                        help="look for the lab files in the sub-directories of the directories too")
+    parser.add_argument("paths", nargs="+", metavar="file_or_dir", help="lab file, or directory of lab files")
+    args = parser.parse_args(argv)
+
+    errors = 0
+    seen = set()
+    totals = {"modified": 0, "unchanged": 0, "skipped": 0}
+    for arg in args.paths:
+        try:
+            files = collect_files(arg, args.recursive)
+        except FileError as e:
+            print(f"{arg}: {e}", file=sys.stderr)
+            errors += 1
+            continue
+        for path, explicit in files:
+            key = path.resolve()
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                totals[process_file(path, explicit, args)] += 1
+            except SetupError as e:
+                print(f"pin-question-hashes: {e}", file=sys.stderr)
+                return 2
+            except FileError as e:
+                print(f"{path}: {e}", file=sys.stderr)
+                errors += 1
+    labs = totals["modified"] + totals["unchanged"]
+    print(f"{totals['modified']} file(s) {'to modify' if args.dry_run else 'modified'} out of {labs} lab file(s)"
+          + (f", {errors} error(s)" if errors else ""))
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

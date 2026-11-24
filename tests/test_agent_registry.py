@@ -396,6 +396,24 @@ class TestAnswersStore:
                 run(store.put(p, patch, ALICE))
             assert e.value.status == 400
 
+    def test_put_accepts_a_hash_given_by_the_lab(self, tmp_pub_dir):
+        """A question keeps the ``hash=`` of its lab, of any length (the 16 characters written by
+        ``scripts/pin-question-hashes --hash random``): only an unknown hash is refused."""
+        path = make_project(tmp_pub_dir)
+        info = json.loads((path / params.info_json_name).read_text())
+        short_hash = 'a1b2c3d4e5f60718'
+        info['questions'][0]['question_hash'] = short_hash
+        (path / params.info_json_name).write_text(json.dumps(info))
+        reg = registry()
+        store = AnswersStore(reg, hostname='pool1', pub_dir=str(tmp_pub_dir), owner=None)
+        run(reg.tick())
+        p = reg.get(RLN)
+        assert run(store.put(p, {short_hash: 'because'}, ALICE))[short_hash] == 'because'
+        assert json.loads(p.answers_path.read_text())[short_hash] == 'because'
+        with pytest.raises(AccessError) as e:
+            run(store.put(p, {'0' * 16: 'a'}, ALICE))
+        assert e.value.status == 400
+
     def test_cheat_is_consumed_at_the_tick(self, tmp_pub_dir):
         path = make_project(tmp_pub_dir)
         reg = registry()
