@@ -1,4 +1,5 @@
 {
+  "@sort": "manual",
   "@weights": {
     "aaa.py": 130,
     "ansible.py": 50,
@@ -55,145 +56,101 @@
     "vxlan-evpn.py": 130,
     "wireguard.py": 42
   },
-  "aaa.py": {
-    "en": "AAA: RADIUS, 802.1X, two-factor authentication and Kerberos",
-    "fr": "AAA : RADIUS, 802.1X, double authentification et Kerberos"
+  "@subtitle lan": {
+    "en": "Ethernet and local networks",
+    "fr": "Ethernet et réseaux locaux"
   },
-  "ansible.py": {
-    "en": "Ansible: configuration automation",
-    "fr": "Ansible : automatisation de la configuration"
-  },
-  "anycast.py": {
-    "en": "Anycast: one service announced from several sites (OSPF and BGP)",
-    "fr": "Anycast : un service annoncé depuis plusieurs sites (OSPF et BGP)"
-  },
-  "bgp-scaling.py": {
-    "en": "BGP: communities, multipath, confederations and dampening",
-    "fr": "BGP : communautés, multichemin, confédérations et amortissement"
-  },
-  "bgp-security.py": {
-    "en": "BGP: securing sessions and announcements (RPKI, maximum-prefix, GTSM, RTBH)",
-    "fr": "BGP : sécuriser les sessions et les annonces (RPKI, maximum-prefix, GTSM, RTBH)"
-  },
-  "bgp.py": {
-    "en": "BGP: inter-domain routing",
-    "fr": "BGP : routage inter-domaine"
-  },
+  "vlan.py": "VLAN : 802.1Q, routeur « on a stick », ponts et brouter",
   "bridge.py": "Ponts Ethernet : pont Linux, table MAC, filtrage et STP",
-  "dns2.py": "DNS 2 : racine privée, résolveur, délégation, secondaires, DNSSEC, DoT/DoH, vues et pannes",
-  "docker-compose.py": {
-    "en": "Docker Compose: multi-container applications",
-    "fr": "Docker Compose : applications multi-conteneurs"
-  },
-  "docker.py": {
-    "en": "Docker: containers, images, volumes and networks",
-    "fr": "Docker : conteneurs, images, volumes et réseaux"
-  },
-  "evpn-mpls.py": {
-    "en": "EVPN and MPLS: data centre interconnection",
-    "fr": "EVPN et MPLS : interconnexion de data centres"
-  },
-  "ipsec.py": "IPsec et IKEv2 : ESP, tunnels site à site, nomade, certificats",
-  "ipv6.py": {
-    "en": "IPv6: addressing, static routing, SLAAC, DHCPv6, MTU and 6in4 tunnel",
-    "fr": "IPv6 : adressage, routage statique, SLAAC, DHCPv6, MTU et tunnel 6in4"
-  },
-  "isis-ipv6-sr-bfd.py": {
-    "en": "IS-IS: IPv6 multi-topology, segment routing and BFD",
-    "fr": "IS-IS : IPv6 multi-topologie, segment routing et BFD"
-  },
-  "isis.py": {
-    "en": "IS-IS: dynamic routing",
-    "fr": "IS-IS : routage dynamique"
-  },
   "lacp-lldp.py": {
     "en": "LACP and LLDP: link aggregation (bonding) and neighbour discovery",
     "fr": "LACP et LLDP : agrégation de liens (bonding) et découverte des voisins"
   },
-  "lan-attacks.py": {
-    "en": "LAN attacks: ARP, MITM, rogue DHCP, ICMP redirect and defences",
-    "fr": "Attaques LAN : ARP, homme du milieu, DHCP pirate, redirect ICMP et parades"
+  "vrrp.py": {
+    "en": "VRRP and keepalived: gateway redundancy",
+    "fr": "VRRP et keepalived : redondance de la passerelle"
   },
-  "ldap.py": "LDAP : annuaire OpenLDAP, comptes Unix centralisés, ACL, TLS et réplication",
-  "mail1.py": {
-    "en": "SMTP and IMAP: electronic mail with Postfix",
-    "fr": "SMTP et IMAP : courrier électronique avec Postfix"
+  "@subtitle ip-transport": {
+    "en": "IP, transport and quality of service",
+    "fr": "IP, transport et qualité de service"
   },
-  "mail2.py": {
-    "en": "Secure mail: TLS, submission, LMTP, SPF/DKIM, anti-spam",
-    "fr": "Courrier sécurisé : TLS, soumission, LMTP, SPF/DKIM, anti-spam"
+  "ipv6.py": {
+    "en": "IPv6: addressing, static routing, SLAAC, DHCPv6, MTU and 6in4 tunnel",
+    "fr": "IPv6 : adressage, routage statique, SLAAC, DHCPv6, MTU et tunnel 6in4"
   },
-  "mpls-vpn.py": {
-    "en": "MPLS: BGP/MPLS VPNs and segment routing traffic engineering",
-    "fr": "MPLS : VPN BGP/MPLS et ingénierie de trafic segment routing"
-  },
-  "mpls.py": {
-    "en": "MPLS: label switching, LDP and segment routing",
-    "fr": "MPLS : commutation de labels, LDP et segment routing"
-  },
-  "multicast.py": {
-    "en": "IP multicast: IGMP, PIM and MSDP",
-    "fr": "Multicast IP : IGMP, PIM et MSDP"
-  },
-  "nagios.py": {
-    "en": "Nagios: supervising hosts and services",
-    "fr": "Nagios : superviser des hôtes et des services"
-  },
-  "netflow.py": {
-    "en": "NetFlow: flow metrology with softflowd and nfdump",
-    "fr": "NetFlow : métrologie des flux avec softflowd et nfdump"
-  },
-  "nfs.py": {
-    "en": "NFS: network file sharing",
-    "fr": "NFS : partage de fichiers en réseau"
-  },
-  "nftables-filter1.py": "nftables : pare-feu d'une machine",
-  "nftables-filter2.py": {
-    "en": "nftables: network firewall (client, server, router and DMZ)",
-    "fr": "nftables : pare-feu d'un réseau (client, serveur, routeur et DMZ)"
-  },
-  "nftables-misc.py": "nftables : aspects avancés (sets, limit, reject) (misc)",
-  "nftables-nat.py": "nftables : NAT, répartition de charge et proxy (nat)",
-  "ntp.py": {
-    "en": "NTP and chrony: time synchronisation",
-    "fr": "NTP et chrony : synchronisation du temps"
-  },
-  "openvpn.py": "OpenVPN : tunnels, PKI, accès distant, site à site",
-  "ospf.py": {
-    "en": "OSPF: dynamic routing",
-    "fr": "OSPF : routage dynamique"
-  },
-  "ospfv3-bgp-ipv6.py": {
-    "en": "OSPFv3 and BGP: IPv6 routing",
-    "fr": "OSPFv3 et BGP : routage IPv6"
-  },
-  "policy-routing.py": {
-    "en": "Policy routing: ip rule, two ISPs and VRFs",
-    "fr": "Routage par politique : ip rule, deux fournisseurs d'accès et VRF"
-  },
-  "prometheus.py": {
-    "en": "Prometheus: metrics, queries and alerts",
-    "fr": "Prometheus : métriques, requêtes et alertes"
-  },
+  "tcp.py": "TCP : connexions, fenêtres, Nagle, congestion, MPTCP",
   "quic.py": {
     "en": "QUIC and HTTP/3: handshake, encryption, migration, 0-RTT",
     "fr": "QUIC et HTTP/3 : poignée de main, chiffrement, migration, 0-RTT"
   },
-  "reverse-proxy.py": {
-    "en": "HTTP: reverse proxy, cache, load balancing and high availability",
-    "fr": "HTTP : reverse proxy, cache, répartition de charge et haute disponibilité"
+  "tc.py": "tc : contrôle de trafic (netem, tbf, htb, cake)",
+  "@subtitle routing": {
+    "en": "Routing",
+    "fr": "Routage"
   },
   "rip.py": {
     "en": "RIP: dynamic routing",
     "fr": "RIP : routage dynamique"
   },
-  "rsyslog.py": {
-    "en": "Syslog: central logs with rsyslog and logrotate",
-    "fr": "Syslog : journaux centralisés avec rsyslog et logrotate"
+  "ospf.py": {
+    "en": "OSPF: dynamic routing",
+    "fr": "OSPF : routage dynamique"
   },
-  "scan-hardening.py": {
-    "en": "Scanning and hardening: nmap, NSE scripts and attack surface reduction",
-    "fr": "Scan et durcissement : nmap, scripts NSE et réduction de la surface d'attaque"
+  "isis.py": {
+    "en": "IS-IS: dynamic routing",
+    "fr": "IS-IS : routage dynamique"
+  },
+  "isis-ipv6-sr-bfd.py": {
+    "en": "IS-IS: IPv6 multi-topology, segment routing and BFD",
+    "fr": "IS-IS : IPv6 multi-topologie, segment routing et BFD"
+  },
+  "bgp.py": {
+    "en": "BGP: inter-domain routing",
+    "fr": "BGP : routage inter-domaine"
+  },
+  "ospfv3-bgp-ipv6.py": {
+    "en": "OSPFv3 and BGP: IPv6 routing",
+    "fr": "OSPFv3 et BGP : routage IPv6"
+  },
+  "bgp-security.py": {
+    "en": "BGP: securing sessions and announcements (RPKI, maximum-prefix, GTSM, RTBH)",
+    "fr": "BGP : sécuriser les sessions et les annonces (RPKI, maximum-prefix, GTSM, RTBH)"
+  },
+  "bgp-scaling.py": {
+    "en": "BGP: communities, multipath, confederations and dampening",
+    "fr": "BGP : communautés, multichemin, confédérations et amortissement"
+  },
+  "anycast.py": {
+    "en": "Anycast: one service announced from several sites (OSPF and BGP)",
+    "fr": "Anycast : un service annoncé depuis plusieurs sites (OSPF et BGP)"
+  },
+  "multicast.py": {
+    "en": "IP multicast: IGMP, PIM and MSDP",
+    "fr": "Multicast IP : IGMP, PIM et MSDP"
+  },
+  "policy-routing.py": {
+    "en": "Policy routing: ip rule, two ISPs and VRFs",
+    "fr": "Routage par politique : ip rule, deux fournisseurs d'accès et VRF"
+  },
+  "@subtitle mpls-overlays-sdn": {
+    "en": "MPLS, overlays and SDN",
+    "fr": "MPLS, overlays et SDN"
+  },
+  "mpls.py": {
+    "en": "MPLS: label switching, LDP and segment routing",
+    "fr": "MPLS : commutation de labels, LDP et segment routing"
+  },
+  "mpls-vpn.py": {
+    "en": "MPLS: BGP/MPLS VPNs and segment routing traffic engineering",
+    "fr": "MPLS : VPN BGP/MPLS et ingénierie de trafic segment routing"
+  },
+  "vxlan-evpn.py": {
+    "en": "VXLAN and EVPN: data centre overlay network",
+    "fr": "VXLAN et EVPN : réseau overlay d'un data centre"
+  },
+  "evpn-mpls.py": {
+    "en": "EVPN and MPLS: data centre interconnection",
+    "fr": "EVPN et MPLS : interconnexion de data centres"
   },
   "sdn.py": {
     "en": "SDN: Open vSwitch, OpenFlow and controllers",
@@ -203,33 +160,117 @@
     "en": "SD-WAN: tunnels, control plane, application-aware routing and SLA",
     "fr": "SD-WAN : tunnels, contrôle, routage par application et SLA"
   },
-  "snmp.py": {
-    "en": "SNMP: querying, configuring and securing agents",
-    "fr": "SNMP : interroger, configurer et sécuriser des agents"
+  "@subtitle firewalls": {
+    "en": "Firewalls and NAT",
+    "fr": "Pare-feu et NAT"
+  },
+  "nftables-filter1.py": "nftables : pare-feu d'une machine",
+  "nftables-filter2.py": {
+    "en": "nftables: network firewall (client, server, router and DMZ)",
+    "fr": "nftables : pare-feu d'un réseau (client, serveur, routeur et DMZ)"
+  },
+  "nftables-nat.py": "nftables : NAT, répartition de charge et proxy (nat)",
+  "nftables-misc.py": "nftables : aspects avancés (sets, limit, reject) (misc)",
+  "@subtitle vpn": {
+    "en": "Tunnels and VPN",
+    "fr": "Tunnels et VPN"
+  },
+  "openvpn.py": "OpenVPN : tunnels, PKI, accès distant, site à site",
+  "wireguard.py": "WireGuard : tunnels, pairs, site à site, tunnel complet",
+  "ipsec.py": "IPsec et IKEv2 : ESP, tunnels site à site, nomade, certificats",
+  "@subtitle security": {
+    "en": "Security",
+    "fr": "Sécurité"
+  },
+  "lan-attacks.py": {
+    "en": "LAN attacks: ARP, MITM, rogue DHCP, ICMP redirect and defences",
+    "fr": "Attaques LAN : ARP, homme du milieu, DHCP pirate, redirect ICMP et parades"
+  },
+  "scan-hardening.py": {
+    "en": "Scanning and hardening: nmap, NSE scripts and attack surface reduction",
+    "fr": "Scan et durcissement : nmap, scripts NSE et réduction de la surface d'attaque"
   },
   "suricata-fail2ban.py": {
     "en": "Suricata and fail2ban: intrusion detection and prevention",
     "fr": "Suricata et fail2ban : détection et prévention d'intrusion"
   },
-  "tc.py": "tc : contrôle de trafic (netem, tbf, htb, cake)",
-  "tcp.py": "TCP : connexions, fenêtres, Nagle, congestion, MPTCP",
-  "tls.py": "TLS : autorité de certification, nginx, apache2, CRL, step-ca et ACME",
-  "vagrant.py": {
-    "en": "Vagrant: reproducible environments",
-    "fr": "Vagrant : environnements reproductibles"
+  "aaa.py": {
+    "en": "AAA: RADIUS, 802.1X, two-factor authentication and Kerberos",
+    "fr": "AAA : RADIUS, 802.1X, double authentification et Kerberos"
   },
-  "vlan.py": "VLAN : 802.1Q, routeur « on a stick », ponts et brouter",
+  "tls.py": "TLS : autorité de certification, nginx, apache2, CRL, step-ca et ACME",
+  "@subtitle services": {
+    "en": "Network services",
+    "fr": "Services réseau"
+  },
+  "dns2.py": "DNS 2 : racine privée, résolveur, délégation, secondaires, DNSSEC, DoT/DoH, vues et pannes",
+  "ntp.py": {
+    "en": "NTP and chrony: time synchronisation",
+    "fr": "NTP et chrony : synchronisation du temps"
+  },
+  "ldap.py": "LDAP : annuaire OpenLDAP, comptes Unix centralisés, ACL, TLS et réplication",
+  "nfs.py": {
+    "en": "NFS: network file sharing",
+    "fr": "NFS : partage de fichiers en réseau"
+  },
+  "mail1.py": {
+    "en": "SMTP and IMAP: electronic mail with Postfix",
+    "fr": "SMTP et IMAP : courrier électronique avec Postfix"
+  },
+  "mail2.py": {
+    "en": "Secure mail: TLS, submission, LMTP, SPF/DKIM, anti-spam",
+    "fr": "Courrier sécurisé : TLS, soumission, LMTP, SPF/DKIM, anti-spam"
+  },
+  "reverse-proxy.py": {
+    "en": "HTTP: reverse proxy, cache, load balancing and high availability",
+    "fr": "HTTP : reverse proxy, cache, répartition de charge et haute disponibilité"
+  },
   "voip.py": {
     "en": "VoIP: SIP and RTP with Asterisk",
     "fr": "Voix sur IP : SIP et RTP avec Asterisk"
   },
-  "vrrp.py": {
-    "en": "VRRP and keepalived: gateway redundancy",
-    "fr": "VRRP et keepalived : redondance de la passerelle"
+  "@subtitle monitoring": {
+    "en": "Monitoring and logging",
+    "fr": "Supervision et journalisation"
   },
-  "vxlan-evpn.py": {
-    "en": "VXLAN and EVPN: data centre overlay network",
-    "fr": "VXLAN et EVPN : réseau overlay d'un data centre"
+  "snmp.py": {
+    "en": "SNMP: querying, configuring and securing agents",
+    "fr": "SNMP : interroger, configurer et sécuriser des agents"
   },
-  "wireguard.py": "WireGuard : tunnels, pairs, site à site, tunnel complet"
+  "nagios.py": {
+    "en": "Nagios: supervising hosts and services",
+    "fr": "Nagios : superviser des hôtes et des services"
+  },
+  "prometheus.py": {
+    "en": "Prometheus: metrics, queries and alerts",
+    "fr": "Prometheus : métriques, requêtes et alertes"
+  },
+  "rsyslog.py": {
+    "en": "Syslog: central logs with rsyslog and logrotate",
+    "fr": "Syslog : journaux centralisés avec rsyslog et logrotate"
+  },
+  "netflow.py": {
+    "en": "NetFlow: flow metrology with softflowd and nfdump",
+    "fr": "NetFlow : métrologie des flux avec softflowd et nfdump"
+  },
+  "@subtitle automation": {
+    "en": "Automation and containers",
+    "fr": "Automatisation et conteneurs"
+  },
+  "ansible.py": {
+    "en": "Ansible: configuration automation",
+    "fr": "Ansible : automatisation de la configuration"
+  },
+  "vagrant.py": {
+    "en": "Vagrant: reproducible environments",
+    "fr": "Vagrant : environnements reproductibles"
+  },
+  "docker.py": {
+    "en": "Docker: containers, images, volumes and networks",
+    "fr": "Docker : conteneurs, images, volumes et réseaux"
+  },
+  "docker-compose.py": {
+    "en": "Docker Compose: multi-container applications",
+    "fr": "Docker Compose : applications multi-conteneurs"
+  }
 }
