@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# sre-docker-load [repository...]: load the Docker Hub images shipped with the sysreseval/docker
+# image (/usr/local/share/sre-docker-images/<repository>_<tag>.tar, see images/docker/Dockerfile)
+# into the local Docker daemon, then give each one its short alias:
+#
+#   <repository>:<x>-alpine  ->  <repository>:alpine     (nginx, python, redis)
+#   <repository>:<x>         ->  <repository>:latest     (alpine, busybox, registry)
+#
+# (nginx:latest is a Debian image upstream: the Alpine one is never called latest).  Without
+# argument every image is loaded; an image already present is not loaded again.  Prints one line
+# per image ("repository:tag alias"), exits 1 when a tarball could not be loaded.
+#
+set -u
+DIR=/usr/local/share/sre-docker-images
+rc=0
+for f in "$DIR"/*.tar; do
+    [ -e "$f" ] || continue
+    base=$(basename "$f" .tar)
+    repo=${base%%_*}
+    tag=${base#*_}
+    if [ $# -gt 0 ]; then
+        case " $* " in *" $repo "*) ;; *) continue ;; esac
+    fi
+    if ! docker image inspect "$repo:$tag" >/dev/null 2>&1; then
+        if ! docker load -q -i "$f" >/dev/null; then
+            echo "sre-docker-load: cannot load $f" >&2
+            rc=1
+            continue
+        fi
+    fi
+    case "$tag" in
+        latest) alias= ;;
+        *-alpine) alias=alpine ;;
+        *) alias=latest ;;
+    esac
+    if [ -n "$alias" ]; then
+        docker tag "$repo:$tag" "$repo:$alias" || rc=1
+    fi
+    echo "$repo:$tag${alias:+ $repo:$alias}"
+done
+exit $rc

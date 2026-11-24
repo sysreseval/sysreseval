@@ -1,0 +1,15 @@
+The Docker Hub images of the Docker labs, saved by `make -C images docker-hub-images` (one
+`docker save` tarball per image, named after its tag: nginx_1.29-alpine.tar...) and copied into
+the image (/usr/local/share/sre-docker-images/): the lab containers have no Internet access, their
+inner Docker daemon loads these files.  The target pulls through the Docker daemon of the build
+host, so its registry mirror and proxy apply; a file already here is kept (remove it to fetch the
+image again).
+
+Optionally, the Debian packages of Docker's repository, for a build host that cannot reach
+download.docker.com (the room workstations when their Internet access is off):
+
+  docker-ce_<version>_amd64.deb  docker-ce-cli_<version>_amd64.deb  containerd.io_<version>_amd64.deb
+  docker-buildx-plugin_<version>_amd64.deb  docker-compose-plugin_<version>_amd64.deb
+                                        https://download.docker.com/linux/debian/dists/trixie/pool/stable/amd64/
+
+The directory is otherwise empty; the files are not committed (.gitignore).

@@ -14,9 +14,9 @@ NAMESPACE ?= sysreseval
 #   is built again on the new version of its parent, under its old tag.
 # VERSION_ldap-mail := 1.35
 
-IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa ansible ntp scan vagrant base12 init12
+IMAGES := base13 init13 routing-frr ldap-mail proxy monitoring voip aaa ansible ntp scan docker vagrant base12 init12
 
-.PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
+.PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help docker-hub-images
 
 all: $(IMAGES)
 
@@ -73,6 +73,30 @@ ntp: base13
 scan: init13
 	$(BUILD)
 
+# A Docker host inside a lab machine (the Docker and Docker Compose labs): docker-ce, containerd,
+# the compose and buildx plugins from download.docker.com (or docker/cache/*.deb), and the Docker
+# Hub images of DOCKER_HUB_IMAGES saved as tarballs (the lab machines have no Internet access).
+docker: init13 docker-hub-images
+	$(BUILD)
+
+# The Docker Hub images shipped in the docker image: one `docker save` per tag into docker/cache/
+# (<repository>_<tag>.tar), pulled through the build host's own Docker daemon (its registry mirror
+# and proxy apply), for the architecture of that daemon.  A tarball already there is kept.  The
+# tags are pinned: the labs name only the aliases that docker/sre-docker-load gives them
+# (nginx:alpine, python:alpine, redis:alpine, alpine, busybox, registry, hello-world).
+DOCKER_HUB_IMAGES ?= hello-world:latest alpine:3.24 busybox:1.38 nginx:1.30-alpine python:3.14-alpine \
+	redis:8.6-alpine registry:3
+docker-hub-images:
+	@arch=$$(docker version --format '{{.Server.Arch}}'); \
+	for image in $(DOCKER_HUB_IMAGES); do \
+		file=docker/cache/$$(echo "$$image" | tr ':/' '_-').tar; \
+		if [ -s "$$file" ]; then echo "$$file: kept"; continue; fi; \
+		docker pull -q --platform linux/$$arch "$$image" \
+		&& docker save --platform linux/$$arch -o "$$file.part" "$$image" \
+		&& mv "$$file.part" "$$file" && echo "$$file: saved" \
+		|| { rm -f "$$file.part"; exit 1; }; \
+	done
+
 # The developer workstation of the Vagrant lab: vagrant (docker provider), its own Docker daemon
 # (privileged init machine, /var/lib/docker a VOLUME), ansible-core and a small Debian 13 box root
 # filesystem built from debian:13-slim (see vagrant/Dockerfile).
@@ -96,8 +120,9 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + ansible + ntp + scan + vagrant + base12 + init12"
-	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | ansible | ntp | scan | vagrant | base12 | init12  build one image (deps included)"
+	@echo "  all (default)     build base13 + init13 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + ansible + ntp + scan + docker + vagrant + base12 + init12"
+	@echo "  base13 | init13 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | ansible | ntp | scan | docker | vagrant | base12 | init12  build one image (deps included)"
+	@echo "  docker-hub-images the Docker Hub tarballs of the docker image (docker/cache/)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

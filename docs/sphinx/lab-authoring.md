@@ -1808,6 +1808,53 @@ from utils import random_password, random_sentence
 | `random_password(length)` | Returns a random alphanumeric password of the given length |
 | `random_sentence(length)` | Returns a random sequence of lowercase words, space-separated, approximately `length` characters long |
 
+### Docker helpers (from `/opt/sre/lib/docker_helpers.py` and `/opt/sre/lib/docker_app.py`)
+
+A machine of the image `sysreseval/docker` is a Docker host of its own (docker-ce 29 with the containerd image
+store, the compose and buildx plugins, containerd 2, under a genuine systemd): give it `"privileged": True` and
+`"entrypoint": "/sbin/init"`. The module is `docker_helpers` because a `lib/docker.py` would shadow the Docker SDK
+that Kathara imports.
+
+```python
+from docker_helpers import (start_docker, load_images, app_source, rm_cmd, wait_healthy_cmd, compose_up_cmd,
+                            snapshot_cmd, parse_snapshot, compose_ref, ns_ping_cmd, ns_dns_cmd, ns_tcp_cmd,
+                            proc_file_cmd, proc_status_cmd, volume_grep_cmd, blocks_cmd, parse_blocks,
+                            replicas_probe_cmd, parse_json_lines)
+```
+
+| Function | Returns / does |
+|----------|----------------|
+| `start_docker(ns, m, step)` | waits for systemd, starts containerd and docker (the image starts nothing at boot), waits until `docker info` answers |
+| `load_images(ns, m, repositories=(), step)` | `sre-docker-load`: the Docker Hub images shipped in the image (`/usr/local/share/sre-docker-images/*.tar`) loaded, with their aliases `nginx:alpine`, `python:alpine`, `redis:alpine`, `alpine`, `busybox`, `registry` (`latest`), `hello-world`: the lab machines have no Internet access |
+| `app_source()` | the source of `docker_app.py`, a stdlib web application for the students' images: `GET /` → one JSON line (`version` = `APP_VERSION`, `color`, `hostname`, `user`, `uid`, `visits`, `store`), `GET /health`; visits in Redis (`REDIS_HOST`, password in `REDIS_PASSWORD_FILE`), else in `/data/visits`, else in memory |
+| `rm_cmd(*names)`, `wait_healthy_cmd(names, timeout)`, `compose_up_cmd(directory)` | state commands that can run again (`docker rm -f`, a bounded wait for `healthy`, `docker compose up -d --build --wait`) |
+| `snapshot_cmd()` / `parse_snapshot(text)` | one command per Docker host: compact JSON (`jq`) of the containers, networks, volumes, images, `RegistryConfig` and `docker compose ls`, after a bounded wait while a healthcheck is `starting` → `DockerSnapshot`: `container(name)`, `network`, `volume`, `image(ref)`, `image_of(container)` (by id), `compose_containers(project, service, working_dir=)` (by the Compose labels, one-off containers left out), `insecure_registry(host)`; accessors `running`, `health`, `env`, `restart_policy`, `published(c, port)`, `published_ports`, `mount_at(c, path)`, `networks_of`, `ip_on`, `mac_on`, `depends_on` (the `com.docker.compose.depends_on` label), `config_files`, `healthcheck`, `has_subnet(net, subnet, gateway)`, `members`, `secrets_in(c, secret)` |
+| `ns_ping_cmd`, `ns_dns_cmd`, `ns_tcp_cmd`, `proc_file_cmd`, `proc_status_cmd` (+ `parse_uid`, `parse_cmdline`) | probes in the namespaces of a container run with the tools of the machine (`nsenter -t <pid> -n ping / dig @127.0.0.11 / bash /dev/tcp`, `/proc/<pid>/root`, `/proc/<pid>/status`): independent of what the student's image contains; a container is a name or `compose_ref(project, service)`; `NO_CONTAINER` when it does not run |
+| `volume_grep_cmd(volume, text)` | `FOUND` / `MISSING` / `NO_VOLUME`: *text* searched in the files of a volume from the host side (the AOF of Redis) |
+| `blocks_cmd({key: cmd})` / `parse_blocks(out)` | several probes in one command |
+| `replicas_probe_cmd(url, n)` / `parse_json_lines(out)` | *n* requests by one curl (URL globbing: one kept-alive connection, so one nginx worker alternating between its upstream servers), bounded as a whole |
+
+The image: `images/docker/Dockerfile` on init13, `make -C images docker` (the target `docker-hub-images` first saves
+the pinned images of `DOCKER_HUB_IMAGES` into `images/docker/cache/` through the build host's own daemon, so its
+registry mirror applies; `docker/cache/*.deb` replace download.docker.com when it is out of reach). `/var/lib/docker`
+and `/var/lib/containerd` are `VOLUME`s: Docker gives the container anonymous volumes on the host's filesystem (overlay2
+refuses an overlayfs backing filesystem, the root of a container), which Kathara removes with the container. The
+inner containerd and dockerd run with `container=docker` (systemd drop-ins): on a host that enforces AppArmor they
+neither load their `docker-default` profile into the kernel (profiles are global: it would replace the host's) nor
+apply one. Verified on s17 (Debian 13, kernel 6.12, 2026-11-24): the cgroup v2 controllers and the limits of a nested
+container (`--memory`, `--cpus`, `--pids-limit`), offline `docker build` of `FROM python:alpine` and `docker compose
+up --build --wait`, published ports (a `DNAT` rule in the chain `DOCKER` plus a `docker-proxy`; the `DOCKER_OUTPUT`
+chains of a machine come from the host's Docker), a macvlan network on a Kathara `switch` (the router sees the
+container's own MAC; the parent machine cannot reach it), the routed gateway mode (only published ports and ping
+reach the container), a `registry:3` on one machine pulled by another after `insecure-registries` +
+`systemctl reload docker` (the pulled image id is the `Docker-Content-Digest` of the registry; a locally built image
+also has `RepoDigests` with the containerd store), Compose secrets as bind mounts, the label
+`com.docker.compose.depends_on` = `db:service_healthy:false`. Give the Docker hosts `nameserver 127.0.0.1` in
+`/etc/resolv.conf`: an empty file makes the embedded DNS of the containers forward unknown names to 8.8.8.8, out of
+reach, and every lookup of a missing service waits for a timeout. A Docker host weighs about 170 MiB before any
+container (`image_weights`), 400 to 500 MiB with the containers of a lab. Examples: `lab/sre/_DRAFT_misc/docker.py`,
+`lab/sre/_DRAFT_misc/docker-compose.py`.
+
 ### NTP and chrony helpers (from `/opt/sre/lib/ntp.py` and `/opt/sre/lib/ntp_probe.py`)
 
 ```python

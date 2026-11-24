@@ -8,6 +8,8 @@
     "bgp.py": 46,
     "bridge.py": 9,
     "dns2.py": 65,
+    "docker-compose.py": 177,
+    "docker.py": 147,
     "evpn-mpls.py": 116,
     "ipsec.py": 53,
     "ipv6.py": 22,
@@ -70,6 +72,14 @@
   "bgp-security.py": {
     "en": "BGP: securing sessions and announcements (RPKI, maximum-prefix, GTSM, RTBH)",
     "fr": "BGP : sécuriser les sessions et les annonces (RPKI, maximum-prefix, GTSM, RTBH)"
+  },
+  "docker-compose.py": {
+    "en": "Multi-container applications with Docker Compose",
+    "fr": "Applications multi-conteneurs avec Docker Compose"
+  },
+  "docker.py": {
+    "en": "Containers with Docker",
+    "fr": "Conteneurs avec Docker"
   },
   "evpn-mpls.py": {
     "en": "EVPN and MPLS: data centre interconnection",

@@ -190,6 +190,7 @@ image_weights = {
     "voip": 7,                      # Asterisk: 21 MiB
     "aaa": 10,                      # FreeRADIUS, slapd, a KDC, hostapd: 41 MiB
     "monitoring": 14,               # Prometheus, Nagios and their exporters: 49 MiB
+    "docker": 45,                   # systemd, containerd and dockerd before any container: 170 MiB
 }
 
 
