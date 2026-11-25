@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-VERSION   ?= 1.35
+VERSION   ?= 1.36
 NAMESPACE ?= sysreseval
 
 # An image may have its own version: one line `VERSION_<image> := <version>` here (none by default).

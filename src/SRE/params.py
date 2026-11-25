@@ -317,7 +317,7 @@ del _fhs, _root
 #################################################################################
 
 sre_version = "0.19.1"
-default_docker_image_version = "1.35"
+default_docker_image_version = "1.36"
 # Version of the images that have their own, e.g. {"identity13": "1.35"}; the others take
 # default_docker_image_version.  Both lines are written by `make images` from images/Makefile
 # (VERSION and its VERSION_<image> lines): keep this one on a single line.
