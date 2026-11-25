@@ -1062,6 +1062,7 @@ Toutes les machines sont sur le même réseau local `net1` (`{net1}`).
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="b9e0a39f370bf65b",
             description=tr("""
 Lisez l'onglet **Informations** : il rappelle le socle d'un pare-feu de machine (politique `drop`,
 filtrage à états) et présente les ensembles nommés, les *maps*, `reject` et `drop`, la limitation
@@ -1181,6 +1182,7 @@ aussi.
         self.question_dummy(
             section=self.section(0),
             title=tr("Liste noire (ensemble nommé)"),
+            hash="413ca79d34b9b10e",
             description=tr("""
 Créez un **ensemble nommé** `liste_noire` (`type ipv4_addr`) contenant l'adresse
 de **`bad`** ({_arg0}) et **détruisez** tout trafic provenant de ses membres. Les
@@ -1227,6 +1229,7 @@ politique `drop`) et `ensembles_nommes` (1 point : le texte de `nft list ruleset
         self.question_dummy(
             section=self.section(0),
             title=tr("Liste blanche SSH (ensemble nommé)"),
+            hash="298a27408cad4aba",
             description=tr("""
 Créez un ensemble nommé `admins` contenant l'adresse de **`admin`** ({_arg0}) et
 n'autorisez le **SSH** (port {_arg1}) que depuis les membres de cet ensemble. Le
@@ -1268,6 +1271,7 @@ comme par `reject`, **et** celle de la copie de `admin` aboutir).
         self.question_dummy(
             section=self.section(0),
             title=tr("reject vs drop"),
+            hash="c3f5e4a10b0e4446",
             description=tr("""
 Faites en sorte que :
 
@@ -1309,6 +1313,7 @@ règle, ils seraient ouverts.
         self.question_dummy(
             section=self.section(0),
             title=tr("Limitation de débit, compteurs et journalisation"),
+            hash="0ec11492f80f849c",
             description=tr("""
 Ajoutez :
 

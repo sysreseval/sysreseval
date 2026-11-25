@@ -820,6 +820,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="ad20192ef835c8ee",
             description=tr("""
 Lisez l'onglet **Informations** : il présente le SDN, OpenFlow, Open vSwitch et les contrôleurs. Le TP a
 quatre parties indépendantes, chacune sur son propre site ; un bonus termine la quatrième.
@@ -877,6 +878,7 @@ projet. Les états `solve_part1` à `solve_part4` et `solve_bonus` appliquent la
         self.question_dummy(
             section=self.section(0),
             title=tr("Créer un pont, ses ports et ses VLAN"),
+            hash="5962e5c56acfa9c0",
             description=tr("""
 Sections @@ref:ovsarch@@ et @@ref:ovstools@@. Sur `sw1`, Open vSwitch tourne mais n'a aucun pont.
 
@@ -922,6 +924,7 @@ La table contient une seule entrée, `priority=0 actions=NORMAL` (pont `standalo
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Les composants d'Open vSwitch"),
+            hash="f128f7fee8875350",
             description=tr("""
 Section @@ref:ovsarch@@ et @@ref:failmode@@.
 
@@ -955,6 +958,7 @@ compare avec celui de votre pont) ; `ovsdb-server` ; `ovs-vswitchd` ; `NORMAL`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Écrire la table de flux de sw2"),
+            hash="32a58a16b869d322",
             description=tr("""
 Sections @@ref:flowtable@@, @@ref:ovsflows@@ et @@ref:failmode@@. Le pont `br0` de `sw2` est en mode
 `secure`, sans contrôleur et sans aucune entrée : rien ne passe. Écrivez vous-même sa table avec
@@ -1012,6 +1016,7 @@ aussi.)
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Numéros de port et priorités"),
+            hash="025950e01b10b5dd",
             description=tr("""
 Section @@ref:flowtable@@.
 
@@ -1038,6 +1043,7 @@ Section @@ref:flowtable@@.
         self.question_dummy(
             section=self.section(0),
             title=tr("Confier sw3 au contrôleur ctl3"),
+            hash="c0cb0d98d2e10141",
             description=tr("""
 Sections @@ref:messages@@, @@ref:failmode@@ et @@ref:learning@@. Le pont `br0` de `sw3` se comporte pour
 l'instant en switch classique (mode `standalone`, action `NORMAL`). Vous allez le confier au contrôleur
@@ -1101,6 +1107,7 @@ d'inactivité), mais un nouveau flux (une autre paire de machines, ou après exp
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Ce que montre la capture"),
+            hash="bc9368b74df430b5",
             description=tr("""
 Sections @@ref:messages@@ et @@ref:failmode@@.
 
@@ -1130,6 +1137,7 @@ Sections @@ref:messages@@ et @@ref:failmode@@.
         self.question_dummy(
             section=self.section(0),
             title=tr("Isoler deux locataires par l'API REST"),
+            hash="80ee8b864ff2f1a4",
             description=tr("""
 Section @@ref:rest@@. `sw4a` et `sw4b` sont en mode `secure`, connectés au contrôleur `ctl4` qui n'y a
 installé aucune entrée : rien ne passe. Vous n'avez de terminal ni sur les switchs ni sur le
@@ -1178,6 +1186,7 @@ en VLAN 20 pour le bleu.
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Ce que dit l'API"),
+            hash="69737438b3f55c64",
             description=tr("""
 Section @@ref:rest@@.
 
@@ -1202,6 +1211,7 @@ Section @@ref:rest@@.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un compteur de débit pour guest4"),
+            hash="f535866d38d1856b",
             description=tr("""
 Sections @@ref:groups@@ et @@ref:rest@@. Sur `sw4a`, `guest4` (port `eth4`) et `srv4` (port `eth5`) ne
 se joignent pas encore. Par l'API REST :

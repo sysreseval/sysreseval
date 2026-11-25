@@ -956,6 +956,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="fbf779db357ce4f1",
             description=tr("""
 Lisez l'onglet **Informations** : il présente Prometheus, ses métriques, PromQL, les exporteurs, les
 règles et Alertmanager. Vous installez la supervision d'une boutique en ligne depuis **`prom`**.
@@ -1048,6 +1049,7 @@ projet.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Lire des métriques, démarrer les node exporters, publier une métrique"),
+            hash="357ce5cea5f83368",
             description=tr("""
 Sections @@ref:exposition@@ et @@ref:node@@ de l'onglet Informations.
 
@@ -1124,6 +1126,7 @@ boutique : `shop_http_requests_total` est un `counter`, `shop_queue_length` une 
         self.question_dummy(
             section=self.section(0),
             title=tr("Configurer la collecte"),
+            hash="544cd0ea1e3a3d70",
             description=tr("""
 Section @@ref:scrape@@. Dans `/etc/prometheus/prometheus.yml` sur `prom` :
 
@@ -1188,6 +1191,7 @@ option de la ligne de commande ne se recharge pas).
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Interroger Prometheus"),
+            hash="1845870e775c8cd5",
             description=tr("""
 Section @@ref:promql@@. Écrivez les requêtes suivantes et mettez-les au point sur la page *Graph* de
 l'interface web (ou avec `promtool query instant`). Utilisez les séries du job `app` (et du job
@@ -1268,6 +1272,7 @@ peut s'écarter de plus de 5 %.
         self.question_dummy(
             section=self.section(0),
             title=tr("Sonder la boutique et le routeur de l'extérieur"),
+            hash="f29108e7f98712c0",
             description=tr("""
 Section @@ref:blackbox@@. Sur `prom` :
 
@@ -1337,6 +1342,7 @@ puis `systemctl reload prometheus`.
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Superviser le routeur avec le SNMP exporter"),
+            hash="58c8188f4f47b043",
             description=tr("""
 Section @@ref:snmp@@. Sur `prom`, `{snmp_yml}` contient déjà un module `{module}` écrit pour le TP
 (les compteurs d'octets des interfaces, leur état, `sysUpTime`), mais avec la communauté d'exemple
@@ -1395,6 +1401,7 @@ Requête : `{bitrate}`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Écrire des règles"),
+            hash="9245c0c4eb1219e0",
             description=tr("""
 Section @@ref:rules@@. Écrivez sur `prom` le fichier **`{rules_file}`**, un groupe `shop`, chargé par
 `prometheus.yml` (`rule_files`), avec :
@@ -1469,6 +1476,7 @@ exactement {threshold} ne déclenche rien.
         self.question_dummy(
             section=self.section(0),
             title=tr("Router les alertes"),
+            hash="4497a9b4839b4455",
             description=tr("""
 Section @@ref:alertmanager@@. Sur `prom` :
 

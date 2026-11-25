@@ -1078,6 +1078,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="a6c8fad83747c685",
             description=tr("""
 Lisez l'onglet **Informations** : il présente l'interconnexion de data centres au-dessus d'un réseau
 MPLS, avec Linux et FRR. Le TP suppose connus VXLAN et EVPN (TP « VXLAN et EVPN dans un data
@@ -1150,6 +1151,7 @@ l'interface `{fix_if}` de `fix_p` (vers `fix_pe2`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Étendre un VNI entre deux data centres"),
+            hash="1c4fa00d2d245aee",
             description=tr("""
 Les VTEP `st_dc1` (AS 65101) et `st_dc2` (AS 65102) sont deux sites du L3VPN `{dci}` de l'opérateur :
 `st_pe1`, `st_p`, `st_pe2`. Chacun annonce son interface de bouclage à son PE, et ces adresses se
@@ -1188,6 +1190,7 @@ pour l'enseignant seulement : `st_q_import`, `st_q_core`, `st_q_policy` (1 chacu
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site st"),
+            hash="7758d984065bd4f0",
             description=tr("""
 - nombre de labels des paquets de `st_h1` vers `st_h2` sur le lien `st_l1` : @@{labels:[0-9]+}@@
 - octets ajoutés sur ce lien au paquet IP de `st_h1` (VXLAN et labels) : @@{overhead:[0-9]+}@@
@@ -1265,6 +1268,7 @@ ils établissent la session mais n'échangent rien (RFC 8212).
         self.question_dummy(
             section=self.section(0),
             title=tr("Relier la VRF du data centre au VPN de l'opérateur"),
+            hash="c2bbd9f8bade05b8",
             description=tr("""
 Dans le data centre, `gw_leaf` route le sous-réseau `{dc}` de `gw_h1` en IRB symétrique (VRF `{vrf}`,
 L3VNI **{l3}**) et l'annonce en type 5 à `gw_border`, son voisin EVPN. `gw_border` est aussi un **PE**
@@ -1303,6 +1307,7 @@ centre en VPNv4 par `gw_border`, et sa route dans la VRF avec deux labels), `gw_
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Ce que fait la passerelle"),
+            hash="192bd25d26fa8dcd",
             description=tr("""
 - nombre de labels des paquets de `gw_h1` vers `gw_h2` sur le lien `gw_l1` : @@{labels:[0-9]+}@@
 - VNI des paquets VXLAN de `gw_h1` vers `gw_h2` sur le lien `gw_u1` : @@{vni:[0-9]+}@@
@@ -1373,6 +1378,7 @@ prochain saut ; rien.
         self.question_dummy(
             section=self.section(0),
             title=tr("Une interconnexion en panne"),
+            hash="8818fca1f249e13a",
             description=tr("""
 Le site `fix` reproduit le site 1, une fois la session EVPN configurée : les VTEP `fix_dc1` (AS
 65101) et `fix_dc2` (AS 65102), le L3VPN `{dci}` (`fix_pe1`, `fix_p`, `fix_pe2`), le VNI **{vni}** entre
@@ -1401,6 +1407,7 @@ EVPN établie, avec politique), `fix_ping` (4) ; pour l'enseignant seulement : `
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Ce que montraient les pannes"),
+            hash="46f338099e831103",
             description=tr("""
 - sans `ebgp-multihop`, `fix_dc1` :
   @@{multihop:>refuse un voisin eBGP qui n'est pas directement connecté>>>connected|établit la session sans échanger de routes>>>policy|établit la session normalement>>>ok|attend une session iBGP>>>ibgp}@@
@@ -1461,6 +1468,7 @@ jetés (`rx_dropped` des compteurs MPLS).
         self.question_dummy(
             section=self.section(0),
             title=tr("Ne pas exporter les routes des hôtes (bonus)"),
+            hash="1df30240e1823345",
             description=tr("""
 Le site `ag` est une passerelle complète, comme le site 2 une fois résolu : `ag_h1` (data centre,
 `{dc}`) joint `ag_h2` (site distant). Mais `ag_pe` reçoit en VPNv4, en plus du sous-réseau du data

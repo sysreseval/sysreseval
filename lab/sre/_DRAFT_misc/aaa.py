@@ -1539,13 +1539,16 @@ class Grade(Grade0):
         # ===================================================================================================
         # questions and grade elements
         # ===================================================================================================
-        self.question_dummy(title=tr("Organisation du TP"), description=self._organisation_text(d))
+        self.question_dummy(title=tr("Organisation du TP"),
+                            hash="411f773d7b7aa35a",
+                            description=self._organisation_text(d))
 
         # ---- Partie 1 -----------------------------------------------------------------------------------
         part1 = self.add_grade_part(no_tr("part1"), tr("Partie 1 — Premiers pas avec FreeRADIUS"))
         self.question_dummy(
             section=self.section(0),
             title=tr("Un client et deux utilisateurs"),
+            hash="369151010d6593e5",
             description=tr("""
 Sur `radius`, FreeRADIUS tourne avec sa configuration d'origine (`/etc/freeradius/3.0`, section
 @@ref:freeradius@@). Arrêtez le service et lancez-le en mode debug (`systemctl stop freeradius` puis
@@ -1594,6 +1597,7 @@ puis `systemctl restart freeradius`. Évaluation (depuis `sw`, avec son secret) 
         q12 = self.question_form(
             section=self.section(0),
             title=tr("Observer un échange RADIUS"),
+            hash="2c32cee569d4dfac",
             description=tr("""
 Sur `radius`, capturez le trafic RADIUS (`tcpdump -i eth0 -n -vv udp port 1812 or udp port 1813`, ou
 `tshark -i eth0 -V -f "udp port 1812"`) pendant un `radtest` lancé depuis `sw` (section @@ref:radius@@).
@@ -1624,6 +1628,7 @@ le retrouve. Évaluation : `answer_auth_port`, `answer_acct_port`, `answer_accep
         self.question_dummy(
             section=self.section(0),
             title=tr("Authentifier les comptes de l'annuaire"),
+            hash="0379d24d01f3ea30",
             description=tr("""
 Les comptes du personnel sont dans l'annuaire OpenLDAP de `ldap` (`ldap://ldap.corp.lan`, suffixe
 `dc=corp,dc=lan`) : les personnes sous `ou=people` (attribut `uid`), les groupes `posixGroup` sous
@@ -1689,6 +1694,7 @@ d'`emma` dans l'annuaire et vérifie qu'il est accepté (`ldap_live_auth`, 3 poi
         self.question_dummy(
             section=self.section(0),
             title=tr("Autoriser selon le groupe"),
+            hash="f1dba988938cc959",
             description=tr("""
 L'authentification ne suffit pas : selon son groupe dans l'annuaire, la réponse du serveur donne au
 poste son VLAN (section @@ref:rlm-ldap@@). Pour les comptes trouvés dans l'annuaire :
@@ -1750,6 +1756,7 @@ durée de session), `ldap_no_group_rejected` (2), `ldap_wrong_password` (1).
         self.question_dummy(
             section=self.section(0),
             title=tr("Mot de passe et code à usage unique"),
+            hash="ad8cc366ce75ffce",
             description=tr("""
 `remy` travaille à distance : il s'authentifie avec son mot de passe (`{pw}`) **suivi** du code à six
 chiffres de son application TOTP (section @@ref:totp@@), dont le secret est `{secret}` (base32).
@@ -1812,6 +1819,7 @@ heure).
         q32 = self.question_form(
             section=self.section(0),
             title=tr("Le code TOTP"),
+            hash="3675bf9566524303",
             description=tr("""
 D'après la section @@ref:totp@@ et `oathtool --totp -v -b SECRET` :
 
@@ -1834,6 +1842,7 @@ D'après la section @@ref:totp@@ et `oathtool --totp -v -b SECRET` :
         self.question_dummy(
             section=self.section(0),
             title=tr("Côté serveur : une politique par équipement"),
+            hash="72d998f28c8a3a57",
             description=tr("""
 L'équipement `router` ({ip}) est administré en ssh ; ses comptes `netadmin` et `auditor` existent
 localement **sans mot de passe** : c'est RADIUS qui les authentifie (section @@ref:device-admin@@).
@@ -1876,6 +1885,7 @@ auditor	Cleartext-Password := "<<auditor>>"
         self.question_dummy(
             section=self.section(0),
             title=tr("Côté équipement : pam_radius_auth"),
+            hash="089fe293020d6cc1",
             description=tr("""
 Sur `router`, faites vérifier les mots de passe des connexions ssh par `radius` avec le module PAM
 `pam_radius_auth` (section @@ref:device-admin@@) : le serveur et le secret dans
@@ -1916,6 +1926,7 @@ tous les services. Évaluation (connexions ssh depuis la machine cachée) : `adm
         self.question_dummy(
             section=self.section(0),
             title=tr("PEAP et EAP-TLS"),
+            hash="117bc5cbcfb7e54f",
             description=tr("""
 Le module `eap` de FreeRADIUS utilise un certificat *snakeoil* et fait confiance à toutes les autorités
 du système : rien de bon pour du 802.1X (section @@ref:eap@@). La CA de l'entreprise est dans
@@ -1965,6 +1976,7 @@ vérification du certificat), `eap_peap_wrong_password` (1), `eap_tls` (3, un ce
         q52 = self.question_form(
             section=self.section(0),
             title=tr("Les méthodes EAP"),
+            hash="892a1e1b94c2456a",
             description=tr("""
 D'après la section @@ref:eap@@ et la sortie de `eapol_test` (lignes `CTRL-EVENT-EAP-PROPOSED-METHOD`) :
 
@@ -1990,6 +2002,7 @@ D'après la section @@ref:eap@@ et la sortie de `eapol_test` (lignes `CTRL-EVENT
         self.question_dummy(
             section=self.section(0),
             title=tr("L'authentificateur : hostapd sur sw"),
+            hash="d931877abbc7278e",
             description=tr("""
 `sw` est un switch Linux : le pont `br0` relie `eth0` (vers le réseau) et les ports d'accès `eth1`
 (`pc1`), `eth2` (`pc2`) et `eth3` (`pc3`). Pour l'instant tout passe. Faites-en un switch 802.1X
@@ -2024,6 +2037,7 @@ crochet `input` du pont avant d'arriver à hostapd.
         self.question_dummy(
             section=self.section(0),
             title=tr("Les supplicants : pc1 et pc2"),
+            hash="2561e53f2be8a89c",
             description=tr("""
 Configurez `wpa_supplicant` en mode filaire (`/etc/wpa_supplicant/wpa_supplicant-wired-eth0.conf` pour
 `systemctl start wpa_supplicant-wired@eth0`, avec `ctrl_interface=/var/run/wpa_supplicant`) :
@@ -2078,6 +2092,7 @@ l'adresse MAC de `pc1` dans `Calling-Station-Id`).
         q63 = self.question_form(
             section=self.section(0),
             title=tr("Observer EAPOL"),
+            hash="8ab543deeb952fb9",
             description=tr("""
 Sur `sw`, capturez sur le port de `pc1` (`tcpdump -i eth1 -e -n -vv ether proto 0x888e`) pendant un
 `wpa_cli -i eth0 logoff` puis `logon` sur `pc1` (section @@ref:dot1x@@).
@@ -2105,6 +2120,7 @@ Sur `sw`, capturez sur le port de `pc1` (`tcpdump -i eth1 -e -n -vv ether proto 
         self.question_dummy(
             section=self.section(0),
             title=tr("Comptes, politique et droits"),
+            hash="7dcd2a9e6cdb8f53",
             description=tr("""
 Le royaume `{realm}` existe sur `kdc` (`krb5kdc` et `kadmind` tournent ; section @@ref:mit@@) avec
 l'administrateur `admin/admin` et les comptes `dev1`, `dev2` et `leaver`. Sur `kdc`, avec
@@ -2157,6 +2173,7 @@ lecture de `admin/admin`).
         q72 = self.question_form(
             section=self.section(0),
             title=tr("Les tickets"),
+            hash="566a3e9a7cf2dd2a",
             description=tr("""
 Sur `kdc`, après `kinit dev1`, lisez `klist -e` ; capturez une demande de ticket
 (`tcpdump -i eth0 -n port 88` sur `kdc` pendant un `kinit` lancé depuis `srv` ou `ws` une fois leur
@@ -2185,6 +2202,7 @@ grandes réponses). Évaluation : `answer_tgt`, `answer_enctype`, `answer_kdc_po
         self.question_dummy(
             section=self.section(0),
             title=tr("ssh sans mot de passe"),
+            hash="0cd4b4da682296b3",
             description=tr("""
 Sur `srv` (où `dev1` et `dev2` existent sans mot de passe local ; section @@ref:gssapi@@) :
 
@@ -2221,6 +2239,7 @@ cachée : `kinit dev2` puis ssh limité à `gssapi-with-mic`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Un site web protégé par Kerberos"),
+            hash="da426ecad23b22e1",
             description=tr("""
 Apache tourne sur `srv` ; la page `{url}` affiche l'utilisateur authentifié (`REMOTE_USER`). Protégez
 `/private` par Kerberos (SPNEGO, module `mod_auth_gssapi`, section @@ref:gssapi@@) : principal
@@ -2265,6 +2284,7 @@ a2enmod auth_gssapi
         self.question_dummy(
             section=self.section(0),
             title=tr("pam_krb5 sur le poste de travail"),
+            hash="a8d047eb925548cb",
             description=tr("""
 Sur `ws`, les comptes `dev1` et `dev2` existent sans mot de passe local. Faites vérifier les mots de
 passe par le KDC (section @@ref:pam-krb5@@) : `/etc/krb5.conf`, puis le module `pam_krb5` dans les
@@ -2292,6 +2312,7 @@ pour `su - dev1` sur `ws`, `pam_krb5_ssh` (3) pour une connexion ssh de `dev2` a
         self.question_dummy(
             section=self.section(0),
             title=tr("Le royaume LAB.CORP.LAN"),
+            hash="00eb357e344c88ac",
             description=tr("""
 Le laboratoire veut son propre royaume, `{lab}`, sur `kdc2` (rien n'y est configuré ; section
 @@ref:cross-realm@@) :

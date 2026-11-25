@@ -1046,6 +1046,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="9255c04097daaa37",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les VPN BGP/MPLS et l'ingénierie de trafic avec le
 segment routing, et leur mise en œuvre avec Linux et FRR. Le TP suppose connus MPLS, LDP et le
@@ -1121,6 +1122,7 @@ jette les paquets.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un L3VPN pour deux clients"),
+            hash="e5cfcfaf6d05635d",
             description=tr("""
 `l3_pe1` et `l3_pe2` sont reliés par `l3_p` ; OSPF et LDP y fonctionnent. Chaque PE a deux
 interfaces vers des clients : `eth0` vers le client **A** (`l3_a1`, `l3_a2`), `eth1` vers le client
@@ -1158,6 +1160,7 @@ avec deux labels), `l3_ping` (4 : 2 par client), `l3_isolation` (2 : `l3_a1` ne 
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site l3"),
+            hash="946de76e777cc661",
             description=tr("""
 - nombre de labels portés par les paquets de `l3_a1` vers `l3_a2` sur le lien `l3_l1` :
   @@{stack:[0-9]+}@@
@@ -1227,6 +1230,7 @@ avec deux labels), `l3_ping` (4 : 2 par client), `l3_isolation` (2 : `l3_a1` ne 
         self.question_dummy(
             section=self.section(0),
             title=tr("eBGP entre PE et CE"),
+            hash="1de53a126e0ec8bc",
             description=tr("""
 Le client C a deux sites : `ce_c1` (réseau `{s1}`) derrière `ce_pe1`, `ce_c2` (réseau `{s2}`)
 derrière `ce_pe2`. Les deux CE sont dans l'AS **{cas}** ; chacun annonce son réseau en eBGP à son PE
@@ -1256,6 +1260,7 @@ pour l'enseignant seulement : `ce_q_loop`, `ce_q_core` (1 chacun).
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site ce"),
+            hash="de024b377630cd4e",
             description=tr("""
 - AS path de la route du réseau du site 1 dans la table BGP de `ce_c2` : @@{aspath:[0-9 ]+}@@
 - sans correction, `ce_c2` refuse cette route parce que :
@@ -1307,6 +1312,7 @@ pour l'enseignant seulement : `ce_q_loop`, `ce_q_core` (1 chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("Des services partagés entre deux clients"),
+            hash="94dec6be74915226",
             description=tr("""
 Sur `ex_pe1`, la VRF `CUST_A` (l'hôte `ex_a`) et la VRF `CUST_B` (l'hôte `ex_b`) ; sur `ex_pe2`, la
 VRF `SERVICES` (le serveur `ex_s`). Chaque VRF exporte et importe pour l'instant sa seule RT :
@@ -1337,6 +1343,7 @@ pas `ex_b`) ; `ex_q_services`, `ex_q_cust_a` (2 chacun) ; pour l'enseignant seul
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Les route targets de l'extranet"),
+            hash="0716843292a000b5",
             description=tr("""
 - RT importées par la VRF `SERVICES` (séparées par des espaces) : @@{services:[0-9: ]+}@@
 - RT importées par la VRF `CUST_A` : @@{cust_a:[0-9: ]+}@@
@@ -1392,6 +1399,7 @@ pas `ex_b`) ; `ex_q_services`, `ex_q_cust_a` (2 chacun) ; pour l'enseignant seul
         self.question_dummy(
             section=self.section(0),
             title=tr("Faire passer le trafic par un routeur choisi"),
+            hash="a7b3b627e5d3b228",
             description=tr("""
 Le site `te` forme deux chemins entre `te_pe1` (l'hôte `te_h1`) et `te_pe5` (l'hôte `te_h5`) : par
 `te_r2`, le plus court, et par `te_r4` puis `te_r3`. OSPF et le segment routing y fonctionnent (coûts
@@ -1424,6 +1432,7 @@ de `te_pe5` : il suffit de lui envoyer le paquet avec le node-SID de `te_pe1` ({
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Les labels du chemin choisi"),
+            hash="83e725d8718f0c80",
             description=tr("""
 - pile de labels imposée par `te_pe1` vers le réseau de `te_h5` (sommet d'abord, séparés par
   `/`) : @@{out:[0-9/ ]+}@@
@@ -1477,6 +1486,7 @@ voisin : PHP).
         self.question_dummy(
             section=self.section(0),
             title=tr("Un L3VPN en panne"),
+            hash="8c9fad869c693b45",
             description=tr("""
 Le site `fix` est un L3VPN pour un client A : `fix_a1` derrière `fix_pe1`, `fix_a2` derrière
 `fix_pe2`, `fix_p` au cœur ; OSPF, LDP, la VRF `CUST_A` (RD et RT {a}) et la session VPNv4 sont
@@ -1501,6 +1511,7 @@ pendant le ping) ; pour l'enseignant seulement : `fix_q_label`, `fix_q_interface
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Ce que montraient les pannes"),
+            hash="6fffbf8eddac0353",
             description=tr("""
 - sans `label vpn export`, FRR :
   @@{label:>n'exporte pas les routes de la VRF>>>not_exported|les exporte avec le label 3>>>implicit|les exporte avec le label de transport>>>transport|les exporte sans RT>>>no_rt}@@
@@ -1557,6 +1568,7 @@ ignore.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un VPN sur un cœur segment routing (bonus)"),
+            hash="3cb8526f7735d75f",
             description=tr("""
 Le site `sv` est un L3VPN déjà configuré (`sv_a1` derrière `sv_pe1`, `sv_a2` derrière `sv_pe2`,
 `sv_p` au cœur, VRF `CUST_A`, session VPNv4), mais son cœur n'a **pas de LDP** : `sv_a1` ne joint

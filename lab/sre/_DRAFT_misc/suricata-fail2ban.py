@@ -1250,6 +1250,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="79420daa623c5162",
             description=tr("""
 Lisez l'onglet **Informations** : il présente la détection d'intrusion, Suricata (configuration,
 signatures, réglage, mode IPS) et fail2ban (prisons, filtres).
@@ -1309,6 +1310,7 @@ adresses que `{training}`, mêmes cas) est écrite puis rejouée par `suricata -
         self.question_dummy(
             section=self.section(0),
             title=tr("Mettre la sonde en service"),
+            hash="45e2db37e8b1e99f",
             description=tr("""
 Sur `ids`, l'interface `eth1` (sans adresse) est branchée sur le concentrateur de la DMZ et
 l'interface `eth0` sur le réseau interne (gestion). Dans `/etc/suricata/suricata.yaml`
@@ -1354,6 +1356,7 @@ L'évaluation lit la configuration (`suricata --dump-config`) et envoie elle-mê
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Une sonde passive"),
+            hash="885839a8863fca6b",
             description=tr("""
 - pourquoi `ids` voit-elle le trafic entre `gw` et `bastion`, qui ne lui est pas adressé ? @@{why_sees:>la DMZ est un concentrateur : chaque trame est répétée sur tous les ports (en réalité : un port miroir ou un TAP)>>>hub|ids est la passerelle de bastion>>>gateway|Suricata déchiffre le trafic>>>decrypt}@@
 - pourquoi l'interface de capture `eth1` n'a-t-elle pas d'adresse IP ? @@{no_ip:>la sonde n'émet rien sur ce réseau : invisible, elle ne peut pas y être attaquée>>>invisible|Suricata refuse une interface adressée>>>refused|pour économiser des adresses>>>save}@@
@@ -1381,6 +1384,7 @@ règle `drop` n'y agit que comme `alert`) ; bloquer demande d'être en coupure (
         self.question_dummy(
             section=self.section(0),
             title=tr("Quatre signatures"),
+            hash="73114f00a0e31f27",
             description=tr("""
 Écrivez dans `{local}` sur `ids` les quatre règles suivantes (section @@ref:rules@@), avec
 **exactement** ces `sid` :
@@ -1452,6 +1456,7 @@ Les erreurs de syntaxe de l'exécution hors ligne sont gardées dans l'archive d
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Comprendre les signatures"),
+            hash="77d79d58f68d28b7",
             description=tr("""
 - pourquoi chercher `/etc/passwd` dans `http.uri` plutôt qu'avec un `content` seul ? @@{uri:>http.uri ne regarde que l'URI, et normalisée : encodages et ../ ne contournent plus la règle>>>normalized|un content seul est interdit dans une règle http>>>forbidden|http.uri est plus rapide mais équivalent>>>same}@@
 - que fait `flow:established,to_server` ? @@{flow:>limite la règle aux paquets d'une connexion établie qui vont vers le serveur>>>established_to_server|établit la connexion avant d'inspecter>>>opens|n'inspecte que les réponses du serveur>>>replies}@@
@@ -1477,6 +1482,7 @@ serveur.
         self.question_dummy(
             section=self.section(0),
             title=tr("Faire taire une alerte connue"),
+            hash="3c501baff5c25ae7",
             description=tr("""
 La règle {sid} de `{given}` signale tout client HTTP `curl` vers `$HOME_NET` : un outil souvent
 utilisé par les scripts d'attaque. Mais la supervision de `admin` (`{admin}`) interroge `intranet`
@@ -1507,6 +1513,7 @@ Sans `track`/`ip`, la règle serait supprimée pour tout le monde (2 points sur 
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Faux positifs et faux négatifs"),
+            hash="c473e9d01c290e36",
             description=tr("""
 - les alertes de la règle {sid} provoquées par la supervision de `admin` sont des : @@{{fp:>faux positifs : des alertes sur un trafic légitime>>>legit_alert|faux négatifs : des attaques non signalées>>>missed|vrais positifs>>>true}}@@
 - pourquoi ne pas simplement supprimer la règle {sid} ? @@{{why_not_delete:>on ne verrait plus un curl lancé par un attaquant : un faux négatif>>>false_negative|Suricata ne démarre pas sans elle>>>required|elle est fournie, donc protégée>>>protected}}@@
@@ -1531,6 +1538,7 @@ connue.
         self.question_dummy(
             section=self.section(0),
             title=tr("Bloquer les injections SQL vers app"),
+            hash="a63bb409a9cc3193",
             description=tr("""
 Le routeur `ips` est sur le chemin de tout le trafic vers le réseau `apps` (`{apps}`), où `app`
 (`{app}`) sert des pages HTTP. Sur `ips` (section @@ref:ips@@) :
@@ -1589,6 +1597,7 @@ Deux `content` séparés (`union` puis `select`) bloqueraient aussi `union-jack 
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Les choix d'un IPS"),
+            hash="f4669a438b007476",
             description=tr("""
 - avec `queue flags bypass`, que devient le trafic si Suricata s'arrête ? @@{bypass:>il passe sans inspection (fail-open)>>>fail_open|il est entièrement bloqué (fail-closed)>>>fail_closed|il est mis en attente jusqu'au redémarrage>>>held}@@
 - quelle différence entre une règle `drop` et une règle `reject` ? @@{drop_reject:>reject jette aussi le paquet, mais répond à l'émetteur (RST ou erreur ICMP)>>>rst|drop ne fait qu'alerter>>>alert|aucune>>>none}@@
@@ -1615,6 +1624,7 @@ d'IPS coupe du trafic légitime (le chiffrement aveugle IDS et IPS de la même f
         self.question_dummy(
             section=self.section(0),
             title=tr("La prison sshd de bastion"),
+            hash="c98bdd2bac10c231",
             description=tr("""
 Sur `bastion`, le serveur SSH tourne (service `ssh`). Configurez la prison **`sshd`** de fail2ban
 dans un fichier `/etc/fail2ban/jail.d/sshd.local` (section @@ref:fail2ban@@) :
@@ -1661,6 +1671,7 @@ La prison `[sshd]` de Debian lit le journal systemd (`backend = systemd`) : rien
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Ce que fait fail2ban"),
+            hash="d3bc5b8a84dd8fe7",
             description=tr("""
 - le nom de la table nftables où fail2ban range ses bannissements (`nft list tables`) : @@{table:[a-zA-Z0-9_-]+}@@
 - la commande qui débannit `203.0.113.5` de la prison `sshd` : @@{unban:>fail2ban-client set sshd unbanip 203.0.113.5>>>unbanip|nft flush ruleset>>>flush|systemctl stop fail2ban>>>stop}@@
@@ -1692,6 +1703,7 @@ crochet `input`). `fail2ban-client set sshd unbanip 203.0.113.5` (ou `fail2ban-c
         q6 = self.question_form(
             section=self.section(0),
             title=tr("Le journal de l'intranet"),
+            hash="46dd6f9993c151e3",
             description=tr("""
 L'application de `intranet` écrit chaque tentative de connexion dans `{log}` :
 
@@ -1721,6 +1733,7 @@ Le fichier contient déjà la journée d'hier. Analysez-la (`grep`, `awk`, `sort
         self.question_dummy(
             section=self.section(0),
             title=tr("Le filtre et la prison intranet"),
+            hash="0b020e93d743c178",
             description=tr("""
 Sur `intranet` (section @@ref:filter@@) :
 
@@ -1771,6 +1784,7 @@ l'application. `^\\s*` : la date est retirée avant l'application de `failregex`
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Pièges des filtres"),
+            hash="daa296bb54382646",
             description=tr("""
 - pourquoi `failregex = from=<HOST>` est-il un mauvais filtre ici ? @@{bare:>il compte aussi les connexions réussies et prend la première adresse de la ligne, celle qu'un attaquant peut injecter>>>injection|il est trop lent>>>slow|fail2ban exige le mot FAILED>>>keyword}@@
 - quel `backend` pour la prison `intranet` ? @@{backend:>auto (ou pyinotify, polling) : la prison lit un fichier>>>file|systemd, comme la prison sshd>>>systemd|aucun : fail2ban devine>>>none}@@
@@ -1795,6 +1809,7 @@ adresse : celle de l'attaquant peut être remplacée par une adresse injectée. 
         self.question_dummy(
             section=self.section(0),
             title=tr("fail2ban alimenté par Suricata sur gw"),
+            hash="8e411dae5061945e",
             description=tr("""
 Sur `gw`, une sonde Suricata de référence (fournie, ne pas la modifier : `{yaml}`, `{rules}`) écoute
 `eth0` et écrit dans `{eve}` **uniquement ses alertes**, en particulier la règle {sid} : un balayage

@@ -704,6 +704,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="3e7d02dd279c4ee1",
             description=tr("""
 Lisez l'onglet **Informations** : il rappelle le segment TCP, l'ouverture et la fermeture des
 connexions, la fiabilité, les fenêtres, Nagle, le contrôle de congestion, MPTCP et les outils.
@@ -789,6 +790,7 @@ un délai de 10 ms.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Capture d'une connexion vers serveur1"),
+            hash="41cfcb0e090b5bdf",
             description=tr("""
 **0.** Sous Linux, `/dev/random` et `/dev/urandom` sont des générateurs pseudo-aléatoires ;
 regardez-les avec `hexdump -C /dev/urandom | head` (Ctrl-C pour arrêter). Lequel peut se
@@ -876,6 +878,7 @@ du `SYN, ACK` du fichier.
         q12 = self.question_form(
             section=self.section(0),
             title=tr("Port fermé, port filtré"),
+            hash="44d6b92858670140",
             description=tr("""
 **1.** Depuis `m1`, en capturant (`tcpdump -ni eth0 tcp port {closed}`), essayez le port fermé :
 
@@ -929,6 +932,7 @@ environ {duration} s (`Connection timed out`). L'évaluation compare le nombre �
         q13 = self.question_form(
             section=self.section(0),
             title=tr("États d'une connexion : ss -tan"),
+            hash="a4ee37f1a0764fa6",
             description=tr("""
 Le service **`{lazy}`** de `serveur1` lit ce qu'on lui envoie mais **ne ferme jamais** la
 connexion. Depuis `m1` : `nc -q 1 serveur1 {lazy}`, tapez une ligne, puis Ctrl-D (fin de
@@ -976,6 +980,7 @@ pendant 60 s** (2 × MSL) ; `serveur1` passe par `CLOSE-WAIT` et `LAST-ACK` et n
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Fenêtre nulle et sondes de fenêtre nulle"),
+            hash="8f5070b83a3bf841",
             description=tr("""
 **1.** Sur `serveur1`, un serveur qui jette ce qu'il reçoit : `nc -l -p {nc} > /dev/null`. Sur `m1`,
 une capture des segments de ce transfert (les en-têtes suffisent : le fichier doit rester petit) :
@@ -1054,6 +1059,7 @@ ports sont ceux de cette trame. Dans la capture de l'état `final` : fenêtre nu
         q22 = self.question_form(
             section=self.section(0),
             title=tr("Fenêtre fixe : sans autotuning"),
+            hash="c48e6c366f80fba9",
             description=tr("""
 Sur `serveur1`, supprimez l'ajustement automatique du tampon de réception et fixez-le à 10 ko :
 
@@ -1107,6 +1113,7 @@ est limité à fenêtre / RTT ≈ 10 ko / 20 ms ≈ 4 Mbit/s au lieu de quelques
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Nagle et TCP_NODELAY"),
+            hash="bc0639bf67b3240e",
             description=tr("""
 **1.** Sur `m1`, écrivez le script **`/root/nagle.py`** ci-dessous, qui envoie « HELLO WORLD »
 dix fois, **caractère par caractère et sans pause** ; l'hôte et le port sont pris sur la ligne de
@@ -1193,6 +1200,7 @@ trois fois plus) pour `nagle_nodelay.py`. Les scripts de référence sont ceux d
         q41 = self.question_form(
             section=self.section(0),
             title=tr("cwnd et ssthresh avec ss -ti"),
+            hash="93da7c7130ec29db",
             description=tr("""
 `ss -ti` affiche pour chaque connexion l'algorithme de congestion, `cwnd` (en segments), et
 `ssthresh` (seulement après une première perte). Sur `m1`, enregistrez ces valeurs dans
@@ -1252,6 +1260,7 @@ valeur de `cwnd` varie ; une ligne `cwnd,ssthresh` ou `cwnd,` par échantillon).
         q42 = self.question_form(
             section=self.section(0),
             title=tr("Un lien lent et perdant : netem sur r1"),
+            hash="837e301d47789133",
             description=tr("""
 **1.** Notez le débit mesuré par `iperf3` entre `m1` et `serveur1` (`iperf3 -s` sur `serveur1`,
 `iperf3 -c serveur1 -t 10` sur `m1`) avec le réseau tel quel.
@@ -1344,6 +1353,7 @@ trame indiquée répète des octets déjà envoyés par `m1` et que l'autre port
         q43 = self.question_form(
             section=self.section(0),
             title=tr("Reno à la place de CUBIC"),
+            hash="92aa3435a63ff11b",
             description=tr("""
 `net.ipv4.tcp_available_congestion_control` liste les algorithmes disponibles. Sur `m1`, passez à
 **reno** (cette configuration doit rester en place) :
@@ -1389,6 +1399,7 @@ sur les pertes, fait nettement mieux. L'évaluation lit `net.ipv4.tcp_congestion
         q5 = self.question_form(
             section=self.section(0),
             title=tr("MPTCP : mise en place, agrégation, résilience"),
+            hash="0b19ead0e09ed943",
             description=tr("""
 MPTCP est désactivé au départ sur `m1` et `serveur1`. **1.** Sur `m1` :
 
@@ -1499,6 +1510,7 @@ moins deux sous-flux.
         q6 = self.question_form(
             section=self.section(0),
             title=tr("Keepalive, ports éphémères, file d'attente, offload"),
+            hash="27e533326665ba44",
             description=tr("""
 **1. Keepalive.** Le service `{lazy}` de `serveur1` active `SO_KEEPALIVE` sur ses connexions. Sur
 `serveur1`, réglez (configuration à laisser en place) :

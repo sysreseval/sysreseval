@@ -646,6 +646,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="1611d33fde7b4f31",
             description=tr("""
 Lisez l'onglet **Informations** : il présente syslog, rsyslog, la réception, l'émission, `imfile`,
 TLS et logrotate. Vous centralisez les journaux d'une petite entreprise sur **`logsrv`**.
@@ -719,6 +720,7 @@ projet.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Les messages locaux, une règle pour l'application"),
+            hash="60f94456677f3caa",
             description=tr("""
 Sections @@ref:protocol@@ à @@ref:filter@@ de l'onglet Informations. Sur `app1` :
 
@@ -787,6 +789,7 @@ puis `rsyslogd -N1` et `systemctl restart rsyslog`. Recherche :
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Recevoir les messages du réseau"),
+            hash="da0ac701cd72f109",
             description=tr("""
 Sections @@ref:properties@@ et @@ref:receive@@. Sur `logsrv`, dans `/etc/rsyslog.d/` :
 
@@ -847,6 +850,7 @@ Propriété de rsyslog qui donne l'adresse de la machine qui a réellement envoy
         self.question_dummy(
             section=self.section(0),
             title=tr("Envoyer tous les messages au collecteur"),
+            hash="2c6b3dcb18873727",
             description=tr("""
 Section @@ref:forward@@. Sur `web1` et sur `app1` :
 
@@ -889,6 +893,7 @@ puis `systemctl restart rsyslog`. La partie 5 remplace ce fichier par sa version
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Lire les fichiers des applications, chercher dans les journaux centralisés"),
+            hash="f8a75126b3dfc94b",
             description=tr("""
 Sections @@ref:imfile@@ et @@ref:search@@.
 
@@ -949,6 +954,7 @@ champ d'une ligne d'accès est le cinquième de la ligne du collecteur). Répons
         self.question_dummy(
             section=self.section(0),
             title=tr("Chiffrer et authentifier les échanges"),
+            hash="f63dad66aacfb663",
             description=tr("""
 Section @@ref:tls@@. Avec les certificats de `{tls_dir}/` :
 
@@ -1007,6 +1013,7 @@ quel client, `x509/certvalid` tout certificat signé par la CA (y compris `rogue
         self.question_dummy(
             section=self.section(0),
             title=tr("Faire tourner les fichiers du collecteur"),
+            hash="8bf6d13c1848f046",
             description=tr("""
 Section @@ref:rotation@@. Sur `logsrv`, écrivez **`{logrotate}`** pour les fichiers de
 `{remote}/*/` : une rotation **par jour**, **{rotate}** anciens fichiers gardés, **compressés**, et

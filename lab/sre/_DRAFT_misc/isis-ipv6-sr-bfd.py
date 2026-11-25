@@ -972,6 +972,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="10e937b8810985ef",
             description=tr("""
 Lisez l'onglet **Informations** : il rappelle IS-IS, puis présente IPv6 et la multi-topologie, le
 segment routing, BFD et TI-LFA, avec leur configuration dans FRR.
@@ -1040,6 +1041,7 @@ les formulaires : une évaluation lancée dès son retour donne tous les points,
         self.question_dummy(
             section=self.section(0),
             title=tr("IPv6 et multi-topologie"),
+            hash="77a09f71ec762177",
             description=tr("""
 Les routeurs `mt_r1`, `mt_r2`, `mt_r3` et `mt_r4` forment un carré (liens `mt_l12`, `mt_l23`,
 `mt_l34` et `mt_l14`) ; l'hôte `mt_h1` est derrière `mt_r1`, l'hôte `mt_h4` derrière `mt_r4`. IS-IS
@@ -1084,6 +1086,7 @@ de `mt_r1` vers `mt_lan4` toujours par `mt_l14`, compté avec la multi-topologie
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site mt"),
+            hash="e24a682ac46a6a68",
             description=tr("""
 - NLPID qui annonce IPv6 dans le TLV 129 (en hexadécimal) : @@{nlpid:[0-9a-fA-Fx]+}@@
 - identifiant de la topologie IPv6 unicast (MT ID) : @@{mt_id:[0-9]+}@@
@@ -1169,6 +1172,7 @@ seulement, `mt_q_single`, `mt_q_nexthop` (1 chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("Le segment routing avec IS-IS"),
+            hash="8c6b68e545c2c864",
             description=tr("""
 Les routeurs `sr_r1`, `sr_r2`, `sr_r3` et `sr_r4` forment une ligne (liens `sr_l12`, `sr_l23`,
 `sr_l34`). IS-IS fonctionne et MPLS est activé dans les noyaux ; il n'y a pas de LDP (sections
@@ -1208,6 +1212,7 @@ l'échange de `sr_r3` (2), le retrait par `sr_r4` (1)), `sr_r1_push` (4 : la rou
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Les labels du segment routing"),
+            hash="d28f3fb8220d4cdd",
             description=tr("""
 Calculez-les avant de les observer :
 
@@ -1286,6 +1291,7 @@ le retire**.
         self.question_dummy(
             section=self.section(0),
             title=tr("Détecter les pannes avec BFD"),
+            hash="abd70fd56495b623",
             description=tr("""
 Les routeurs `bfd_r1`, `bfd_r2`, `bfd_r3` et `bfd_r4` forment un carré ; l'hôte `bfd_h1` est derrière
 `bfd_r1`, l'hôte `bfd_h4` derrière `bfd_r4`. Le lien `bfd_l12` entre `bfd_r1` et `bfd_r2` passe par
@@ -1329,6 +1335,7 @@ BFD), `bfd_hello` (4 : temporisateurs de `bfd_l34`, 2 par extrémité).
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site bfd"),
+            hash="2c4b7b65818d3ac1",
             description=tr("""
 - port UDP des paquets de contrôle BFD : @@{{port:[0-9]+}}@@
 - temps de détection d'une panne par la session BFD de `bfd_r1`, en millisecondes :
@@ -1430,6 +1437,7 @@ chacun) et, pour l'enseignant seulement, `bfd_q_interface`, `bfd_q_path` (1 chac
         self.question_dummy(
             section=self.section(0),
             title=tr("Protection TI-LFA (bonus)"),
+            hash="fad4de6865e82fa9",
             description=tr("""
 Les routeurs `tl_r1`, `tl_r2`, `tl_r3` et `tl_r4` forment un carré (métriques IS-IS : {metrics}).
 IS-IS et le segment routing y fonctionnent (SRGB par défaut, 16000 à 23999 ; l'index du prefix-SID

@@ -709,6 +709,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="f5dc919e16f348fa",
             description=tr("""
 Lisez l'onglet **Informations** : il présente OSPF (état de liens, coûts, voisinage, DR et BDR,
 aires, routes externes, authentification, temporisateurs), la configuration de FRR avec `vtysh`
@@ -784,6 +785,7 @@ de lancer une évaluation : le temps que les adjacences soient de nouveau `Full`
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Découverte d'OSPF sur r1 et r2"),
+            hash="a6aeee4720f0c58d",
             description=tr("""
 Sur `r1` et `r2`, ouvrez `vtysh` et explorez la configuration en place (`show running-config`)
 ainsi que les commandes `show ip ospf`, `show ip ospf interface`, `show ip ospf neighbor` et
@@ -864,6 +866,7 @@ que `net1`, `core`, `l14` et `l24`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Aire 0 : configuration de r3 et r4"),
+            hash="2a2d6cc852a156d9",
             description=tr("""
 Configurez OSPF dans l'aire 0 sur les routeurs `r3` et `r4` :
 
@@ -910,6 +913,7 @@ router ospf
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Chemins de coût égal"),
+            hash="4135f90aa442f3dc",
             description=tr("""
 Sur `r3`, combien la route vers le réseau `net4` (`{net4}`) possède-t-elle de prochains sauts
 (*nexthop*) ? Expliquez-le à partir des coûts des chemins possibles : @@{{nexthops:[0-9]+}}@@
@@ -963,6 +967,7 @@ par `core` (10), puis `r1` → `l14` (10) ou `r2` → `l24` (10), puis `r4` → 
         self.question_dummy(
             section=self.section(0),
             title=tr("Coûts et choix des chemins"),
+            hash="1a0bdac8d7c60df2",
             description=tr("""
 Depuis `m4`, faites un `traceroute` vers `m1` : le trafic passe par le lien direct `r4`–`r1`.
 
@@ -1018,6 +1023,7 @@ configuration de `r3` et coût correspondant).
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Vérification du chemin"),
+            hash="87c5cb75805974a0",
             description=tr("""
 Après l'étape 1, par quel routeur passe le trafic de `m4` vers `m1` ? @@{via:>r1|r2|r3|r4}@@
 """)
@@ -1079,6 +1085,7 @@ Après l'étape 1, par quel routeur passe le trafic de `m4` vers `m1` ? @@{via:>
         self.question_dummy(
             section=self.section(0),
             title=tr("Élection du DR et du BDR sur le réseau core"),
+            hash="1d8762d766ff488d",
             description=tr("""
 Sur le réseau `core` ({core}), notez quel routeur est **DR** et lequel est **BDR**
 (`show ip ospf interface` ou `show ip ospf neighbor`) et expliquez ce résultat.
@@ -1142,6 +1149,7 @@ devient BDR ; `r2` (priorité 0) ne peut plus être élu. Vérification sur `r2`
         self.question_dummy(
             section=self.section(0),
             title=tr("Une seconde aire : l'aire 2"),
+            hash="739775415387bdcd",
             description=tr("""
 Les routeurs `r6` et `r7` et l'interface `eth3` de `r4` forment l'**aire 2** :
 
@@ -1204,6 +1212,7 @@ router ospf
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Préfixe agrégé de l'aire 2"),
+            hash="e7f52f073f5f1d37",
             description=tr("Préfixe utilisé dans `area 2 range` : @@{range:[0-9./]+}@@")
             + instructor(tr("""
 
@@ -1259,6 +1268,7 @@ pour les couvrir tous (un /23 ne contient que les deux premiers /24).
         self.question_dummy(
             section=self.section(0),
             title=tr("Routes externes : r1 devient ASBR"),
+            hash="b917c1541768dcce",
             description=tr("""
 `r1` possède deux routes **statiques** configurées dans FRR (`show running-config`,
 `show ip route`) : une vers le réseau `{ext}` (le serveur `internet`, `{ext_host}`) et une
@@ -1299,6 +1309,7 @@ défaut en E2, installées dans le noyau par OSPF), `externe_ping_internet` (1 :
         q6 = self.question_form(
             section=self.section(1),
             title=tr("Type des routes externes"),
+            hash="1ed2cf33f77784ba",
             description=tr("""
 Sur `r7`, de quel type est la route vers `{ext}` (`show ip ospf route` ; le tableau des types de
 routes est dans l'onglet **Informations**, section @@ref:areas@@) ?
@@ -1353,6 +1364,7 @@ l'enseignant seulement (choix dans une liste), `externe_type_route` (0,5 : type 
         self.question_dummy(
             section=self.section(0),
             title=tr("Une aire stub : l'aire 1"),
+            hash="3b28e96f0b34499f",
             description=tr("""
 Le routeur `r5` (router-id `5.5.5.5`, `eth0` = `{net5}` passive, `eth1` = `{l35}`) et
 l'interface `eth1` de `r3` forment l'**aire 1**. Configurez-les (référence {ref} comprise)
@@ -1453,6 +1465,7 @@ route vers `net1` sur `r5`, `m5` joint `internet`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Authentification des échanges OSPF"),
+            hash="f39c181ca09b8416",
             description=tr("""
 Sans authentification, n'importe quelle machine branchée sur un lien peut injecter des LSA.
 Protégez le lien `l14` (`eth2` de `r1`, `eth1` de `r4`) par une authentification **MD5**
@@ -1519,6 +1532,7 @@ l'adjacence `r1`–`r4` est `Full` et l'une des extrémités au moins est config
         self.question_dummy(
             section=self.section(0),
             title=tr("Temporisateurs et temps de convergence"),
+            hash="311d80c9d7e76578",
             description=tr("""
 Sur le lien `l24` (`eth1` de `r2`, `eth2` de `r4`), réglez l'intervalle **Hello** à
 **{hello} s** et l'intervalle **Dead** à **{dead} s** (`ip ospf hello-interval`,
@@ -1570,6 +1584,7 @@ extrémités au moins a les nouveaux temporisateurs).
         q9 = self.question_form(
             section=self.section(1),
             title=tr("Temps de convergence observés"),
+            hash="dcc4543b2b921412",
             description=tr("""
 Temps avant que `m4` ne joigne de nouveau `m1` après la coupure franche :
 @@{link_down:>moins de 5 s|environ l'intervalle Hello|environ l'intervalle Dead|jamais}@@

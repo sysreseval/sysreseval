@@ -1106,6 +1106,7 @@ class Grade(Grade0):
         # ---------------- organisation ----------------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="47ec4c619377f187",
             description=tr("""
 Lisez l'onglet **Informations** : il présente l'annuaire LDAP et le format LDIF, OpenLDAP et ses
 commandes, les comptes Unix dans l'annuaire, le client (NSS, nslcd, PAM), les ACL, TLS et la
@@ -1174,6 +1175,7 @@ le tableau ci-dessus (le mot de passe temporaire que pose l'évaluation sur `{st
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Lire la configuration de slapd"),
+            hash="a952d74074b96c21",
             description=tr("""
 Sur `ldap1`, en root, explorez `cn=config` avec `ldapsearch -Y EXTERNAL -H ldapi:///` (section
 @@ref:openldap@@ de l'onglet Informations) : la base de données de l'annuaire
@@ -1212,6 +1214,7 @@ liste `cn={{0}}core`, `{{1}}cosine`, `{{2}}nis`, `{{3}}inetorgperson` et
         self.question_dummy(
             section=self.section(0),
             title=tr("Créer la racine et les unités d'organisation"),
+            hash="e4abeb818cdeda8d",
             description=tr("""
 Écrivez un fichier LDIF (section @@ref:ldap@@) avec l'entrée racine `{suffix}` (classes `dcObject`
 et `organization`, attributs `dc: corp` et `o: {org}`), puis `ou=people,{suffix}` et
@@ -1263,6 +1266,7 @@ ou: groups
         self.question_dummy(
             section=self.section(0),
             title=tr("Créer les cinq personnes et les trois groupes"),
+            hash="d5ec4e706ae0c79c",
             description=tr("""
 Créez les cinq personnes du tableau de l'organisation du TP (entrées `uid=<login>,ou=people,{suffix}`,
 classes `inetOrgPerson`, `posixAccount` et `shadowAccount` ; section @@ref:posix@@) et les trois
@@ -1336,6 +1340,7 @@ en clair), `group_staff`, `group_dev`, `group_helpdesk` (2 chacun : `gidNumber` 
         self.question_dummy(
             section=self.section(0),
             title=tr("Un départ et un changement de mot de passe"),
+            hash="c224855f36e57d0a",
             description=tr("""
 1. `{leaver}` quitte l'entreprise : supprimez son entrée (`ldapdelete`) et retirez-la des groupes
    dont elle est membre (`ldapmodify`, `delete: memberUid`).
@@ -1374,6 +1379,7 @@ de passe).
         self.question_dummy(
             section=self.section(0),
             title=tr("Les comptes de l'annuaire vus de m1 (nslcd et NSS)"),
+            hash="70c591e490059f8f",
             description=tr("""
 Sur `m1` (section @@ref:client@@) : configurez `/etc/nslcd.conf` (`uri ldap://ldap1.corp.lan/`,
 `base {suffix}`), démarrez `nslcd` (`systemctl start nslcd`), ajoutez la source `ldap` aux bases
@@ -1408,6 +1414,7 @@ des quatre comptes), `getent_group_dev` (2 : ses membres).
         self.question_dummy(
             section=self.section(0),
             title=tr("Se connecter sur m1 avec un compte de l'annuaire (PAM)"),
+            hash="bba61947371b2873",
             description=tr("""
 1. Activez `pam_ldap` : `pam-auth-update --enable ldap` (ou le menu `pam-auth-update`). Lisez
    ce qui a changé dans `/etc/pam.d/common-auth`, `common-account`, `common-session`.
@@ -1450,6 +1457,7 @@ cachée), `home_created` (2 : `/home/{dev2}` existe après la connexion), `pam_l
         self.question_dummy(
             section=self.section(0),
             title=tr("Des ACL pour l'entreprise"),
+            hash="a920e064e4b7f307",
             description=tr("""
 Les ACL par défaut laissent tout le monde, anonymes compris, lire tout l'annuaire. Écrivez les
 `olcAccess` de la base (section @@ref:acl@@) pour que :
@@ -1529,6 +1537,7 @@ modifie celui de `{staff}`), `acl_helpdesk_password` (2 : `{helpdesk}` change le
         self.question_dummy(
             section=self.section(0),
             title=tr("LDAPS et STARTTLS sur ldap1, LDAPS pour m1"),
+            hash="090604dfbebcef7e",
             description=tr("""
 Sur `ldap1` (section @@ref:tls@@) :
 
@@ -1591,6 +1600,7 @@ tous les binds de l'évaluation passent par `ldaps://`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Réplication syncrepl vers ldap2"),
+            hash="946d2a829b14d251",
             description=tr("""
 `ldap2` a la même configuration de départ que `ldap1` (même suffixe, même administrateur, base
 vide). Faites-en une copie de `ldap1` tenue à jour en permanence (section @@ref:replication@@) :

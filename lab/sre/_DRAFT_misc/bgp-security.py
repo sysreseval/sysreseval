@@ -1116,6 +1116,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="4ca6c605f65d06c4",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les menaces sur BGP et les protections de ce TP
 (RPKI et validation de l'origine, `maximum-prefix`, GTSM, RTBH, BFD), leur configuration avec FRR
@@ -1187,6 +1188,7 @@ Le validateur `rov_rpki` fait tourner `stayrtr` sur le fichier `{roa_file}` (rel
         self.question_dummy(
             section=self.section(0),
             title=tr("Validation de l'origine par RPKI"),
+            hash="e3f06ecf1dc1122e",
             description=tr("""
 `rov_r1` a deux fournisseurs, `rov_isp1` (AS {as1}) et `rov_isp2` (AS {as2}), et un pair,
 `rov_peer` (AS {asp}). Il annonce votre bloc `{own}` et, pour l'ingénierie de trafic, le /24 `{te}`.
@@ -1248,6 +1250,7 @@ par `rov_peer`).
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site rov"),
+            hash="7eb9a4c7d5a8bdb2",
             description=tr("""
 - port TCP du protocole RPKI-RTR de `rov_rpki` : @@{{port:[0-9]+}}@@
 - seul AS autorisé à originer `{h}` : @@{{origin:[0-9]+}}@@
@@ -1344,6 +1347,7 @@ liste), `rov_q_state`, `rov_q_why`, `rov_q_refresh` (1 chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("Limiter les préfixes reçus"),
+            hash="39c9366318bb8bfb",
             description=tr("""
 `pfx_r1` a un fournisseur, `pfx_isp` (AS {asi}), et deux clients : `pfx_c1` (AS {as1}), qui annonce
 ses quatre /24 (`{c1a}` à `{c1d}`), et `pfx_c2` (AS {as2}), qui devrait n'annoncer que `{c2a}` et
@@ -1383,6 +1387,7 @@ aucune route de la fuite chez `pfx_isp`, les 4 de `pfx_c1` toujours là).
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site pfx"),
+            hash="211d0ecfa7afd201",
             description=tr("""
 - état affiché pour `pfx_c2` dans `show bgp ipv4 unicast summary` une fois la limite en place :
   @@{state:.+}@@
@@ -1455,6 +1460,7 @@ journal seulement).
         self.question_dummy(
             section=self.section(0),
             title=tr("Protéger les sessions avec GTSM"),
+            hash="5d90ac011c238c1b",
             description=tr("""
 `gtsm_r1` a deux sessions eBGP, qui ne s'établissent pas (`Active` ou `Idle`) :
 
@@ -1492,6 +1498,7 @@ les paquets qui arrivent avec un TTL ≥ 254 : ceux de `gtsm_par` (255 − 1 sau
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site gtsm"),
+            hash="f68c2ecc1f8f3533",
             description=tr("""
 - TTL minimal des paquets de `gtsm_par` qu'accepte `gtsm_r1` une fois GTSM en place : @@{minttl:[0-9]+}@@
 - TTL des paquets BGP émis par un routeur avec GTSM : @@{sent:[0-9]+}@@
@@ -1545,6 +1552,7 @@ seulement, `gtsm_q_oneside` (1).
         self.question_dummy(
             section=self.section(0),
             title=tr("Blackholing déclenché par un client"),
+            hash="7f3fbb07727414b8",
             description=tr("""
 `bh_r1` est le fournisseur de `bh_cust` (AS {asc}), dont le réseau `{cust}` héberge le serveur
 `bh_srv` (`{victim}` et `{control}`), et le client de `bh_isp` (AS {asi}). La session avec `bh_cust`
@@ -1591,6 +1599,7 @@ répond), `bh_scope` (3 : `{bogus}/32` refusé, `bh_r1` joint toujours `{bogus}`
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site bh"),
+            hash="009be88bb38fc6f2",
             description=tr("""
 - valeur de la communauté BLACKHOLE (forme `AS:valeur`) : @@{community:[0-9:]+}@@
 - numéro de la RFC qui la définit : @@{rfc:[0-9]+}@@
@@ -1653,6 +1662,7 @@ jeter le trafic de n'importe qui** (ici `{bogus}`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Bonus : détecter une panne avec BFD"),
+            hash="b6ecbb9cfdccb3fb",
             description=tr("""
 `bfd_r1` joint le service `{svc}` (annoncé par ses deux fournisseurs) par `bfd_isp1` (AS {as1},
 préféré : `local-preference {lp}`) ou, en secours, par `bfd_isp2` (AS {as2}). Le lien vers

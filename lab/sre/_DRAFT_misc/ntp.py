@@ -890,6 +890,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="fcbc879143deeabb",
             description=tr("""
 Lisez l'onglet **Informations** : il présente NTP, la sélection des sources, chrony, l'authentification
 et NTS. Vous organisez la distribution de l'heure dans l'entreprise `{domain}`.
@@ -965,6 +966,7 @@ remplissent les formulaires.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Les quatre horodatages, la strate, la précision"),
+            hash="014414d82cb2136a",
             description=tr("""
 Sections @@ref:hierarchy@@ et @@ref:packet@@.
 
@@ -1025,6 +1027,7 @@ réponse de `gps` (`precision {precision}`), ou avec `chronyc ntpdata`.
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Synchroniser border sur les serveurs publics"),
+            hash="b1a4ea070ecfa591",
             description=tr("""
 Sections @@ref:selection@@ à @@ref:chronyc@@. `border` est le seul serveur de l'entreprise autorisé à
 interroger Internet.
@@ -1089,6 +1092,7 @@ l'offset de la source elle-même, {offset:+d} s.
         self.question_dummy(
             section=self.section(0),
             title=tr("ts1 sert l'heure aux bureaux"),
+            hash="15dda6028c83eed2",
             description=tr("""
 Section @@ref:serve@@.
 
@@ -1147,6 +1151,7 @@ synchronisé reçoit des réponses LI = 3 et ne réessaie qu'au bout de 64 s).
         self.question_dummy(
             section=self.section(0),
             title=tr("ts2 et la caméra cam1"),
+            hash="d8a5c6ec38ffaa7b",
             description=tr("""
 Section @@ref:keys@@. La caméra `cam1` n'accepte que l'heure d'un serveur qui connaît sa clé (numéro
 {key_id}, donnée dans l'organisation du TP).
@@ -1202,6 +1207,7 @@ puis `systemctl restart chrony`, `ts2` d'abord. Avec une valeur différente, la 
         q5 = self.question_form(
             section=self.section(0),
             title=tr("ts3 et web1 en NTS"),
+            hash="e816124ae57e99c1",
             description=tr("""
 Section @@ref:nts@@. Le certificat de `ts3`, au nom `ts3.{domain}`, et sa clé sont dans `{cert}` et
 `{key}` ; le certificat de l'autorité de l'entreprise est sur `web1` dans `{ca}`.
@@ -1253,6 +1259,7 @@ Port TCP de l'établissement des clés NTS (NTS-KE) : @@{nts_port:[0-9]+}@@
         self.question_dummy(
             section=self.section(0),
             title=tr("Réparer legacy"),
+            hash="f8533a8a97ab62e1",
             description=tr("""
 Sections @@ref:container@@ et @@ref:chronyc@@. `legacy`, une vieille machine du réseau `lan`, doit se
 synchroniser directement sur l'horloge `gps.{domain}`. Son ancien administrateur a laissé **trois
@@ -1294,6 +1301,7 @@ Une solution complète : `DAEMON_OPTS="{opts}"` dans `{defaults}`, `server gps.{
         qb = self.question_form(
             section=self.section(0),
             title=tr("border sert Internet, avec une limite de débit"),
+            hash="a69348ad2bb8623c",
             description=tr("""
 Section @@ref:security@@. L'entreprise participe au pool public : `border` sert aussi le réseau `wan`
 ({wan}). Pour ne pas servir d'arme d'amplification, limitez chaque client à une réponse toutes les

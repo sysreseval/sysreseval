@@ -1108,6 +1108,7 @@ class Grade(Grade0):
         # ---------------- organisation ----------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="d2e12f506b50095d",
             description=tr("""
 Lisez l'onglet **Informations** : c'est le cours (résolveur et racine, délégation, transferts, zone
 inverse, mises à jour dynamiques, DNSSEC, DoT/DoH, vues, RPZ, diagnostic). Cette page décrit la
@@ -1253,6 +1254,7 @@ Règles valables pour tout le TP :
         self.question_dummy(
             section=self.section(0),
             title=tr("Le résolveur du site : unbound avec la racine privée"),
+            hash="fb24936ef2b852d2",
             description=tr("""
 Sur **`resolver`** (`{resolver_ip}`) :
 
@@ -1297,6 +1299,7 @@ TTL décroissant entre deux requêtes à une seconde d'intervalle, `NXDOMAIN` av
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observation de la résolution"),
+            hash="04f703d93417cf0e",
             description=tr("""
 - `dig +norecurse @{tld_ip} www.{domain} A` (le registre, qui ne fait pas autorité sur `{domain}`) renvoie
   @@{{referral:>NOERROR avec une section ANSWER vide et les NS de la zone déléguée en AUTHORITY (un renvoi)|NXDOMAIN|REFUSED|SERVFAIL}}@@
@@ -1338,6 +1341,7 @@ la racine voit `tp` (qname minimisation) ; TTL décroissant.
         self.question_dummy(
             section=self.section(0),
             title=tr("Serveur primaire ns1 et enregistrement chez le registre"),
+            hash="690e6e4ee0a869ce",
             description=tr("""
 Sur **`ns1`** (`{ns1_ip}`, bind9 installé, `{named_options}` déjà strictement autoritatif) :
 
@@ -1393,6 +1397,7 @@ que `NS`, `DS` et `A` sous `{domain}`.
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Délégation et registre"),
+            hash="2b5f15466cb95391",
             description=tr("""
 - pourquoi la zone `tp.` contient-elle l'adresse `A` de `ns1.{domain}` (la **colle**) ?
   @@{{glue_why:>sans elle, pour trouver l'adresse de ns1.example.tp il faudrait déjà interroger ns1.example.tp (dépendance circulaire)|pour que le registre puisse vérifier que le serveur répond|parce que tp. fait autorité sur example.tp}}@@
@@ -1437,6 +1442,7 @@ que `NS`, `DS` et `A` sous `{domain}`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Le secondaire hébergé ns2"),
+            hash="c95f16248781f124",
             description=tr("""
 1. Sur `ns1`, déclarez la clé `{key_transfer}` (`key "{key_transfer}" {{ algorithm hmac-sha256; secret "…"; }};`)
    dans `{named_local}` et limitez les transferts de `{domain}` à cette clé :
@@ -1473,6 +1479,7 @@ clé et accepté avec, `Transfer status: success` sur `ns2`, `sending notifies` 
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Transferts de zone"),
+            hash="720d94ef73abf599",
             description=tr("""
 - un transfert `AXFR` circule en @@{axfr_transport:>TCP|UDP|UDP puis TCP seulement si la réponse est tronquée}@@
 - le secondaire transfère la zone quand @@{serial_role:>le serial du primaire est supérieur au sien|un client lui pose une question|le TTL des enregistrements expire}@@
@@ -1514,6 +1521,7 @@ clé et accepté avec, `Transfer status: success` sur `ns2`, `sending notifies` 
         self.question_dummy(
             section=self.section(0),
             title=tr("La zone inverse {rev} sur ns1 et ns2").format(rev=rev_zone),
+            hash="36c241f65c8c1111",
             description=tr("""
 1. Sur `ns1`, créez la zone **`{rev}`** (fichier `{rev_file}`) avec un `PTR` par machine du site :
    `{l_ns1}` → `ns1.{domain}.`, `{l_dns}` → `dns.{domain}.`, `{l_m1}` → `m1.{domain}.`,
@@ -1554,6 +1562,7 @@ c'est sa *default local zone* `{default_rev}`. Fichier `{rev_file}` :
         self.question_dummy(
             section=self.section(0),
             title=tr("nsupdate et la clé {key}").format(key=KEY_DDNS),
+            hash="0f88a0d2283e2f5c",
             description=tr("""
 1. Sur `ns1`, déclarez la clé `{key_ddns}` et autorisez-la à modifier `{domain}` :
    `update-policy {{ grant {key_ddns} zonesub ANY; }};` (`rndc reload`).
@@ -1586,6 +1595,7 @@ identique : NOTIFY + IXFR), et le retire ; une mise à jour non signée doit êt
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Journal et gel"),
+            hash="ad2296b91b924e2d",
             description=tr("""
 - une mise à jour dynamique est d'abord écrite @@{journal_file:>dans un fichier journal .jnl à côté du fichier de zone|directement dans le fichier de zone|dans /var/log/syslog}@@
 - pour éditer à la main le fichier d'une zone dynamique : @@{edit_dynamic:>rndc freeze, éditer et incrémenter le serial, rndc thaw|éditer puis rndc reload|arrêter le résolveur}@@
@@ -1616,6 +1626,7 @@ identique : NOTIFY + IXFR), et le retire ; une mise à jour non signée doit êt
         self.question_dummy(
             section=self.section(0),
             title=tr("Validation sur le résolveur"),
+            hash="ffbc518371519af9",
             description=tr("""
 1. Sur `resolver`, installez l'ancre de confiance de la racine privée : `install -m 644 {anchor_home} {anchor_file}`,
    puis `trust-anchor-file: "{anchor_file}"` (et `val-log-level: 2`) dans `{unbound_conf}` ;
@@ -1635,6 +1646,7 @@ réponse sans `ad` tant que la zone n'est pas signée et son `DS` publié (dél�
         self.question_dummy(
             section=self.section(1),
             title=tr("Signer {domain} et publier le DS").format(domain=DOMAIN),
+            hash="cb43cba5484c7f55",
             description=tr("""
 3. Sur `ns1`, ajoutez `dnssec-policy default;` à la zone `{domain}` (elle est dynamique : pas besoin
    d'`inline-signing`), `rndc reload`, puis `rndc dnssec -status {domain}`, `ls {key_dir}`,
@@ -1665,6 +1677,7 @@ rndc dnssec -checkds published {domain}
         q6 = self.question_form(
             section=self.section(1),
             title=tr("Comprendre la chaîne de confiance"),
+            hash="c89b9e719a41f28d",
             description=tr("""
 - un enregistrement `DS` contient @@{{ds_content:>une empreinte (hash) de la DNSKEY de la zone fille|la clé privée de la zone fille|la signature de la zone fille}}@@
 - le drapeau `ad` signifie que @@{{ad_meaning:>le résolveur a validé la réponse (Authenticated Data)|le serveur fait autorité|la réponse vient du cache}}@@
@@ -1713,6 +1726,7 @@ rndc dnssec -checkds published {domain}
         self.question_dummy(
             section=self.section(0),
             title=tr("DoT et DoH sur le résolveur"),
+            hash="bb964bd62e819068",
             description=tr("""
 1. Sur `resolver`, créez la clé privée et le certificat de **`{name}`** signé par la CA du TP
    (`{ca_cert}`, `{ca_key}` dans `{ca_dir}`) : CSR avec `CN={name}`, fichier d'extensions
@@ -1743,6 +1757,7 @@ chown unbound:unbound {dns_key} {dns_cert}; chmod 640 {dns_key}
         self.question_dummy(
             section=self.section(1),
             title=tr("stubby et Firefox sur m1"),
+            hash="c34c866c39d09611",
             description=tr("""
 4. Sur `m1`, configurez **stubby** (`{stubby_conf}`) : `upstream_recursive_servers` = `{resolver_ip}`
    avec `tls_auth_name: "{name}"`, `tls_ca_file: "/etc/ssl/certs/ca.tp.pem"` (la CA est déjà dans le
@@ -1770,6 +1785,7 @@ chown unbound:unbound {dns_key} {dns_cert}; chmod 640 {dns_key}
         q7 = self.question_form(
             section=self.section(1),
             title=tr("Transports chiffrés"),
+            hash="3e4a7d77a846f77f",
             description=tr("""
 - port TCP de DoT : @@{dot_port:[0-9]+}@@
 - DoH est difficile à bloquer sur un réseau parce que @@{doh_hide:>il ressemble à n'importe quel trafic HTTPS sur le port 443|il utilise UDP|il est signé par DNSSEC}@@
@@ -1807,6 +1823,7 @@ chown unbound:unbound {dns_key} {dns_cert}; chmod 640 {dns_key}
         self.question_dummy(
             section=self.section(0),
             title=tr("Deux vues sur ns1"),
+            hash="fe961c63150678c6",
             description=tr("""
 Le site veut que `www.{domain}` vaille **`{www_int}`** (adresse interne) pour les postes de `{net1}` et
 `{www_ext}` pour le reste du monde.
@@ -1842,6 +1859,7 @@ obtient `{www_int}` de `ns1` et du résolveur, `h2` obtient `{www_ext}` de `ns1`
         q8 = self.question_form(
             section=self.section(1),
             title=tr("Vues"),
+            hash="06ac10ac32958646",
             description=tr("""
 - les vues sont évaluées @@{view_order:>dans l'ordre : la première dont match-clients correspond au client|toutes, en fusionnant leurs réponses|au hasard}@@
 - `ns2`, dans `net2`, transfère @@{ns2_view:>la vue externe, sélectionnée par son adresse source|la vue interne|les deux vues}@@
@@ -1870,6 +1888,7 @@ obtient `{www_int}` de `ns1` et du résolveur, `h2` obtient `{www_ext}` de `ns1`
         self.question_dummy(
             section=self.section(0),
             title=tr("Une zone de politique de réponse"),
+            hash="cbb7c5138f556ae2",
             description=tr("""
 Le site veut interdire **`{target}`** (et ses sous-domaines) à ses postes.
 
@@ -1905,6 +1924,7 @@ journal.
         q10 = self.question_form(
             section=self.section(0),
             title=tr("Quatre pannes à diagnostiquer"),
+            hash="6e534aa05602f1c4",
             description=tr("""
 Une fois les parties 1 à 9 terminées, appliquez **une à une** les pannes `fault_delegation`,
 `fault_ds`, `fault_frozen` et `fault_forward` (onglet *Appliquer une configuration*). Pour chacune,

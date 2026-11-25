@@ -963,6 +963,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="f762d9230429125b",
             description=tr("""
 Lisez l'onglet **Informations** : il présente l'agrégation de liens (modes du bonding Linux,
 surveillance des membres, répartition par flux, LACP, agrégat dans un switch) et LLDP.
@@ -1029,6 +1030,7 @@ coupure totale).
         self.question_dummy(
             section=self.section(0),
             title=tr("Qui est au bout de mes câbles ?"),
+            hash="9e89413735b85296",
             description=tr("""
 Le serveur `lldp_srv` a trois interfaces câblées : `eth0`, `eth1` et `eth2`. Les équipements
 d'en face sont **invisibles** sur le schéma et vous n'y avez pas accès : deux switchs de cœur de
@@ -1067,6 +1069,7 @@ puis (re)démarrage :
         q_disc = self.question_form(
             section=self.section(1),
             title=tr("Le câblage, vu par LLDP"),
+            hash="90567480ac7e417f",
             description=tr("""
 Relevez dans `lldpcli show neighbors` ce que les switchs annoncent :
 
@@ -1084,6 +1087,7 @@ Relevez dans `lldpcli show neighbors` ce que les switchs annoncent :
         q_proto = self.question_form(
             section=self.section(1),
             title=tr("Le protocole"),
+            hash="df23fa15335b97ef",
             description=tr("""
 Capturez une LLDPDU sur `lldp_srv` (`tcpdump -n -e -v -i eth0 ether proto 0x88cc`, jusqu'à 30 s
 d'attente) :
@@ -1130,6 +1134,7 @@ d'attente) :
         self.question_dummy(
             section=self.section(0),
             title=tr("Un serveur relié à deux switchs"),
+            hash="ea278096edd63e9b",
             description=tr("""
 `ab_srv` est relié par `eth0` au switch `ab_sw1` et par `eth1` au switch `ab_sw2` ; les deux switchs
 sont reliés entre eux et la passerelle `ab_gw` (`{gw}`) est derrière `ab_sw2`. Deux switchs
@@ -1164,6 +1169,7 @@ requêtes ARP vers `ab_gw` restent sans réponse, `eth0` est déclarée en panne
         q_ab = self.question_form(
             section=self.section(1),
             title=tr("Ce que miimon ne voit pas"),
+            hash="dc8d096d7a083756",
             description=tr("""
 - avec `miimon` seul, pendant la coupure de `ab_cut` : @@{miimon_cut:>le bond reste sur eth0 : tout le trafic est perdu pendant la coupure>>>stays|le bond bascule sur eth1 en moins d'une seconde>>>switches|le bond bascule sans cesse entre eth0 et eth1>>>flaps}@@
 - pourquoi ? @@{why:>eth0 garde sa porteuse : miimon ne teste que le lien local, pas le chemin>>>carrier|miimon n'est pas actif par défaut>>>default|la coupure est trop courte pour miimon>>>short}@@
@@ -1203,6 +1209,7 @@ l'adresse MAC ne change pas (ARP gratuit par `eth1`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Un agrégat LACP vers un switch"),
+            hash="9e97a6bdd5c29509",
             description=tr("""
 `lacp_srv` est relié au switch `lacp_sw` par deux câbles (`eth0` et `eth1` des deux côtés). Côté
 switch, l'agrégat **`{sw_bond}`** est déjà configuré : mode `802.3ad`, `lacp_rate fast`,
@@ -1239,6 +1246,7 @@ la moitié des flux dans le câble mort.
         q_lacpdu = self.question_form(
             section=self.section(1),
             title=tr("Les LACPDU"),
+            hash="823d57baa4e65288",
             description=tr("""
 Capturez une LACPDU **reçue** sur `lacp_srv` (`tcpdump -n -e -vv -i eth0 ether proto 0x8809` : la
 source est le switch) :
@@ -1259,6 +1267,7 @@ de `lacp_sw`, son premier membre), priorité {priority} ; clé {key} (10 Gbit/s,
         q_lacp_perf = self.question_form(
             section=self.section(1),
             title=tr("Débit et panne d'un membre"),
+            hash="407dd809ee404828",
             description=tr("""
 - débit d'un flux `iperf3`, en Mbit/s : @@{single:[0-9]+([.,][0-9]+)?}@@ ; de quatre flux (`-P 4`, ligne `SUM` du récepteur) : @@{multi:[0-9]+([.,][0-9]+)?}@@
 - `eth1` arrêtée sur `lacp_srv` seulement : au bout de combien de secondes environ `lacp_sw` la déclare-t-il non synchronisée (elle n'a plus de porteuse en panne de son côté) ? @@{seconds:[0-9]+([.,][0-9]+)?}@@
@@ -1317,6 +1326,7 @@ sortir de l'agrégateur.
         self.question_dummy(
             section=self.section(0),
             title=tr("Deux liens entre deux switchs"),
+            hash="d413f162c748b16a",
             description=tr("""
 Les switchs `isl_sw1` et `isl_sw2` sont reliés par deux câbles (`eth1` et `eth2` des deux côtés) ;
 `isl_pc1` est sur `eth0` de `isl_sw1`, `isl_pc2` (serveur `iperf3`) sur `eth0` de `isl_sw2`. Le pont
@@ -1347,6 +1357,7 @@ n'est bloqué, quatre flux font ~38 Mbit/s.
         q_isl = self.question_form(
             section=self.section(1),
             title=tr("STP et agrégat"),
+            hash="34e14a335abc3ce7",
             description=tr("- avant l'agrégat, le port bloqué par STP est : @@{blocked:" + blocked_choices + "}@@\n")
             + tr("""- avec l'agrégat : @@{stp_view:>STP ne voit qu'un port (bond0) entre les deux switchs : rien n'est bloqué, les deux câbles servent>>>one_port|STP voit deux ports et en bloque toujours un>>>two_ports|il faut désactiver STP pour que l'agrégat fonctionne>>>stp_off}@@
 - débit de quatre flux de `isl_pc1` vers `isl_pc2`, en Mbit/s, avant l'agrégat : @@{before:[0-9]+([.,][0-9]+)?}@@ ; après : @@{after:[0-9]+([.,][0-9]+)?}@@
@@ -1395,6 +1406,7 @@ n'est bloqué, quatre flux font ~38 Mbit/s.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un agrégat qui ne marche pas"),
+            hash="3f29cd1c012fc5bd",
             description=tr("""
 `fix_srv` est relié au switch `fix_sw` par deux câbles (`eth0` et `eth1` des deux côtés) ; `fix_pc`
 (`{pc}`) est derrière `fix_sw`. L'agrégat devait être un agrégat LACP de deux membres aux deux bouts
@@ -1427,6 +1439,7 @@ agrégateur d'un seul port car `eth1` de `fix_sw` n'est pas membre de `po1`.
         q_fix = self.question_form(
             section=self.section(1),
             title=tr("Diagnostic"),
+            hash="3ba2317ee23f34a3",
             description=tr("Associez chaque symptôme à sa cause :\n\n")
             + tr("- `po1` de `fix_sw` n'a pas de porteuse (`NO-CARRIER`) : @@{outage:") + causes + no_tr("}@@\n")
             + tr("- `/proc/net/bonding/po1` montre un partenaire `00:00:00:00:00:00` : @@{no_partner:") + causes
@@ -1469,6 +1482,7 @@ agrégateur d'un seul port car `eth1` de `fix_sw` n'est pas membre de `po1`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Le VLAN d'administration"),
+            hash="ea5c344192d41cd3",
             description=tr("""
 L'administration du switch de cœur relié à `eth0` de `lldp_srv` se fait dans un VLAN étiqueté,
 transporté par ce câble, que le switch **annonce par LLDP** (`lldpcli show neighbors details`,

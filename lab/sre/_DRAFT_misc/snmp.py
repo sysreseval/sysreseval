@@ -945,6 +945,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="5ecc73c75c239516",
             description=tr("""
 Lisez l'onglet **Informations** : il présente SNMP, les MIB, les commandes Net-SNMP, l'agent `snmpd`
 et le récepteur `snmptrapd`. Vous administrez le réseau d'une petite entreprise depuis la station
@@ -1027,6 +1028,7 @@ projet.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Explorer l'agent du routeur"),
+            hash="4dbfe672fb44d0e4",
             description=tr("""
 L'agent du routeur répond en SNMPv2c à la communauté `{ro}`, depuis le réseau d'administration
 seulement (sections @@ref:mib@@ et @@ref:tools@@ de l'onglet Informations). Depuis `nms`, sans jamais
@@ -1106,6 +1108,7 @@ nombre qui suit `.1.3.6.1.4.1`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un agent SNMPv2c sur srv1"),
+            hash="301dc03010955b46",
             description=tr("""
 Sections @@ref:agent@@ et @@ref:vacm@@ de l'onglet Informations.
 
@@ -1166,6 +1169,7 @@ puis `systemctl restart snmpd`. Les lignes `view systemonly …`, `rocommunity p
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Une communauté d'audit restreinte, une communauté d'écriture"),
+            hash="693ca5782d9ce4e2",
             description=tr("""
 Section @@ref:vacm@@ de l'onglet Informations. Toujours sur `srv1` :
 
@@ -1240,6 +1244,7 @@ lecture : `noAccess`. Le nom écrit est conservé dans `/var/lib/snmp/snmpd.conf
         self.question_dummy(
             section=self.section(0),
             title=tr("Un agent SNMPv3, authentifié et chiffré"),
+            hash="cad97dab7f4d6a08",
             description=tr("""
 Section @@ref:usm@@ de l'onglet Informations. `srv2` ne doit répondre qu'en **SNMPv3** :
 
@@ -1312,6 +1317,7 @@ puis `systemctl start snmpd` : la ligne est remplacée par une ligne `usmUser` (
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Publier l'état d'une application, d'un processus, d'un disque"),
+            hash="fdeaf0087b928f57",
             description=tr("""
 Section @@ref:extend@@ de l'onglet Informations. Sur `srv1`, le programme `{script}` affiche l'état
 d'une application de l'entreprise (lancez-le). Dans `/etc/snmp/snmpd.conf` de `srv1` :
@@ -1383,6 +1389,7 @@ puis `systemctl start {unit}` et `systemctl restart snmpd`. L'index de la table 
         self.question_dummy(
             section=self.section(0),
             title=tr("Recevoir et envoyer des notifications"),
+            hash="c525ed847a61f397",
             description=tr("""
 Section @@ref:traps@@ de l'onglet Informations.
 
@@ -1454,6 +1461,7 @@ puis `systemctl restart snmpd` : on voit `nsNotifyShutdown` puis `coldStart`, et
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Le débit qui traverse le routeur"),
+            hash="d403fa597c772b11",
             description=tr("""
 Section @@ref:counters@@ de l'onglet Informations. Des machines du réseau `lan` envoient en permanence
 du trafic vers la `dmz`, à travers le routeur. Mesurez-le **depuis `nms`**, avec la communauté `{ro}` :

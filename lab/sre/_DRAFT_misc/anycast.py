@@ -1342,6 +1342,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="9538818d40a2b427",
             description=tr("""
 Lisez l'onglet **Informations** : il présente l'anycast, ses usages, son fonctionnement avec OSPF
 puis avec BGP, le suivi de l'état du service, BFD, ECMP, et rappelle la configuration de FRR.
@@ -1409,6 +1410,7 @@ annonçant `{s_b}/32` ; `bfix_dns2` sans route `blackhole` pour `{prefix}` et sa
         self.question_dummy(
             section=self.section(0),
             title=tr("Anycast dans OSPF : l'instance la plus proche"),
+            hash="026d8e164ca9a517",
             description=tr("""
 Les routeurs `near_r1`, `near_r2` et `near_r3` forment une ligne et font tourner OSPF (aire 0).
 L'instance `near_dns1` est derrière `near_r1`, l'instance `near_dns2` derrière `near_r3`. Les deux
@@ -1445,6 +1447,7 @@ l'instance voisine et réponse de cette instance), `near_ecmp` (4 : deux prochai
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site near"),
+            hash="b9a1417f53b5f87a",
             description=tr("""
 - coût de la route de `near_r2` vers l'adresse du service (`show ip ospf route`) : @@{cost:[0-9]+}@@
 - nombre de prochains sauts de cette route : @@{hops:[0-9]+}@@
@@ -1513,6 +1516,7 @@ liste), `near_q_nearest`, `near_q_rid` (1 chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("Instance principale et instance de secours"),
+            hash="a282a13aabc8b93b",
             description=tr("""
 Les routeurs `prim_r1` et `prim_r2` sont reliés ; l'instance `prim_dns1` est derrière `prim_r1`,
 l'instance `prim_dns2` derrière `prim_r2`. Les instances font déjà tourner OSPF avec leur routeur
@@ -1546,6 +1550,7 @@ métrique), `prim_only` (2 : aucune autre route externe), `prim_r2` (4 : route E
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site prim"),
+            hash="f91c9740c6eb0180",
             description=tr("""
 - coût de `prim_r2` jusqu'à l'ASBR `prim_dns1` (`show ip ospf route`, ligne `R`) : @@{fwd:[0-9]+}@@
 - avec `metric-type 1` et la **même** métrique sur les deux instances, `prim_r2` serait servi par :
@@ -1608,6 +1613,7 @@ externe seule**.
         self.question_dummy(
             section=self.section(0),
             title=tr("Suivre l'état du service"),
+            hash="dd29d7d1dbd42982",
             description=tr("""
 Les routeurs `hc_r1` et `hc_r2` sont reliés ; l'instance `hc_dns1` est derrière `hc_r1`,
 l'instance `hc_dns2` derrière `hc_r2`. Tout est configuré : chaque instance annonce `{s}/32` (sur
@@ -1648,6 +1654,7 @@ correspondante.
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Le health check"),
+            hash="8876c6aa336a510c",
             description=tr("""
 - le script ne doit pas interroger l'adresse du service parce que :
   @@{anycast:>une fois l'adresse retirée, la requête atteint une autre instance qui répond : le script remet l'adresse et l'annonce oscille>>>flapping|unbound n'écoute pas sur cette adresse>>>listen|la requête serait refusée par access-control>>>refused|ce serait plus lent>>>slow}@@
@@ -1701,6 +1708,7 @@ correspondante.
         self.question_dummy(
             section=self.section(0),
             title=tr("Dépannage d'un service anycast dans OSPF"),
+            hash="9a351b87219b84f3",
             description=tr("""
 Le site `ofix` reprend le plan du site `near` : les routeurs `ofix_r1`, `ofix_r2` et `ofix_r3` en
 ligne, l'instance `ofix_dns1` derrière `ofix_r1`, l'instance `ofix_dns2` derrière `ofix_r3`, qui
@@ -1738,6 +1746,7 @@ instance, route à deux prochains sauts).
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Les causes des pannes"),
+            hash="4493f7fc4cdc6408",
             description=tr("""
 - cause des routes vers le service qui changent sans cesse : @@{{flap:>{causes}}}@@
 - cause de l'absence de `ofix_dns1` parmi les instances : @@{{missing:>{causes}}}@@
@@ -1794,6 +1803,7 @@ chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("Anycast entre domaines : BGP"),
+            hash="47692e5f94a512ae",
             description=tr("""
 Deux opérateurs sont reliés : A (AS 65010, routeur `bgp_ispa`, client `bgp_ca`) et B (AS 65020,
 routeur `bgp_ispb`, client `bgp_cb`). L'opérateur du service (AS **{asn}**) a une instance chez
@@ -1825,6 +1835,7 @@ le chemin par l'autre), `bgp_only` (2 : les instances n'annoncent que `{prefix}`
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site bgp"),
+            hash="b7671bce68250520",
             description=tr("""
 - chemin d'AS du **second** chemin de l'opérateur A vers le préfixe anycast (celui qui passe par
   B ; les AS séparés par des espaces) : @@{aspath:[0-9 ]+}@@
@@ -1889,6 +1900,7 @@ chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("Site de secours et nœud local"),
+            hash="2b70509e20d64a9d",
             description=tr("""
 Trois opérateurs sont reliés deux à deux : A (AS 65010, `te_ispa`), B (AS 65020, `te_ispb`, client
 `te_cb`) et C (AS 65030, `te_ispc`, client `te_cc`). L'opérateur du service (AS {asn}) a une
@@ -1926,6 +1938,7 @@ route de `te_dns3` porte `no-export` chez C), `te_contained` (3 : ni A ni B n'a 
         q6 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site te"),
+            hash="97714934ff34a77c",
             description=tr("""
 - chemin d'AS de la route que `te_ispb` reçoit de `te_dns2` (lisez les annonces de `te_dns2`) :
   @@{aspath:[0-9 ]+}@@
@@ -1981,6 +1994,7 @@ chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("Dépannage d'un service anycast en BGP"),
+            hash="ec85de6aea4ca6fa",
             description=tr("""
 Le site `bfix` reprend le plan du site `bgp` : les opérateurs A (`bfix_ispa`, client `bfix_ca`) et
 B (`bfix_ispb`, client `bfix_cb`), l'instance `bfix_dns1` chez A, l'instance `bfix_dns2` chez B,
@@ -2014,6 +2028,7 @@ requêtes partent dans la route `blackhole`).
         q7 = self.question_form(
             section=self.section(1),
             title=tr("Les causes des pannes"),
+            hash="db8932f94bfaba96",
             description=tr("""
 - cause de l'absence de toute annonce de `bfix_dns1` : @@{{d1send:>{causes}}}@@
 - une fois les annonces rétablies, cause du rejet de l'annonce de `bfix_dns1` par l'opérateur A :
@@ -2064,6 +2079,7 @@ correspondante ; adresse du service absente de l'instance.
         self.question_dummy(
             section=self.section(0),
             title=tr("Panne silencieuse d'une instance : BFD (bonus)"),
+            hash="0b2a4a73fd1bfc5d",
             description=tr("""
 Le routeur `bfd_r1` relie deux instances qui annoncent `{s}/32` dans OSPF : `bfd_dns1` (coût 10) et
 `bfd_dns2` (coût {cost} sur l'interface de `bfd_r1`, une instance de secours). Entre `bfd_r1` et
@@ -2113,6 +2129,7 @@ par `bfd_dns2` : quelques paquets perdus au lieu de {lost} environ.
         self.question_dummy(
             section=self.section(0),
             title=tr("Répartir les flux d'un client (bonus)"),
+            hash="6730f8dfb6bda553",
             description=tr("""
 Le routeur `ecmp_r1` relie deux instances à égale distance, `ecmp_dns1` et `ecmp_dns2`, qui
 annoncent `{s}/32` dans OSPF, et le client `ecmp_c1`. La route de `ecmp_r1` vers `{s}` a deux

@@ -1417,6 +1417,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="e3b5327cf41e1ff7",
             description=tr("""
 Lisez l'onglet **Informations** : il présente le multicast IP (adresses, IGMP, snooping, routage
 multicast, PIM-SM, PIM-SSM, MSDP, IPv6), sa configuration avec FRR et les outils de test.
@@ -1517,6 +1518,7 @@ et `{g_ssm_extra}` (ssm), `{g_msdp}` et `{g_scoped}` (msdp), `{g_fix}` (fix), `{
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Les adresses multicast"),
+            hash="374d0e4f9a88e6fc",
             description=tr("""
 Répondez sans machine, avec la section @@ref:addressing@@ :
 
@@ -1589,6 +1591,7 @@ liste) : `addressing_scope_a`, `addressing_scope_b`, `addressing_scope_c` (1 cha
         self.question_dummy(
             section=self.section(0),
             title=tr("IGMP : rapports, querier, versions"),
+            hash="8649a3489aa0323b",
             description=tr("""
 Sur le réseau `igmp_lan`, `igmp_r2` fait déjà tourner IGMP : c'est le querier. `igmp_r1` n'a
 encore aucune configuration multicast (sections @@ref:igmp@@ et @@ref:frr@@).
@@ -1634,6 +1637,7 @@ alors en version 2 dans `show ip igmp groups` de `igmp_r1`, celles d'`igmp_h1` e
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations"),
+            hash="3797e6fd61949c18",
             description=tr("""
 - querier du réseau avant votre configuration : @@{querier_before:>igmp_r1|igmp_r2}@@ ; le querier
   est le routeur qui a @@{rule:>la plus petite adresse IP>>>lowest_address|la plus grande adresse IP>>>highest_address|la plus grande priorité>>>highest_priority|le plus ancien uptime>>>oldest}@@
@@ -1713,6 +1717,7 @@ chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("IGMP snooping"),
+            hash="7776ba775723413e",
             description=tr("""
 `snoop_sw` est un commutateur : un pont Linux `br0` réunit ses ports `eth0` (vers `snoop_src`),
 `eth1` (vers `snoop_h1`) et `eth2` (vers `snoop_h2`). Il n'y a pas de routeur multicast sur ce
@@ -1797,6 +1802,7 @@ reçoit).
         self.question_dummy(
             section=self.section(0),
             title=tr("PIM-SM avec un RP statique"),
+            hash="6611b264e2805d8e",
             description=tr("""
 Le site `asm` est un triangle de routeurs : `asm_r1` dessert le réseau de la source `asm_src`,
 `asm_r3` celui du récepteur `asm_h`, et `asm_r2` sera le **point de rendez-vous** (RP), sur son
@@ -1858,6 +1864,7 @@ voisinages PIM des trois liens), `asm_source_lan` (1 : PIM sur `eth0` de `asm_r1
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Observations"),
+            hash="1907feb1a3ad1625",
             description=tr("""
 - interface RPF de `asm_r3` vers le RP (celle de son entrée (\\*,G)) : @@{rpf_iface:[a-z0-9]+}@@
 - message PIM qui porte vers le RP les premiers datagrammes de la source :
@@ -1925,6 +1932,7 @@ voisinages PIM des trois liens), `asm_source_lan` (1 : PIM sur `eth0` de `asm_r1
         self.question_dummy(
             section=self.section(0),
             title=tr("PIM-SSM et IGMPv3"),
+            hash="dba2b3694b8c1144",
             description=tr("""
 Sur le site `ssm`, la source `ssm_src` a deux adresses : `{s1}` et `{s2}` (sur le même réseau).
 Il n'y a pas de RP (section @@ref:ssm@@).
@@ -2010,6 +2018,7 @@ sur le réseau de `ssm_h`, compté seulement si le canal de `{s1}` arrive), `ssm
         self.question_dummy(
             section=self.section(0),
             title=tr("MSDP et portée administrative"),
+            hash="56d4edf29591ba1d",
             description=tr("""
 Le site `msdp` réunit deux domaines PIM, déjà configurés : `msdp_r1` est le RP du domaine 1
 (`{rp1}`, celui de la source `msdp_src`), `msdp_r2` celui du domaine 2 (`{rp2}`, celui du
@@ -2092,6 +2101,7 @@ pas ce groupe, compté seulement si le premier flux passe).
         self.question_dummy(
             section=self.section(0),
             title=tr("Un domaine PIM en panne"),
+            hash="538aa30fd2d2f9d7",
             description=tr("""
 Le site `fix` est un domaine PIM-SM complet : `fix_r1` dessert la source `fix_src` et sert de RP
 (`{rp}`, son adresse de bouclage, pour les groupes `{range}`), `fix_r2` dessert le récepteur
@@ -2136,6 +2146,7 @@ a un voisin PIM).
         self.question_form(
             section=self.section(1),
             title=tr("Compte rendu"),
+            hash="1e743ae13f56ccc3",
             description=tr("""
 Décrivez brièvement chaque panne trouvée et sa correction (non noté automatiquement : votre
 enseignant le lira).
@@ -2178,6 +2189,7 @@ enseignant le lira).
         self.question_dummy(
             section=self.section(0),
             title=tr("Multicast IPv6 : MLD et PIMv6"),
+            hash="13d5d72142de2d3b",
             description=tr("""
 Le site `v6` est en IPv6 seulement ; le démon `pim6d` tourne sur `v6_r1` et `v6_r2`
 (section @@ref:ipv6@@).

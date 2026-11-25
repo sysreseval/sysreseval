@@ -698,6 +698,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="b00fc6cc917ca563",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les VLAN et l'étiquetage 802.1Q, les
 sous-interfaces et les ponts Linux, le routeur « on a stick », le NAT, la console du switch,
@@ -779,6 +780,7 @@ Informations : l'`ebtables` de l'image (1.8.11, nft) refuse la cible `redirect` 
         self.question_dummy(
             section=self.section(0),
             title=tr("Vérification du réseau trunk"),
+            hash="3fa915242bf2e087",
             description=tr("""
 Vérifiez que `b1` (`{b1_trunk}`), `b2` (`{b2_trunk}`) et `router` (`{router_trunk}`) sont
 joignables entre elles (`ping`). Sur `b2`, capturez pendant ce temps avec `tcpdump -e -n -i eth0
@@ -800,6 +802,7 @@ le VLAN `0000` (tous les ports, `tagged=0`) et les VLAN `0111` / `0222` avec les
         q2 = self.question_form(
             section=self.section(0),
             title=tr("VLAN {odd} et {even} sur b1 et b2").format(odd=VLAN_ODD, even=VLAN_EVEN),
+            hash="b44f064c438abb82",
             description=tr("""
 Sur l'interface `eth0` de `b1` et de `b2`, créez les deux sous-interfaces VLAN `eth0.{odd}` et
 `eth0.{even}` (section @@ref:subinterfaces@@ des Informations), attribuez les adresses :
@@ -873,6 +876,7 @@ trames qu'aux ports membres du VLAN {odd}.
         self.question_dummy(
             section=self.section(0),
             title=tr("Pont breven : m2 joint m4 et m6"),
+            hash="bb651a8009f3eba4",
             description=tr("""
 Créez sur chacune des machines `b1` et `b2` un pont nommé **`breven`** (section @@ref:bridges@@ des
 Informations), ajoutez-lui les interfaces `eth2` et `eth0.{even}`, montez toutes les interfaces
@@ -900,6 +904,7 @@ les `ping` de `m2` vers `m4` et `m6`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Pont brodd : m1 joint m3 et m5"),
+            hash="6b63da48ba0a387e",
             description=tr("""
 Faites la même chose avec des ponts **`brodd`** (interfaces `eth1` et `eth0.{odd}`) pour que
 `m1` (`{m1}`) puisse joindre `m3` (`{m3}`) et `m5` (`{m5}`).
@@ -958,6 +963,7 @@ et ceux de `m1` vers `m3` et `m5`.
         self.question_dummy(
             section=self.section(0),
             title=tr("router relie les deux VLAN"),
+            hash="1ca2c63580242dfc",
             description=tr("""
 Ajoutez les VLAN {odd} et {even} sur `router` (sous-interfaces `eth1.{odd}` et `eth1.{even}` de
 son port trunk `eth1`) et donnez-lui les adresses `{router_odd}` et `{router_even}`, afin que
@@ -985,6 +991,7 @@ vers `m6`.
         self.question_dummy(
             section=self.section(0),
             title=tr("NAT source sur router"),
+            hash="f8eb9acd04d10126",
             description=tr("""
 Mettez en place sur `router` la traduction d'adresses source (NAT source, *masquerade*, section @@ref:nat@@
 des Informations) afin que le trafic provenant des réseaux internes semble provenir de `router`
@@ -1036,6 +1043,7 @@ L'évaluation lit `CLIENT_IP` sur `ext1` / `ext2` depuis `m5`, `m2` et `m1` : `{
         self.question_dummy(
             section=self.section(0),
             title=tr("m7 sur un port libre du switch trunk"),
+            hash="8913809b01ea8167",
             description=tr("""
 La machine `m7` est branchée sur un port libre du switch `trunk`, dans le VLAN par défaut, et
 n'est pas configurée. Donnez-lui l'adresse `{m7}` et la passerelle par défaut de ce réseau
@@ -1092,6 +1100,7 @@ la route de `m7`, puis des `ping` vers `m1` et `m2` et `CLIENT_IP` sur `ext1`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Brouter sur b2"),
+            hash="4f563a1d8d0fe622",
             description=tr("""
 On veut changer la configuration de `b2` afin que le trafic provenant de `m3` sorte vers
 l'extérieur par `router2` et non par `router` comme celui de `m5` et des autres machines, **sans
@@ -1203,6 +1212,7 @@ couvrant `{m3}`, une autre `ip daddr {ext2} tcp dport 8080`), des `ping` de `m3`
         q9 = self.question_form(
             section=self.section(0),
             title=tr("Impact du brouter sur le TTL"),
+            hash="06b8d2c000f09c49",
             description=tr("""
 **(a)** Lancez sur `ext1` une capture des paquets TCP reçus (`tcpdump -n -v -i eth0 tcp`,
 `tshark -i eth0 -V` ou Wireshark) et faites des requêtes `curl http://ext1/` depuis `m3` et

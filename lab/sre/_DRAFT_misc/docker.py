@@ -949,6 +949,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="08a7b32388a810a2",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les conteneurs, l'architecture de Docker, les images
 et le `Dockerfile`, le stockage, les réseaux, les registres et le durcissement.
@@ -1009,6 +1010,7 @@ depuis `{images}` et recrée `legacy`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un premier service : nginx"),
+            hash="b0cd198bf787c23d",
             description=tr("""
 Sur `docker1` :
 
@@ -1033,6 +1035,7 @@ puis, depuis `client` : `curl http://docker1:{port}/`.
         q = self.question_form(
             section=self.section(1),
             title=tr("Journaux et couche inscriptible"),
+            hash="e57546f38c9838c0",
             description=tr("""
 - La commande qui affiche les journaux (la sortie de nginx) du conteneur `web` : @@{logs:.+}@@
 - Dans `web`, vous modifiez `/etc/nginx/conf.d/default.conf` (dans le conteneur, pas dans un
@@ -1082,6 +1085,7 @@ garde sa couche inscriptible), perdue après `rm` + `run` (un nouveau conteneur 
         self.question_dummy(
             section=self.section(0),
             title=tr("L'image sre/app"),
+            hash="186507cff85a89d8",
             description=tr("""
 Le répertoire `{dir}` de `docker1` contient `app.py`, une petite application web en Python
 (bibliothèque standard seulement) qui écoute sur le port {port} : `GET /` renvoie une ligne JSON
@@ -1112,6 +1116,7 @@ puis :
         q = self.question_form(
             section=self.section(1),
             title=tr("Forme exec et cache"),
+            hash="df679e4c3bdeed46",
             description=tr("""
 - Avec `CMD ["python3", "app.py"]`, le PID 1 du conteneur est :
   @@{pid1:>python3, qui reçoit le SIGTERM de docker stop>>>exec|/bin/sh, qui ne transmet pas le signal>>>shell}@@
@@ -1177,6 +1182,7 @@ toutes les suivantes sont refaites.
         self.question_dummy(
             section=self.section(0),
             title=tr("Redis et son volume"),
+            hash="f2078449b0931429",
             description=tr("""
 Sur `docker1` (section @@ref:storage@@) :
 
@@ -1200,6 +1206,7 @@ volume, côté `docker1`.
         q = self.question_form(
             section=self.section(1),
             title=tr("Où sont les données ?"),
+            hash="11d274c665cf5b7f",
             description=tr("""
 - Le répertoire de `docker1` qui contient les données du volume `cachedata` : @@{path:/[^ ]*}@@
 """)
@@ -1241,6 +1248,7 @@ volume, côté `docker1`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Le réseau backend et un réseau interne"),
+            hash="b9484d013b9e777a",
             description=tr("""
 Sur `docker1` (section @@ref:user-networks@@) :
 
@@ -1264,6 +1272,7 @@ de `beta`, et tente de joindre `client` et `gw` depuis celui de `vault`.
         q = self.question_form(
             section=self.section(1),
             title=tr("Et sur le réseau par défaut ?"),
+            hash="198c0b689f7953c7",
             description=tr("""
 - Deux conteneurs lancés sans `--network` (réseau `bridge` par défaut) : `ping alpha` depuis
   l'autre, `alpha` étant le nom du premier,
@@ -1316,6 +1325,7 @@ de `beta`, et tente de joindre `client` et `gw` depuis celui de `vault`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Le conteneur legacy"),
+            hash="b5f7cc2a35cfc4d9",
             description=tr("""
 Un collègue a lancé sur `docker1` le conteneur **`legacy`** (nginx), qui publie le port
 **{port}**. Sans le modifier, retrouvez avec `docker inspect`, `ip`, `iptables` et `ss` comment
@@ -1333,6 +1343,7 @@ répondez ci-dessous. Si `legacy` a disparu, l'état `restore_docker` le recrée
         q = self.question_form(
             section=self.section(1),
             title=tr("Comment legacy est branché"),
+            hash="1954f59c4f726ccc",
             description=tr("""
 - L'adresse IPv4 de `legacy` sur le réseau par défaut : @@{legacy_ip:[0-9.]+}@@
 - L'adresse IPv4 de l'interface `docker0` de `docker1` : @@{docker0_ip:[0-9.]+}@@
@@ -1374,6 +1385,7 @@ neuf : l'évaluation compare aux valeurs relevées sur `docker1`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Le réseau macvlan"),
+            hash="bbe89f8017525cf5",
             description=tr("""
 Sur `docker1` (section @@ref:macvlan@@) :
 
@@ -1396,6 +1408,7 @@ L'évaluation lit le réseau, demande la page depuis `client`, puis lit l'adress
         q = self.question_form(
             section=self.section(1),
             title=tr("docker1 ne joint pas edge"),
+            hash="ae962b6766dfcce6",
             description=tr("""
 - Le `ping` de l'adresse de `edge` échoue depuis `docker1` parce que
   @@{host_ping:>le pare-feu de Docker le bloque>>>firewall|le noyau ne fait pas passer le trafic entre l'interface parente et ses interfaces macvlan>>>kernel|edge n'a pas de route vers docker1>>>route}@@
@@ -1442,6 +1455,7 @@ faudrait une interface macvlan de plus sur `docker1`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Le registre de docker1, l'image sur docker2"),
+            hash="b1f598d40a9b5bef",
             description=tr("""
 Section @@ref:registry@@.
 
@@ -1474,6 +1488,7 @@ puis :
         q = self.question_form(
             section=self.section(1),
             title=tr("Registres non sécurisés"),
+            hash="208c6d2a4c40d6b5",
             description=tr("""
 - `docker push localhost:5000/...` fonctionne sans configuration parce que
   @@{localhost:>Docker accepte HTTP pour 127.0.0.0/8 et localhost>>>loopback|le registre a un certificat>>>tls|registry est une image officielle>>>official}@@
@@ -1534,6 +1549,7 @@ HTTPS, sauf pour les registres de `insecure-registries`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Le conteneur sandbox"),
+            hash="c1c7552dc64bbe71",
             description=tr("""
 Sur `docker1`, lancez un conteneur `alpine` actif (`sleep infinity`) nommé **`sandbox`**
 (section @@ref:limits@@) :
@@ -1582,6 +1598,7 @@ Sur `docker1`, lancez un conteneur `alpine` actif (`sleep infinity`) nommé **`s
         self.question_dummy(
             section=self.section(0),
             title=tr("Le réseau routed"),
+            hash="4b1b9a1bd77ba68e",
             description=tr("""
 Section @@ref:routed@@.
 

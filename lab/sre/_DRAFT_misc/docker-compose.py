@@ -941,6 +941,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="7966c6c11c2dce6c",
             description=tr("""
 Lisez l'onglet **Informations** : il présente le fichier `compose.yaml`, les projets, les
 commandes, les réseaux, les volumes, les variables, les secrets, les healthchecks, les répliques
@@ -1001,6 +1002,7 @@ remplit les formulaires : une évaluation lancée dès son retour donne tous les
         self.question_dummy(
             section=self.section(0),
             title=tr("Le projet hello"),
+            hash="56c0bd9bfbbc116e",
             description=tr("""
 Dans `{root}` (sections @@ref:file@@ et @@ref:project@@) :
 
@@ -1020,6 +1022,7 @@ puis `echo '<h1>{token}</h1>' > html/index.html` et `docker compose up -d` dans 
         q = self.question_form(
             section=self.section(1),
             title=tr("Les noms que Compose a choisis"),
+            hash="11cc115f1153ae85",
             description=tr("""
 - Le nom du réseau créé par Compose pour ce projet : @@{network:[A-Za-z0-9_.-]+}@@
 - Le nom du conteneur du service `web` : @@{container:[A-Za-z0-9_.-]+}@@
@@ -1066,6 +1069,7 @@ puis `echo '<h1>{token}</h1>' > html/index.html` et `docker compose up -d` dans 
         self.question_dummy(
             section=self.section(0),
             title=tr("Le projet counter"),
+            hash="462bb0aa8ed09175",
             description=tr("""
 Dans `{root}`, écrivez `compose.yaml` avec deux services (sections @@ref:build@@, @@ref:networks@@ et
 @@ref:volumes@@) :
@@ -1090,6 +1094,7 @@ puis `docker compose up -d --build` dans `{root}`.
         q = self.question_form(
             section=self.section(1),
             title=tr("Le volume et down"),
+            hash="5556eeb9f757b5d4",
             description=tr("""
 - Le nom complet du volume que Compose a créé : @@{volume:[A-Za-z0-9_.-]+}@@
 - `docker compose down` @@{down:>garde le volume et ses données>>>keeps|supprime le volume>>>deletes}@@
@@ -1152,6 +1157,7 @@ puis `docker compose up -d --build` dans `{root}`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Le projet shop"),
+            hash="c59b2cda3b17d1cd",
             description=tr("""
 Dans `{root}` (section @@ref:networks@@) :
 
@@ -1179,6 +1185,7 @@ Dans `{root}` (section @@ref:networks@@) :
         q = self.question_form(
             section=self.section(1),
             title=tr("proxy et db"),
+            hash="d9972d01dd8c9c26",
             description=tr("""
 - `proxy` ne peut joindre `db` ni par son nom ni par son adresse, parce que
   @@{proxy_db:>ils n'ont aucun réseau en commun>>>no_common_network|db ne publie pas de port>>>no_port|back est interne>>>internal}@@
@@ -1235,6 +1242,7 @@ l'extérieur).
         self.question_dummy(
             section=self.section(0),
             title=tr("Le projet config"),
+            hash="9c29ace98ce8d4a5",
             description=tr("""
 Dans `{root}` (sections @@ref:variables@@, @@ref:secrets@@ et @@ref:override@@) :
 
@@ -1270,6 +1278,7 @@ puis `docker compose up -d --build`.
         q = self.question_form(
             section=self.section(1),
             title=tr("La surcharge"),
+            hash="fd3c1a99ab666297",
             description=tr("""
 - Le nom du fichier que `docker compose` lit automatiquement, sans option, après `compose.yaml` :
   @@{override:[A-Za-z0-9_.-]+}@@
@@ -1327,6 +1336,7 @@ puis `docker compose up -d --build`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Le projet health"),
+            hash="298aa30d44b9a2e4",
             description=tr("""
 Dans `{root}`, écrivez `compose.yaml` avec deux services (section @@ref:health@@) :
 
@@ -1348,6 +1358,7 @@ puis `docker compose up -d --build --wait`.
         q = self.question_form(
             section=self.section(1),
             title=tr("L'option --wait"),
+            hash="313611706d50ff8c",
             description=tr("""
 - `docker compose up -d --wait` rend la main
   @@{wait:>dès que les conteneurs sont créés>>>created|quand les services sont démarrés, et sains pour ceux qui ont un healthcheck>>>healthy|après le premier healthcheck de chaque service, réussi ou non>>>first}@@
@@ -1393,6 +1404,7 @@ puis `docker compose up -d --build --wait`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Le projet scale"),
+            hash="0410d85f2da79209",
             description=tr("""
 Dans `{root}` (section @@ref:scale@@) :
 
@@ -1418,6 +1430,7 @@ ajoutées après nginx).
         q = self.question_form(
             section=self.section(1),
             title=tr("Le nom app"),
+            hash="9e9169c1e45a1944",
             description=tr("""
 - Le DNS intégré de Docker répond au nom `app`
   @@{dns:>par l'adresse de la première réplique>>>first|par une adresse par réplique>>>one_per_replica|par l'adresse de docker1>>>host}@@
@@ -1461,6 +1474,7 @@ ajoutées après nginx).
         self.question_dummy(
             section=self.section(0),
             title=tr("Le projet remote"),
+            hash="4436414db9c729e5",
             description=tr("""
 `{root}/compose.yaml` décrit un petit site (sa page est écrite dans le fichier lui-même, une
 `config`). Depuis `docker1`, **sans copier aucun fichier sur `docker2`**, déployez-le sur

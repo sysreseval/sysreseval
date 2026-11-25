@@ -567,6 +567,7 @@ class Grade(Grade0):
             mark=M, T=T, thi=int(T * 0.8), tlo=int(T * 0.2), C=C)
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="989e6e8af734d92f",
             description=tr("""
 Lisez l'onglet **Informations** : il présente `tc`, les qdisc utilisées, les filtres, le marquage
 des paquets, la régulation du trafic entrant et les outils de mesure.
@@ -657,6 +658,7 @@ une configuration*) applique toute la solution et remplit les formulaires.
         self.question_dummy(
             section=self.section(0),
             title=tr("Diagnostic du lien vers serveur2"),
+            hash="525fa95867937dd3",
             description=tr("""
 1. Depuis `m1`, mesurez le RTT vers `serveur1` puis vers `serveur2` (`ping -c 20 -i 0.2`).
    Le lien `r1` ↔ `serveur2` traverse un « WAN » qui ajoute un délai inconnu : vous le
@@ -692,6 +694,7 @@ une configuration*) applique toute la solution et remplit les formulaires.
         q0 = self.question_form(
             section=self.section(1),
             title=tr("RTT de base"),
+            hash="e1f70ffb0564415f",
             description=tr("""
 - RTT moyen mesuré par `ping` de `m1` vers `serveur2`, en ms : @@{rtt:[0-9]+([.,][0-9]+)?}@@
 - Dans la sortie de `ss -ti`, le champ qui donne le RTT estimé par TCP et sa variation est :
@@ -721,6 +724,7 @@ fenêtre de congestion, `bytes_acked` le nombre d'octets acquittés.
         self.question_text(
             section=self.section(1),
             title=tr("Observations sur le graphique du RTT"),
+            hash="9196eb6d697ce1b7",
             description=tr("Décrivez l'allure du graphique *Temps d'aller-retour* du transfert iperf3 "
                            "(valeur typique, variations) et comparez-la au `ping`.")
             + instructor(tr("""
@@ -736,6 +740,7 @@ chemin vide.
         self.question_text(
             section=self.section(1),
             title=tr("Capacité brute d'un lien"),
+            hash="b5daca9d2fd7fee2",
             description=tr("Débit obtenu par `iperf3` de `m1` vers `serveur1` sans aucune régulation (Mbit/s), "
                            "et ce que cela implique pour les débits à configurer dans ce TP.")
             + instructor(tr("""
@@ -754,6 +759,7 @@ demandés tous inférieurs à 30 Mbit/s ; un débit configuré au-dessus ne limi
         self.question_dummy(
             section=self.section(0),
             title=tr("netem sur r1 vers serveur2"),
+            hash="d5dfaf2122aa1000",
             description=tr("""
 Sur `r1`, l'interface **`{dev}`** mène à `serveur2`. Toutes les mesures se font de `m1`
 vers `serveur2` (`ping`, `iperf3 -c serveur2`).
@@ -816,6 +822,7 @@ au moins 8 réponses et un RTT moyen de {rtt} ms à 25 % + 10 ms près).
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Mesures avec netem"),
+            hash="46f9eb464e77841b",
             description=tr("""
 - RTT moyen (ms) de `m1` vers `serveur2` après l'ajout du délai de {delay} ms (étape 1) :
   @@{{rtt_delay:[0-9]+([.,][0-9]+)?}}@@
@@ -845,6 +852,7 @@ l'enseignant seulement).
         self.question_text(
             section=self.section(1),
             title=tr("Observations avec des pertes"),
+            hash="b6545ec90580eedd",
             description=tr("Que constatez-vous sur le débit `iperf3` avec {loss} % de pertes ? Qu'indique `ss -ti` "
                            "(`cwnd`, `retrans`) ?").format(loss=d.netem_loss_pct)
             + instructor(tr("""
@@ -916,6 +924,7 @@ retransmissions rapides. `ss -ti` montre un `cwnd` qui reste à quelques segment
         self.question_dummy(
             section=self.section(0),
             title=tr("Shaping sur r2 vers m2"),
+            hash="d87e66eea7d083df",
             description=tr("""
 Sur `r2`, l'interface **`{dev}`** mène à `m2`. Lancez sur `m2` deux serveurs :
 `iperf3 -s -p {pa}` et `iperf3 -s -p {pb}` ; les clients tournent sur `m1`.
@@ -986,6 +995,7 @@ moyen sous charge inférieur à 50 ms).
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Mesures de shaping"),
+            hash="21f1c62021dced0b",
             description=tr("""
 - Débit (Mbit/s) mesuré par `iperf3` avec le `tbf` à {tbf} Mbit/s (étape 1) : @@{{tbf_mbps:[0-9]+([.,][0-9]+)?}}@@
 - RTT de `m1` vers `m2` pendant le transfert avec le `tbf` (étape 1) :
@@ -1076,6 +1086,7 @@ paquet qui la traverse y attend jusqu'à la durée fixée par `latency {latency}
         self.question_dummy(
             section=self.section(0),
             title=tr("Marquage et priorité sur r1 vers serveur1"),
+            hash="dd9063abb982ce91",
             description=tr("""
 Sur `r1`, l'interface **`{dev}`** mène à `serveur1`. La bande passante totale vers `serveur1`
 sera limitée à **{T} Mbit/s** ; le trafic provenant du réseau de `m1` (`{netA}`) est
@@ -1139,6 +1150,7 @@ reste sous 115 %).
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Marquage"),
+            hash="872c7b56dd29e001",
             description=tr("""
 - Pour marquer les paquets **routés** par `r1`, la chaîne nftables doit être accrochée au hook :
   @@{hook:>output|input|prerouting ou forward|postrouting uniquement}@@
@@ -1222,6 +1234,7 @@ est faux.
         self.question_dummy(
             section=self.section(0),
             title=tr("Ingress sur r1 depuis serveur1"),
+            hash="26a28cc6d177baed",
             description=tr("""
 Le trafic **reçu** par `r1` sur **`{dev}`** (envoyé par `serveur1`) doit être limité à
 **{C} Mbit/s**. Une qdisc ne régule qu'en sortie : redirigez le trafic entrant de `{dev}` vers
@@ -1272,6 +1285,7 @@ de cette interface), `ingress_cake_debit` (1 : `bandwidth {C}mbit` à 3 % près)
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Pourquoi ifb ?"),
+            hash="d41157f2cd055874",
             description=tr("""
 - Pourquoi faut-il passer par une interface ifb pour réguler le trafic entrant ?
   @@{ifb:>ifb accélère le traitement des paquets|en entrée le noyau ne peut que jeter (policing) : les files d'attente n'existent qu'en sortie|le noyau interdit tc sur une interface physique|cake exige une interface virtuelle}@@

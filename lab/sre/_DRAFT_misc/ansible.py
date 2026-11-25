@@ -1512,6 +1512,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="f39e3bc7bdb55340",
             description=tr("""
 Lisez l'onglet **Informations** : il présente Ansible (architecture, configuration, inventaire,
 commandes ad hoc, playbooks, variables et faits, templates, handlers, rôles, Vault, délégation).
@@ -1569,6 +1570,7 @@ montre le projet complet.
         self.question_dummy(
             section=self.section(0),
             title=tr("Clé SSH, inventaire et ansible.cfg"),
+            hash="2136afb0ce79447f",
             description=tr("""
 1. **Clé SSH.** Sur `control`, créez pour root une clé **ed25519 sans phrase de passe** (le
    fichier par défaut, `~/.ssh/id_ed25519`) et installez-la pour le compte `{user}` des quatre
@@ -1611,6 +1613,7 @@ inventaire avec `ansible-inventory --list` et votre configuration avec `ansible-
         q_facts = self.question_form(
             section=self.section(1),
             title=tr("Les faits locaux"),
+            hash="92f42f1320341d7b",
             description=tr("""
 Chaque nœud géré porte un fait local, le fichier `/etc/ansible/facts.d/asset.fact` (section
 @@ref:adhoc@@). Relevez-le avec **une seule commande ad hoc** (module `setup`, filtre
@@ -1631,6 +1634,7 @@ Chaque nœud géré porte un fait local, le fichier `/etc/ansible/facts.d/asset.
         q_cfg = self.question_form(
             section=self.section(1),
             title=tr("Quel ansible.cfg ?"),
+            hash="6048bcc8658ad209",
             description=tr("""
 Sans variable `ANSIBLE_CONFIG`, vous lancez `ansible-playbook` depuis un répertoire qui contient un
 `ansible.cfg`, alors que `~/.ansible.cfg` et `/etc/ansible/ansible.cfg` existent aussi.
@@ -1677,6 +1681,7 @@ Sans variable `ANSIBLE_CONFIG`, vous lancez `ansible-playbook` depuis un répert
         self.question_dummy(
             section=self.section(0),
             title=tr("Comptes et droits sur tous les nœuds"),
+            hash="655afb7780c8883c",
             description=tr("""
 Écrivez le playbook `{workdir}/users.yml`, qui configure **les quatre nœuds gérés** (sections
 @@ref:playbooks@@, @@ref:modules@@ et @@ref:loops@@). Les administrateurs de l'équipe :
@@ -1737,6 +1742,7 @@ contrôle** (chemin relatif au playbook ; `files/` est aussi cherché d'office).
         self.question_dummy(
             section=self.section(0),
             title=tr("Le rôle webserver"),
+            hash="0771a726630517ab",
             description=tr("""
 Écrivez le rôle **`{role}`** dans `{workdir}/roles/{role}/` et le playbook `{workdir}/web.yml` qui
 l'applique au groupe `{web}` (sections @@ref:variables@@, @@ref:templates@@, @@ref:handlers@@ et
@@ -1789,6 +1795,7 @@ puis `ansible-playbook web.yml` deux fois (la seconde : `changed=0`, le handler 
         q_handlers = self.question_form(
             section=self.section(1),
             title=tr("Les handlers"),
+            hash="46a397dbe5c40cb5",
             description=tr("""
 - un handler notifié par trois tâches d'un même play, toutes trois `changed`, s'exécute : @@{when:>une seule fois, à la fin du play>>>end_once|trois fois, juste après chaque tâche>>>each|une seule fois, juste après la première tâche>>>first}@@
 - une tâche qui porte `notify` mais dont le résultat est `ok` : @@{ok:>ne déclenche rien>>>nothing|déclenche quand même le handler>>>triggers|fait échouer le play>>>fails}@@
@@ -1832,6 +1839,7 @@ puis `ansible-playbook web.yml` deux fois (la seconde : `changed=0`, le handler 
         self.question_dummy(
             section=self.section(0),
             title=tr("Le répartiteur de charge"),
+            hash="9c07dfb82122d66a",
             description=tr("""
 Écrivez le playbook `{workdir}/lb.yml` qui fait de `lb` un répartiteur de charge nginx devant les
 serveurs web (section @@ref:variables@@, *variables magiques*) :
@@ -1885,6 +1893,7 @@ nginx y réponde ou non : cette partie ne dépend pas de la partie 3).
         self.question_dummy(
             section=self.section(0),
             title=tr("Un compte de service et son mot de passe"),
+            hash="a755994fa001cd26",
             description=tr("""
 Un logiciel de sauvegarde se connecte aux nœuds avec le compte **`{archiver}`** (UID **{uid}**,
 shell `/bin/bash`) et le mot de passe **`{secret}`**. Ce mot de passe ne doit apparaître **en clair
@@ -1943,6 +1952,7 @@ lui, un nouveau condensat à chaque exécution).
         self.question_dummy(
             section=self.section(0),
             title=tr("Le routeur et son pare-feu"),
+            hash="f07016befd64518b",
             description=tr("""
 `gw` relie `mgmt` (`eth0`, `{gw}`) au réseau extérieur `ext` (`eth1`, `{gw_ext}`) où se trouve
 `client` (`{client}`). Les machines de `mgmt` passent déjà par `gw` (route par défaut), et `client`
@@ -2007,6 +2017,7 @@ puis `ansible-playbook gw.yml`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Le rapport d'inventaire"),
+            hash="e4283f89175aa424",
             description=tr("""
 Écrivez le playbook `{workdir}/report.yml` qui collecte les faits des quatre nœuds gérés et écrit
 **sur `control`** le fichier `{workdir}/{report}` : un tableau Markdown, **une ligne par nœud**

@@ -1874,6 +1874,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="26a346e13f23d2cd",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les pare-feux, Netfilter et nftables (hooks, tables,
 chaînes, règles, critères, verdicts, suivi de connexion), le filtrage de ce qui sort, la commande
@@ -2008,6 +2009,7 @@ noyau (pas de `CAP_SYSLOG`) : la question 9 journalise vers nflog (`log … grou
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Tests avant le pare-feu"),
+            hash="f98bfc4ef14ed62a",
             description=tr("""
 Depuis `m1`, vérifiez que tout fonctionne : les serveurs de test de `m2` (`{m2}`), `m3` (`{m3}`)
 et `ext1` (`{ext1}`, à travers `gw`) en HTTP (`curl http://m2/`, `curl http://m3:8080/`,
@@ -2055,6 +2057,7 @@ ruleset` n'affiche rien : le jeu de règles est vide, tout passe. `ss -tulnp` mo
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Politique par défaut"),
+            hash="260e3ca2383cb788",
             description=tr("""
 Sur `m1`, créez une table **`filter`** de la famille **`inet`** et, dedans, une chaîne de base
 **`input`** de type `filter`, accrochée au hook `input`, de priorité 0 et de politique **`drop`**
@@ -2108,6 +2111,7 @@ essais de la question 1 **depuis `m1`** (`curl -m 3 http://m2/`, `echo bonjour |
         self.question_dummy(
             section=self.section(0),
             title=tr("Filtrage par interface : la boucle locale"),
+            hash="2d39d3b4e7e4d2e2",
             description=tr("""
 Sur `m1`, essayez `curl -m 3 http://127.0.0.1/` : le serveur de test de `m1` elle-même ne répond
 plus, car les paquets locaux passent par `output` **puis** par `input`, via l'interface `lo`
@@ -2148,6 +2152,7 @@ tête : sans elle, les services locaux (bases de données, résolveur, X11…) n
         self.question_dummy(
             section=self.section(0),
             title=tr("Filtrage par protocole : ICMP"),
+            hash="c82298c274408ed8",
             description=tr("""
 Ajoutez à la chaîne `input` de `m1` une règle acceptant les paquets ICMP de type **`echo-reply`**
 (les réponses aux `ping`, critère `icmp type` ; `nft describe icmp type` liste les types).
@@ -2196,6 +2201,7 @@ réponse est `established`), mais la règle explicite reste.
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Filtrage par protocole et adresse source : UDP"),
+            hash="3282e30672aee614",
             description=tr("""
 `ext1` (`{ext1}`) joue le rôle d'un serveur de l'extérieur que `m1` interroge en UDP (comme un
 serveur DNS). Ajoutez à la chaîne `input` de `m1` une règle acceptant **tous les paquets UDP venant
@@ -2257,6 +2263,7 @@ bonne réponse au besoin « recevoir les réponses à mes requêtes » ; celle-c
         q6 = self.question_form(
             section=self.section(0),
             title=tr("Différence entre drop et reject"),
+            hash="29afd008751f17ac",
             description=tr("""
 Ajoutez à la chaîne `input` de `m1` une règle **rejetant** (`reject`) tous les paquets venant de
 `m2` (`{m2}`) ; ceux de `m3` (`{m3}`) restent détruits par la politique `drop`. Comparez, en lisant
@@ -2328,6 +2335,7 @@ part vers `m2`, pas vers le processus `curl`), celui de `m3` est détruit.
         self.question_dummy(
             section=self.section(0),
             title=tr("Autoriser les connexions initiées localement"),
+            hash="7459c1dff9ea9fce",
             description=tr("""
 Insérez **en première position** de la chaîne `input` de `m1` la règle à états
 `ct state established,related accept` (`nft insert rule …`, sections @@ref:conntrack@@ et
@@ -2386,6 +2394,7 @@ qu'elle accepte aussi ses requêtes ; on la garde pour l'évaluation.
         self.question_dummy(
             section=self.section(0),
             title=tr("Filtrage par protocole et port : ouvrir un service"),
+            hash="081281e9d06d1f58",
             description=tr("""
 Vérifiez depuis `m1` que son propre serveur de test répond sur les ports 80 et 8080
 (`curl http://127.0.0.1/`, `curl http://127.0.0.1:8080/`). Autorisez à présent les connexions TCP
@@ -2440,6 +2449,7 @@ sans réponse pour `m3` et `ext1`.
         q9 = self.question_form(
             section=self.section(0),
             title=tr("Journal des paquets et chaîne nommée"),
+            hash="6a195a54c0888cf1",
             description=tr("""
 **(a)** Ajoutez en fin de chaîne `input` une règle qui **journalise** les paquets qui vont être
 détruits : `log prefix "input drop: " group {group}` (section @@ref:logging@@ des Informations ; dans le
@@ -2518,6 +2528,7 @@ n'affiche que les premiers (une seule ligne si des paquets détruits juste avant
         q10 = self.question_form(
             section=self.section(0),
             title=tr("Filtrer ce qui sort : la chaîne output"),
+            hash="5f792a319c111434",
             description=tr("""
 Jusqu'ici `m1` émet ce qu'elle veut : seule sa chaîne `input` filtre. On contrôle maintenant ce
 qu'elle **émet**, dans une chaîne de base accrochée au hook **`output`** (section @@ref:output@@
@@ -2675,6 +2686,7 @@ répondrait plus à personne.
         q11 = self.question_form(
             section=self.section(0),
             title=tr("Ensembles nommés : une liste noire"),
+            hash="3f46bd4c54bf6d19",
             description=tr("""
 `ext3` (`{host}`) et toutes les machines du réseau `guest` (`{net}`, où se trouve `guest1`) ne
 doivent plus rien obtenir de `m1`, pas même son port {open}. Plutôt qu'une règle par adresse, on
@@ -2762,6 +2774,7 @@ consulte), et les recréer. Placée en tête, avant la règle à états, la règ
         q12 = self.question_form(
             section=self.section(0),
             title=tr("Un ensemble de ports pour la sortie"),
+            hash="0c64c797fab9a9ee",
             description=tr("""
 Un ensemble ne contient pas forcément des adresses. Toutes les machines servent aussi leur page de
 test sur le port TCP **{set_port}**, que la chaîne `output` de `m1` refuse pour l'instant (depuis
@@ -2829,6 +2842,7 @@ filter output handle N tcp dport @{name} accept`. La règle garde sa place et so
         q13 = self.question_form(
             section=self.section(0),
             title=tr("Associations adresse . port : une liste blanche"),
+            hash="051bad66d25f6604",
             description=tr("""
 Le port {first_port} de `m1` n'est ouvert à personne, son port {second_port} non plus. On veut
 ouvrir le port {first_port} à `{first}` (`{first_address}`) et le port {second_port} à `{second}`
@@ -2905,6 +2919,7 @@ la rejetterait.
         q14 = self.question_form(
             section=self.section(0),
             title=tr("Bonus — ensemble dynamique : bannir les curieux"),
+            hash="a7b1ad1938916674",
             description=tr("""
 Personne n'a de raison de se connecter au port TCP {trap} (telnet) de `m1` : celui qui essaie
 explore la machine. On veut le **bannir pendant {seconds} secondes** : pendant ce temps, tout ce

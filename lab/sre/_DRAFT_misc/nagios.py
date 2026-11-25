@@ -1037,6 +1037,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="7c8878478c98e299",
             description=tr("""
 Lisez l'onglet **Informations** : il présente Nagios, ses greffons, ses objets, NRPE, les notifications
 et les contrôles passifs. Vous installez la supervision d'une petite entreprise sur **`monitor`**.
@@ -1132,6 +1133,7 @@ projet.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Lancer des greffons, lire leur résultat"),
+            hash="9d05ba0e7e74e198",
             description=tr("""
 Sections @@ref:architecture@@ et @@ref:plugins@@ de l'onglet Informations. Sur `monitor`, les greffons
 sont dans `/usr/lib/nagios/plugins/`. Lancez-les **à la main** et regardez à chaque fois la première
@@ -1201,6 +1203,7 @@ Les gabarits ont `check_interval 0.5`, soit 30 secondes.
         self.question_dummy(
             section=self.section(0),
             title=tr("Déclarer les hôtes, leurs dépendances, un groupe"),
+            hash="94986555bb2b535f",
             description=tr("""
 Section @@ref:objects@@ et @@ref:states@@ de l'onglet Informations. Dans un fichier de
 `/etc/nagios4/conf.d/` :
@@ -1245,6 +1248,7 @@ Le gabarit `dmz-server` évite de répéter `parents` et `hostgroups`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Des services, une commande à soi, un groupe de services"),
+            hash="2925fcce023801bc",
             description=tr("""
 Section @@ref:objects@@ de l'onglet Informations. Les commandes fournies par Debian sont dans
 `/etc/nagios-plugins/config/` : lisez `ping.cfg`, `ssh.cfg`, `tcp_udp.cfg` et `http.cfg`. Tous vos
@@ -1301,6 +1305,7 @@ Un service déclaré avec `hostgroup_name` vaut pour tous les hôtes du groupe.
         self.question_dummy(
             section=self.section(0),
             title=tr("Charge, disque et processus par NRPE"),
+            hash="b3cf6ac8e2342ddb",
             description=tr("""
 Section @@ref:nrpe@@ de l'onglet Informations. L'agent NRPE tourne déjà sur `web1` et `db1`, avec la
 configuration de Debian.
@@ -1368,6 +1373,7 @@ check_command   check_nrpe!check_procs
         q5 = self.question_form(
             section=self.section(0),
             title=tr("L'état d'une interface du routeur"),
+            hash="45d25d318c017618",
             description=tr("""
 Section @@ref:snmp@@ de l'onglet Informations. Le routeur n'a pas d'agent NRPE, mais un agent **SNMP**
 qui répond à la communauté `{community}` (SNMPv2c).
@@ -1433,6 +1439,7 @@ define service {{
         self.question_dummy(
             section=self.section(0),
             title=tr("Un greffon pour la file d'attente de la base"),
+            hash="67cf35b8f327d4e1",
             description=tr("""
 Section @@ref:writing@@ de l'onglet Informations. Sur `db1`, le fichier `{queue_file}` contient le
 nombre de travaux en attente dans la base. Aucun greffon existant ne le lit : écrivez-le.
@@ -1495,6 +1502,7 @@ puis `systemctl restart nagios-nrpe-server` ; dans Nagios : `check_command check
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Prévenir l'astreinte par SMS"),
+            hash="75b3e3d358d895dd",
             description=tr("""
 Section @@ref:notifications@@ de l'onglet Informations. L'entreprise prévient son astreinte par SMS,
 avec la commande `{sms} NUMERO "message"` (essayez-la, puis lisez `{outbox}`).
@@ -1567,6 +1575,7 @@ options).
         self.question_dummy(
             section=self.section(0),
             title=tr("La sauvegarde : un résultat attendu, pas contrôlé"),
+            hash="0da8269da7085902",
             description=tr("""
 Section @@ref:passive@@ de l'onglet Informations. La sauvegarde nocturne de `db1` signale elle-même sa
 fin à Nagios. Nagios ne peut pas la « contrôler » : il attend son résultat, et doit s'inquiéter s'il

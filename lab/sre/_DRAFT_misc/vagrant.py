@@ -1110,6 +1110,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="1d9104bca6bfe33c",
             description=tr("""
 Lisez l'onglet **Informations** : il présente Vagrant (architecture, Vagrantfile, boxes, cycle de
 vie, fournisseur Docker, réseau, dossiers synchronisés, provisionnement, plusieurs machines,
@@ -1164,6 +1165,7 @@ les machines.
         self.question_dummy(
             section=self.section(0),
             title=tr("Une première machine"),
+            hash="8ab5e18bce139d83",
             description=tr("""
 Dans **`{root}/hello`**, écrivez un `Vagrantfile` (sections @@ref:vagrantfile@@ et
 @@ref:lifecycle@@) pour une machine (le nom par défaut, `default`) :
@@ -1191,6 +1193,7 @@ puis `cd {root}/hello && vagrant up`.
         q_box = self.question_form(
             section=self.section(1),
             title=tr("La version de la box"),
+            hash="853583a6aebc6645",
             description=tr("""
 Quelle est la version de la box `{box}` installée sur `dev` ? @@{{box_version:[0-9][0-9.]*}}@@
 """).format(box=BOX_NAME)
@@ -1206,6 +1209,7 @@ Quelle est la version de la box `{box}` installée sur `dev` ? @@{{box_version:[
         q_life = self.question_form(
             section=self.section(1),
             title=tr("Le cycle de vie"),
+            hash="1f35469706730311",
             description=tr("""
 Quelle commande, lancée dans le répertoire d'un projet :
 
@@ -1250,6 +1254,7 @@ Quelle commande, lancée dans le répertoire d'un projet :
         self.question_dummy(
             section=self.section(0),
             title=tr("Un serveur web provisionné"),
+            hash="56f642b437041594",
             description=tr("""
 Dans **`{root}/web`**, la page d'accueil du site est fournie : `site/index.html`. Écrivez un
 `Vagrantfile` pour une machine nommée **`web`** (`config.vm.define`, nom d'hôte `web`) :
@@ -1280,6 +1285,7 @@ premiers ne sont pas rejoués).
         q_prov = self.question_form(
             section=self.section(1),
             title=tr("Quand le provisionnement s'exécute-t-il ?"),
+            hash="b54968b9ecc32006",
             description=tr("""
 - Après `vagrant halt` puis `vagrant up` d'une machine déjà provisionnée, les provisionneurs sont : @@{{after_restart:>{p}}}@@
 - La commande qui rejoue tous les provisionneurs d'une machine qui tourne, sans la redémarrer : @@{{rerun:>{r}}}@@
@@ -1319,6 +1325,7 @@ premiers ne sont pas rejoués).
         self.question_dummy(
             section=self.section(0),
             title=tr("Un répartiteur et deux serveurs"),
+            hash="c90d3289bb5056e8",
             description=tr("""
 Dans **`{root}/cluster`**, écrivez **un** `Vagrantfile` pour trois machines sur un **réseau
 privé** (sections @@ref:network@@ et @@ref:multi@@) :
@@ -1386,6 +1393,7 @@ Le fournisseur Docker crée le réseau `vagrant_network_{subnet}` (`docker netwo
         self.question_dummy(
             section=self.section(0),
             title=tr("Provisionner avec Ansible"),
+            hash="0134e0663f4c2713",
             description=tr("""
 Dans **`{root}/provision`**, le playbook `site.yml` est fourni : lisez-le. Il configure les
 machines du groupe **`{group}`** et attend trois variables. Écrivez un `Vagrantfile` pour une
@@ -1409,6 +1417,7 @@ Le playbook doit se dérouler sans erreur (`PLAY RECAP` : `failed=0`). S'il faut
         q_inv = self.question_form(
             section=self.section(1),
             title=tr("L'inventaire de Vagrant"),
+            hash="0748a2823cd53ee6",
             description=tr("""
 - Le chemin du fichier d'inventaire que Vagrant a généré pour `ansible-playbook` : @@{{inventory:[^ ]+}}@@
 - Avec le provisionneur `ansible_local` au lieu de `ansible`, `ansible-playbook` s'exécute : @@{{local:>{c}}}@@
@@ -1461,6 +1470,7 @@ Le playbook doit se dérouler sans erreur (`PLAY RECAP` : `failed=0`). S'il faut
         self.question_dummy(
             section=self.section(0),
             title=tr("Le code sur l'hôte, l'exécution dans la machine"),
+            hash="6bc7ecb46d1e8371",
             description=tr("""
 Dans **`{root}/sync`**, écrivez un `Vagrantfile` pour une machine (le nom par défaut) dont
 (sections @@ref:synced@@ et @@ref:docker@@) :
@@ -1511,6 +1521,7 @@ Un changement de dossier ou de nom sur une machine existante demande `vagrant re
         self.question_dummy(
             section=self.section(0),
             title=tr("Une machine sur le réseau local"),
+            hash="13e724ece4fa658f",
             description=tr("""
 Dans **`{root}/kiosk`**, écrivez un `Vagrantfile` pour une machine (le nom par défaut, nom d'hôte
 `kiosk`) qui apparaît **directement sur le réseau `lan`**, comme un poste de plus (section
@@ -1538,6 +1549,7 @@ Sans les deux options `docker_network__*`, Vagrant pose les deux questions au cl
         q_kiosk = self.question_form(
             section=self.section(1),
             title=tr("Et depuis dev ?"),
+            hash="99845253b23d52e0",
             description=tr("""
 `dev` ne joint pas `{ip}` alors que `client` la joint. Pourquoi ? @@{{why:>{c}}}@@
 """).format(ip=kiosk_ip, c=why_choices)
@@ -1584,6 +1596,7 @@ Sans les deux options `docker_network__*`, Vagrant pose les deux questions au cl
         self.question_dummy(
             section=self.section(0),
             title=tr("Fabriquer et versionner une box"),
+            hash="d89075adb25eeda6",
             description=tr("""
 Dans **`{root}/boxes`**, fabriquez la box **`{box}`** en deux versions, publiée par un catalogue
 local (section @@ref:boxes@@ ; inspirez-vous de `{box_dir}`) :
@@ -1648,6 +1661,7 @@ et `{root}/boxes/app/Vagrantfile` :
         self.question_dummy(
             section=self.section(0),
             title=tr("Agir à chaque démarrage"),
+            hash="7d69cbeae71b6bd6",
             description=tr("""
 Dans **`{root}/triggers`**, écrivez un `Vagrantfile` pour deux machines, **`{m0}`** et **`{m1}`**
 (noms d'hôtes identiques), avec deux déclencheurs **après `up`** pour toutes les machines (section
@@ -1694,6 +1708,7 @@ Démarrez les deux machines et vérifiez le journal.
         self.question_dummy(
             section=self.section(0),
             title=tr("Une flotte décrite en YAML"),
+            hash="464c9f1a41e9e777",
             description=tr("""
 Dans **`{root}/fleet`**, le fichier `machines.yml` décrit une flotte de machines (un nom et une
 adresse chacune). Écrivez un `Vagrantfile` qui **lit ce fichier** (section @@ref:ruby@@) et crée

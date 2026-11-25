@@ -990,6 +990,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="1604c9859727c459",
             description=tr("""
 Lisez l'onglet **Informations** : il présente IPsec (ESP, modes, associations de sécurité, XFRM),
 IKEv2 (échanges, authentification, traffic selectors, NAT), strongSwan (`swanctl`, fichiers,
@@ -1066,6 +1067,7 @@ ce projet ; les fichiers de configuration complets y figurent.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Deux SA et deux politiques avec `ip xfrm`"),
+            hash="52e5df2891c6f128",
             description=tr("""
 Avant tout démon IKE : une protection ESP posée **à la main** dans le noyau, pour voir ce qu'IKE
 automatisera. Entre `gwa` ({gwa_wan}) et `gwb` ({gwb_wan}), en **mode transport**, pour le
@@ -1178,6 +1180,7 @@ Sur `gwb` :
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Le tunnel lana ↔ lanb avec strongSwan"),
+            hash="72a1895152cac2cd",
             description=tr("""
 Le site A ({lana}) et le site B ({lanb}) doivent communiquer à travers un **tunnel** ESP négocié
 par **IKEv2**, d'abord authentifié par une **clé partagée** (PSK, première question).
@@ -1333,6 +1336,7 @@ démon tourne déjà), `sysctl -w net.ipv4.ip_forward=1` et `echo 'net.ipv4.ip_f
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Une CA, deux certificats, `auth = pubkey`"),
+            hash="09f3fbfdc5e49495",
             description=tr("""
 Une clé partagée par couple de passerelles ne passe pas à l'échelle : chaque passerelle va
 prouver son identité avec un **certificat** signé par une **autorité de certification** (CA) que
@@ -1446,6 +1450,7 @@ côtés, `swanctl --terminate --ike siteb` puis `swanctl --initiate --child lans
         q4 = self.question_form(
             section=self.section(0),
             title=tr("gwa en serveur de nomades, laptop en client"),
+            hash="b4786c4fb1419838",
             description=tr("""
 Le poste `laptop` est à l'hôtel, derrière la `box` qui fait du NAT : il n'a ni adresse publique
 ni adresse connue d'avance. Il va s'authentifier comme **utilisateur** (EAP-MD5, compte `laptop`,
@@ -1576,6 +1581,7 @@ mauvais mot de passe dans `secrets` de `laptop` ce que dit le journal de chaque 
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Élargir les sélecteurs, puis tout faire passer par le VPN"),
+            hash="6472f424c0ffa71e",
             description=tr("""
 **1. Le nomade vers le site B.** Depuis `laptop`, `ping {m2}` : par où part le paquet (`ip
 route get {m2}`) ? Sur `laptop`, mettez `remote_ts = {lana}, {lanb}` ; sur `gwa`, `local_ts =
@@ -1693,6 +1699,7 @@ sur `gwb`, `remote_ts = {lana}, {pool}` :
         q6 = self.question_form(
             section=self.section(0),
             title=tr("Ne laisser entrer que IKE, ESP et le trafic déchiffré"),
+            hash="e02b484616f3a988",
             description=tr("""
 `gwa` accepte aujourd'hui tout ce qui arrive du `wan`. Écrivez sur `gwa` un pare-feu nftables
 (`/etc/nftables.conf`, chargé par `nft -f`, qui garde la règle de NAT de la partie 5) :
@@ -1771,6 +1778,7 @@ devient le `ping` de `laptop` vers `m1`, et `swanctl --list-sas`.
         q7 = self.question_form(
             section=self.section(0),
             title=tr("rekey_time, dpd_delay, un compte en moins"),
+            hash="a4cf8a8f04dc72a2",
             description=tr("""
 **1. Renouvellement des clés.** Sur `gwa` et `gwb`, mettez `rekey_time = 10m` dans l'enfant du
 tunnel site à site (`swanctl --load-all` puis réinitiez). Lisez `swanctl --list-sas` (`rekeying

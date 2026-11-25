@@ -1561,6 +1561,7 @@ box). Les noms `{pbx_name}` et `{pbx2_name}` sont connus de toutes les machines 
         # ---- the organisation of the lab
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="874d61fccb658045",
             description=tr("""
 Lisez l'onglet **Informations** : il présente SIP, SDP, RTP, Asterisk et le téléphone logiciel
 baresip ; les questions y renvoient.
@@ -1651,6 +1652,7 @@ aboutit (un PBX vide ne rapporte rien). Le journal de `probe_office` est
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Le trafic d'un téléphone"),
+            hash="6a41c10c8a847293",
             description=tr("""
 Un téléphone est déjà en service sur le site : son compte est le seul que `pbx` connaisse pour
 l'instant (ouvrez `/etc/asterisk/pjsip.conf` : il vous servira de modèle), et il appelle
@@ -1729,6 +1731,7 @@ tirées au sort pour chaque instance.
         self.question_dummy(
             section=self.section(0),
             title=tr("Créer les comptes et enregistrer les téléphones"),
+            hash="3087e555a364f186",
             description=tr("""
 Créez les comptes des quatre postes du bureau, 1001 à 1004 (section @@ref:pjsip@@ de l'onglet
 Informations ; le compte de démonstration de `pjsip.conf` vous sert de modèle). Chaque compte,
@@ -1794,6 +1797,7 @@ puis `asterisk -rx "pjsip reload"`. Dans `~/.baresip/accounts`, sur `phone1` et 
         self.question_dummy(
             section=self.section(0),
             title=tr("Appels internes, identité de l'appelant, test d'écho"),
+            hash="a5078055a1c48c74",
             description=tr("""
 Écrivez le plan de numérotation des postes dans `/etc/asterisk/extensions.conf` (section
 @@ref:dialplan@@ de l'onglet Informations), puis rechargez-le (`asterisk -rx "dialplan reload"`).
@@ -1853,6 +1857,7 @@ puis `dialplan reload` et `pjsip reload`.
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Maîtriser le média"),
+            hash="989a1baec9f4bd82",
             description=tr("""
 Quatre réglages du média (sections @@ref:sdp@@, @@ref:rtp@@, @@ref:media@@ et @@ref:qos@@ de
 l'onglet Informations), à faire dans le modèle des postes et dans `/etc/asterisk/rtp.conf`.
@@ -1932,6 +1937,7 @@ quatre sur le PBX (un port RTP et un port RTCP pour chacun des deux interlocuteu
         self.question_dummy(
             section=self.section(0),
             title=tr("Messagerie vocale et serveur vocal interactif"),
+            hash="71061b4096da7edc",
             description=tr("""
 **Messagerie** (section @@ref:voicemail@@ de l'onglet Informations).
 
@@ -2003,6 +2009,7 @@ et le menu :
         self.question_dummy(
             section=self.section(0),
             title=tr("Un trunk SIP entre les deux sites"),
+            hash="c89039f3cc47131c",
             description=tr("""
 Le site B a son propre autocommutateur, `pbx2`, que son administrateur a déjà configuré. Reliez
 les deux sites par un trunk SIP (section @@ref:trunk@@ de l'onglet Informations). Voici ce qu'il
@@ -2080,6 +2087,7 @@ et un contexte de plus :
         self.question_dummy(
             section=self.section(0),
             title=tr("Des téléphones derrière un NAT"),
+            hash="8c2685c2d6c6d449",
             description=tr("""
 Deux postes sont en télétravail derrière une box qui traduit les adresses : le 1005 (`laptop`) et
 le {home_phone} (le téléphone d'un collègue, qui décroche). Depuis leur réseau privé `{home}`, ils
@@ -2152,6 +2160,7 @@ Sur `laptop`, dans `~/.baresip/accounts` :
         self.question_dummy(
             section=self.section(0),
             title=tr("Signalisation et média chiffrés"),
+            hash="bdbe5a8481c98f16",
             description=tr("""
 Chiffrez la signalisation et le média d'un poste (section @@ref:security@@ de l'onglet
 Informations).

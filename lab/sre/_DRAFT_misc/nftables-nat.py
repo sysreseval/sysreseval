@@ -1288,6 +1288,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="9ab19156e8c00e18",
             description=tr("""
 Lisez l'onglet **Informations** : il présente la traduction d'adresses avec nftables (suivi de
 connexion, chaînes de type `nat`, SNAT et masquerade, DNAT et redirection de port, NAT statique,
@@ -1409,6 +1410,7 @@ l'évaluation finale ; ceux des valeurs tapées (`q_…_typed`, `q_publish`, `q_
         self.question_dummy(
             section=self.section(0),
             title=tr("Sortir d'un réseau privé : masquerade"),
+            hash="66069fbd702c5c26",
             description=tr("""
 **Site 1** : `pc1` (`{pc1}`) dans le réseau privé `lan1` (`{lan}`), derrière **`r1`** (`eth0` :
 `{gw}`, `eth1` : `{wan}`). Le jeu de règles de `r1` est vide.
@@ -1431,6 +1433,7 @@ Barème de la partie : `masquerade` 6, `masquerade_scope` 3, formulaires `q_with
         q11 = self.question_form(
             section=self.section(1),
             title=tr("Sans traduction"),
+            hash="1d9ae08ec217d66e",
             description=tr("""
 **(a)** Sur `ext1`, lancez une capture : `tcpdump -n -i eth0 tcp port {svc}`.
 
@@ -1472,6 +1475,7 @@ répondre à une adresse privée. `curl` attend ses 5 secondes : `code 28`.
         self.question_dummy(
             section=self.section(1),
             title=tr("La règle masquerade"),
+            hash="a6c83e62075f47e5",
             description=tr("""
 Sur **`r1`** :
 
@@ -1531,6 +1535,7 @@ sans aucun critère, qui traduit aussi ce qui entre (`pc1` voit alors `ext2` sou
         q13 = self.question_form(
             section=self.section(1),
             title=tr("Observer la traduction"),
+            hash="3aec57008bec44b2",
             description=tr("""
 **(a)** Sur `pc1`, `curl -s -m 5 http://{ext1}:{svc}/` : lisez `CLIENT_IP=` dans la réponse de
 `ext1`.
@@ -1582,6 +1587,7 @@ paquet, est inscrite dans l'entrée de la connexion, et les réponses sont tradu
         self.question_dummy(
             section=self.section(0),
             title=tr("NAT statique : une adresse publique pour un serveur"),
+            hash="d6ecc0e9e8857044",
             description=tr("""
 **Site 2** : `srv2` (`{srv2}`) et `pc2` (`{pc2}`) dans `lan2` (`{lan}`), derrière **`r2`** (`eth0` :
 `{gw}`). `r2` a **deux adresses publiques** sur `eth1` : `{wan}`, son adresse principale, et
@@ -1610,6 +1616,7 @@ Barème de la partie : `static_in` 5, `static_out` 5, `static_scope` 2, formulai
         self.question_dummy(
             section=self.section(1),
             title=tr("Ce qui entre : dnat"),
+            hash="42fbd7f3106002eb",
             description=tr("""
 **(a)** L'état de départ : sur `r2`, `ip -4 addr show dev eth1` (les deux adresses) et `nft list
 ruleset`. Depuis `ext2`, `curl -s -m 5 http://{public2}/ ; echo "code $?"` : échec immédiat, rien
@@ -1653,6 +1660,7 @@ ce qui vise `{wan}`) ; la règle écrite dans la chaîne `postrouting`.
         q22 = self.question_form(
             section=self.section(1),
             title=tr("Ce qui sort : snat, et l'ordre des règles"),
+            hash="aae41ac981743fe6",
             description=tr("""
 **(a)** Depuis `srv2`, `curl -s -m 5 http://{ext1}:{svc}/` : sous quelle adresse `ext1` voit-il
 `srv2` pour l'instant ? C'est l'effet de la règle `masquerade` déjà en place.
@@ -1726,6 +1734,7 @@ celle de la chaîne donnée : elle ne décide pas non plus.
         self.question_dummy(
             section=self.section(0),
             title=tr("Publier un serveur : redirection de port"),
+            hash="386886d49bcfb511",
             description=tr("""
 **Site 3** : le serveur `web3` (`{web3}`) et le poste `pc3` (`{pc3}`) dans `lan3` (`{lan}`),
 derrière **`r3`** (`eth0` : `{gw}`, `eth1` : `{wan}`). Le jeu de règles de `r3` est vide.
@@ -1749,6 +1758,7 @@ formulaires `q_publish` 2 et `q_hairpin` 2.
         q31 = self.question_form(
             section=self.section(1),
             title=tr("Depuis Internet"),
+            hash="a49656c054ec64d3",
             description=tr("""
 **(a)** Depuis `ext2` : `curl -s -m 5 http://{wan}:{fwd}/ ; echo "code $?"`. Échec immédiat : rien
 n'écoute sur le port {fwd} de `r3`.
@@ -1804,6 +1814,7 @@ Pièges : la règle écrite dans une chaîne `postrouting` (`nft` refuse `dnat` 
         self.question_dummy(
             section=self.section(1),
             title=tr("Depuis le routeur lui-même"),
+            hash="4f2f7e000c9aae6a",
             description=tr("""
 **(a)** Sur `r3` : `curl -s -m 5 http://{wan}:{fwd}/ ; echo "code $?"`. Échec immédiat, alors que
 la règle de la question précédente est en place : ce que `r3` émet lui-même ne passe pas par
@@ -1843,6 +1854,7 @@ Pièges : `iifname` dans la règle ; croire que la chaîne `prerouting` suffit.
         q33 = self.question_form(
             section=self.section(1),
             title=tr("Depuis le réseau interne : hairpin"),
+            hash="b0aadb90bc8a4d54",
             description=tr("""
 `pc3` veut joindre le serveur par son adresse publique, comme tout le monde (section
 @@ref:hairpin@@).
@@ -1926,6 +1938,7 @@ par habitude (ces connexions sortent par `eth0`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Répartir la charge entre deux serveurs"),
+            hash="1d9dee0d16ba006a",
             description=tr("""
 **Site 4** : deux serveurs web identiques, `web4a` (`{web4a}`) et `web4b` (`{web4b}`), dans `lan4`
 (`{lan}`), derrière **`r4`** (`eth0` : `{gw}`, `eth1` : `{wan}`). Le jeu de règles de `r4` est
@@ -1948,6 +1961,7 @@ Barème de la partie : `load_balancing` 9, formulaires `q_balancing_typed` 1 et 
         q41 = self.question_form(
             section=self.section(1),
             title=tr("Le tourniquet numgen"),
+            hash="2a8dcad3638876a9",
             description=tr("""
 **(a)** Sur `r4`, créez une table `ip nat`, une chaîne de base `prerouting` de type `nat`, et une
 règle `dnat to numgen inc mod 2 map {{ … }}` pour ce qui arrive par `eth1` sur le port TCP {vip} :
@@ -2022,6 +2036,7 @@ même serveur et ne rapporte que 4 points sur 9, comme un simple `dnat to {web4a
         self.question_dummy(
             section=self.section(0),
             title=tr("Proxy transparent"),
+            hash="d38cb0fd9a10b74a",
             description=tr("""
 **Site 5** : les postes `pc5` (`{pc5}`) et `admin` (`{admin}`) dans `lan5` (`{lan}`), derrière
 **`r5`** (`eth0` : `{gw}`, `eth1` : `{wan}`). Sur `r5`, un serveur de test nommé `proxy` écoute sur
@@ -2051,6 +2066,7 @@ Barème de la partie : `redirect` 6, `redirect_lan_only` 2, `proxy_exception` 5,
         q51 = self.question_form(
             section=self.section(1),
             title=tr("Intercepter le HTTP qui sort"),
+            hash="9f9dd3104b034140",
             description=tr("""
 **(a)** Avant de rien changer : depuis `pc5`, `curl -s -m 5 http://{ext1}/`. Qui répond, et sous
 quelle adresse `ext1` voit-il `pc5` ?
@@ -2113,6 +2129,7 @@ alors `SERVER=proxy` en visant `{wan}`) ; `oifname` n'a pas de sens en `prerouti
         q52 = self.question_form(
             section=self.section(1),
             title=tr("Une exception : l'ordre des règles"),
+            hash="6683204a2c1f3a2f",
             description=tr("""
 **(a)** Depuis `admin` (`{admin}`), `curl -s -m 5 http://{ext1}/` : le proxy répond, comme à
 `pc5`.
@@ -2175,6 +2192,7 @@ Piège : la règle ajoutée avec `nft add rule`, donc après le `redirect`, qui 
         self.question_dummy(
             section=self.section(0),
             title=tr("Le NAT n'est pas un pare-feu"),
+            hash="c4e4af64c09d7e1c",
             description=tr("""
 **Site 6** : le serveur `srv6` (`{srv6}`) dans `lan6` (`{lan}`), derrière **`r6`** (`eth0` : `{gw}`,
 `eth1` : `{wan}`). `srv6` a deux services : son site web (port 80), **publié** sur le port {fwd} de
@@ -2204,6 +2222,7 @@ formulaires `q_intrusion_typed` 1, `q_intrusion` 1 et `q_forward` 2.
         q61 = self.question_form(
             section=self.section(1),
             title=tr("Entrer malgré le NAT"),
+            hash="d1bcefc3caf82168",
             description=tr("""
 **(a)** Ce qui fonctionne déjà : depuis `ext2`, `curl -s -m 5 http://{wan}:{fwd}/` (le service
 publié répond) ; depuis `srv6`, `curl -s -m 5 http://{ext1}:{svc}/` (`srv6` sort sous l'adresse de
@@ -2251,6 +2270,7 @@ la concerne pas, elle repart telle quelle. `curl` renvoie `SERVER=intranet`, `SE
         q62 = self.question_form(
             section=self.section(1),
             title=tr("Filtrer ce qui traverse le routeur"),
+            hash="86b6ad42d24aa94e",
             description=tr("""
 Sur `r6`, **sans toucher à la table `ip nat`**, créez une table `ip filter` et une chaîne de base
 `forward` de type `filter` (priorité `filter`) dont la **politique est `drop`** (section

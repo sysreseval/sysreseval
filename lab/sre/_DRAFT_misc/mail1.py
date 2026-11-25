@@ -1286,6 +1286,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="0f29df747fa62bbf",
             description=tr("""
 Lisez l'onglet **Informations** : il présente le courrier électronique, le protocole SMTP, Postfix et
 Dovecot. Vous administrez le courrier de plusieurs domaines :
@@ -1357,6 +1358,7 @@ projet.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Le protocole SMTP à la main"),
+            hash="8c405ccf70476257",
             description=tr("""
 Le serveur `mx2.beta.tp` reçoit le courrier de `beta.tp`. Depuis `pc1` :
 
@@ -1452,6 +1454,7 @@ ports `{port_smtp}`, `{port_submission}`, `{port_imap}`, `{port_imaps}`.
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Le DNS du courrier : l'enregistrement MX de alpha.tp"),
+            hash="e3aee6deff2388ef",
             description=tr("""
 Le courrier destiné à `alpha.tp` ne peut pas arriver : le domaine n'a pas d'enregistrement **MX**
 (section @@ref:mx@@ de l'onglet Informations).
@@ -1514,6 +1517,7 @@ puis `unbound-control reload` ; `dig +short MX alpha.tp` doit répondre `10 mx1.
         self.question_dummy(
             section=self.section(0),
             title=tr("Postfix sur mx1 : recevoir et relayer le courrier de alpha.tp"),
+            hash="defddabe2017fb0c",
             description=tr("""
 Faites de `mx1` le serveur de courrier de `alpha.tp` (sections @@ref:postfix@@ et @@ref:relay@@ de l'onglet
 Informations) :
@@ -1599,6 +1603,7 @@ systemctl enable --now postfix
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Poste satellite : pc1 envoie par le relais authentifié du fournisseur"),
+            hash="5880a2ad85e8def0",
             description=tr("""
 `pc1` exécute des tâches automatiques qui envoient du courrier en tant que `root`. Votre fournisseur
 d'accès bloque le port 25 sortant : tout doit passer par son relais **`smtp.isp.tp`**, sur le port
@@ -1715,6 +1720,7 @@ accepte encore `root@alpha.tp` ; avec un mauvais `myorigin` (`root@localhost.loc
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Alias, redirection et adresses étendues sur mx3 (gamma.tp)"),
+            hash="f5f4bd5598127138",
             description=tr("""
 Le serveur `mx3` de `gamma.tp` fonctionne déjà (Postfix, boîtes Maildir, comptes `erin` et `frank`).
 Sur `mx3` (section @@ref:aliases@@ de l'onglet Informations) :
@@ -1807,6 +1813,7 @@ postfix`.
         q6 = self.question_form(
             section=self.section(0),
             title=tr("File d'attente et rapports d'erreur sur mx3"),
+            hash="44ce38ce00ce803c",
             description=tr("""
 Sur `mx3` (section @@ref:queue@@ de l'onglet Informations), envoyez depuis le serveur lui-même
 (`swaks --server 127.0.0.1 ...`, ou `mail`) :
@@ -1889,6 +1896,7 @@ unknown`) ; rapport envoyé par `{bounce_sender}`.
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Lire les boîtes avec IMAP : Dovecot sur mx1"),
+            hash="2f53dc4257385d2c",
             description=tr("""
 Dovecot est installé sur `mx1` mais arrêté (section @@ref:imap@@ de l'onglet Informations) :
 
@@ -1977,6 +1985,7 @@ qu'en TLS).
         self.question_dummy(
             section=self.section(0),
             title=tr("Bonus : dépanner le serveur de zeta.tp"),
+            hash="ba1565efe3ca8316",
             description=tr("""
 Le serveur `mx4` de **`zeta.tp`** a été mal remonté après une migration. Les utilisateurs se
 plaignent : `zoe@zeta.tp` ne reçoit plus rien, l'adresse `contact@zeta.tp` est « inconnue », le serveur

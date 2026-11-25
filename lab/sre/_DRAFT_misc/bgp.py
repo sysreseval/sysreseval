@@ -760,6 +760,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="0f2f9ce69ea0fa34",
             description=tr("""
 Lisez l'onglet **Informations** : il présente BGP (sessions, attributs, choix du meilleur chemin,
 iBGP et réflecteur de routes, politiques de routage), la configuration de FRR avec `vtysh` et les
@@ -847,6 +848,7 @@ lancer une évaluation.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Découverte de BGP sur r1 et ispa"),
+            hash="a79715b4b7db4a5e",
             description=tr("""
 Sur `r1`, ouvrez `vtysh` et explorez la configuration en place (`show running-config`) ainsi que
 les commandes `show ip bgp summary`, `show ip bgp`, `show ip bgp neighbors` et `show ip route`.
@@ -925,6 +927,7 @@ dans une liste) : `decouverte_etat_prefixes` (0,5 : état de la session), `decou
         self.question_dummy(
             section=self.section(0),
             title=tr("Session eBGP entre r3 et ispb"),
+            hash="b540af939825784a",
             description=tr("""
 Sur `ispb`, observez `show ip bgp summary` : la session avec `r3` (`{r3_lb}`) est déjà déclarée
 côté fournisseur mais n'est pas établie. Configurez BGP sur `r3` :
@@ -992,6 +995,7 @@ des deux routeurs et la session `Established`).
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur la session eBGP"),
+            hash="9fe8237741a5327e",
             description=tr("""
 - état de la session vu de `ispb` **avant** la configuration de `r3` : @@{state_before:>Idle|Connect|Active|OpenSent|OpenConfirm|Established}@@
 - `AS_PATH` de la route vers `203.0.113.0/24` sur `r3` : @@{aspath_web:[0-9 ]+}@@ ;
@@ -1075,6 +1079,7 @@ seulement (choix dans une liste) : `ebgp_q_etat_avant`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Sessions iBGP, next-hop-self et trou noir"),
+            hash="b41681b24724ee7b",
             description=tr("""
 `r1` ne connaît que ce que lui annonce `ispa`, `r3` que ce que lui annonce `ispb` : si le lien
 d'un fournisseur tombe, la moitié de l'AS perd l'Internet alors que l'autre fournisseur est
@@ -1156,6 +1161,7 @@ joint `{ispb_netb}`).
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur iBGP"),
+            hash="1251d6a4a9eb0d05",
             description=tr("""
 - distance administrative d'une route iBGP : @@{ad_ibgp:[0-9]+}@@ ; nombre de sessions iBGP
   nécessaires pour mailler complètement un AS de 10 routeurs : @@{sessions10:[0-9]+}@@
@@ -1228,6 +1234,7 @@ une liste) : `ibgp_q_nexthop`, `ibgp_q_r2`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Trafic sortant : préférer ISP B pour l'Internet"),
+            hash="b4e3235263b64de0",
             description=tr("""
 Le préfixe `203.0.113.0/24` est connu par deux chemins d'AS de même longueur (via ISP A et via
 ISP B). Observez sur `r1`, `r2` et `r3` quel chemin est retenu et pourquoi (`show ip bgp
@@ -1304,6 +1311,7 @@ puis `clear bgp {ispb_lb} soft in` (la politique) et `clear bgp {ispb_lb}` (les 
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le choix du meilleur chemin"),
+            hash="0e246706b01cbc12",
             description=tr("""
 - **avant** la modification, critère qui départage les deux chemins sur `r2` :
   @@{crit_r2:>local-preference|longueur de l'AS_PATH|métrique IGP vers le NEXT_HOP|router-id du pair le plus petit|MED}@@
@@ -1401,6 +1409,7 @@ puis `clear bgp {ispb_lb} soft in` (la politique) et `clear bgp {ispb_lb}` (les 
         self.question_dummy(
             section=self.section(0),
             title=tr("Influencer le trafic entrant"),
+            hash="978649f689074080",
             description=tr("""
 Le trafic **entrant** (de `internet` vers `m1`) est décidé par les autres AS. Observez sur
 `inet` (`show ip bgp {block}`) les deux chemins vers le bloc de l'AS 65001 et lequel est
@@ -1448,6 +1457,7 @@ puis `clear bgp {ispa_la} soft out`.
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le trafic entrant"),
+            hash="f3f1965860aeb4ff",
             description=tr("""
 - **avant** la modification, `inet` atteint l'AS 65001 par : @@{{before_via:>ISP A (65100)|ISP B (65200)}}@@,
   critère de choix : @@{{before_crit:>longueur de l'AS_PATH|MED|local-preference|router-id du pair le plus petit}}@@
@@ -1513,6 +1523,7 @@ puis `clear bgp {ispa_la} soft out`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Filtrer les annonces vers les fournisseurs"),
+            hash="b00e8497ecac8516",
             description=tr("""
 Par défaut, un routeur annonce à ses pairs eBGP **tous** ses meilleurs chemins : `r1` annonce à
 `ispa` les routes apprises d'ISP B (`show ip bgp neighbors {ispa_la} advertised-routes` sur
@@ -1562,6 +1573,7 @@ l'iBGP de la partie 3 est en place : sans lui il n'y a rien à filtrer.
         q6 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le filtrage"),
+            hash="40a930d8aeb88607",
             description=tr("""
 - sans filtre, si le lien `lab` tombe, par où passe le trafic de `netb` vers `neta` ?
   @@{lab_down:>par l'AS 65001 (transit involontaire)|par inet (AS 65000) uniquement|nulle part, neta devient injoignable}@@
@@ -1642,6 +1654,7 @@ l'iBGP de la partie 3 est en place : sans lui il n'y a rien à filtrer.
         self.question_dummy(
             section=self.section(0),
             title=tr("Raccorder le client r4 (AS 65300)"),
+            hash="74b2fe03daa8bde9",
             description=tr("""
 L'AS 65001 fournit l'accès à l'Internet au client `r4` (AS 65300, réseau `{net4}`, hôte `m4`),
 raccordé à `r3` par le lien `l34` (`{l34}`).
@@ -1712,6 +1725,7 @@ contient, hors son réseau, que la route par défaut reçue de `{r3_l34}`, insta
         q7 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le client"),
+            hash="b52ea24b27d4083b",
             description=tr("""
 - `r1` apprend `{net4}` : @@{{learn:>par iBGP depuis r3|par eBGP depuis ispa|par OSPF}}@@ ;
   `NEXT_HOP` de cette route sur `r1` : @@{{nexthop:[0-9.]+}}@@
@@ -1784,6 +1798,7 @@ seulement (choix dans une liste) : `client_q_apprentissage` (0,5 : par iBGP depu
         self.question_dummy(
             section=self.section(0),
             title=tr("Remplacer le maillage iBGP par un réflecteur de routes"),
+            hash="4133cb2b3770dd70",
             description=tr("""
 Le maillage complet ne passe pas à l'échelle. Faites de `r2` un **réflecteur de routes** :
 
@@ -1829,6 +1844,7 @@ partie 3).
         q8 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le réflecteur de routes"),
+            hash="1a0fdd685ae8b3f3",
             description=tr("""
 - nombre de sessions iBGP pour 8 routeurs en maillage complet : @@{mesh8:[0-9]+}@@ ;
   avec un seul réflecteur de routes : @@{rr8:[0-9]+}@@

@@ -1192,6 +1192,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="456586e318e310f6",
             description=tr("""
 Lisez l'onglet **Informations** : il présente le routage par politique sous Linux (plusieurs tables
 de routage et les règles `ip rule`, deux fournisseurs d'accès, marques de paquets et de connexions,
@@ -1294,6 +1295,7 @@ bonus 3 (partie 3) + 3 (partie 6).
         self.question_dummy(
             section=self.section(0),
             title=tr("Router selon la source"),
+            hash="fe6d36ba87c23c19",
             description=tr("""
 **Site 1** : deux réseaux privés derrière **`r1`**. `lan1a` (`{lan1a}`, sur `eth0`) est celui du
 **personnel**, avec le poste `pc1a` (`{pc1a}`) ; `lan1b` (`{lan1b}`, sur `eth3`) est celui des
@@ -1320,6 +1322,7 @@ FAI 1), `lans_joined` 4, `router_traffic` 2, formulaire `q_rule_priority` 2 et `
         q11 = self.question_form(
             section=self.section(1),
             title=tr("Lire la base de règles"),
+            hash="8f48aa454b6e6648",
             description=tr("""
 Sur `r1`, avant toute modification :
 
@@ -1345,6 +1348,7 @@ une route par défaut, et elle passe par le FAI 1.
         self.question_dummy(
             section=self.section(1),
             title=tr("Les invités sortent par le FAI 2"),
+            hash="eeb746d59e2d83f2",
             description=tr("""
 1. Créez une **nouvelle table de routage** (un numéro de votre choix, 102 par exemple ; vous pouvez
    lui donner un nom dans `/etc/iproute2/rt_tables`) contenant une route par défaut par le FAI 2
@@ -1376,6 +1380,7 @@ par leur destination. L'élément `source_routing` exige les deux résultats à 
         self.question_dummy(
             section=self.section(1),
             title=tr("Les réseaux du site restent joignables"),
+            hash="9b0969f123da21fc",
             description=tr("""
 1. Sur `pc1b`, interrogez le serveur de test de `pc1a` : `curl -s -m 3 http://{pc1a}/`. Si votre
    table ne contient qu'une route par défaut, la requête échoue. Sur `r1`, suivez le paquet avec
@@ -1429,6 +1434,7 @@ adresses de `{lan1b}`) : il suit la table `main`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Répondre par où la requête est arrivée"),
+            hash="b540823136639119",
             description=tr("""
 **Site 2** : **`r2`** héberge lui-même un service (son serveur de test, port {http}) que l'on doit
 pouvoir joindre **par ses deux adresses publiques** : `{a1}` chez le FAI 1 (`eth1`, passerelle
@@ -1455,6 +1461,7 @@ Barème de la partie : `both_uplinks` 7 (le service répond à `www` sur ses deu
         q21 = self.question_form(
             section=self.section(1),
             title=tr("Observer la panne"),
+            hash="ddee76011cdff17d",
             description=tr("""
 1. Sur `ext` : `curl -s -m 3 http://{a1}/` puis `curl -s -m 3 http://{a2}/`. Le premier répond, pas
    le second.
@@ -1482,6 +1489,7 @@ d'accès un paquet dont la source n'est pas une de ses adresses, et le jette (fi
         self.question_dummy(
             section=self.section(1),
             title=tr("Une table par accès"),
+            hash="a35a78ce2fd6a57e",
             description=tr("""
 1. Créez une table de routage par FAI (101 et 102 par exemple), chacune avec une route par défaut
    par la passerelle de son FAI (`{g1}` par `eth1`, `{g2}` par `eth2`).
@@ -1515,6 +1523,7 @@ route par défaut déplacée vers le FAI 2 réparerait l'une en cassant l'autre.
         self.question_dummy(
             section=self.section(1),
             title=tr("Le réseau local n'y perd rien"),
+            hash="df85a099c483554e",
             description=tr("""
 1. Sur `pc2`, demandez le service de `r2` à son adresse du FAI 2 : `curl -s -m 3 http://{a2}/`. Si
    vos tables ne contiennent qu'une route par défaut, il n'y a plus de réponse, alors qu'il y en
@@ -1556,6 +1565,7 @@ ip route add {lan2} dev eth0 table {t2}
         self.question_dummy(
             section=self.section(0),
             title=tr("Router selon une marque"),
+            hash="a8f9c5d01e3f776a",
             description=tr("""
 **Site 3** : le réseau `lan3` (`{lan3}`, sur `eth0`) et le poste `pc3` (`{pc3}`) derrière **`r3`**
 (`{a1}` chez le FAI 1, `{a2}` chez le FAI 2 ; passerelles `{g1}` et `{g2}`). `www` offre un second
@@ -1590,6 +1600,7 @@ règle `fwmark` dont la table sort par le FAI 2), `flows_split` 10 (le port {bul
         self.question_dummy(
             section=self.section(1),
             title=tr("Marquer, puis router selon la marque"),
+            hash="0df17e8fd2ab5a3b",
             description=tr("""
 1. Dans une table nftables de votre choix (`ip mangle` par exemple), créez une chaîne de type
    `filter` accrochée à `prerouting` avec la priorité `mangle`, et la règle qui pose la marque
@@ -1627,6 +1638,7 @@ ip rule add fwmark {mark} lookup {t2} priority 1000
         q32 = self.question_form(
             section=self.section(1),
             title=tr("Qui jette les réponses ?"),
+            hash="55cf6fd7be3a524e",
             description=tr("""
 1. Sur `r3`, capturez les deux accès (`tcpdump -n -i eth1 tcp port {bulk}` et `tcpdump -n -i eth2
    tcp port {bulk}`) et relancez sur `pc3` le `curl` vers le port {bulk}. Par où sortent les SYN ?
@@ -1666,6 +1678,7 @@ enregistrer la marque dans la connexion (`ct mark set meta mark`), la restaurer 
         self.question_dummy(
             section=self.section(1),
             title=tr("Bonus — le trafic du routeur lui-même"),
+            hash="83696a8b7d9af6ae",
             description=tr("""
 Les connexions que `r3` ouvre lui-même vers le port {bulk} (`curl -s -m 3 http://www:{bulk}/` sur
 `r3`) sortent encore par le FAI 1 : elles ne traversent pas `prerouting`. Faites-les sortir par le
@@ -1715,6 +1728,7 @@ marque posée dans une chaîne d'`output`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Un serveur publié sur deux accès"),
+            hash="5b783be17067ab6c",
             description=tr("""
 **Site 4** : le serveur `web4` (`{web4}`, port {http}) dans le réseau `lan4` (`{lan4}`, sur
 `eth0`), derrière **`r4`** (`{a1}` chez le FAI 1, `{a2}` chez le FAI 2 ; passerelles `{g1}` et
@@ -1749,6 +1763,7 @@ règle n'est lue : tout mécanisme qui laisse `web4` répondre lui-même à `www
         q41 = self.question_form(
             section=self.section(1),
             title=tr("Pourquoi une règle sur la source ne suffit plus"),
+            hash="0d07ffafa9ec1522",
             description=tr("""
 1. Sur `ext` : `curl -s -m 3 http://{a1}:{pub}/` répond (`SERVER=web4`), `curl -s -m 3
    http://{a2}:{pub}/` ne répond pas.
@@ -1777,6 +1792,7 @@ requêtes arrivées par le FAI 1.
         self.question_dummy(
             section=self.section(1),
             title=tr("Marquer la connexion"),
+            hash="80f37056a506da3f",
             description=tr("""
 1. Dans une chaîne de `prerouting` de priorité `mangle`, posez une **marque de connexion** (`ct
    mark`) sur les connexions **nouvelles qui arrivent par `eth2`**, puis recopiez cette marque sur
@@ -1823,6 +1839,7 @@ lui-même, n'ont pas de marque : elles suivent la table `main`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Partager la charge entre les deux accès"),
+            hash="1f51d8a69c0a4339",
             description=tr("""
 **Site 5** : le réseau `lan5` (`{lan5}`, sur `eth0`) et le poste `pc5` (`{pc5}`) derrière **`r5`**
 (`{a1}` chez le FAI 1, `{a2}` chez le FAI 2 ; passerelles `{g1}` et `{g2}`). Le serveur de test de
@@ -1851,6 +1868,7 @@ notée.
         self.question_dummy(
             section=self.section(1),
             title=tr("Une route par défaut à deux chemins"),
+            hash="d1a69ce0ed26c269",
             description=tr("""
 1. Remplacez la route par défaut de `r5` (table `main`) par une route à **deux prochains sauts** :
    `{g1}` par `eth1` avec le poids {w1}, `{g2}` par `eth2` avec le poids {w2} (section
@@ -1881,6 +1899,7 @@ destinations on observe à peu près douze `CLIENT_IP={a1}` et quatre `CLIENT_IP
         self.question_dummy(
             section=self.section(1),
             title=tr("Et si un accès tombe ?"),
+            hash="3d3474e96f6485a4",
             description=tr("""
 Cette question n'est pas notée.
 
@@ -1926,6 +1945,7 @@ d'une destination au-delà du FAI, par chaque accès) qui retire ou remet les ro
         self.question_dummy(
             section=self.section(0),
             title=tr("Des tables étanches : les VRF"),
+            hash="99b791f246d44035",
             description=tr("""
 **Site 6** : **`r6`** relie les réseaux de deux clients qui ne se connaissent pas et qui ont
 choisi **les mêmes adresses**. Le client **bleu** : `blue1` (`{h1}`) sur `eth0`, `blue2` (`{h2}`)
@@ -1958,6 +1978,7 @@ Barème de la partie : `vrf_devices` 4 (deux VRF actives, de tables différentes
         self.question_dummy(
             section=self.section(1),
             title=tr("Deux VRF"),
+            hash="692890521c18089c",
             description=tr("""
 1. Créez deux VRF, `{blue}` avec la table {blue_table} et `{red}` avec la table {red_table} par
    exemple, et activez-les (section @@ref:vrf-create@@).
@@ -1987,6 +2008,7 @@ utilise la VRF par défaut (la table `main`), qui ne connaît aucun des réseaux
         q62 = self.question_form(
             section=self.section(1),
             title=tr("La règle des VRF"),
+            hash="82fdf6d059dd26cb",
             description=tr("""
 `ip rule` sur `r6` montre une règle que vous n'avez pas écrite : le noyau l'a ajoutée à la création
 de la première VRF (section @@ref:vrf-tables@@). Elle fait consulter à chaque paquet la table de
@@ -2005,6 +2027,7 @@ la VRF de l'interface par laquelle il est arrivé.
         self.question_dummy(
             section=self.section(1),
             title=tr("Fermer les tables des VRF"),
+            hash="65d4c92a95d5a889",
             description=tr("""
 1. Sur `admin`, lancez `tcpdump -n -i eth0 icmp`, puis sur `red1` : `ping -c 1 -W 1 {admin}`.
    `red1` ne reçoit rien… mais `admin` voit arriver la demande d'écho : un paquet du client rouge
@@ -2030,6 +2053,7 @@ par défaut, le jour venu, lui soit préférée :
         self.question_dummy(
             section=self.section(1),
             title=tr("Un service du routeur pour ses clients"),
+            hash="4d1f96f947e07faf",
             description=tr("""
 1. Sur `blue1` : `ping -c 1 {gw_a}` répond, mais `curl -s -m 3 http://{gw_a}/` (le serveur de test
    de `r6`) échoue. Ce serveur écoute pourtant sur toutes les adresses (`ss -tln` sur `r6`).
@@ -2053,6 +2077,7 @@ repartent du bon côté bien que `blue1` et `red1` aient la même adresse.
         self.question_dummy(
             section=self.section(1),
             title=tr("Bonus — une fuite de routes"),
+            hash="dcfc2575413fc245",
             description=tr("""
 Le poste `admin` doit pouvoir joindre le client **bleu** (son réseau `{cust_a}`), et lui seul ; le
 client rouge reste isolé. Ajoutez les deux routes nécessaires (section @@ref:vrf-leak@@) : dans la

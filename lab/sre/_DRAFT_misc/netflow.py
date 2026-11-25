@@ -457,6 +457,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="9c28d9d15fc702e6",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les flux, l'exporteur, le collecteur et l'analyse.
 
@@ -523,6 +524,7 @@ la balise soit dans un fichier (2 à 3 minutes) ; il remplit les formulaires. Le
         self.question_dummy(
             section=self.section(0),
             title=tr("Exporter les flux du routeur"),
+            hash="e2e8c9e8816b8e2c",
             description=tr("""
 Sections @@ref:timeouts@@ et @@ref:softflowd@@. Sur `router`, configurez l'instance `default` de
 softflowd pour qu'elle :
@@ -580,6 +582,7 @@ puis `systemctl daemon-reload`, `systemctl enable --now softflowd@default` (ou `
         self.question_dummy(
             section=self.section(0),
             title=tr("Recevoir et ranger les flux"),
+            hash="f71978c11e956e78",
             description=tr("""
 Section @@ref:nfcapd@@. Sur `collector`, configurez l'instance `default` de nfcapd pour qu'elle :
 
@@ -641,6 +644,7 @@ puis `systemctl enable --now nfdump@default` (ou `restart`), `nfexpire -u {flowd
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Trouver le gros émetteur, le balayage et la balise"),
+            hash="32bbbae18bc3e5c5",
             description=tr("""
 Sections @@ref:nfdump@@ et @@ref:patterns@@. Avec `nfdump` sur `collector`, sur les flux des
 dernières minutes (attendez qu'un balayage complet soit passé : quelques minutes) :
@@ -702,6 +706,7 @@ vers le port {bport} toutes les {period} s, de {count} paquets et {bytes} octets
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Comprendre l'export"),
+            hash="56880c107b7dc06f",
             description=tr("""
 Sections @@ref:timeouts@@ et @@ref:formats@@. Sur `collector`, décodez quelques datagrammes d'export :
 `tshark -i eth0 -d udp.port==PORT,cflow -V -c 20` (remplacez PORT par le port du collecteur).

@@ -798,6 +798,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="d6d9774cd4c392c1",
             description=tr("""
 Lisez l'onglet **Informations** : il présente WireGuard (clés, pairs, `AllowedIPs`, protocole),
 les outils `wg` et `wg-quick`, le routage et le diagnostic.
@@ -877,6 +878,7 @@ de l'énoncé).
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Premier tunnel entre srv et gwb"),
+            hash="a5abd9545ca035ee",
             description=tr("""
 Premier tunnel, à la main, entre les deux passerelles `srv` (site A) et `gwb` (site B), qui ont
 toutes deux une adresse publique sur le `wan`.
@@ -1005,6 +1007,7 @@ Sur `gwb` :
         q2 = self.question_form(
             section=self.section(0),
             title=tr("wg-quick et l'unité wg-quick@wg0"),
+            hash="70307bd14e46a044",
             description=tr("""
 Les commandes de la partie 1 ne survivent pas à un redémarrage. `wg-quick` lit un fichier
 `/etc/wireguard/wg0.conf` et fait tout le travail (`ip link`, `wg setconf`, adresse, routes) ;
@@ -1121,6 +1124,7 @@ puis, sur chaque machine, `ip link del wg0` (interface de la partie 1), `chmod 6
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Le nomade, PersistentKeepalive, d'autres pairs"),
+            hash="6e696f5895f7104d",
             description=tr("""
 Le poste `laptop` est à l'hôtel, derrière la `box` qui fait du NAT : il n'a pas d'adresse publique
 et personne ne peut l'appeler. `srv` devient le **concentrateur** : chaque poste de l'entreprise
@@ -1258,6 +1262,7 @@ sur `laptop`.
         q4 = self.question_form(
             section=self.section(0),
             title=tr("AllowedIPs et forwarding"),
+            hash="8972977d5a5eebe5",
             description=tr("""
 Le poste `laptop` doit atteindre les machines du site A (`m1`, réseau `{lana}`).
 
@@ -1341,6 +1346,7 @@ wg-quick@wg0` (`wg-quick` ajoute `{lana} dev wg0`) ; sur `srv`, `sysctl -w net.i
         q5 = self.question_form(
             section=self.section(0),
             title=tr("lanb derrière gwb, le nomade vers lanb par srv"),
+            hash="e27dfbd901cab341",
             description=tr("""
 `gwb` est déjà un pair de `srv` (partie 1) : il reste à déclarer, de chaque côté, les réseaux qui
 se trouvent derrière l'autre, et à router.
@@ -1439,6 +1445,7 @@ ont changé (routes).
         q6 = self.question_form(
             section=self.section(0),
             title=tr("AllowedIPs = 0.0.0.0/0, routage par politique, NAT sur srv"),
+            hash="097ee0f150961822",
             description=tr("""
 Depuis l'hôtel, le nomade veut que **tout** son trafic, y compris vers Internet (`web`, `{web}`,
 derrière le routeur `inet` du fournisseur d'accès), passe par le VPN de l'entreprise.
@@ -1561,6 +1568,7 @@ et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.co
         q7 = self.question_form(
             section=self.section(0),
             title=tr("PresharedKey et retrait du pair oldpc"),
+            hash="74d2a73b993d03e3",
             description=tr("""
 **1. Clé pré-partagée.** Sur `srv` : `wg genpsk`. Mettez cette clé dans le pair `laptop` de `srv`
 (`PresharedKey = …`) et appliquez (`wg syncconf wg0 <(wg-quick strip wg0)`) ; d'abord sans rien

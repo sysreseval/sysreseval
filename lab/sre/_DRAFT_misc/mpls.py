@@ -1016,6 +1016,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="180faf0c3e8ce6b0",
             description=tr("""
 Lisez l'onglet **Informations** : il présente MPLS, LDP et le segment routing, et leur mise en
 œuvre avec Linux et FRR.
@@ -1091,6 +1092,7 @@ interface de bouclage de `fix_pe2` hors d'OSPF alors qu'elle est son adresse de 
         self.question_dummy(
             section=self.section(0),
             title=tr("Un LSP construit à la main"),
+            hash="ada805fe4fefcf1d",
             description=tr("""
 Les routeurs `st_pe1`, `st_p` et `st_pe2` forment une ligne (liens `st_l1` et `st_l2`) ; l'hôte
 `st_h1` est sur le réseau `st_lan1` de `st_pe1`, l'hôte `st_h2` sur le réseau `st_lan2` de
@@ -1134,6 +1136,7 @@ l'imposition sur `st_pe2`, 2 pour le PHP de `st_p`), `st_ping` (3).
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site st"),
+            hash="20784d493fa2f0f6",
             description=tr("""
 - EtherType des trames MPLS (en hexadécimal) : @@{ethertype:[0-9a-fA-Fx]+}@@
 - plus grande valeur possible d'un label : @@{max_label:[0-9]+}@@
@@ -1204,6 +1207,7 @@ la question précédente).
         self.question_dummy(
             section=self.section(0),
             title=tr("Distribuer les labels avec LDP"),
+            hash="392b33d9bc72e5ee",
             description=tr("""
 Les routeurs `ldp_pe1`, `ldp_p1`, `ldp_p2` et `ldp_pe2` forment une ligne ; l'hôte `ldp_h1` est
 derrière `ldp_pe1`, l'hôte `ldp_h2` derrière `ldp_pe2`. OSPF fonctionne, MPLS est activé dans les
@@ -1253,6 +1257,7 @@ routeurs d'entrée, puis un `traceroute` sans étoile par un LSP).
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site ldp"),
+            hash="6d350d4b9509d73f",
             description=tr("""
 - valeur du label sortant de `ldp_p2` pour l'interface de bouclage de `ldp_pe2` (un nombre) :
   @@{php_label:[0-9]+}@@
@@ -1340,6 +1345,7 @@ routeurs d'entrée, puis un `traceroute` sans étoile par un LSP).
         self.question_dummy(
             section=self.section(0),
             title=tr("Le segment routing dans OSPF"),
+            hash="63570fff59fead06",
             description=tr("""
 Les routeurs `sr_r1`, `sr_r2`, `sr_r3` et `sr_r4` forment une ligne (liens `sr_l1`, `sr_l2`,
 `sr_l3`). OSPF fonctionne et MPLS est activé dans les noyaux ; il n'y a pas de LDP (sections
@@ -1380,6 +1386,7 @@ et `sr_r3`), `sr_no_php` (2 : l'échange de `sr_r3`, le retrait par `sr_r4`).
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Les labels du segment routing"),
+            hash="ae8f2180cd9fd39b",
             description=tr("""
 Calculez-les avant de les observer :
 
@@ -1452,6 +1459,7 @@ précédente).
         self.question_dummy(
             section=self.section(0),
             title=tr("Un cœur MPLS en panne"),
+            hash="27b472fe1b836881",
             description=tr("""
 Le site `fix` reprend le site `ldp` : `fix_pe1`, `fix_p1`, `fix_p2`, `fix_pe2` en ligne, les hôtes
 `fix_h1` et `fix_h2`, OSPF et LDP configurés (sans filtre de labels), MPLS activé dans les noyaux.
@@ -1503,6 +1511,7 @@ le ping) ; pour l'enseignant seulement : `fix_q_input`, `fix_q_session` (1 chacu
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Ce que montraient les pannes"),
+            hash="1da57ff52b93d397",
             description=tr("""
 - un paquet étiqueté qui arrive sur une interface dont `net.mpls.conf.<interface>.input` vaut 0 :
   @@{input:>est jeté>>>dropped|est routé en IP>>>routed|perd son label puis est routé>>>popped|est renvoyé à l'émetteur>>>returned}@@
@@ -1565,6 +1574,7 @@ adjacence Hello, mais pas de session** : `fix_p2` ne peut pas joindre l'adresse 
         self.question_dummy(
             section=self.section(0),
             title=tr("Protection TI-LFA (bonus)"),
+            hash="a571d3d63d091433",
             description=tr("""
 Les routeurs `tl_r1`, `tl_r2`, `tl_r3` et `tl_r4` forment un carré (coûts OSPF : {costs}). OSPF et
 le segment routing y fonctionnent (SRGB par défaut, 16000 à 23999 ; l'index du prefix-SID de

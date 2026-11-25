@@ -1156,6 +1156,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="6e11fd142af56f19",
             description=tr("""
 Lisez l'onglet **Informations** : il présente VXLAN, EVPN et le routage entre VNI, et leur mise en
 œuvre avec Linux et FRR. Le TP suppose connus OSPF et BGP (iBGP entre interfaces de bouclage).
@@ -1231,6 +1232,7 @@ Les pannes du site `fix` : l'interface `{vx}` de `fix_leaf2` a le VNI {wrong} (s
         self.question_dummy(
             section=self.section(0),
             title=tr("Un segment VXLAN entre trois VTEP"),
+            hash="7993df24cb75e825",
             description=tr("""
 `st_vtep1`, `st_vtep2` et `st_vtep3` sont reliés par le routeur `st_r` ; OSPF annonce leurs
 interfaces de bouclage. Chaque VTEP a, sur `eth1`, un hôte du même sous-réseau `{subnet}` : `st_h1`,
@@ -1266,6 +1268,7 @@ de 1500 octets avec DF de `st_h1` vers `st_h2` et `st_h3`, sans fragment créé 
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site st"),
+            hash="62fa57ea72b2df64",
             description=tr("""
 - port UDP de destination des paquets VXLAN : @@{port:[0-9]+}@@
 - nombre d'octets que l'encapsulation VXLAN ajoute à un paquet IP (de l'en-tête Ethernet extérieur à
@@ -1335,6 +1338,7 @@ de 1500 octets avec DF de `st_h1` vers `st_h2` et `st_h3`, sans fragment créé 
         self.question_dummy(
             section=self.section(0),
             title=tr("Une fabrique EVPN"),
+            hash="89a2f1418b27162c",
             description=tr("""
 `l2_spine` relie `l2_leaf1`, `l2_leaf2` et `l2_leaf3` ; OSPF annonce leurs interfaces de bouclage.
 Les leaves portent deux VNI, qui utilisent **le même sous-réseau** `{subnet}` : le VNI A **{a}**
@@ -1372,6 +1376,7 @@ hôtes distants de ses VNI), `l2_ping` (4 : 2 par VNI), `l2_isolation` (2 : `l2_
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Les routes EVPN"),
+            hash="375433b52b3c9047",
             description=tr("""
 - route target (automatique) du VNI A : @@{rt:[0-9: ]+}@@
 - type des routes qui construisent la liste d'inondation : @@{type3:[0-9]}@@
@@ -1468,6 +1473,7 @@ qu'il a appris d'un autre voisin iBGP ; l'adresse du routeur suivie d'un numéro
         self.question_dummy(
             section=self.section(0),
             title=tr("IRB symétrique, passerelle anycast et routes de type 5"),
+            hash="6b5b347835856640",
             description=tr("""
 `irb_spine` est le route reflector de `irb_leaf1`, `irb_leaf2` et du *border leaf* `irb_border` ;
 EVPN fonctionne déjà pour les VNI de niveau 2 : le sous-réseau A `{net_a}` (VNI **{a}**, `irb_a1`
@@ -1515,6 +1521,7 @@ et le sous-réseau B par `irb_leaf2` ; sur `irb_border`, le sous-réseau A), `ir
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Le routage dans la fabrique"),
+            hash="db51bcf1cdf729ca",
             description=tr("""
 - VNI des paquets VXLAN de `irb_a1` vers `irb_b2` entre les deux leaves : @@{l3vni:[0-9]+}@@
 - adresse MAC de destination de la trame intérieure de ces paquets :
@@ -1609,6 +1616,7 @@ depuis `irb_leaf1` ; les VNI de ses hôtes, plus le L3VNI.
         self.question_dummy(
             section=self.section(0),
             title=tr("Une fabrique EVPN en panne"),
+            hash="7b9181c4a5efc853",
             description=tr("""
 Le site `fix` est une petite fabrique EVPN : `fix_spine`, route reflector de `fix_leaf1` et
 `fix_leaf2`, et un VNI **{vni}** (sous-réseau `{subnet}`) qui relie `fix_h1` (derrière `fix_leaf1`) et
@@ -1635,6 +1643,7 @@ d'`eth1`), `fix_ping` (4), `fix_macs` (2 : `fix_leaf1` a installé l'adresse MAC
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Ce que montraient les pannes"),
+            hash="73f75eb9a366b59d",
             description=tr("""
 - pour corriger le VNI d'une interface `vxlan` :
   @@{vni:>il faut la supprimer et la recréer>>>recreate|ip link set … type vxlan id N suffit>>>set|il faut redémarrer FRR>>>frr|il faut changer le nom de l'interface>>>name}@@
@@ -1699,6 +1708,7 @@ n'était pas client du route reflector.
         self.question_dummy(
             section=self.section(0),
             title=tr("Inonder par un groupe multicast (bonus)"),
+            hash="940e7a22e03b4fc1",
             description=tr("""
 `mc_vtep1`, `mc_vtep2` et `mc_vtep3` sont reliés par le routeur `mc_r` (OSPF fonctionne) ; chaque VTEP
 a déjà un pont `{br}` avec `eth1`, vers son hôte (`mc_h1` à `mc_h3`, sous-réseau `{subnet}`). Ici, pas

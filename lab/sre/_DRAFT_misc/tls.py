@@ -883,6 +883,7 @@ class Grade(Grade0):
             secret_web3=d.secret_web3)
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="bab3757367950769",
             description=tr("""
 Ce TP met en place une **infrastructure à clés publiques** (PKI) de bout en bout : une autorité de
 certification (CA) créée à la main avec `openssl`, des certificats de serveur pour **nginx** et
@@ -963,6 +964,7 @@ applique toute la solution et remplit les formulaires.
         self.question_dummy(
             section=self.section(0),
             title=tr("Création de l'autorité de certification et du certificat de web.tp"),
+            hash="c39f17e692e7e925",
             description=tr("""
 Sur la machine **`ca`**, en `root` :
 
@@ -1036,6 +1038,7 @@ dans les trois cas le certificat doit correspondre à `web.tp.key`).
         self.question_dummy(
             section=self.section(1),
             title=tr("Serveur nginx sur serveur1"),
+            hash="d1a86b80ddb7ccbe",
             description=tr("""
 5. Transférez le certificat et la clé privée sur `serveur1` dans `/etc/nginx/ssl/web.tp.crt` et
    `/etc/nginx/ssl/web.tp.key` (par exemple avec `scp` après avoir lancé `ssh` sur `serveur1`
@@ -1101,6 +1104,7 @@ l'élément reste acquis après les parties 2 et 4).
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observation avec openssl s_client"),
+            hash="28415bbbd5a069e8",
             description=tr("""
 D'après la sortie de `openssl s_client -showcerts -connect web.tp:443` sur `m1` :
 
@@ -1129,6 +1133,7 @@ avec), 1 pour le nombre de certificats (1) et la version (TLSv1.3).
         self.question_dummy(
             section=self.section(1),
             title=tr("Firefox sur m1"),
+            hash="5dfbcff0e9f1eb5d",
             description=tr("""
 8. Sur `m1`, lancez **`firefox`** (il s'affiche sur votre écran) et ouvrez `https://web.tp`.
    Que se passe-t-il ? Cliquez sur *Avancé…* pour lire le **code d'erreur**.
@@ -1167,6 +1172,7 @@ et la CA importée doit être celle qui est dans `{ca_dir}` au moment de l'éval
         q1b = self.question_form(
             section=self.section(1),
             title=tr("Le navigateur et la CA inconnue"),
+            hash="ab56386a25bfe13c",
             description=tr("""
 - code d'erreur affiché par Firefox **avant** l'import de la CA :
   @@{ff_error:>SEC_ERROR_UNKNOWN_ISSUER|SSL_ERROR_BAD_CERT_DOMAIN|SEC_ERROR_EXPIRED_CERTIFICATE|MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT|SSL_ERROR_RX_RECORD_TOO_LONG}@@
@@ -1280,6 +1286,7 @@ jamais `ca`, et `/etc/hosts` ne sert qu'à trouver l'adresse du serveur.
         self.question_dummy(
             section=self.section(0),
             title=tr("Certificat client et mTLS sur nginx"),
+            hash="cf34237d528e7cf2",
             description=tr("""
 Sur `ca`, dans `/root/ca` :
 
@@ -1353,6 +1360,7 @@ sans certificat client, la sonde reçoit 400) et `mtls_certificat_accepte` (3 : 
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Comportement du serveur"),
+            hash="b9e111b424888688",
             description=tr("""
 - code HTTP renvoyé par nginx (`ssl_verify_client on`) à `curl` **sans** certificat client :
   @@{status_nocert:[0-9]+}@@
@@ -1431,6 +1439,7 @@ avec la clé publique du certificat.
         self.question_dummy(
             section=self.section(0),
             title=tr("Mise en place de certificats sur apache2"),
+            hash="a7fe25342a50457e",
             description=tr("""
 1. Sur `ca`, générez de la même façon que pour `web.tp` une clé et un certificat pour le domaine
    **`web2.tp`** (alias `www.web2.tp`) — fichiers `/root/ca/web2.tp.key`, `web2.tp.csr`,
@@ -1535,6 +1544,7 @@ avec `max-age` dans la réponse de `https://web2.tp/`).
         q3 = self.question_form(
             section=self.section(1),
             title=tr("apache2 et HSTS"),
+            hash="ab83d0ddf719e040",
             description=tr("""
 - `a2ensite web2-tp.conf` crée @@{a2ensite:>un lien symbolique dans sites-enabled|une copie du fichier dans sites-enabled|une ligne Include dans apache2.conf}@@
 - l'en-tête `Strict-Transport-Security` demande au navigateur
@@ -1613,6 +1623,7 @@ certificat, et il ne lit que le SAN (`DNS:web2.tp, DNS:www.web2.tp`), pas le CN.
         self.question_dummy(
             section=self.section(0),
             title=tr("Gestion d'une CRL avec openssl ca"),
+            hash="79319c9f1323f227",
             description=tr("""
 Sur `ca`, dans `/root/ca` :
 
@@ -1707,6 +1718,7 @@ la même CA et non révoqué : un nginx qui refuse tous les clients ne rapporte 
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Effet de la révocation"),
+            hash="37700f2d9c1201d0",
             description=tr("""
 - code HTTP renvoyé par nginx à `curl --cert client.crt --key client.key` une fois la CRL en
   place : @@{status_revoked:[0-9]+}@@
@@ -1777,6 +1789,7 @@ lettre `R`, 1 pour la procédure après une nouvelle révocation.
         self.question_dummy(
             section=self.section(0),
             title=tr("Mise en place de step-ca sur ca"),
+            hash="e94a9e1517354341",
             description=tr("""
 `step-ca` est une autorité de certification qui automatise la gestion des certificats. Toute
 cette partie se fait sur la machine **`ca`**.
@@ -1860,6 +1873,7 @@ appartient avec le mode 600 ou 400 et contient `{stepca_password}`), `stepca_con
         self.question_dummy(
             section=self.section(1),
             title=tr("Caddy avec ACME sur serveur3"),
+            hash="107a3efe95dcf435",
             description=tr("""
 1. Sur `ca`, récupérez l'empreinte de la racine : `step certificate fingerprint ~ca/.step/certs/root_ca.crt`.
 2. Sur **`serveur3`**, enregistrez la CA :
@@ -1944,6 +1958,7 @@ avec la racine ; 1 si le certificat présenté par `serveur3` est émis par `ca 
         self.question_dummy(
             section=self.section(1),
             title=tr("Reverse proxy Caddy devant step-ca"),
+            hash="68ed5a323f2d3b0c",
             description=tr("""
 Sur `ca`, configurez Caddy pour servir `https://pki.tp` (port 443) en relayant vers step-ca ;
 `/etc/caddy/Caddyfile` :
@@ -1993,6 +2008,7 @@ réussit en vérifiant le certificat avec la racine de step-ca et si le certific
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Certificats délivrés par step-ca"),
+            hash="6885ccf3a9af4417",
             description=tr("""
 - émetteur (*Issuer*) du certificat `web3.crt` : @@{issuer:>ca tp Root CA|ca tp Intermediate CA|ca.tp|admin@ca.tp}@@
 - durée de validité par défaut d'un certificat délivré par step-ca : @@{validity:>1 heure|24 heures|90 jours|1 an}@@

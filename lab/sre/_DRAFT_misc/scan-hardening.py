@@ -1518,6 +1518,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="91ff0161ba2b29cc",
             description=tr("""
 Lisez l'onglet **Informations** : il présente nmap (découverte, scans TCP et UDP, versions, scripts
 NSE) et le durcissement d'une machine (services, adresses d'écoute, SSH, serveur web et TLS, pare-feu).
@@ -1576,6 +1577,7 @@ d'inventaire neuf (numéro de série tiré à chaque évaluation) sur lequel ell
         self.question_dummy(
             section=self.section(0),
             title=tr("Quelles machines sont actives ?"),
+            hash="b951e578e3592f34",
             description=tr("""
 Depuis `attacker`, découvrez les machines actives du réseau `office` (`{office}`), sans scanner leurs
 ports (section @@ref:discovery@@) :
@@ -1599,6 +1601,7 @@ ports (section @@ref:discovery@@) :
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Résultats de la découverte"),
+            hash="dc336dfb5be16d8b",
             description=tr("""
 - nombre de machines actives (sans compter `gw`) trouvées par un `nmap -sn` par défaut : @@{count:[0-9]+}@@
 - adresse du NAS : @@{nas:[0-9.]*}@@
@@ -1627,6 +1630,7 @@ il n'apparaît qu'avec des sondes choisies, par exemple :
         self.question_dummy(
             section=self.section(0),
             title=tr("Tous les ports de server"),
+            hash="56702362fc18c50a",
             description=tr("""
 La machine `server` du bureau a l'adresse `{server}`. Depuis `attacker` (sections @@ref:tcp@@ et
 @@ref:udp@@) :
@@ -1648,6 +1652,7 @@ La machine `server` du bureau a l'adresse `{server}`. Depuis `attacker` (section
         q2 = self.question_form(
             section=self.section(0),
             title=tr("États des ports de server"),
+            hash="813bc05f6d7e39f9",
             description=tr("""
 - tous les ports TCP **ouverts** de `server` (séparés par des virgules) : @@{{open:[0-9, ]*}}@@
 - l'état du port TCP {filtered} et ce qu'il signifie : @@{{fstate:>filtered : aucune réponse, un pare-feu jette les sondes>>>filtered|closed : la machine répond RST, aucun service n'écoute>>>closed|open : un service écoute>>>open}}@@
@@ -1679,6 +1684,7 @@ La machine `server` du bureau a l'adresse `{server}`. Depuis `attacker` (section
         self.question_dummy(
             section=self.section(0),
             title=tr("Qui répond derrière chaque port ?"),
+            hash="4267c90943368831",
             description=tr("""
 Les numéros de port ne disent pas quel service répond (section @@ref:versions@@). Depuis `attacker` :
 
@@ -1701,6 +1707,7 @@ Les numéros de port ne disent pas quel service répond (section @@ref:versions@
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Services et versions"),
+            hash="2a6679a86b52e13d",
             description=tr("""
 - le port du serveur SSH de `server` : @@{ssh:[0-9]*}@@
 - le produit et sa version sur le port 443 de `server` : @@{web:.*}@@
@@ -1733,6 +1740,7 @@ telnet sur le port 23 de `camera`. Les commandes :
         self.question_dummy(
             section=self.section(0),
             title=tr("Ce que racontent les scripts"),
+            hash="d36a6259be4c2158",
             description=tr("""
 Les scripts NSE (section @@ref:nse@@) interrogent les services trouvés. Depuis `attacker` :
 
@@ -1757,6 +1765,7 @@ Les scripts NSE (section @@ref:nse@@) interrogent les services trouvés. Depuis 
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Résultats des scripts"),
+            hash="3e0b484fb35bf009",
             description=tr("""
 - le titre de la page web de `printer` (`http-title`) : @@{title:.*}@@
 - le nom commun (*commonName*) du certificat HTTPS de `server` (`ssl-cert`) : @@{cn:.*}@@
@@ -1800,6 +1809,7 @@ Les scripts NSE (section @@ref:nse@@) interrogent les services trouvés. Depuis 
         self.question_dummy(
             section=self.section(0),
             title=tr("Fermer ce qui ne sert plus"),
+            hash="b1f6edf32d772d5d",
             description=tr("""
 `legacy` (`{legacy}`) est un ancien serveur de fichiers. Seul son accès **SSH** sert encore aux
 administrateurs ; tout le reste est à fermer (section @@ref:surface@@).
@@ -1840,6 +1850,7 @@ et sur `attacker`, avant et après :
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Pourquoi fermer ces services"),
+            hash="685a641b3a81c144",
             description=tr("""
 - parmi les services fermés, lesquels transmettent identifiants et données **en clair** ? @@{clear:>telnet et FTP (et TFTP, sans même d'authentification)>>>clear|aucun, ils chiffrent tous>>>none|seulement rsync>>>rsync}@@
 - `systemctl mask` par rapport à `systemctl disable` : @@{mask:>mask interdit tout démarrage, même à la main ou comme dépendance ; disable empêche seulement le démarrage automatique>>>mask|c'est la même chose>>>same|mask désinstalle le paquet>>>purge}@@
@@ -1863,6 +1874,7 @@ interdit tout démarrage.
         self.question_dummy(
             section=self.section(0),
             title=tr("Redis et SNMP"),
+            hash="e5d59353bbe051ca",
             description=tr("""
 `db` (`{db}`) héberge une base **Redis**, utilisée uniquement par des programmes de `db` lui-même, et
 un agent **SNMP** de supervision. Scannez-le (TCP 6379, UDP 161 ; `redis-info`, `snmp-brute`...) :
@@ -1899,6 +1911,7 @@ et `{snmpd_conf}` (puis `systemctl restart snmpd`) :
         q6 = self.question_form(
             section=self.section(0),
             title=tr("Écouter au bon endroit"),
+            hash="434bf3de2c62decd",
             description=tr("""
 - faire écouter Redis sur `127.0.0.1` plutôt que compter sur un pare-feu : @@{bind:>le port n'est même plus joignable du réseau, même si le pare-feu disparaît ; le pare-feu reste utile pour les services qui ont de vrais clients distants>>>both|c'est inutile si un pare-feu existe>>>useless|cela chiffre les échanges>>>encrypt}@@
 - une communauté SNMPv2c « secrète » protège-t-elle bien ? @@{community:>peu : elle circule en clair dans chaque requête, d'où la restriction par réseau source (ou SNMPv3)>>>clear|oui, elle est chiffrée>>>encrypted|oui, si elle est longue>>>long}@@
@@ -1922,6 +1935,7 @@ dégâts, SNMPv3 (authentification et chiffrement) est la vraie réponse.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un serveur SSH qui n'accepte que le nécessaire"),
+            hash="c06c7cb4e4923d67",
             description=tr("""
 Le serveur SSH de `www` (`{www}`) a gardé une configuration « de compatibilité ». Le compte `deploy`
 s'y connecte avec la clé de `attacker` (`ssh deploy@www`) : cela doit continuer de marcher. Depuis
@@ -1959,6 +1973,7 @@ par des listes explicites, puis `sshd -t && systemctl reload ssh` :
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Pourquoi ces restrictions"),
+            hash="00e73ec73bac9c83",
             description=tr("""
 - l'intérêt de n'accepter que les clés : @@{keys:>plus aucun mot de passe à deviner ni à voler : la recherche de mots de passe devient inutile>>>guess|les connexions sont plus rapides>>>fast|les clés chiffrent mieux le trafic>>>cipher}@@
 - pourquoi retirer SHA-1 : @@{sha1:>on sait fabriquer des collisions SHA-1 : il ne garantit plus l'authenticité d'une signature>>>collisions|il est trop lent>>>slow|il n'existe pas dans OpenSSH 10>>>absent}@@
@@ -1982,6 +1997,7 @@ signatures ne sont plus sûres.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un site qui en dit moins"),
+            hash="02c473b0465e25dc",
             description=tr("""
 Le site de `www` (nginx, ports 80 et 443) doit rester en ligne. Scannez-le depuis `attacker`
 (`http-server-header`, `http-git`, `http-enum`, `ssl-enum-ciphers`, `http-security-headers`), puis sur
@@ -2025,6 +2041,7 @@ et la sauvegarde sortie de la racine (`mv {root}/backup/* /root/old-backups/`), 
         q8 = self.question_form(
             section=self.section(0),
             title=tr("Ce que le dépôt publié révélait"),
+            hash="15b1829d13f92093",
             description=tr("""
 - le message du dernier *commit* que `http-git` affichait : @@{commit:.*}@@
 """)
@@ -2046,6 +2063,7 @@ révoquer ce jeton : le cacher ne suffit pas une fois qu'il a été lu.
         self.question_dummy(
             section=self.section(0),
             title=tr("Ne laisser passer que le nécessaire"),
+            hash="85764c80526182ef",
             description=tr("""
 `app` (`{app}`) publie une application en HTTPS (443) pour tout le monde. Il écoute aussi SSH (22),
 des métriques de supervision ({metrics}) et une console d'administration ({console}). Écrivez un
@@ -2085,6 +2103,7 @@ Vérifiez depuis `attacker` et depuis `admin`.
         q9 = self.question_form(
             section=self.section(0),
             title=tr("Ce que voit nmap"),
+            hash="a3ed61334852eaf3",
             description=tr("""
 - avec la politique `drop`, les ports non autorisés de `app` apparaissent : @@{filtered:>filtered : plus aucune réponse, le scan ralentit et apprend moins>>>drop|closed : la machine répond RST>>>rst|open|filtered>>>openfiltered}@@
 - et avec `reject with tcp reset` à la place : @@{reject:>closed : un RST revient, comme sans service>>>closed|filtered>>>filtered|open>>>open}@@
@@ -2107,6 +2126,7 @@ port sans service (plus rapide pour les clients légitimes, plus bavard pour un 
         self.question_dummy(
             section=self.section(0),
             title=tr("Un script pour le service d'inventaire"),
+            hash="05ecce2b452609ad",
             description=tr("""
 `printer` (partie 4) fait tourner sur le port TCP {port} un service d'inventaire maison. Il annonce
 `SRE-ASSET 1.2 ready`, puis répond à la commande `INVENTORY` (une ligne) par

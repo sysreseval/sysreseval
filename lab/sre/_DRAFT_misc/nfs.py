@@ -801,6 +801,7 @@ seulement ; `depot` est un compte de service du serveur.
         # ---------------- organisation ----------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="610fdd29faffbdef",
             description=tr("""
 Ce TP met en œuvre **NFS** (*Network File System*) : le serveur `srv` **exporte** des répertoires
 que les clients `pc1`, `pc2` et `pc3` **montent** dans leur arborescence et utilisent comme des
@@ -892,6 +893,7 @@ l'évaluation de l'enseignant, ceux des réponses saisies comptent aussi dans l'
         self.question_dummy(
             section=self.section(0),
             title=tr("Mise en service du serveur NFS"),
+            hash="b353d281d02f4322",
             description=tr("""
 Sur `srv` :
 
@@ -939,6 +941,7 @@ appartient).
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le serveur"),
+            hash="4ba7e3fdddd6a722",
             description=tr("""
 - port TCP du service `nfs` : @@{port_nfs:[0-9]+}@@
 - port du service `portmapper` (`rpcbind`) : @@{port_rpcbind:[0-9]+}@@
@@ -1016,6 +1019,7 @@ une liste) : `serveur_q_squash` (1), `serveur_q_mountd` (1).
         self.question_dummy(
             section=self.section(0),
             title=tr("Un client NFSv3"),
+            hash="cd09ac854657e18b",
             description=tr("""
 Sur `pc1` :
 
@@ -1070,6 +1074,7 @@ d'après `/proc/mounts`) et `client_fichiers` (2 : sur `srv`, `de_root.txt` appa
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le client"),
+            hash="7b1df4fd85e98cd5",
             description=tr("""
 - ce qui manquait sur `pc1` pour le premier montage :
   @@{missing:>rpc.statd (verrous NFSv3)>>>statd|rpc.mountd>>>mountd|les threads nfsd>>>nfsd|le module nfs du noyau>>>module}@@
@@ -1140,6 +1145,7 @@ AUTH_UNIX), `client_q_clair` (1).
         self.question_dummy(
             section=self.section(0),
             title=tr("Contrôle d'accès et options d'export"),
+            hash="b00ce0e963192be9",
             description=tr("""
 Complétez `/etc/exports` sur `srv` (une ligne par répertoire), appliquez avec `exportfs -ra`
 et vérifiez avec `exportfs -v` :
@@ -1214,6 +1220,7 @@ d'`etudiant` appartiennent à l'UID {uid_depot} ; 1 point si un seul des deux r�
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur les options d'export"),
+            hash="5fd646cc1feddd55",
             description=tr("""
 - message obtenu sur `pc3` en créant un fichier dans `/mnt/commun` :
   @@{msg_ro:>Permission denied>>>eacces|Read-only file system>>>erofs|Stale file handle>>>estale|Input/output error>>>eio}@@
@@ -1302,6 +1309,7 @@ dans une liste) : `options_q_messages` (1), `options_q_droits_unix` (1), `option
         self.question_dummy(
             section=self.section(0),
             title=tr("Identités : UID, GID et confiance"),
+            hash="fbaffd34ff53f1bc",
             description=tr("""
 1. Sur `srv`, exportez `/srv/nfs/home` en lecture et écriture au réseau `lan` seulement. Il
    contient les répertoires personnels de `alice` et de `bob` (droits `700`) ; `alice` y possède
@@ -1370,6 +1378,7 @@ sur `pc2`, `su alice -c 'cat /mnt/home/alice/secret.txt'` rend le secret).
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur les identités"),
+            hash="81a43e13cd5b9060",
             description=tr("""
 - contenu du fichier `secret.txt` d'`alice` : @@{secret:.+}@@
 - UID d'`alice` sur le serveur : @@{uid_srv:[0-9]+}@@
@@ -1463,6 +1472,7 @@ réellement les utilisateurs : `all_squash` et `secure` ne prouvent l'identité 
         self.question_dummy(
             section=self.section(0),
             title=tr("NFSv4 : une seule arborescence, un seul port"),
+            hash="29e995221e2a1c0e",
             description=tr("""
 1. Sur `srv`, déclarez la racine de l'arborescence NFSv4 : ajoutez dans `/etc/exports` le
    répertoire `/srv/nfs`, exporté au réseau `lan` en **lecture seule** avec l'option `fsid=0`
@@ -1518,6 +1528,7 @@ racine échouent par `Read-only file system`), `nfs4_commun` (2 : `srv:/commun` 
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur NFSv4"),
+            hash="f577fd4bd6797221",
             description=tr("""
 - version négociée par `mount -t nfs4` (`vers=`) : @@{vers:[0-9.]+}@@
 - chemin à indiquer à un client NFSv4 pour monter `/srv/nfs/home` (`srv:...`) : @@{path:[a-z0-9:/._-]+}@@
@@ -1592,6 +1603,7 @@ ouvert qu'à `pc1`. Échec sur `pc3` : **la racine NFSv4 (`fsid=0`) n'est export
         self.question_dummy(
             section=self.section(0),
             title=tr("Montages permanents et panne du serveur"),
+            hash="9ee97681e0934859",
             description=tr("""
 Sur `pc1` :
 
@@ -1657,6 +1669,7 @@ le montage de `/mnt/depot` et l'essai de panne ne sont pas notés.
         q6 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur les montages et les pannes"),
+            hash="fae4025949d79d27",
             description=tr("""
 - pendant la panne, `ls` sur le montage `soft` :
   @@{soft:>échoue avec une erreur après quelques secondes>>>error|reste bloquée jusqu'au retour du serveur>>>blocked|affiche le contenu comme si de rien n'était>>>cache}@@

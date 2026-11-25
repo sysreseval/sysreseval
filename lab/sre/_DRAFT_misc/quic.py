@@ -1059,6 +1059,7 @@ class Grade(Grade0):
             fw_wan=d.ips.fw_wan.ip, fw_corp=d.ips.fw_corp.ip, pc=d.ips.pc.ip, corp=d.nets.corp)
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="c3df0a2457a7acff",
             description=tr("""
 Lisez l'onglet **Informations** : il présente QUIC (paquets, poignée de main, flux, validation
 d'adresse, migration, 0-RTT), HTTP/3, sa découverte, son passage dans les pare-feu, et les outils.
@@ -1125,6 +1126,7 @@ Règles valables pour tout le TP :
         q = self.question_form(
             section=self.section(0),
             title=tr("Premier contact avec HTTP/3"),
+            hash="e735345dc483031a",
             description=tr("""
 Le serveur `ref` (`www.news.tp`) sert déjà HTTP/3. Tout se passe sur `client`.
 
@@ -1205,6 +1207,7 @@ L'évaluation cherche dans le journal de `ref` une requête HTTP/3 réussie de `
         q = self.question_form(
             section=self.section(0),
             title=tr("Déchiffrer une capture QUIC"),
+            hash="b559e1baead65e86",
             description=tr("""
 Sans clé, une capture ne montre que les paquets Initial. curl écrit les secrets TLS de ses
 connexions dans le fichier nommé par la variable `SSLKEYLOGFILE` (@@ref:decrypt@@).
@@ -1285,6 +1288,7 @@ puis avec `{keylog}` (au moins une requête HTTP/3 déchiffrée).
         q = self.question_form(
             section=self.section(0),
             title=tr("Servir www.quic.tp en HTTP/3 avec nginx"),
+            hash="39486a4d204ec44b",
             description=tr("""
 Sur `web`, nginx 1.30 est installé mais ne sert pas encore `www.quic.tp`. Le certificat et la clé
 sont dans `{cert}` et `{key}`, le site dans `{root}`.
@@ -1359,6 +1363,7 @@ Réponses : {keep_tcp} ; {ma} ; {tls_version}.
         q = self.question_form(
             section=self.section(0),
             title=tr("Annoncer HTTP/3 dans le DNS"),
+            hash="ff037281bccab433",
             description=tr("""
 `ns` (BIND 9.20) sert les zones `news.tp` et `quic.tp`. La zone `news.tp` contient déjà des
 enregistrements HTTPS ; regardez-les depuis `client` :
@@ -1416,6 +1421,7 @@ L'évaluation interroge `ns` (réponse faisant autorité, priorité au moins 1, 
         q = self.question_form(
             section=self.section(0),
             title=tr("Laisser passer QUIC à travers le pare-feu"),
+            hash="f3ec7de088c842cd",
             description=tr("""
 `fw` relie le réseau interne `corp` (`eth1`) à l'extérieur (`eth0`) : il traduit les adresses
 (`masquerade random`) et ne laisse sortir que le TCP 80/443, le DNS et le ping. Sa configuration est
@@ -1496,6 +1502,7 @@ rester bloqué et HTTP/2 doit toujours passer ; la règle doit être dans `{conf
         q = self.question_form(
             section=self.section(0),
             title=tr("Survivre à un changement d'adresse"),
+            hash="f9e83bc5d0ed9a1b",
             description=tr("""
 `edge` sert `cdn.quic.tp` en HTTP/3 avec {workers} workers nginx, sans autre réglage ; `/big.bin`
 (20 Mo) y est servi à 1 Mo/s (@@ref:cid@@).
@@ -1569,6 +1576,7 @@ socket et nouvel identifiant), doivent toutes recevoir la réponse à la requêt
         q = self.question_form(
             section=self.section(0),
             title=tr("Valider l'adresse du client avec Retry"),
+            hash="e1a46352700377ca",
             description=tr("""
 **1.** Depuis `client` : `quic-client get https://cdn.quic.tp/` affiche `Retry received: no`.
 
@@ -1636,6 +1644,7 @@ désigner un fichier non vide lisible par root seul.
         q = self.question_form(
             section=self.section(0),
             title=tr("Envoyer la requête dès le premier paquet"),
+            hash="3f518866b1630168",
             description=tr("""
 **1.** Depuis `client`, `quic-client resume` ouvre une première connexion (il y reçoit un ticket de
 session), puis une seconde où il envoie ses requêtes en 0-RTT (@@ref:zerortt@@) :
@@ -1693,6 +1702,7 @@ avec `Early-Data: 1` et `/order` refusé par 425, alors que `/order` répond 200
         q = self.question_form(
             section=self.section(0),
             title=tr("Pour aller plus loin (bonus)"),
+            hash="b4d8578aeba21d32",
             description=tr("""
 **1. Caddy.** Sur `web`, servez aussi `www.quic.tp` avec Caddy sur le port **{port}** (TCP et UDP),
 avec le même certificat et le même site (@@ref:nginx@@). Caddy tourne sous l'utilisateur `caddy` :

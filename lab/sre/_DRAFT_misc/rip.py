@@ -799,6 +799,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="c83057820b205e2e",
             description=tr("""
 Lisez l'onglet **Informations** : il présente RIP (vecteur de distance, messages, temporisateurs,
 boucles), sa configuration avec FRR et `vtysh`, la sécurité, RIPng et les commandes de diagnostic.
@@ -883,6 +884,7 @@ points.
         self.question_dummy(
             section=self.section(0),
             title=tr("Découverte de RIP sur r1 et r2"),
+            hash="620a9c0483de4aaa",
             description=tr("""
 `r1` et `r2` sont déjà configurés. Sur chacun, ouvrez `vtysh` et lisez la configuration
 (`show running-config`), la table de RIP (`show ip rip`), son état (`show ip rip status`) et la
@@ -916,6 +918,7 @@ write
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations"),
+            hash="f1374dcda21527a8",
             description=tr("""
 À partir de vos observations sur `r1` et `r2` :
 
@@ -998,6 +1001,7 @@ dans une liste) : `discovery_destination` (0,5 : l'adresse de groupe), `discover
         self.question_dummy(
             section=self.section(0),
             title=tr("RIP sur r3 et r4"),
+            hash="899d297dca3b9e40",
             description=tr("""
 Étendez RIP à tout le site :
 
@@ -1057,6 +1061,7 @@ qui connaît les huit réseaux du site), `site_pings` (4 : `pc1` ↔ `hv` et `pc
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Métriques"),
+            hash="01f7efb5906b225a",
             description=tr("""
 Une fois les tables complètes :
 
@@ -1110,6 +1115,7 @@ annonce 1, son voisin 2, `r4` 3). `lan3` est à **2** de `r1`, par le lien direc
         self.question_dummy(
             section=self.section(0),
             title=tr("Convergence, boucles et temporisateurs"),
+            hash="a6a252949b8c86ee",
             description=tr("""
 **Une panne.** Sur `r2`, suivez la table de RIP : `watch -n 1 'vtysh -c "show ip rip"'`. Sur
 `r1`, lancez une capture sur le lien vers `r4` (`tcpdump -ni eth3 -v udp port 520`) puis, dans un
@@ -1163,6 +1169,7 @@ dont les annonces entendues sur le lien portent des routes à 16).
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Observations"),
+            hash="0214e11681c78267",
             description=tr("""
 - Juste après la coupure, métrique avec laquelle `r1` annonce `lan2` à `r4` :
   @@{poison_metric:[0-9]+}@@
@@ -1242,6 +1249,7 @@ l'enseignant seulement (réponses choisies dans une liste) : `convergence_trigge
         self.question_dummy(
             section=self.section(0),
             title=tr("Interfaces passives"),
+            hash="af7c3ff1374e91c0",
             description=tr("""
 Sur `pc1`, lancez `tcpdump -ni eth0 udp port 520` : `r1` envoie ses annonces RIP sur le réseau
 des postes, où aucun routeur ne les attend.
@@ -1274,6 +1282,7 @@ période avant l'évaluation.
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Passive, mais pas sourde"),
+            hash="69d353ace6611058",
             description=tr("""
 Une interface passive accepte-t-elle encore les annonces RIP qu'elle reçoit ?
 @@{passive_listens:>oui|non}@@
@@ -1314,6 +1323,7 @@ possible l'intrusion de la partie 8.
         self.question_dummy(
             section=self.section(0),
             title=tr("Route par défaut"),
+            hash="512feb5693a8e1b5",
             description=tr("""
 Depuis `pc1`, `ping internet` (`{internet}`) échoue : seul `r4`, qui a une route par défaut
 statique vers `isp`, sait sortir du site.
@@ -1341,6 +1351,7 @@ par défaut RIP), `default_pings` (6 : 2 par hôte qui joint `{internet}`).
         q5 = self.question_form(
             section=self.section(1),
             title=tr("La route par défaut dans les tables"),
+            hash="dcc205f5ea0421ca",
             description=tr("""
 - métrique de la route par défaut sur `r2` : @@{default_metric:[0-9]+}@@
 - code de la route `0.0.0.0/0` dans `show ip rip` sur `r4` : @@{default_code:>R(n)|R(d)|S(r)|C(i)}@@
@@ -1383,6 +1394,7 @@ par défaut RIP), `default_pings` (6 : 2 par hôte qui joint `{internet}`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Redistribution d'une route statique"),
+            hash="a86f35f54bcda17b",
             description=tr("""
 Les machines virtuelles de `hv` sont dans le réseau `vmnet` (`{vmnet}`), accessible uniquement
 par `hv` (`{hv}`), qui ne parle pas RIP : aucun routeur ne connaît ce réseau.
@@ -1418,6 +1430,7 @@ de RIP), `static_redistributed` (3 : 1 par routeur parmi `r1`, `r2`, `r4` qui l'
         q6 = self.question_form(
             section=self.section(1),
             title=tr("Une route redistribuée"),
+            hash="dd9ec5ff18a34228",
             description=tr("""
 - code de la route vers `vmnet` dans `show ip rip` sur `r3` : @@{static_code:>R(n)|R(s)|S(r)|C(r)}@@
 - métrique avec laquelle `r3` l'annoncerait si `metric` n'était pas précisé :
@@ -1475,6 +1488,7 @@ seulement (réponse choisie dans une liste) : `static_answers` (1 : le code).
         self.question_dummy(
             section=self.section(0),
             title=tr("Métriques et choix des chemins"),
+            hash="9faa189b2943d570",
             description=tr("""
 Depuis `r1`, comparez `ping r3-eth1` (par le lien `l13`) et `ping r2-eth1` : `l13` est un lien
 lent. Pourtant `traceroute -n hv` depuis `pc1` montre que tout le trafic entre `lan1` et `lan3`
@@ -1524,6 +1538,7 @@ inférieure à 16), `ecmp_r1` et `ecmp_r3` (2 chacun : les deux prochains sauts 
         q7 = self.question_form(
             section=self.section(1),
             title=tr("Chemins et métriques"),
+            hash="5fce4673e7d70824",
             description=tr("""
 Après ces réglages, sur `r1` :
 
@@ -1580,6 +1595,7 @@ réception par `r1`).
         self.question_dummy(
             section=self.section(0),
             title=tr("Sécurité"),
+            hash="14c81b86f24a5270",
             description=tr("""
 **Authentifier les liens entre routeurs.** Sur les cinq liens entre routeurs (`l12`, `l13`,
 `l14`, `l23`, `l34`), authentifiez les annonces RIP en **MD5** avec un trousseau de clés (de nom
@@ -1637,6 +1653,7 @@ routeurs, alors que `r1` et `r2` apprennent toujours `lan3` par RIP).
         q8 = self.question_form(
             section=self.section(1),
             title=tr("L'intrus"),
+            hash="1689d4cbcd245441",
             description=tr("""
 - adresse IP de la machine qui annonce le réseau inconnu : @@{rogue_address:[0-9.]+}@@
 - préfixe qu'elle annonce (adresse/longueur) : @@{rogue_prefix:[0-9./]+}@@
@@ -1688,6 +1705,7 @@ passives).
         self.question_dummy(
             section=self.section(0),
             title=tr("RIPng (bonus)"),
+            hash="20c337f6bf82f58a",
             description=tr("""
 Le site est aussi adressé en IPv6 (voir le plan d'adressage), mais aucune route IPv6 n'est
 échangée : depuis `pc1`, `ping hv-v6` (`{hv6}`) échoue.

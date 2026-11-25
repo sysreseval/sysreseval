@@ -868,6 +868,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="2a3dacc0bb762600",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les VPN, OpenVPN (tunnel, canaux, modes), la PKI
 easy-rsa, les unités systemd, le routage et le diagnostic.
@@ -942,6 +943,7 @@ projet ; les fichiers de configuration complets y figurent.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Tunnel point à point entre srv et gwb"),
+            hash="db1db71d61e4a32d",
             description=tr("""
 Premier tunnel, sans autorité de certification : chaque pair a un certificat **auto-signé** et
 connaît l'**empreinte** de celui de l'autre (`peer-fingerprint`, OpenVPN ≥ 2.6).
@@ -1049,6 +1051,7 @@ Faites de même sur `gwb` dans `/etc/openvpn/client/` (CN `gwb`). Échangez les 
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Création de la PKI sur ca"),
+            hash="d611f7349ec1e994",
             description=tr("""
 Les empreintes ne passent pas à l'échelle : au-delà de deux pairs, une **autorité de
 certification** signe les certificats de tous. Sur la machine **`ca`**, en `root` :
@@ -1172,6 +1175,7 @@ et `chmod 600 /etc/openvpn/server/srv.key /etc/openvpn/server/ta.key`.
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Serveur OpenVPN sur srv et client nomade"),
+            hash="71c027f970719633",
             description=tr("""
 **1.** Sur `srv`, écrivez `/etc/openvpn/server/server.conf` :
 
@@ -1334,6 +1338,7 @@ parties 4, 5 et 7 y ajoutent leurs directives) :
         q4 = self.question_form(
             section=self.section(0),
             title=tr("push route et forwarding"),
+            hash="319937fddbfa2b60",
             description=tr("""
 Le nomade doit atteindre les machines du site A (`ca`, `m1`, réseau `{lana}`).
 
@@ -1411,6 +1416,7 @@ Le nomade doit atteindre les machines du site A (`ca`, `m1`, réseau `{lana}`).
         q5 = self.question_form(
             section=self.section(0),
             title=tr("gwb client du serveur, iroute"),
+            hash="60c7479321de0689",
             description=tr("""
 La passerelle `gwb` du site B devient un client du serveur, et tout `lanb` (`{lanb}`) doit
 dialoguer avec `lana`.
@@ -1517,6 +1523,7 @@ Sur `srv`, dans `server.conf` : `client-config-dir ccd` et `route {lanb_addr} {l
         q6 = self.question_form(
             section=self.section(0),
             title=tr("redirect-gateway def1 et NAT sur srv"),
+            hash="628e667544892d6d",
             description=tr("""
 Depuis son hôtel, le nomade veut que **tout** son trafic, y compris vers Internet, passe par le
 VPN de l'entreprise (`web`, `{web}`, est un serveur web « sur Internet », derrière le routeur
@@ -1631,6 +1638,7 @@ et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.co
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Révocation du certificat ancien"),
+            hash="1d1a008a039559a3",
             description=tr("""
 Le portable de l'utilisateur `ancien` a été volé : son certificat doit être refusé.
 

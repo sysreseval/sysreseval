@@ -670,6 +670,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="e509aaa32ad38066",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les ponts Ethernet, leur réalisation sous Linux,
 la façon de les observer, le filtrage de niveau 2 avec nftables et le protocole STP.
@@ -765,6 +766,7 @@ diffusion visible sur tout le réseau mais inoffensive. Les serveurs de test (HT
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Deux switchs sans pont"),
+            hash="51083d5d95846312",
             description=tr("""
 Les interfaces de la machine `b1` ne sont pas configurées (`ip link` sur `b1` : `eth0` et `eth1`
 sont `DOWN`). Vérifiez que `m1` (`{m1}`) et `m2` (`{m2}`) ne peuvent pas communiquer (`ping`),
@@ -800,6 +802,7 @@ le `ping {m1}` de `m2`, capturez sur `m2` avec `tcpdump -e -n -i eth0` : que fai
         self.question_dummy(
             section=self.section(0),
             title=tr("Le pont br0 sur b1"),
+            hash="8989ae1e04f27d30",
             description=tr("""
 Sur `b1`, activez les deux interfaces puis créez un pont nommé **`{bridge}`** entre `eth0` et
 `eth1` (section @@ref:linux-bridges@@ des Informations), **sans STP** (c'est le réglage par défaut ; avec STP le
@@ -827,6 +830,7 @@ vers `ext1` est celui de la partie 4, où il doit échouer).
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Transparence du pont"),
+            hash="c804d2e1ad0b5ad2",
             description=tr("""
 Depuis `m2`, lancez `ping {m1}` et observez :
 
@@ -864,6 +868,7 @@ port de `m2`. `br0` a pris l'adresse `{mac_br0}`, la plus petite de `{mac_b1_eth
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Latence avec et sans pont"),
+            hash="338cdd86da44c550",
             description=tr("""
 Déterminez la durée moyenne du `ping` entre `m2` et `m1` (`{m1}`, à travers le pont) puis entre
 `m2` et `m3` (`{m3}`, sur le même switch), sur une dizaine d'essais chacun (`ping -c 10`, ligne
@@ -931,6 +936,7 @@ formulaire est évalué sur la conclusion et sur la présence de deux mesures pl
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Table MAC et durée de vie des entrées"),
+            hash="5242eed1f9d9071b",
             description=tr("""
 Après des `ping` de `m2` vers `m1` et de `m3` vers `m1`, affichez la table MAC du pont sur `b1`
 (`bridge fdb show br {bridge}` ; `bridge -s fdb show br {bridge}` ajoute l'ancienneté de chaque
@@ -999,6 +1005,7 @@ topologie STP (partie 6), le noyau ramène de lui-même la durée de vie à 2 ×
         self.question_dummy(
             section=self.section(0),
             title=tr("m2 ne doit plus joindre l'extérieur"),
+            hash="3635e81495b525a6",
             description=tr("""
 En utilisant la famille **`bridge`** de nftables et le hook **`forward`** (section @@ref:filtering@@ des
 Informations), interdisez à `m2` (`{m2}`) de communiquer avec l'extérieur (`ext1`, `{ext1}`,
@@ -1054,6 +1061,7 @@ préférence dans une chaîne du hook `forward`.
         q7 = self.question_form(
             section=self.section(0),
             title=tr("b1 joignable : une adresse sur br0"),
+            hash="5b965e4d571f16fa",
             description=tr("""
 Ajoutez l'adresse IP `{b1}` à la machine `b1`, **sur l'interface `{bridge}`**, et vérifiez
 qu'elle devient joignable depuis `m1`, `m2`, `m3` et `gw`. Ajoutez aussi à `b1` une route par
@@ -1116,6 +1124,7 @@ côtés. L'évaluation vérifie l'adresse sur `br0` (et aucune sur `eth0` / `eth
         q8 = self.question_form(
             section=self.section(0),
             title=tr("Deux ponts en parallèle : boucle et STP"),
+            hash="43db0a3f26906627",
             description=tr("""
 Le switch `s3` (avec `m4`, `{m4}`) est relié à `s1` par deux machines `b2` et `b3` non configurées,
 chacune avec `eth0` sur `s3` et `eth1` sur `s1`. Deux ponts entre les mêmes switchs forment une

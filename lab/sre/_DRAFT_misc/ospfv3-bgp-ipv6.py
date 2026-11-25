@@ -1236,6 +1236,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="1cf3641d07201ea2",
             description=tr("""
 Lisez l'onglet **Informations** : il présente le routage IPv6 avec OSPFv3 et BGP, et leur
 configuration avec FRR.
@@ -1318,6 +1319,7 @@ et `{long}`.
         self.question_dummy(
             section=self.section(0),
             title=tr("OSPFv3 dans une zone"),
+            hash="188d2e9a5155bd0e",
             description=tr("""
 Les trois routeurs `o1_r1`, `o1_r2` et `o1_r3` forment un triangle (liens `o1_l12`, `o1_l13`,
 `o1_l23`) ; l'hôte `o1_h1` est sur le réseau `o1_lan1` d'`o1_r1`, l'hôte `o1_h3` sur le réseau
@@ -1355,6 +1357,7 @@ sens), `o1_ping` (2).
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site o1"),
+            hash="49ff60e842543b01",
             description=tr("""
 - adresse du prochain saut d'`o1_r1` vers `o1_lan3`, une fois le coût en place :
   @@{nexthop:[0-9a-zA-Z:%./]+}@@
@@ -1430,6 +1433,7 @@ l'**Intra-Area-Prefix-LSA** d'`o1_r3` (les Router-LSA d'OSPFv3 ne contiennent pl
         self.question_dummy(
             section=self.section(0),
             title=tr("Zones, résumé, zone terminale, routes externes"),
+            hash="f1402ef85cb3b41e",
             description=tr("""
 Le site `o2` a deux zones : la **zone 0** entre `o2_r0` et `o2_abr` (lien `o2_l0`), la **zone 1**
 entre `o2_abr` et `o2_r1` (lien `o2_l1`) avec les réseaux `o2_lan1a` (l'hôte `o2_h1`) et
@@ -1466,6 +1470,7 @@ plus de route externe sur `o2_r1`), `o2_ping` (2).
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site o2"),
+            hash="021b83c15d469504",
             description=tr("""
 - préfixe qui résume la zone 1 : @@{range:[0-9a-fA-F:/]+}@@
 - LSA qui porte ce résumé dans la zone 0 :
@@ -1540,6 +1545,7 @@ défaut** (`::/0`).
         self.question_dummy(
             section=self.section(0),
             title=tr("eBGP multiprotocole avec un fournisseur"),
+            hash="072f3369a62cff15",
             description=tr("""
 Votre AS {as_eb} (`eb_r1`, le réseau `eb_lan` et l'hôte `eb_h`) a reçu le préfixe `{eb48}`. Son
 fournisseur `eb_isp` (AS {as_isp}, déjà configuré) vous attend sur le lien `eb_link` : `eb_r1` y
@@ -1577,6 +1583,7 @@ link-local), `eb_ping` (3).
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site eb"),
+            hash="36a0801b05eade39",
             description=tr("""
 - AFI / SAFI de la famille IPv6 unicast (sous la forme `AFI/SAFI`) : @@{afi_safi:[0-9 /]+}@@
 - attribut BGP qui transporte les préfixes IPv6 :
@@ -1648,6 +1655,7 @@ seulement : `eb_q_attribute` (1).
         self.question_dummy(
             section=self.section(0),
             title=tr("iBGP : maillage complet et next-hop-self"),
+            hash="6e50ef762ae72cc6",
             description=tr("""
 L'AS {as_ib} a trois routeurs en ligne : `ib_r1` (bordure, relié au fournisseur `ib_isp`, AS
 {as_isp}), `ib_r2` et `ib_r3` (le réseau `ib_lan` et l'hôte `ib_h`). OSPFv3 tourne déjà entre
@@ -1685,6 +1693,7 @@ Sans `next-hop-self`, `ib_r3` reçoit la route de `{isp48}` avec le prochain sau
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Questions sur le site ib"),
+            hash="391b2d8da88f4491",
             description=tr("""
 - on monte les sessions iBGP entre adresses de bouclage parce qu'une telle adresse :
   @@{why_loopback:>ne tombe avec aucune interface : la session survit à la panne d'un lien>>>survives_link_failure|accélère l'établissement de la session>>>faster|dispense de la politique de la RFC 8212>>>rfc8212|est imposée par le protocole en iBGP>>>mandatory}@@
@@ -1751,6 +1760,7 @@ Sans `next-hop-self`, `ib_r3` reçoit la route de `{isp48}` avec le prochain sau
         self.question_dummy(
             section=self.section(0),
             title=tr("Deux fournisseurs : préférences, prepend, transit, bogons"),
+            hash="8ccaed5541b7138f",
             description=tr("""
 L'AS {as_po} (`po_r1`, le réseau `po_lan` et l'hôte `po_h`, le préfixe `{po48}`) a deux
 fournisseurs : `po_ispa` (ISP A, AS {as_a}) et `po_ispb` (ISP B, AS {as_b}), reliés tous deux à
@@ -1797,6 +1807,7 @@ deux fournisseurs).
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Questions sur le site po"),
+            hash="649efd729335e03d",
             description=tr("""
 - critère examiné **en premier** pour départager deux chemins :
   @@{{decision:>la local-preference>>>local_pref|la longueur de l'AS_PATH>>>as_path|le MED>>>med|le router-id>>>router_id}}@@
@@ -1862,6 +1873,7 @@ d'un même AS voisin.
         self.question_dummy(
             section=self.section(0),
             title=tr("Quatre pannes"),
+            hash="213e482ead5e739b",
             description=tr("""
 L'AS {as_fix} a deux routeurs reliés par `fix_l12`, avec OSPFv3 entre eux : `fix_r1` (bordure,
 relié au fournisseur `fix_isp`, AS {as_isp}) et `fix_r2` (le réseau `fix_lan` et l'hôte `fix_h`).
@@ -1894,6 +1906,7 @@ les routes de `fix_isp`), `fix_network` (2 : `fix_isp` reçoit `{fix48}`), `fix_
         q6 = self.question_form(
             section=self.section(1),
             title=tr("Symptômes"),
+            hash="cb0c5820c1e6f033",
             description=tr("""
 - état d'un voisinage OSPFv3 entre deux interfaces de MTU différents :
   @@{mtu_state:>Init>>>init|2-Way>>>twoway|ExStart / Exchange>>>exstart|Loading>>>loading|Full>>>full}@@
@@ -1954,6 +1967,7 @@ les routes de `fix_isp`), `fix_network` (2 : `fix_isp` reçoit `{fix48}`), `fix_
         self.question_dummy(
             section=self.section(0),
             title=tr("BGP sans adresse globale (bonus)"),
+            hash="a6d06b347a9b53dc",
             description=tr("""
 `un_r1` (AS {as1}) et `un_r2` (AS {as2}, déjà configuré) sont reliés par `un_link`, un lien
 **sans adresse globale** : leurs interfaces n'ont que leur link-local. Chacun a une adresse de
@@ -1998,6 +2012,7 @@ globale sur le lien), `un_route` (1 : la boucle d'`un_r2` apprise en BGP, via un
         self.question_dummy(
             section=self.section(0),
             title=tr("Trailer d'authentification (bonus)"),
+            hash="ee06f1994e89ffa6",
             description=tr("""
 `au_r2` (déjà configuré) fait OSPFv3 dans la zone 0 sur `au_link` et exige le trailer
 d'authentification de la RFC 7166 : identifiant de clé **{key_id}**, algorithme

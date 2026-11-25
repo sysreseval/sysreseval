@@ -1514,6 +1514,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="a5d4e9083b1a0d25",
             description=tr("""
 Lisez l'onglet **Informations** : il présente HTTP, les mandataires, nginx, la répartition de
 charge, la terminaison TLS, le cache (Varnish), HAProxy et VRRP. Vous êtes l'administrateur de la
@@ -1637,6 +1638,7 @@ service, et testez depuis `client`.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Interroger un serveur d'application avec curl"),
+            hash="0209957eb546f483",
             description=tr("""
 Avant de placer un mandataire devant les serveurs d'application, parlez-leur directement. Depuis
 **`proxy`** (qui est sur `lan`), interrogez `web1` avec `curl` (sections @@ref:http@@ et @@ref:curl@@ de
@@ -1726,6 +1728,7 @@ réponses saisies comptent aussi dans l'auto-évaluation.
         self.question_dummy(
             section=self.section(0),
             title=tr("Publier la boutique derrière nginx"),
+            hash="ee9609204a5cae6d",
             description=tr("""
 Sur `proxy`, faites de nginx le reverse proxy du site **`www.shop.tp`** (sections @@ref:proxies@@,
 @@ref:nginx@@ et @@ref:proxy-pass@@) :
@@ -1820,6 +1823,7 @@ nginx -t && systemctl restart nginx`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Plusieurs noms, plusieurs chemins"),
+            hash="cb676bc566b26bb3",
             description=tr("""
 Le reverse proxy est le point d'entrée de tout ce que publie l'entreprise (sections
 @@ref:nginx-select@@ et @@ref:proxy-pass@@) :
@@ -1889,6 +1893,7 @@ Le reverse proxy est le point d'entrée de tout ce que publie l'entreprise (sect
         self.question_dummy(
             section=self.section(0),
             title=tr("Un groupe de serveurs : upstream"),
+            hash="08c777d644fcfc0e",
             description=tr("""
 Un seul serveur d'application ne suffit plus (sections @@ref:lb@@ et @@ref:nginx-lb@@). Dans
 `/etc/nginx/conf.d/` :
@@ -1960,6 +1965,7 @@ et dans `/etc/nginx/sites-available/shop`, `proxy_pass http://shop_app;` (`http:
         self.question_dummy(
             section=self.section(0),
             title=tr("HTTPS sur le reverse proxy"),
+            hash="14f01ae5b2aa55dd",
             description=tr("""
 Le site doit être servi en HTTPS, les serveurs d'application restant en HTTP (section @@ref:tls@@) :
 
@@ -2029,6 +2035,7 @@ Le site doit être servi en HTTPS, les serveurs d'application restant en HTTP (s
         self.question_dummy(
             section=self.section(0),
             title=tr("Contrôle d'accès, limitation de débit, délais, compression"),
+            hash="a197c9f88483a456",
             description=tr("""
 Le reverse proxy protège les serveurs d'application (section @@ref:protect@@). Les valeurs
 (compte, phrase) sont dans la première question.
@@ -2119,6 +2126,7 @@ et `/etc/nginx/sites-available/shop` devient :
         self.question_dummy(
             section=self.section(0),
             title=tr("Mettre le catalogue en cache"),
+            hash="b7e902600abfe13f",
             description=tr("""
 Les pages du catalogue sont lentes à calculer et identiques pour tous les visiteurs : un cache
 soulagerait les serveurs d'application (sections @@ref:cache@@ et @@ref:varnish@@). Sur `proxy`,
@@ -2202,6 +2210,7 @@ plus simplement `curl -i -H 'Host: www.shop.tp' http://proxy:6081/...`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un répartiteur de charge sur lb1"),
+            hash="bd2f7ed52667f369",
             description=tr("""
 L'application est aussi publiée sous le nom **`app.shop.tp`** par une paire de répartiteurs, `lb1` et
 `lb2`. Commencez par **`lb1`** (sections @@ref:haproxy@@, @@ref:haproxy-lb@@ et
@@ -2283,6 +2292,7 @@ puis `haproxy -c -f /etc/haproxy/haproxy.cfg && systemctl restart haproxy`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Sessions, API, service TCP et HTTPS"),
+            hash="2aafa588d8e43241",
             description=tr("""
 Toujours sur `lb1` (sections @@ref:sticky@@, @@ref:haproxy-l7@@ et @@ref:haproxy-tcp@@) :
 
@@ -2357,6 +2367,7 @@ Toujours sur `lb1` (sections @@ref:sticky@@, @@ref:haproxy-l7@@ et @@ref:haproxy
         self.question_dummy(
             section=self.section(0),
             title=tr("Une adresse virtuelle pour deux répartiteurs"),
+            hash="1e39ab022029ea26",
             description=tr("""
 `lb1` est maintenant le point de défaillance unique (section @@ref:vrrp@@). L'adresse virtuelle, le
 numéro de routeur virtuel et le mot de passe sont dans la première question ; `app.shop.tp` désigne
@@ -2435,6 +2446,7 @@ Sur `lb2` : `router_id lb2`, `state BACKUP` et `priority 100`, le reste identiqu
         self.question_dummy(
             section=self.section(0),
             title=tr("D'autres reverse proxys"),
+            hash="65f7b5263a02844f",
             description=tr("""
 Trois exercices facultatifs sur `proxy` (section @@ref:others@@), sans rien retirer de ce qui précède :
 

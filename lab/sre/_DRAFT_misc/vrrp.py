@@ -1091,6 +1091,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="7e8a1a1005a007ad",
             description=tr("""
 Lisez d'abord l'onglet **Informations** : il présente VRRP et keepalived. Cette page décrit la
 maquette et les valeurs propres à votre instance.
@@ -1164,6 +1165,7 @@ bascule propre.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un seul routeur : le point de défaillance unique"),
+            hash="1a831c5487a1e11a",
             description=tr("""
 Depuis `pc1`, vérifiez que `isp` répond : `ping {isp}` et `curl http://{isp}/`. Laissez le `ping`
 tourner et, sur `r1`, coupez le lien du réseau local : `ip link set eth0 down`. Que devient le
@@ -1183,6 +1185,7 @@ disponible. Rien n'est noté ici.
         self.question_dummy(
             section=self.section(0),
             title=tr("L'instance VI_LAN sur r1 et r2"),
+            hash="02b1a90d283aeaf2",
             description=tr("""
 Sur `r1` et sur `r2`, écrivez `{conf}` avec une instance VRRP sur `eth0` (cf. section
 @@ref:keepalived@@ des Informations) : VRID **{vrid}**, adresse virtuelle `{vip}`, annonces
@@ -1219,6 +1222,7 @@ immédiat. `curl http://{vip_ip}/` affiche `SERVER=r1`.
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Les annonces et la bascule"),
+            hash="963b3f4243d72952",
             description=tr("""
 Sur `pc1`, capturez les annonces : `tcpdump -n -v -i eth0 vrrp`. Notez aussi l'adresse MAC que
 `pc1` associe à l'adresse virtuelle (`ip neigh show {vip_ip}`, après un `ping {vip_ip}`).
@@ -1319,6 +1323,7 @@ l'adresse MAC de `r1` (`{mac_r1}`).
         self.question_dummy(
             section=self.section(0),
             title=tr("L'instance VI_WAN et le groupe de synchronisation"),
+            hash="dd57e6400b9568d0",
             description=tr("""
 Une passerelle a deux côtés. Pour l'instant `isp` joint le réseau local par l'adresse de `r1`
 (`{r1_wan}`) : si `r1` tombe, les réponses n'ont plus de chemin de retour.
@@ -1355,6 +1360,7 @@ et `r2` prend les deux adresses.
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Sans le groupe de synchronisation"),
+            hash="806d28ad7ef5ba0b",
             description=tr("""
 Raisonnez (ou essayez, en retirant provisoirement le groupe) : les instances `VI_LAN` et `VI_WAN`
 sont indépendantes, `isp` joint le réseau local par `{vip_wan}`, et le lien `eth0` de `r1` tombe
@@ -1429,6 +1435,7 @@ que l'une d'elles y passe.
         self.question_dummy(
             section=self.section(0),
             title=tr("Surveiller le fournisseur, journaliser les transitions"),
+            hash="08238296c69b0240",
             description=tr("""
 Un lien peut rester « monté » alors que plus rien ne passe : keepalived ne le voit pas. Un **script
 de test** lui donne un critère de plus (cf. section @@ref:tracking@@).
@@ -1490,6 +1497,7 @@ pas de priorité : 0). Règle retirée, `r1` revient après {rise} succès et re
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Poids d'un script et groupe de synchronisation"),
+            hash="d9e4e35c7c2cbd01",
             description=tr("""
 Un script suivi peut avoir un **poids** (cf. section @@ref:tracking@@). Imaginez `VI_LAN` **hors de
 tout groupe**, suivant le script avec `weight -60` : `r1` a la priorité {master}, `r2` la priorité
@@ -1577,6 +1585,7 @@ groupe, les poids sont ramenés à 0 : un script suivi sans poids met les instan
         self.question_dummy(
             section=self.section(0),
             title=tr("Protéger les annonces"),
+            hash="34e6c5f731289489",
             description=tr("""
 N'importe quelle machine du réseau local peut émettre une annonce de priorité 255 et se faire élire
 maître (cf. section @@ref:security@@).
@@ -1613,6 +1622,7 @@ copie cachée de `pc1`, avec la priorité 255 : `r1` doit garder `{vip}`.
         q9 = self.question_form(
             section=self.section(0),
             title=tr("Ce que montre une capture"),
+            hash="6805e20305d28952",
             description=tr("""
 D'après vos captures et la section @@ref:security@@ :
 """)
@@ -1694,6 +1704,7 @@ Les annonces de `VI_WAN` vont à `{r2_wan}`.
         self.question_dummy(
             section=self.section(0),
             title=tr("Une deuxième passerelle virtuelle, dont r2 est le maître"),
+            hash="d8576120f99c6ec1",
             description=tr("""
 Avec une seule adresse virtuelle, `r2` ne sert à rien tant que `r1` fonctionne. Répartissez la
 charge (cf. section @@ref:load-sharing@@) avec une deuxième instance sur `eth0` : VRID **{vrid}**,
@@ -1732,6 +1743,7 @@ joint toujours `isp`.
         q11 = self.question_form(
             section=self.section(0),
             title=tr("Qui achemine quoi ?"),
+            hash="f2ab4278b0ac0a08",
             description=tr("""
 Avec les deux passerelles virtuelles en place :
 """)
@@ -1795,6 +1807,7 @@ clients entre les deux passerelles.
         self.question_dummy(
             section=self.section(0),
             title=tr("use_vmac sur la deuxième passerelle"),
+            hash="5316a02cf9e0d488",
             description=tr("""
 À chaque bascule, les clients doivent apprendre la nouvelle adresse MAC de leur passerelle : le
 nouveau maître la leur annonce par des ARP gratuits. Avec une **adresse MAC virtuelle**, propre au
@@ -1823,6 +1836,7 @@ source. `pc2` associe `{vip_ip}` à `{vmac}`, avant comme après la bascule, alo
         q13 = self.question_form(
             section=self.section(0),
             title=tr("Ce qui change, ce qui ne change pas"),
+            hash="093373769efc160f",
             description=tr("""
 D'après vos observations :
 """)
@@ -1888,6 +1902,7 @@ virtuelle prend l'adresse MAC du routeur qui la détient, et les clients doivent
         self.question_dummy(
             section=self.section(0),
             title=tr("Une passerelle IPv6 : VRRPv3 et annonces de routeur"),
+            hash="9a984923f44d38d6",
             description=tr("""
 Un client IPv6 apprend sa passerelle par les annonces de routeur (RA) : c'est l'adresse
 **lien-local** dont part l'annonce. Pour qu'elle survive à une panne, cette adresse doit être
@@ -1941,6 +1956,7 @@ ne trouve pas son adresse source, reste silencieux, sans erreur. À la bascule, 
         q15 = self.question_form(
             section=self.section(0),
             title=tr("VRRPv3 vu dans une capture"),
+            hash="a61d086fbc76a9e7",
             description=tr("""
 D'après vos captures sur `pc1` (`tcpdump -n -v -i eth0 'ip6 proto 112'`, puis
 `tcpdump -n -v -i eth0 icmp6`) :

@@ -998,6 +998,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="4693cc9ece3b2af0",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les communautés (dont les communautés bien connues),
 le multichemin, les confédérations, l'amortissement des oscillations et le *graceful shutdown*, leur
@@ -1063,6 +1064,7 @@ initial ; il ne survit pas au redémarrage de la machine).
         self.question_dummy(
             section=self.section(0),
             title=tr("Communautés bien connues"),
+            hash="fce2cb8703bf8011",
             description=tr("""
 `ne_r1` a un fournisseur, `ne_isp` (AS {asi}), qui a lui-même pour pair `ne_far` (AS {asf}, « le
 reste de l'Internet »), et un client, `ne_cust` (AS {asc}). Il annonce votre bloc `{own}`.
@@ -1103,6 +1105,7 @@ a `{own}` mais aucun des /24), `ne_c1_isp` (2 : `{c1}` chez `ne_isp` avec `no-ex
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site ne"),
+            hash="4bb9ae680b14cf9e",
             description=tr("""
 - communauté de `{c2}` vue par `ne_r1` : @@{{c2:[a-zA-Z0-9:-]+}}@@
 - au départ, nombre de préfixes de `ne_cust` que `ne_r1` annonce à `ne_isp` : @@{{count:[0-9]+}}@@
@@ -1171,6 +1174,7 @@ a `{own}` mais aucun des /24), `ne_c1_isp` (2 : `{c1}` chez `ne_isp` avec `no-ex
         self.question_dummy(
             section=self.section(0),
             title=tr("Répartir le trafic sur plusieurs chemins"),
+            hash="9f7f267da651cc1b",
             description=tr("""
 `mp_r1` a deux liens et deux sessions avec `mp_isp1` (AS {as1}), une session avec `mp_isp2`
 (AS {as2}). `mp_isp1` annonce `{q}` ; un service présent chez les deux fournisseurs, `{p}`, est
@@ -1209,6 +1213,7 @@ trois liens porte au moins {min_flows} des {count} flux de l'évaluation).
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site mp"),
+            hash="c1955cf8e4e57b97",
             description=tr("""
 - au départ, nombre de prochains sauts de `mp_r1` vers `{q}` : @@{{q_paths:[0-9]+}}@@
 - au départ, le chemin de `mp_isp2` vers `{p}` n'est pas installé avec les deux autres car :
@@ -1272,6 +1277,7 @@ destination** (`fib_multipath_hash_policy` 0) ; **actif sans configuration**.
         self.question_dummy(
             section=self.section(0),
             title=tr("Une confédération"),
+            hash="8d0f27382ad8f2fb",
             description=tr("""
 Dans ce site, l'AS **{our_as}** est une **confédération** de deux AS membres (section
 @@ref:confed@@) : **{s1}** (`cf_r1`, `cf_r2`) et **{s2}** (`cf_r3`, `cf_r4`). Les quatre routeurs
@@ -1317,6 +1323,7 @@ membres) ; `cf_ext1` reçoit `{our_as} {e2}` : les AS membres disparaissent à l
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site cf"),
+            hash="b4459e47b484f6a7",
             description=tr("""
 - AS_PATH de `{pe2}` reçu par `cf_ext1` : @@{{path:[0-9 ]+}}@@
 - l'attribut conservé d'un AS membre à l'autre et jamais transmis à un AS externe :
@@ -1405,6 +1412,7 @@ membres) ; `cf_ext1` reçoit `{our_as} {e2}` : les AS membres disparaissent à l
         self.question_dummy(
             section=self.section(0),
             title=tr("Amortir une route instable"),
+            hash="64c6651bc7c8db58",
             description=tr("""
 `dmp_r1` a un fournisseur, `dmp_isp` (AS {asi}), et un client, `dmp_cust` (AS {asc}), qui annonce
 `{s}` et `{f}`. La liaison de ce client vers `{f}` est instable : le préfixe apparaît et disparaît
@@ -1438,6 +1446,7 @@ la route ne sera réutilisée qu'après {m} min au plus.
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site dmp"),
+            hash="1f6d0b1ddd22328e",
             description=tr("""
 - pénalité ajoutée par un retrait de la route : @@{penalty:[0-9]+}@@
 - avec vos paramètres, durée (en minutes) au bout de laquelle une pénalité est divisée par deux :
@@ -1496,6 +1505,7 @@ peut être supprimée** (RFC 7196).
         self.question_dummy(
             section=self.section(0),
             title=tr("Bonus : vider un lien avant une maintenance"),
+            hash="ee08d2f7875a4dc7",
             description=tr("""
 `gs_r1` a deux fournisseurs, `gs_isp1` (AS {as1}) et `gs_isp2` (AS {as2}), qui sont pairs entre eux.
 `gs_isp1` annonce `{inet}` ; `gs_r1` annonce `{own}`. Dans les deux sens, le trafic passe par le lien

@@ -1339,6 +1339,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="2f6ea3d4fb6418a6",
             description=tr("""
 Lisez l'onglet **Informations** : il présente les zones d'un réseau, les trois chaînes de filtrage
 (`input`, `output`, `forward`), le suivi de connexion, la façon d'écrire la politique d'un
@@ -1476,6 +1477,7 @@ doivent détruire attendent leur délai), une ou deux secondes sans pare-feu.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Tests avant les pare-feux"),
+            hash="a7c46aa51b1061a5",
             description=tr("""
 Avant d'installer quoi que ce soit, vérifiez rapidement que :
 
@@ -1529,6 +1531,7 @@ aucun filtrage, tout passe.
         self.question_dummy(
             section=self.section(0),
             title=tr("Pare-feu d'un poste client : les paquets entrants"),
+            hash="64c3c2241af41b7c",
             description=tr("""
 Sur **`ext1`**, créez une table `inet filter` et sa chaîne de base **`input`** (section
 @@ref:ruleset@@ des Informations), de telle sorte que :
@@ -1616,6 +1619,7 @@ mais pas (c) : elle accepterait les réponses de n'importe quel serveur DNS.
         self.question_dummy(
             section=self.section(0),
             title=tr("Pare-feu d'un serveur : ouvrir des services"),
+            hash="f89e3daa0f68ff62",
             description=tr("""
 `ext1` est aussi un serveur. Complétez sa chaîne `input` :
 
@@ -1676,6 +1680,7 @@ routeur, on exigera aussi l'interface d'entrée (question 5).
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Filtrer ce qui sort : la chaîne output"),
+            hash="6b85de7494595718",
             description=tr("""
 On veut contrôler le courrier **émis** par `ext1` (port TCP {mail}). Un faux serveur de courrier
 écoute sur `ext2`, `dmz1` et `dmz2` : `nc -v -w 5 ext2 {mail}` affiche sa bannière `220 …`.
@@ -1760,6 +1765,7 @@ devient :
         self.question_dummy(
             section=self.section(0),
             title=tr("Protéger le routeur lui-même"),
+            hash="9314084340d58d71",
             description=tr("""
 On passe à **`router`**. Créez-y une table `inet filter` et sa chaîne de base **`input`**, qui
 filtre les paquets destinés au routeur lui-même (section @@ref:hooks@@ des Informations), de telle
@@ -1865,6 +1871,7 @@ ici. Ces règles ne concernent que les paquets destinés à `router` : ce qui le
         q6 = self.question_form(
             section=self.section(0),
             title=tr("Le pare-feu du routeur : filtrer ce qui le traverse"),
+            hash="75931e663bbb16d4",
             description=tr("""
 Il reste à filtrer les paquets qui **traversent** `router`, d'une zone à l'autre : c'est le rôle
 de la chaîne **`forward`** (section @@ref:forward@@ des Informations).
@@ -2012,6 +2019,7 @@ autorisés, et elles seules. (f) `iifname {{ eth0, eth2 }}` : `dmz2` est sur le 
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Bonus : bannir temporairement une machine"),
+            hash="9d5d90a7e183414c",
             description=tr("""
 nftables peut remplir un ensemble **depuis le trafic** et en faire expirer les éléments (section
 @@ref:sets@@ des Informations). Sur `router`, sans rien retirer de la question 6 :

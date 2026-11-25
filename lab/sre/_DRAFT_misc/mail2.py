@@ -1705,6 +1705,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="6e14c96b6de46de3",
             description=tr("""
 Lisez l'onglet **Informations** : il présente TLS pour le courrier, la soumission, LMTP et Sieve,
 SPF / DKIM / DMARC, les domaines virtuels et les défenses contre le spam. Vous êtes l'administrateur du
@@ -1786,6 +1787,7 @@ projet.
         q1 = self.question_form(
             section=self.section(0),
             title=tr("Le certificat du serveur, signé par l'autorité interne ; le nom imap.firm.tp"),
+            hash="e63adfea33af29d6",
             description=tr("""
 Les clients d'Alice joindront le serveur IMAP sous le **nom de service** `imap.firm.tp`, et le
 certificat du serveur doit être signé par l'autorité interne (section @@ref:tls@@ de l'onglet
@@ -1886,6 +1888,7 @@ que le `CN`, et les clients modernes refusent un certificat sans SAN.
         q2 = self.question_form(
             section=self.section(0),
             title=tr("IMAPS : lire sa boîte seulement en TLS"),
+            hash="fce0df1a57d544f6",
             description=tr("""
 Dovecot sert les boîtes de `mail`, mais accepte encore les mots de passe en clair et présente le
 certificat auto-signé de Debian (section @@ref:imap@@ de l'onglet Informations). Alice doit lire sa boîte
@@ -1990,6 +1993,7 @@ La phrase du message de Bob pour cette instance : **{secret}**.
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Soumission authentifiée sur submit : ports 587 et 465, SASL, propriété des adresses"),
+            hash="fc5feefac05e7f03",
             description=tr("""
 Alice doit envoyer son courrier depuis `pc` comme depuis `laptop` par le serveur de soumission
 **`submit`**, sous le nom de service **`smtp.firm.tp`** (section @@ref:submission@@ de l'onglet
@@ -2152,6 +2156,7 @@ by user alice`).
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Remise par LMTP et tri par Sieve sur mail"),
+            hash="fe80f9f0b677599f",
             description=tr("""
 Sur `mail`, Postfix écrit encore lui-même les messages dans les Maildir ; faites-les remettre à Dovecot
 par LMTP, puis triez le courrier d'Alice à la remise (sections @@ref:lmtp@@ et @@ref:sieve@@ de l'onglet
@@ -2284,6 +2289,7 @@ Journal : `postfix/lmtp[...]: ...: to=<alice@firm.tp>, relay={relay}, ... status
         q5 = self.question_form(
             section=self.section(0),
             title=tr("SPF, DKIM et DMARC : authentifier le courrier de firm.tp"),
+            hash="77a18f9fae065d3e",
             description=tr("""
 `mx.other.tp` vérifie SPF (en-tête `Received-SPF:`) et DKIM (en-tête `Authentication-Results:`) sur les
 messages qu'il reçoit (section @@ref:spf-dkim@@ de l'onglet Informations). Regardez ces deux en-têtes sur
@@ -2403,6 +2409,7 @@ mx.other.tp; dkim=pass ... header.d=firm.tp`.
         q6 = self.question_form(
             section=self.section(0),
             title=tr("Un second domaine sur mail : newco.tp en boîtes virtuelles"),
+            hash="562a214f2ec7f9d4",
             description=tr("""
 L'entreprise héberge maintenant le courrier de sa filiale **`newco.tp`**, dont les utilisateurs n'ont pas
 de compte Unix sur `mail` (section @@ref:virtual@@ de l'onglet Informations) :
@@ -2513,6 +2520,7 @@ puis `systemctl restart dovecot`.
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Anti-spam : les restrictions de Postfix sur mail"),
+            hash="da0f66c1416f52bb",
             description=tr("""
 `mail` accepte aujourd'hui tout message pour `firm.tp`. Faites-lui refuser, **pendant le dialogue
 SMTP**, le courrier des robots (section @@ref:antispam@@ de l'onglet Informations), sans jamais refuser
@@ -2604,6 +2612,7 @@ listed: ...` ; un sujet contenant `{word}` → `550 5.7.1 message refusé : cont
         self.question_dummy(
             section=self.section(0),
             title=tr("Bonus : dépanner le serveur de oldco.tp"),
+            hash="3aa98ef03b3f48f3",
             description=tr("""
 L'entreprise a racheté **`oldco.tp`**, dont le serveur `old` (`old.oldco.tp`, sur `lan`) a été remonté à
 la hâte. Rien ne va : `olivia` ne peut plus lire sa boîte en IMAPS ; les clients de messagerie

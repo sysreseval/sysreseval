@@ -1072,6 +1072,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="9752743737133db2",
             description=tr("""
 Lisez l'onglet **Informations** : il présente le SD-WAN, les tunnels, BGP, le routage par application
 et les SLA. L'entreprise a un data centre derrière le **hub** et six agences ; chaque partie du TP se
@@ -1146,6 +1147,7 @@ BFD MPLS de `edge2` est active, coupure de son tunnel MPLS sur le hub pendant {c
         self.question_dummy(
             section=self.section(0),
             title=tr("Monter les deux tunnels de edge1"),
+            hash="e832978ffedc28f5",
             description=tr("""
 Sections @@ref:overlay@@ et @@ref:wireguard@@. `edge1` n'a encore aucun tunnel.
 
@@ -1193,6 +1195,7 @@ puis `wg-quick up wg-mpls`, `wg-quick up wg-inet` et `ip route add {dc_lan} dev 
         q1 = self.question_form(
             section=self.section(0),
             title=tr("WireGuard en questions"),
+            hash="ea4c0d10ac780624",
             description=tr("""
 Sections @@ref:wireguard@@ et @@ref:mtu@@.
 
@@ -1219,6 +1222,7 @@ Sections @@ref:wireguard@@ et @@ref:mtu@@.
         self.question_dummy(
             section=self.section(0),
             title=tr("BGP sur les deux tunnels de edge2"),
+            hash="e1bcccae1124acdf",
             description=tr("""
 Sections @@ref:bgp@@ et @@ref:pref@@. Les deux tunnels de `edge2` sont montés, mais il n'a aucune route
 vers le data centre. FRR tourne (`bgpd` et `bfdd`) sans configuration.
@@ -1278,6 +1282,7 @@ court) ; `edge2` préfère la route du data centre reçue par MPLS (local-prefer
         q2 = self.question_form(
             section=self.section(0),
             title=tr("Les choix de BGP"),
+            hash="cd14d7f5cb1dad5f",
             description=tr("""
 Section @@ref:pref@@.
 
@@ -1302,6 +1307,7 @@ Section @@ref:pref@@.
         self.question_dummy(
             section=self.section(0),
             title=tr("Aiguiller les applications de edge3"),
+            hash="3a6c34479272a40a",
             description=tr("""
 Sections @@ref:classify@@ et @@ref:steer@@. Sur `edge3`, tout le trafic vers le data centre passe par
 le tunnel Internet (`ip route` : `{dc_lan} dev wg-inet`), le moins cher. Faites passer par le tunnel
@@ -1343,6 +1349,7 @@ puis `ip rule add fwmark 0x10 lookup 110` et `ip route add {dc_lan} dev wg-mpls 
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Le marquage EF"),
+            hash="d0f96aa0e8d625d5",
             description=tr("""
 Section @@ref:classify@@.
 
@@ -1364,6 +1371,7 @@ Section @@ref:classify@@.
         self.question_dummy(
             section=self.section(0),
             title=tr("Faire sortir le SaaS directement de edge4"),
+            hash="e9d4abeb30e73e46",
             description=tr("""
 Section @@ref:dia@@. Sur `edge4`, tout part par le tunnel MPLS vers le hub (`ip route` : `default dev
 wg-mpls`), y compris le trafic Internet, filtré et traduit au siège (*backhaul*) : `curl http://saas/`
@@ -1396,6 +1404,7 @@ depuis `pc4` répond `CLIENT_IP=` l'adresse Internet du hub.
         q4 = self.question_form(
             section=self.section(0),
             title=tr("Backhaul et NAT"),
+            hash="7da02d4f8216d567",
             description=tr("""
 Section @@ref:dia@@.
 
@@ -1417,6 +1426,7 @@ Section @@ref:dia@@.
         self.question_dummy(
             section=self.section(0),
             title=tr("Un moniteur de SLA pour la voix de edge5"),
+            hash="11d2b0953cc400db",
             description=tr("""
 Section @@ref:sla@@. Sur `edge5`, la voix (UDP {sip} et EF) est déjà marquée ({mark}) et envoyée dans la
 table {table} (`ip rule show`, `ip route show table {table}` : `default dev wg-mpls`) ; le reste passe par
@@ -1458,6 +1468,7 @@ Lancez-le en arrière-plan (`setsid -f {script}`). Testez avec les états `mpls_
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Dégradation et hystérésis"),
+            hash="a899c27e1b1e7e73",
             description=tr("""
 Section @@ref:sla@@.
 
@@ -1479,6 +1490,7 @@ Section @@ref:sla@@.
         self.question_dummy(
             section=self.section(0),
             title=tr("Écrire la politique de edge6 sur l'orchestrateur"),
+            hash="488f258b1bf006bc",
             description=tr("""
 Section @@ref:agent@@. Sur `edge6` tourne l'agent SD-WAN du TP ; il demande sa politique à
 l'orchestrateur toutes les 5 s, mais `orch` n'en a pas encore pour lui (`sdwan-agent status` sur
@@ -1524,6 +1536,7 @@ avec les états `mpls_degraded` / `mpls_normal` et des rafales depuis `pc6`.
         q6 = self.question_form(
             section=self.section(0),
             title=tr("Orchestrateur, edges et métriques"),
+            hash="db152b6891537bfc",
             description=tr("""
 Sections @@ref:principles@@ et @@ref:sla@@.
 
@@ -1545,6 +1558,7 @@ Sections @@ref:principles@@ et @@ref:sla@@.
         self.question_dummy(
             section=self.section(0),
             title=tr("BFD sur les sessions de edge2"),
+            hash="0899e6c5a1418663",
             description=tr("""
 Section @@ref:bfd@@. Avec la configuration de la partie 2, si le tunnel MPLS de `edge2` tombe, BGP met
 trois minutes à s'en apercevoir. Activez BFD sur les deux sessions de `edge2` (le hub l'a déjà fait de

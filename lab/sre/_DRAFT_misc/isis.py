@@ -1040,6 +1040,7 @@ class Grade(Grade0):
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="81dee02ea4a5d7e4",
             description=tr("""
 Lisez l'onglet **Informations** : il présente IS-IS (NET, PDU, adjacences, niveaux et aires, DIS,
 métriques, surcharge, authentification), sa configuration avec FRR et les commandes de diagnostic.
@@ -1103,6 +1104,7 @@ seulement : aucune adjacence avec `fix_r2`) ; `fix_r3` sans `isis network point-
         self.question_dummy(
             section=self.section(0),
             title=tr("Premier domaine IS-IS"),
+            hash="f49fe236a8be8819",
             description=tr("""
 Les routeurs `bas_r1`, `bas_r2`, `bas_r3` et `bas_r4` forment un carré (liens `bas_l12`,
 `bas_l23`, `bas_l34` et `bas_l14`) ; l'hôte `bas_h1` est derrière `bas_r1`, l'hôte `bas_h4` derrière
@@ -1139,6 +1141,7 @@ deux adresses de bouclage), `bas_ping` (3), `bas_ecmp` (2 : deux prochains sauts
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site bas"),
+            hash="bbc31cc859479567",
             description=tr("""
 - system-id de `bas_r3` (format `xxxx.xxxx.xxxx`) : @@{sysid:[0-9a-fA-F.]+}@@
 - premier octet du NET qui indique une adresse privée : @@{afi:[0-9]+}@@
@@ -1244,6 +1247,7 @@ seulement (choix dans une liste), `bas_q_transport`, `bas_q_mac` (1 chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("Niveaux et aires"),
+            hash="98ca012cf3277d19",
             description=tr("""
 Les routeurs `lvl_r1` à `lvl_r5` forment une ligne ; l'hôte `lvl_h1` est derrière `lvl_r1`,
 l'hôte `lvl_h5` derrière `lvl_r5`. Le site compte trois aires (section @@ref:levels@@) :
@@ -1295,6 +1299,7 @@ par défaut), `lvl_ping` (3).
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site lvl"),
+            hash="410ae07bd421a01d",
             description=tr("""
 - bit de la LSP de niveau 1 de `lvl_r2` qui fait installer à `lvl_r1` une route par défaut :
   @@{bit:>ATT>>>att|P>>>p|OL>>>ol}@@
@@ -1393,6 +1398,7 @@ l'enseignant seulement, `lvl_q_bit`, `lvl_q_l1_areas` (1 chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("DIS, métriques et surcharge"),
+            hash="3d4b40c89e0c7609",
             description=tr("""
 `lan_r1`, `lan_r2` et `lan_r3` partagent le réseau à diffusion `lan_seg` ; `lan_r4` est relié à
 `lan_r1` (lien `lan_l14`) et à `lan_r3` (lien `lan_l34`). L'hôte `lan_h2` est derrière `lan_r2`,
@@ -1431,6 +1437,7 @@ contre {via_l14} par `lan_l14`). La surcharge de `lan_r1` ne change rien à ses 
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site lan"),
+            hash="42dffa4af9a8e853",
             description=tr("""
 - intervalle (en secondes) entre deux CSNP du DIS : @@{csnp:[0-9]+}@@
 - un routeur qui arrive avec une meilleure priorité devient DIS sans attendre :
@@ -1511,6 +1518,7 @@ l'enseignant seulement, `lan_q_preemptive` (1).
         self.question_dummy(
             section=self.section(0),
             title=tr("Authentification"),
+            hash="f9ee39ec206be651",
             description=tr("""
 `auth_r1` et `auth_r2` sont reliés par le lien `auth_l12` ; l'hôte `auth_h1` est derrière
 `auth_r1`, l'hôte `auth_h2` derrière `auth_r2`. IS-IS est configuré sur les deux routeurs (aire
@@ -1546,6 +1554,7 @@ IS-IS vers `auth_lan1`), `auth_md5` (2 : les deux mots de passe en `md5` sur `au
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le site auth"),
+            hash="4e49ab3a80e6d444",
             description=tr("""
 - numéro du TLV qui porte l'authentification : @@{tlv:[0-9]+}@@
 - `domain-password` protège :
@@ -1595,6 +1604,7 @@ IS-IS vers `auth_lan1`), `auth_md5` (2 : les deux mots de passe en `md5` sur `au
         self.question_dummy(
             section=self.section(0),
             title=tr("Dépannage"),
+            hash="6e542bbb5a18b734",
             description=tr("""
 Les routeurs `fix_r1` à `fix_r4` forment une ligne ; l'hôte `fix_h1` est derrière `fix_r1`, l'hôte
 `fix_h4` derrière `fix_r4`. Le plan prévu : toute la ligne dans l'aire **`{area}`**, `fix_r1` au
@@ -1633,6 +1643,7 @@ lui).
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Les causes des pannes"),
+            hash="edfa9678500abc96",
             description=tr("""
 - cause de l'absence d'adjacence entre `fix_r1` et `fix_r2` : @@{{f12:>{causes}}}@@
 - cause de l'absence d'adjacence entre `fix_r2` et `fix_r3` : @@{{f23:>{causes}}}@@
@@ -1686,6 +1697,7 @@ chacun).
         self.question_dummy(
             section=self.section(0),
             title=tr("Routes externes (bonus)"),
+            hash="51d9cd86ac6e10c7",
             description=tr("""
 `ext_r1` et `ext_r2` forment un petit domaine IS-IS (aire `{area}`, niveau 2) ; l'hôte `ext_h2` est
 derrière `ext_r2`. `ext_r1` est aussi relié, par le réseau `ext_wan` (hors IS-IS), au routeur

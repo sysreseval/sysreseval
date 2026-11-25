@@ -1321,6 +1321,7 @@ ce site (`r1` pour le site 1, `r2` pour le site 2), rien de plus précis.
 """)
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="73c724f9fbbb84ce",
             description=tr("""
 Lisez l'onglet **Informations** : c'est le cours (adresses, découverte de voisins, annonces de
 routeur, DHCPv6, routage, MTU), avec les commandes utiles et un tableau de dépannage.
@@ -1405,6 +1406,7 @@ Règles valables pour tout le TP :
         self.question_dummy(
             section=self.section(0),
             title=tr("Adressage et découverte de voisins sur lan1"),
+            hash="6f637d8764625087",
             description=tr("""
 Sur `lan1`, `m1` et `r1` (interface `eth0`) n'ont encore qu'IPv4.
 
@@ -1455,6 +1457,7 @@ ip -6 addr add {r1}/64 dev eth0
         q1 = self.question_form(
             section=self.section(1),
             title=tr("Adresses et messages observés"),
+            hash="47cc93a8e2afc5a7",
             description=tr("""
 - Adresse de lien local de `m1` : @@{ll_m1:[0-9a-fA-F:%/]+}@@ ; de `r1` (eth0) : @@{ll_r1:[0-9a-fA-F:%/]+}@@
 - Préfixe de toutes les adresses de lien local : @@{prefixe_ll:[0-9a-fA-F:/]+}@@
@@ -1524,6 +1527,7 @@ ip -6 addr add {r1}/64 dev eth0
         self.question_text(
             section=self.section(1),
             title=tr("Découverte de voisins"),
+            hash="bb5faa5634702a95",
             description=tr("Collez les lignes de `tcpdump` montrant la sollicitation et l'annonce de voisin de "
                            "l'étape 4, puis le NS de la détection d'adresse dupliquée de l'étape 5.")
             + instructor(tr("""
@@ -1543,6 +1547,7 @@ notée.
         self.question_dummy(
             section=self.section(0),
             title=tr("Adresses et routes statiques"),
+            hash="f56f65d9d1659b5a",
             description=tr("""
 Déployez IPv6 sur le reste des machines statiques, d'après le plan d'adressage :
 
@@ -1613,6 +1618,7 @@ et de `r1` :
         q2 = self.question_form(
             section=self.section(1),
             title=tr("Routage"),
+            hash="822c0c8c5504b40f",
             description=tr("""
 - Ce que l'opérateur route vers chaque site : @@{agregat:>un préfixe /48 par site|un préfixe /64 par réseau|une route par machine}@@
 - Type ICMPv6 du message « destination injoignable » renvoyé par un routeur sans route : @@{unreach_type:[0-9]+}@@
@@ -1689,6 +1695,7 @@ et de `r1` :
         self.question_dummy(
             section=self.section(0),
             title=tr("Annonces de routeur de r2 et autoconfiguration de pc1"),
+            hash="eb27293c57948683",
             description=tr("""
 `pc1` et `pc2`, sur `lan3`, n'ont que leur adresse de lien local (`ip -6 addr`, `ip -6 route`) : elles
 attendent les **annonces de routeur** de `r2`.
@@ -1738,6 +1745,7 @@ actif : radvd refuse de fonctionner sans).
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Ce que pc1 a reçu"),
+            hash="5291b7e685e9e1c0",
             description=tr("""
 - Adresse globale obtenue par `pc1` : @@{adresse_pc1:[0-9a-fA-F:/]+}@@
 - Prochain saut de sa route par défaut : @@{next_hop:[0-9a-fA-F:%/]+}@@
@@ -1820,6 +1828,7 @@ A : {flag_a} ; L : {flag_l}.
         self.question_dummy(
             section=self.section(0),
             title=tr("DHCPv6 sans état : le DNS pour pc1"),
+            hash="f3f8f01ac46861e7",
             description=tr("""
 `srv` (image avec systemd) sera le serveur DHCPv6 de `lan3`. Commencez par le mode **sans état** :
 `pc1` garde son adresse SLAAC et ne demande que les paramètres DNS.
@@ -1875,6 +1884,7 @@ eth0 from fe80::…` ; `/etc/resolv.conf` contient `search {domain}` et `nameser
         q4a = self.question_form(
             section=self.section(1),
             title=tr("Le protocole"),
+            hash="d3733e751866316c",
             description=tr("""
 - Port UDP du client DHCPv6 : @@{port_client:[0-9]+}@@ ; du serveur : @@{port_serveur:[0-9]+}@@
 - Adresse de destination de la requête de `pc1` : @@{multicast:[0-9a-fA-F:]+}@@
@@ -1891,6 +1901,7 @@ relais DHCPv6 du lien) ; `{msg_req}` puis `{msg_rep}` ; {route6}.
         self.question_dummy(
             section=self.section(1),
             title=tr("DHCPv6 avec état : une adresse pour pc2"),
+            hash="69d9931d4126850a",
             description=tr("""
 `pc2` est réglée pour **ne pas** former d'adresse automatique (`autoconf=0`) tout en acceptant la route
 par défaut des annonces : c'est un poste qui attend son adresse d'un serveur.
@@ -1938,6 +1949,7 @@ puis `systemctl restart radvd` sur `r2`, `systemctl restart isc-dhcp-server` sur
         q4b = self.question_form(
             section=self.section(1),
             title=tr("Le bail de pc2"),
+            hash="f74980f51ef14102",
             description=tr("""
 - DUID de `pc2` (octets en hexadécimal séparés par `:`) : @@{duid_pc2:[0-9a-fA-F:-]+}@@
 - Longueur du préfixe de l'adresse posée par `dhclient` sur `eth0` : @@{prefixlen:[0-9]+}@@
@@ -1955,6 +1967,7 @@ puis `systemctl restart radvd` sur `r2`, `systemctl restart isc-dhcp-server` sur
         self.question_dummy(
             section=self.section(1),
             title=tr("Réservation par DUID"),
+            hash="dbae8a4244916493",
             description=tr("""
 `pc2` doit toujours recevoir l'adresse **`{pc2_fixe}`** (hors de la plage).
 
@@ -2080,6 +2093,7 @@ puis `systemctl restart isc-dhcp-server` ; sur `pc2`, `dhclient -6 -D LL -r eth0
         self.question_dummy(
             section=self.section(0),
             title=tr("Découverte du PMTU en IPv6"),
+            hash="d674337761cd40de",
             description=tr("""
 Les liens de l'opérateur (`wan`) ont un MTU inférieur à 1500. Dans cette partie et la suivante,
 `m1`, `m2`, `r1` et `r2` sont les machines des deux sites (cours, sections @@ref:mtu@@ et @@ref:tunnels@@).
@@ -2132,6 +2146,7 @@ ping -4 -c 2 -s 3000 m2  # réussit dès le premier essai
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Mesures"),
+            hash="b7ceb67b65dc5fa7",
             description=tr("""
 - Plus grande charge utile de `ping -6 -M do -s` qui traverse l'opérateur sans erreur : @@{charge_v6:[0-9]+}@@ ;
   la même en IPv4 (`ping -4 -M do -s`) : @@{charge_v4:[0-9]+}@@
@@ -2168,6 +2183,7 @@ ping -4 -c 2 -s 3000 m2  # réussit dès le premier essai
         self.question_dummy(
             section=self.section(1),
             title=tr("Trou noir PMTUD en double pile"),
+            hash="52c11c7a49b1dea7",
             description=tr("""
 1. Lancez `iperf3 -s` sur `m2`, puis sur `m1` `iperf3 -6 -c m2 -t 5` et `iperf3 -4 -c m2 -t 5` :
    les deux transferts passent.
@@ -2223,6 +2239,7 @@ ip link set dev eth0 mtu {n}  # sur r2
         q5b = self.question_form(
             section=self.section(1),
             title=tr("Correction retenue"),
+            hash="3dcf79b569c3f0dc",
             description=tr("""
 - Correction que vous avez mise en place : @@{correctif:>MSS clamping nftables sur r1 et/ou r2|MTU des interfaces WAN de r1 et r2 abaissé|net.ipv4.tcp_mtu_probing sur m1 et m2|route avec mtu sur m1 et m2}@@
 """)
@@ -2266,6 +2283,7 @@ selon la correction faite (1 point). Les deux autres choix ne corrigent que `m1`
         self.question_text(
             section=self.section(1),
             title=tr("Une seule règle pour deux familles"),
+            hash="8cedfc1ad7ee8ebe",
             description=tr("Dans une table `inet`, une règle `tcp flags syn tcp option maxseg size set 1400` sans "
                            "`meta nfproto` s'applique aussi aux SYN IPv6. Est-elle suffisante pour les deux familles "
                            "avec le MTU de l'opérateur que vous avez mesuré ? Justifiez par le calcul.")
@@ -2287,6 +2305,7 @@ notée.
         self.question_dummy(
             section=self.section(0),
             title=tr("Tunnel 6in4 entre r1 et r2"),
+            hash="9cb645cac3d3cd2d",
             description=tr("""
 Supposons que l'opérateur n'offre pas IPv6 : les deux sites peuvent se relier par un tunnel qui
 transporte IPv6 dans l'IPv4 de l'opérateur.
@@ -2337,6 +2356,7 @@ ip -6 addr add {r2_tun} dev sit1
         q6 = self.question_form(
             section=self.section(1),
             title=tr("MTU du tunnel"),
+            hash="04f92c7c2f148fe8",
             description=tr("""
 - Surcoût d'encapsulation d'un tunnel 6in4, en octets : @@{surcout:[0-9]+}@@
 - MTU à configurer sur `sit1` : @@{mtu_tunnel:[0-9]+}@@

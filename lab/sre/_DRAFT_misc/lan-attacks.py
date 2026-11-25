@@ -655,6 +655,7 @@ class Grade(Grade0):
 
         self.question_dummy(
             title=tr("Organisation du TP"),
+            hash="b0eba9ba8e155f0e",
             description=tr("""
 Lisez l'onglet **Informations** : il présente la reconnaissance, le protocole ARP, l'attaque par
 empoisonnement du cache et ce qu'elle permet (écoute, usurpation DNS), les parades (filtrage
@@ -725,6 +726,7 @@ par le noyau en conteneur** : la partie « redirect » est donc notée uniquemen
         q0 = self.question_form(
             section=self.section(0),
             title=tr("Balayer le réseau local"),
+            hash="ef21fa146d5de454",
             description=tr("""
 Depuis `mx`, cartographiez le réseau local (section @@ref:recon@@) :
 
@@ -760,6 +762,7 @@ La machine cachée `spy` n'a **pas** d'adresse IP : elle n'apparaît donc pas au
         q1 = self.question_form(
             section=self.section(0),
             title=tr("La passerelle de m1"),
+            hash="1f45516b42850b66",
             description=tr("""
 Sur `m1`, videz le cache ARP (`ip neigh flush all`), puis lancez `{ping} {ext1}` (une machine de
 l'extérieur, jointe **par la passerelle**). Affichez le cache (`ip neigh`). Lisez les adresses
@@ -786,6 +789,7 @@ Vérifiable : `ip neigh` sur `m1` montre `{gw_ip} ... lladdr {gw_mac}`.
         q2 = self.question_form(
             section=self.section(0),
             title=tr("La trame ARP"),
+            hash="d701e80d313a9920",
             description=tr("""
 Toujours sur `m1`, videz le cache puis, pendant un `ip neigh flush all; {ping} {ext1}`, capturez
 sur `m1` avec `tcpdump -e -n arp` (ou `tshark -i eth0 -V`). Observez la requête et la réponse ARP.
@@ -818,6 +822,7 @@ C'est la **réponse** ARP (opération 2), reçue en unicast, qui alimente le cac
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Pourquoi ARP est vulnérable"),
+            hash="33d6b996e2c21aff",
             description=tr("""
 D'après la section @@ref:why-insecure@@ des Informations :
 
@@ -844,6 +849,7 @@ réponse possède l'IP annoncée, et une réponse non sollicitée (*gratuitous A
         q4 = self.question_form(
             section=self.section(0),
             title=tr("L'attaque depuis mx"),
+            hash="f5d65dcf4355a533",
             description=tr("""
 Sur `m1`, lancez une capture (`tcpdump -e -n arp` ou `tshark -i eth0`) et affichez le cache
 (`ip neigh`). Depuis `mx`, lancez l'attaque contre `m1` et la passerelle :
@@ -877,6 +883,7 @@ c'est un homme du milieu. À l'arrêt d'`ettercap`, les vrais couples sont réta
         q5 = self.question_form(
             section=self.section(0),
             title=tr("Analyse des trames forgées"),
+            hash="dc6eac3a8b163700",
             description=tr("""
 Dans votre capture sur `m1` pendant l'attaque, repérez les fausses réponses ARP émises par `mx`.
 """)
@@ -903,6 +910,7 @@ couple (IP émetteur, MAC émetteur) qui empoisonne le cache.
         qp = self.question_form(
             section=self.section(0),
             title=tr("Ce que rapporte l'attaque"),
+            hash="49650b840eae2bb8",
             description=tr("""
 Pendant que l'attaque tourne (`m1` empoisonnée, routage actif sur `mx`), faites depuis `m1` une
 requête web vers `ext1` : `curl -s http://{ext1}/` (ou `http://{web}/`). `ext1` renvoie un écho
@@ -937,6 +945,7 @@ DNSSEC rendent l'écoute et l'usurpation inopérantes. Question évaluée par le
         self.question_dummy(
             section=self.section(0),
             title=tr("Filtrer les réponses ARP"),
+            hash="b4d8b546218f7b2f",
             description=tr("""
 Sur `m1`, protégez le cache avec la famille `arp` de `nftables` (section @@ref:protection-filter@@
 des Informations) : une table `arp filter`, une chaîne `input` de politique **`drop`**, et une
@@ -980,6 +989,7 @@ La sonde `spy` envoie une réponse forgée (`{gw_ip}` à `{mac_spy}`) : avec le 
         q6 = self.question_form(
             section=self.section(0),
             title=tr("L'effet de bord du filtrage"),
+            hash="cd83503d903f6a9d",
             description=tr("""
 Depuis `m2`, lancez un `{ping} {m1}`. Observez (section @@ref:protection-filter@@).
 """).format(ping=PING, m1=d.ips.m1.ip)
@@ -1009,6 +1019,7 @@ formulaire (l'état final reste en filtrage « passerelle seulement »).
         self.question_dummy(
             section=self.section(0),
             title=tr("Figer la passerelle"),
+            hash="1040e0176e9be2ec",
             description=tr("""
 Sur `m1`, ajoutez une entrée **permanente** pour la passerelle (section @@ref:protection-static@@) :
 
@@ -1037,6 +1048,7 @@ L'évaluation lit `ip -j neigh` sur `m1` : l'entrée `{gw_ip}` doit être `PERMA
         q7 = self.question_form(
             section=self.section(0),
             title=tr("Statique contre filtrage"),
+            hash="fb46a5ee3df23bd5",
             description=tr("""
 - en quoi une entrée `PERMANENT` protège-t-elle, même par rapport au filtrage ? @@{why_static:>elle n'est jamais remplacée par une réponse ARP, forgée ou non>>>immutable|elle chiffre le cache>>>crypto|elle bloque ip_forward>>>forward|elle n'apporte rien de plus>>>nothing}@@
 """)
@@ -1057,6 +1069,7 @@ maintenir à la main.
         q8s = self.question_form(
             section=self.section(0),
             title=tr("Les paramètres ARP du noyau"),
+            hash="cc865903eb0b031d",
             description=tr("""
 Lisez la section @@ref:arp-sysctls@@ et les paramètres sur `m1`
 (`cat /proc/sys/net/ipv4/conf/eth0/arp_accept`, etc.).
@@ -1088,6 +1101,7 @@ par le formulaire.
         self.question_dummy(
             section=self.section(0),
             title=tr("Monter un serveur DHCP pirate"),
+            hash="eb12b838d5ec1fd2",
             description=tr("""
 `pc` reçoit sa configuration par **DHCP** du `routeur`. Un attaquant peut se placer en homme du
 milieu **sans ARP** en lançant un serveur DHCP pirate qui s'annonce comme passerelle
@@ -1119,6 +1133,7 @@ DHCP annonce une passerelle ≠ `routeur`.
         qd = self.question_form(
             section=self.section(0),
             title=tr("DHCP pirate : comprendre et parer"),
+            hash="01bbe204254874fd",
             description=tr("""
 - comment un serveur DHCP pirate place-t-il l'attaquant en homme du milieu ? @@{why_mitm:>il annonce l'attaquant comme passerelle (et DNS) de la victime>>>gateway|il chiffre le trafic>>>crypto|il éteint le vrai routeur>>>kill}@@
 - une entrée ARP statique sur `m1` protège-t-elle contre ce vecteur ? @@{arp_helps:>non, c'est un autre vecteur (défense en profondeur)>>>no|oui, elle bloque tout>>>yes}@@
@@ -1147,6 +1162,7 @@ formulaire.
         self.question_dummy(
             section=self.section(0),
             title=tr("Durcir m1 contre les redirections ICMP"),
+            hash="c0228947624b0d0e",
             description=tr("""
 Dernier vecteur : la **redirection ICMP** (section @@ref:icmp-redirect@@). Durcissez `m1` pour
 qu'elle ignore les redirections :
@@ -1173,6 +1189,7 @@ toute façon pas : la partie est notée par le sysctl et le formulaire.)
         qr = self.question_form(
             section=self.section(0),
             title=tr("Redirection ICMP : comprendre et parer"),
+            hash="9e1d15b7d422f982",
             description=tr("""
 - que permet une redirection ICMP forgée ? @@{attack:>détourner une route de la victime vers l'attaquant>>>reroute|chiffrer le trafic>>>crypto|scanner les ports>>>scan}@@
 - quel paramètre durcit la victime ? @@{parade:>net.ipv4.conf.*.accept_redirects=0>>>accept_redirects|ip_forward=1>>>forward|arp_accept=1>>>arp}@@
@@ -1198,6 +1215,7 @@ activé par défaut, limite déjà l'attaque). Question évaluée par le formula
         self.question_dummy(
             section=self.section(0),
             title=tr("Surveiller avec arpwatch"),
+            hash="7e1848ee70399785",
             description=tr("""
 Sur le `routeur`, lancez `arpwatch -d -i eth0` (section @@ref:monitoring@@). Laissez-le tourner.
 Depuis `mx`, relancez une attaque : observez les alertes d'`arpwatch`.
@@ -1220,6 +1238,7 @@ L'évaluation vérifie avec `pgrep` qu'`arpwatch` tourne sur le `routeur`. Penda
         q8 = self.question_form(
             section=self.section(0),
             title=tr("Reconnaître l'attaque"),
+            hash="9dae5349145aa869",
             description=tr("""
 - quelle alerte `arpwatch` signale une MAC changée pour une IP connue ? @@{alert:>changed ethernet address / flip flop>>>changed|new station>>>new|bogon>>>bogon}@@
 - à l'œil, dans le cache (`ip neigh`), comment repère-t-on l'empoisonnement ? @@{spot:>l'IP de la passerelle pointe vers une MAC inhabituelle (celle de l'attaquant)>>>two_macs|le cache est vide>>>empty|les entrées deviennent PERMANENT toutes seules>>>permanent}@@
