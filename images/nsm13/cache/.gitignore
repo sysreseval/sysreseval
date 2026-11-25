@@ -1,0 +1,4 @@
+*.deb
+*.whl
+*.tar.gz
+wheels/

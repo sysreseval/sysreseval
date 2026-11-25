@@ -12,7 +12,9 @@ exists (``pam_mkhomedir``).  One JSON document on stdout: ``{"ok", "login", "hom
 Options: ``--timeout S`` (default 20), ``--as USER`` (the user running ``su``, default
 ``student``), ``--port N`` (ssh), ``--bind ADDR`` (ssh: the local address the connection comes from,
 ``ssh -b``), ``--klist`` (the session also reports whether it holds a Kerberos ticket, ``klist -s``: the
-JSON gains ``"tgt"``, true / false).
+JSON gains ``"tgt"``, true / false), ``--command CMD`` (the session runs ``echo SRE_LOGIN_OK; CMD``
+instead of :data:`SESSION_SCRIPT`: for a server whose shell is emulated, a honeypot; ``login`` and
+``home`` stay empty, the output of *CMD* is in ``output``).
 """
 import json
 import os
@@ -125,6 +127,7 @@ def main(argv):
     port = 22
     bind = None
     klist = False
+    command = None
     args = []
     i = 0
     while i < len(argv):
@@ -144,6 +147,9 @@ def main(argv):
         elif a == "--bind":
             bind = argv[i + 1]
             i += 2
+        elif a == "--command":
+            command = argv[i + 1]
+            i += 2
         else:
             args.append(a)
             i += 1
@@ -151,7 +157,10 @@ def main(argv):
         print("usage: login_probe.py su USER PASSWORD | ssh HOST USER PASSWORD", file=sys.stderr)
         return 2
     mode = args[0]
-    script = SESSION_SCRIPT + (KLIST_SCRIPT if klist else "")
+    if command is not None:
+        script = f"echo {MARK}; {command}"
+    else:
+        script = SESSION_SCRIPT + (KLIST_SCRIPT if klist else "")
     if mode == "su" and len(args) == 3:
         user, password = args[1], args[2]
         cmd = ["runuser", "-u", as_user, "--", "su", "-", user, "-c", script]

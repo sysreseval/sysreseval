@@ -14,7 +14,7 @@ NAMESPACE ?= sysreseval
 #   is built again on the new version of its parent, under its old tag.
 # VERSION_identity13 := 1.35
 
-IMAGES := base13 init13 netdev13 identity13 proxy13 monitoring13 voip13 scan13 devops13 base12 init12
+IMAGES := base13 init13 netdev13 identity13 proxy13 monitoring13 voip13 scan13 nsm13 devops13 base12 init12
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help docker-hub-images
 
@@ -66,6 +66,13 @@ voip13: init13
 scan13: init13
 	$(BUILD)
 
+# The network security monitoring lab: Zeek 9.0 LTS (zeek-9.0-core + zeekctl-9.0 from upstream's OBS
+# repository, under /opt/zeek) and the Cowrie honeypot (3.1.8 from PyPI in a virtual environment,
+# run by the user cowrie from /opt/cowrie, unit not enabled), on init13; nsm13/cache/ holds the .deb
+# and the wheels for a build host without access to download.opensuse.org / PyPI.
+nsm13: init13
+	$(BUILD)
+
 # A Docker host inside a lab machine (the Docker and Docker Compose labs), the developer workstation
 # of the Vagrant lab and the control node of the Ansible lab: docker-ce, containerd, the compose and
 # buildx plugins from download.docker.com (or devops13/cache/*.deb), the Docker Hub images of
@@ -110,8 +117,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base13 + init13 + netdev13 + identity13 + proxy13 + monitoring13 + voip13 + scan13 + devops13 + base12 + init12"
-	@echo "  base13 | init13 | netdev13 | identity13 | proxy13 | monitoring13 | voip13 | scan13 | devops13 | base12 | init12  build one image (deps included)"
+	@echo "  all (default)     build base13 + init13 + netdev13 + identity13 + proxy13 + monitoring13 + voip13 + scan13 + nsm13 + devops13 + base12 + init12"
+	@echo "  base13 | init13 | netdev13 | identity13 | proxy13 | monitoring13 | voip13 | scan13 | nsm13 | devops13 | base12 | init12  build one image (deps included)"
 	@echo "  docker-hub-images the Docker Hub tarballs of the devops13 image (devops13/cache/)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"

@@ -1,0 +1,14 @@
+Files dropped here are used by the build instead of being downloaded (see the header of
+../Dockerfile): for a build host that cannot reach download.opensuse.org or PyPI.  The directory is
+otherwise empty; the files are not committed (.gitignore).
+
+  zeek-9.0-core_<version>_<arch>.deb   https://download.opensuse.org/repositories/security:/zeek/Debian_13/<arch>/
+  zeekctl-9.0_<version>_<arch>.deb     (same place)
+  wheels/                              the wheels of cowrie==3.1.8 and of its dependencies, e.g. on
+                                       any machine with pip:
+      pip download -d wheels --only-binary=:all: --platform manylinux_2_28_x86_64 \
+          --python-version 3.13 --implementation cp cowrie==3.1.8
+
+Check the two .deb against the SHA256 of the Packages index of the repository (its Release file
+is signed by the key whose fingerprint the Dockerfile checks), and the wheels against the hashes
+PyPI publishes.

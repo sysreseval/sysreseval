@@ -31,6 +31,7 @@
     "nftables-filter2.py": 14,
     "nftables-misc.py": 8,
     "nftables-nat.py": 36,
+    "nsm-forensics.py": 94,
     "ntp.py": 13,
     "openvpn.py": 42,
     "openvswitch.py": 26,
@@ -198,6 +199,10 @@
   "suricata-fail2ban.py": {
     "en": "Suricata and fail2ban: intrusion detection and prevention",
     "fr": "Suricata et fail2ban : détection et prévention d'intrusion"
+  },
+  "nsm-forensics.py": {
+    "en": "Network security monitoring and forensics: Zeek, a pcap investigation, Cowrie",
+    "fr": "Supervision de sécurité et investigation réseau : Zeek, analyse de capture, Cowrie"
   },
   "aaa.py": {
     "en": "AAA: RADIUS, 802.1X, two-factor authentication and Kerberos",

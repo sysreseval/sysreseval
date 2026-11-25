@@ -191,6 +191,8 @@ image_weights = {
     "voip13": 7,                    # Asterisk: 21 MiB
     "monitoring13": 14,             # Prometheus, Nagios and their exporters: 49 MiB
     "devops13": 45,                 # systemd, containerd and dockerd before any container: 170 MiB
+    "nsm13": 28,                    # systemd and Cowrie: 109 MiB at an evaluation's peak (a Zeek sensor: 233 MiB
+                                    # with the offline runs of the grader, say 'weight': 60 in its spec)
 }
 
 

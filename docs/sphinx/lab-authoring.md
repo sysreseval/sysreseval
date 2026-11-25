@@ -1740,6 +1740,62 @@ with `chain = f2b-forward` bans routed traffic, on every port of the jail's `pro
 ICMP still passes); `eve.json` lines are dated by the default detector. Example:
 `lab/sre/_DRAFT_misc/suricata-fail2ban.py`.
 
+### Zeek and Cowrie helpers (from `/opt/sre/lib/zeek.py`, `/opt/sre/lib/cowrie.py` and `/opt/sre/lib/incident_pcap.py`)
+
+```python
+import zeek          # render_node_cfg, render_networks_cfg, render_intel_file, get_processes, capture_interface,
+                     # get_log, parse_zeek_log, entries_since, zeek_bool, offline_zeek, notices, intel_hits
+import cowrie as hp  # render_cowrie_cfg, render_userdb, cowrie_event, render_events, get_events, events_since,
+                     # login_results, banner_cmd, parse_banner, get_owners, unit_enabled, session_output
+from incident_pcap import IncidentCapture, http_request_bytes, http_response_bytes, dns_response
+```
+
+The image `nsm13` (init13 + Zeek 9.0 LTS from upstream's OBS repository under `/opt/zeek`, Cowrie 3.1.8 from PyPI
+in `/opt/cowrie/cowrie-env`, run by the user `cowrie`, its unit `cowrie.service` installed and not enabled)
+holds both; a Zeek sensor and an analyst's workstation use it without `/sbin/init`, a honeypot with it.
+
+**Zeek** (`lib/zeek.py`):
+
+| Function | Returns |
+|----------|---------|
+| `render_node_cfg(iface)` / `render_networks_cfg([(net, desc)])` / `render_intel_file([(indicator, type, source, desc)])` | the zeekctl files of a standalone sensor; an Intel file (one tab between the fields) |
+| `get_processes(grade, m)` + `capture_interface(cmdline)` | the running `zeek` command lines; the interface of one (`-i eth1`, `-i af_packet::eth1`) |
+| `get_log(grade, m, log, needles)` | `(entries, json)`: the lines of `/opt/zeek/logs/current/<log>.log` holding one of *needles*, JSON or TSV (`parse_zeek_log`, Zeek's flat keys `id.orig_h`...); `entries_since(entries, t0)` with the clock of `suricata.get_epoch` read at step 1, `zeek_bool` for `T` / `true` |
+| `offline_zeek(grade, m, spec, scripts, name=, logs=('notice',), pseudo_realtime=False)` | writes a fresh capture of *spec* (`lib/suricata_pcap.py`, installed by `suricata.install_pcap_tool`) and runs `zeek -C -r` on it with the scripts given and `LogAscii::use_json=T`: `{'rc', 'logs': {log: [entries]}, 'errors'}`; `notices(entries, 'SRE::Web_Scan')`, `intel_hits(entries)` = `{indicator: [where]}`. `pseudo_realtime=True` (`--pseudo-realtime=1`) for the Intel framework, whose file is read in a thread: a plain `-r` run is over first |
+
+**Cowrie** (`lib/cowrie.py`): `render_cowrie_cfg({section: {key: value}})` (an overlay of `etc/cowrie.cfg`:
+Cowrie reads its bundled defaults first), `render_userdb([(user, password)])` (`!` refuses, `*` = any, the first
+match wins, nothing matching = refused); `get_events(grade, m, addresses)` + `events_since(events, t0, src=)` +
+`login_results(events)` (`{(user, password): 'success' | 'failed'}`) on `cowrie.json`; `banner_cmd(host, port,
+tag, src)` / `parse_banner` (the first line an SSH server sends, `nc` without `-N`); `get_owners` (the user
+running Cowrie's `twistd`), `unit_enabled`; `session_output` / `output_lines_after_mark` read a
+`login_probe.py --command CMD` result (the opt-in option runs `echo SRE_LOGIN_OK; CMD` instead of the usual
+session script: an emulated shell has no `$(id -un)`); `cowrie_event` / `render_events` write a history in
+Cowrie's format (the evidence of an investigation).
+
+**Captures built on the host side** (`lib/incident_pcap.py`): `IncidentCapture` extends `suricata_pcap.Capture`
+with `tcp_session(t, client, cport, server, sport, [(request, response), ...])` (handshake, segments of at most
+`mss` bytes, acknowledgements, FIN or RST), `http(...)`, `dns(t, client, cport, server, qname, qid, answers,
+rcode=)` (a query and its answer) and `scan(t, scanner, target, ports, open_ports)` (SYN-ACK + RST for an open
+port, RST-ACK for a closed one); `pcap()` gives the bytes, written into a machine by `NetScheme0.file()` (bytes
+are accepted). Deterministic: the same calls give the same bytes.
+
+Verified on Debian 13 (Zeek 9.0.1, Cowrie 3.1.8, Linux 6.12): Zeek captures on a hub interface of an
+unprivileged machine, the checksums of the VDE links are valid (no `ignore_checksums`); a lab reading
+`conn.log` 12 s after its requests finds them (Zeek writes a connection once it forgets it, after the FIN
+exchange); `Site::private_address_space_is_local` is `T` by default, so every
+address of `Site::private_address_space` (RFC 1918, but also 198.18.0.0/15 and the documentation ranges) is
+local whatever `networks.cfg` says; a table with `&create_expire` expires on the network time of an offline
+run; `new_connection` sees the originator of a UDP exchange too; the Intel framework matches in an offline run
+only with `--pseudo-realtime=1` and indicators a few seconds into the capture (`-E` takes an optional argument:
+write the long form); an offline run takes about 0.3 s. Cowrie accepts an OpenSSH 10 client; without
+`etc/userdb.txt` it uses its `userdb.example` (`*:x:*` at the end: almost everything is accepted); `hostname`,
+`uname -r` and the `sensor` field of the events come from `[honeypot] hostname`, `[shell] kernel_version`,
+`[honeypot] sensor_name`; `cowrie start -n` is refused (`cowrie start -- -n` passes `-n` to twistd), and
+`cowrie start` runs `twistd` from the PATH (the unit sets it); its `wget` / `curl` refuse every non-global
+address (private networks, 198.18.0.0/15...): a lab sees no download from its own servers; a client that
+half-closes at once (`nc -N`) never gets the banner. Example: `lab/sre/_DRAFT_misc/nsm-forensics.py`.
+
 ### Ansible helpers (from `/opt/sre/lib/ansible_helpers.py` and `/opt/sre/lib/ansible_trace.py`)
 
 ```python
