@@ -12,9 +12,9 @@ NAMESPACE ?= sysreseval
 #   unchanged tag (give them a new version too, or raise VERSION);
 # - when VERSION is raised, remove these lines (or raise them): an image that keeps its own version
 #   is built again on the new version of its parent, under its old tag.
-# VERSION_ldap-mail13 := 1.35
+# VERSION_identity13 := 1.35
 
-IMAGES := base13 init13 routing-frr13 ldap-mail13 proxy13 monitoring13 voip13 aaa13 ansible13 ntp13 scan13 sdn13 docker13 vagrant13 base12 init12
+IMAGES := base13 init13 netdev13 identity13 proxy13 monitoring13 voip13 scan13 devops13 base12 init12
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help docker-hub-images
 
@@ -38,10 +38,16 @@ base13:
 init13: base13
 	$(BUILD)
 
-routing-frr13: base13
+# The network devices without systemd: FRR, the multicast tools, lldpd, stayrtr, Open vSwitch +
+# OS-Ken (with the applications simple_switch_13 and ofctl_rest written again for it, see
+# netdev13/Dockerfile) and chrony (always -x: the NTP lab's machines must not be privileged, a
+# privileged container may change the clock of the host).
+netdev13: base13
 	$(BUILD)
 
-ldap-mail13: init13
+# Directory, authentication and mail: the LDAP clients, Postfix / Dovecot / OpenDKIM, FreeRADIUS,
+# hostapd / wpa_supplicant, the MIT Kerberos KDC and the PAM modules.
+identity13: init13
 	$(BUILD)
 
 proxy13: init13
@@ -55,58 +61,37 @@ monitoring13: init13
 voip13: init13
 	$(BUILD)
 
-aaa13: init13
-	$(BUILD)
-
-# The control node of the Ansible lab (ansible-core + the community collections); its managed
-# nodes are init13 machines.
-ansible13: base13
-	$(BUILD)
-
-# chrony on base13, without systemd: the NTP lab's machines must not be privileged (see
-# ntp13/Dockerfile: a privileged container may change the clock of the host).
-ntp13: base13
-	$(BUILD)
-
 # The legacy services of the scanning and hardening lab (vsftpd, telnetd under inetd, snmpd, Redis,
 # tftpd-hpa) and ndiff, on init13: its hardening targets run them under systemd.
 scan13: init13
 	$(BUILD)
 
-# Open vSwitch 3.5 and the OS-Ken 3.0 controller (with the applications simple_switch_13 and ofctl_rest
-# written again for it, see sdn13/Dockerfile) on base13: the switches and controllers of the SDN lab.
-sdn13: base13
+# A Docker host inside a lab machine (the Docker and Docker Compose labs), the developer workstation
+# of the Vagrant lab and the control node of the Ansible lab: docker-ce, containerd, the compose and
+# buildx plugins from download.docker.com (or devops13/cache/*.deb), the Docker Hub images of
+# DOCKER_HUB_IMAGES saved as tarballs (the lab machines have no Internet access), vagrant (docker
+# provider) with a small Debian 13 box root filesystem built from debian:13-slim, ansible-core and
+# the community collections (see devops13/Dockerfile).
+devops13: init13 docker-hub-images
 	$(BUILD)
 
-# A Docker host inside a lab machine (the Docker and Docker Compose labs): docker-ce, containerd,
-# the compose and buildx plugins from download.docker.com (or docker13/cache/*.deb), and the Docker
-# Hub images of DOCKER_HUB_IMAGES saved as tarballs (the lab machines have no Internet access).
-docker13: init13 docker-hub-images
-	$(BUILD)
-
-# The Docker Hub images shipped in the docker13 image: one `docker save` per tag into docker13/cache/
+# The Docker Hub images shipped in the devops13 image: one `docker save` per tag into devops13/cache/
 # (<repository>_<tag>.tar), pulled through the build host's own Docker daemon (its registry mirror
 # and proxy apply), for the architecture of that daemon.  A tarball already there is kept.  The
-# tags are pinned: the labs name only the aliases that docker13/sre-docker-load gives them
+# tags are pinned: the labs name only the aliases that devops13/sre-docker-load gives them
 # (nginx:alpine, python:alpine, redis:alpine, alpine, busybox, registry, hello-world).
 DOCKER_HUB_IMAGES ?= hello-world:latest alpine:3.24 busybox:1.38 nginx:1.30-alpine python:3.14-alpine \
 	redis:8.6-alpine registry:3
 docker-hub-images:
 	@arch=$$(docker version --format '{{.Server.Arch}}'); \
 	for image in $(DOCKER_HUB_IMAGES); do \
-		file=docker13/cache/$$(echo "$$image" | tr ':/' '_-').tar; \
+		file=devops13/cache/$$(echo "$$image" | tr ':/' '_-').tar; \
 		if [ -s "$$file" ]; then echo "$$file: kept"; continue; fi; \
 		docker pull -q --platform linux/$$arch "$$image" \
 		&& docker save --platform linux/$$arch -o "$$file.part" "$$image" \
 		&& mv "$$file.part" "$$file" && echo "$$file: saved" \
 		|| { rm -f "$$file.part"; exit 1; }; \
 	done
-
-# The developer workstation of the Vagrant lab: vagrant (docker provider), its own Docker daemon
-# (privileged init machine, /var/lib/docker a VOLUME), ansible-core and a small Debian 13 box root
-# filesystem built from debian:13-slim (see vagrant13/Dockerfile).
-vagrant13: init13
-	$(BUILD)
 
 # Debian 12 (bookworm) images, kept for the labs that still name them: base12 on kathara/base,
 # init12 = base12 + a genuine systemd.  No other image is built from them any more.
@@ -125,9 +110,9 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base13 + init13 + routing-frr13 + ldap-mail13 + proxy13 + monitoring13 + voip13 + aaa13 + ansible13 + ntp13 + scan13 + sdn13 + docker13 + vagrant13 + base12 + init12"
-	@echo "  base13 | init13 | routing-frr13 | ldap-mail13 | proxy13 | monitoring13 | voip13 | aaa13 | ansible13 | ntp13 | scan13 | sdn13 | docker13 | vagrant13 | base12 | init12  build one image (deps included)"
-	@echo "  docker-hub-images the Docker Hub tarballs of the docker13 image (docker13/cache/)"
+	@echo "  all (default)     build base13 + init13 + netdev13 + identity13 + proxy13 + monitoring13 + voip13 + scan13 + devops13 + base12 + init12"
+	@echo "  base13 | init13 | netdev13 | identity13 | proxy13 | monitoring13 | voip13 | scan13 | devops13 | base12 | init12  build one image (deps included)"
+	@echo "  docker-hub-images the Docker Hub tarballs of the devops13 image (devops13/cache/)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

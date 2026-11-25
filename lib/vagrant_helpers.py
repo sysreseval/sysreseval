@@ -1,11 +1,13 @@
 """Vagrant helpers: a workstation running Vagrant with the docker provider in a Docker daemon of
-its own (the ``vagrant13`` image), the boxes of that provider, and what an evaluation reads back.
+its own (the ``devops13`` image), the boxes of that provider, and what an evaluation reads back.
 
 Named ``vagrant_helpers`` like ``ansible_helpers``: a ``lib/vagrant.py`` would shadow nothing
 today, but the convention keeps the lib directory free of names a Python package could take.
 
 State side (commands for ``NetScheme0.cmd()``):
 
+- :data:`DAEMON_JSON` / :data:`DAEMON_JSON_PATH`: the configuration of the inner daemon, written
+  before it starts (the image has none: the Docker labs use the defaults);
 - :func:`start_docker_cmd`: start dockerd under systemd and wait until it answers;
 - :func:`import_rootfs_cmd`: ``docker import`` of a root filesystem tarball (the box image);
 - :func:`docker_box_files` / :func:`box_catalog_json` / :func:`build_box_cmd`: a docker box (a
@@ -46,6 +48,18 @@ INSECURE_KEY_BLOBS = (
 
 #: Command of the box image: host keys made at the first start, sshd in the foreground (no init)
 BOX_CMD = '["/bin/sh","-c","ssh-keygen -A >/dev/null && exec /usr/sbin/sshd -D -e"]'
+
+#: The configuration of the workstation's Docker daemon: its default bridge and the pool of its
+#: networks (Vagrant's private networks of the lab are 192.168.x.0/24, the lab networks are drawn
+#: outside these ranges), small logs.  It was a file of the former vagrant13 image; the devops13
+#: image has none (the Docker labs rely on the defaults, 172.17.0.0/16).
+DAEMON_JSON_PATH = "/etc/docker/daemon.json"
+DAEMON_JSON = json.dumps({
+    "bip": "10.250.0.1/24",
+    "default-address-pools": [{"base": "10.251.0.0/16", "size": 24}],
+    "log-driver": "json-file",
+    "log-opts": {"max-size": "1m", "max-file": "2"},
+}, indent=2) + "\n"
 
 MACHINE_MARK = "M"
 SEP = "\t"

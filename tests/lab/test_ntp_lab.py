@@ -349,7 +349,7 @@ class TestTopology:
         for name, spec in specs.items():
             # never privileged: a privileged container may change the clock of the host
             assert not spec.get('privileged') and 'entrypoint' not in spec, name
-            assert spec['image'] == lab.sre_docker_image('ntp13'), name
+            assert spec['image'] == lab.sre_docker_image('netdev13'), name
         assert specs['probe']['hidden'] and not specs['probe']['allow_connection']
         assert specs['internet']['allow_connection'] is False and specs['gps']['allow_connection'] is False
         assert lab.export_kathara_project is False

@@ -477,7 +477,7 @@ class TestTopology:
         assert len(lab.MACHINES) == 21
         specs = lab.NetScheme._machine_specs
         assert {m for m, s in specs.items() if s.get('allow_connection', True)} == set(lab.TERMINALS)
-        assert all(specs[m]['image'].split('/')[-1].startswith('routing-frr13:') for m in lab.FRR_ROUTERS)
+        assert all(specs[m]['image'].split('/')[-1].startswith('netdev13:') for m in lab.FRR_ROUTERS)
 
     def test_sites_are_islands(self, lab):
         for net, members in lab._TOPOLOGY.items():

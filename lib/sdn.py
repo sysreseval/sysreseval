@@ -1,7 +1,7 @@
 """Open vSwitch / OpenFlow helpers of the SDN lab (``lab/sre/_DRAFT_misc/sdn.py``).
 
-The switches and controllers run the image ``sysreseval/sdn13`` (``images/sdn13/Dockerfile``): Debian
-13's Open vSwitch 3.5 (kernel datapath: the module ``openvswitch`` of the host, loaded by the
+The switches and controllers run the image ``sysreseval/netdev13`` (``images/netdev13/Dockerfile``):
+Debian 13's Open vSwitch 3.5 (kernel datapath: the module ``openvswitch`` of the host, loaded by the
 kernel on demand) and OS-Ken 3.0 with the two applications the image adds,
 ``os_ken.app.simple_switch_13`` and ``os_ken.app.ofctl_rest`` (Ryu's REST API).
 

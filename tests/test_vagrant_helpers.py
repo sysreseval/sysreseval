@@ -65,6 +65,18 @@ x=1
 
 
 class TestStateSide:
+    def test_daemon_json(self):
+        """The configuration the lab writes before dockerd starts (the devops13 image has none):
+        docker0 and the pool of the networks outside the lab's addresses, small logs."""
+        assert vh.DAEMON_JSON_PATH == "/etc/docker/daemon.json"
+        assert vh.DAEMON_JSON.endswith("\n")
+        assert json.loads(vh.DAEMON_JSON) == {
+            "bip": "10.250.0.1/24",
+            "default-address-pools": [{"base": "10.251.0.0/16", "size": 24}],
+            "log-driver": "json-file",
+            "log-opts": {"max-size": "1m", "max-file": "2"},
+        }
+
     def test_start_docker(self):
         cmd = vh.start_docker_cmd(45)
         assert cmd.startswith("systemctl start docker && ") and "timeout 45" in cmd and "docker info" in cmd

@@ -37,8 +37,9 @@ RUN echo "prometheus-blackbox-exporter prometheus-blackbox-exporter/want_cap_net
 
 # prometheus-node-exporter-collectors (a Recommends of the node exporter) is left out: its timers
 # run apt / SMART / IPMI / NVMe collectors that mean nothing in a container, and it pulls
-# smartmontools, ipmitool and nvme-cli.
-RUN apt update && apt install -y \
+# smartmontools, ipmitool and nvme-cli.  The apt lists and caches are removed in the same step (a
+# later step would leave them in this layer).
+RUN apt-get update && apt-get install -y \
     snmp \
     snmpd \
     snmptrapd \
@@ -55,10 +56,9 @@ RUN apt update && apt install -y \
     rsyslog-gnutls \
     softflowd \
     nfdump \
-    stress-ng
-
-RUN apt clean && \
-    rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
+    stress-ng \
+ && apt-get clean \
+ && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 # MIB files.  Debian ships none of the standard ones (IF-MIB, SNMPv2-MIB, HOST-RESOURCES-MIB...:
 # licence of the RFC texts), so the tools would only print numeric OIDs; its snmp-mibs-downloader

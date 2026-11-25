@@ -10,8 +10,8 @@ no terminal), the KDC ``kdc`` (realm ``CORP.LAN`` created by ``initial``), the b
 network device ``router`` (pam_radius), the switch ``sw`` (``br0`` over eth0-eth3) and the hidden
 probe ``probe``; three access ports ``port1``-``port3`` between ``sw`` and ``pc1`` (PEAP),
 ``pc2`` (EAP-TLS) and ``pc3`` (no 802.1X: must stay locked out).  Every machine runs the
-``aaa13`` image (``init13`` + FreeRADIUS, hostapd, wpa_supplicant, eapol_test, MIT Kerberos,
-pam_krb5, pam_radius_auth, mod_auth_gssapi, oathtool).
+``identity13`` image (``init13`` + FreeRADIUS, hostapd, wpa_supplicant, eapol_test, MIT Kerberos,
+pam_krb5, pam_radius_auth, mod_auth_gssapi, oathtool, and the mail servers of the mail labs).
 
 Parts (each one independent: its own machine or its own accounts; the parts on ``radius`` are
 graded through the ``localhost`` client of the installed ``clients.conf``, except the first one
@@ -74,9 +74,11 @@ record_sessions = False
 DOMAIN = "corp.lan"
 REALM = "CORP.LAN"
 LAB_REALM = "LAB.CORP.LAN"
-AAA_IMAGE = sre_docker_image("aaa13")
-INIT_MACHINE = {'image': AAA_IMAGE, 'privileged': True, 'entrypoint': "/sbin/init"}
-PLAIN_MACHINE = {'image': AAA_IMAGE}
+AAA_IMAGE = sre_docker_image("identity13")
+#: Weight measured on the machines of this lab (FreeRADIUS, slapd, a KDC, hostapd: 41 MiB); the image weighs 8.
+AAA_WEIGHT = 10
+INIT_MACHINE = {'image': AAA_IMAGE, 'privileged': True, 'entrypoint': "/sbin/init", 'weight': AAA_WEIGHT}
+PLAIN_MACHINE = {'image': AAA_IMAGE, 'weight': AAA_WEIGHT}
 SYSTEMD_MACHINES = ('radius', 'nac', 'ldap', 'kdc', 'kdc2', 'srv', 'ws', 'router', 'sw', 'pc1', 'pc2')
 LAN_MACHINES = ('router', 'sw', 'radius', 'nac', 'ldap', 'kdc', 'kdc2', 'srv', 'ws', 'probe')
 PCS = ('pc1', 'pc2', 'pc3')

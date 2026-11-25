@@ -29,16 +29,16 @@ LABEL version="${SRE_VERSION}"
 
 ARG DEBIAN_FRONTEND="noninteractive"
 
-RUN apt update && apt install -y \
+# (keepalived is already in base13; the apt lists and caches are removed in the same step: a
+# later step would leave them in this layer)
+RUN apt-get update && apt-get install -y \
     haproxy \
-    keepalived \
     varnish \
     socat \
     hatop \
-    apache2-utils
-
-RUN apt clean && \
-    rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
+    apache2-utils \
+ && apt-get clean \
+ && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 # Like the init13 image: no service starts by itself when the entrypoint is /sbin/init (the
 # students write the configurations and start the daemons).

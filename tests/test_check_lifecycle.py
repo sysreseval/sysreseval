@@ -160,10 +160,10 @@ class TestCheckWeight:
     @pytest.fixture(autouse=True)
     def _table(self, monkeypatch):
         monkeypatch.setattr(params, 'default_machine_weight', 1.0)
-        monkeypatch.setattr(params, 'image_weights', {'routing-frr13': 3})
+        monkeypatch.setattr(params, 'image_weights', {'netdev13': 3})
 
     def test_the_sum_of_the_machines(self, check_env, capsys):
-        frr = params.sre_docker_image('routing-frr13')
+        frr = params.sre_docker_image('netdev13')
         check_env('weighed.py', lambda t: t.replace(
             "_machine_specs = {'router': {}, 'client': {}}",
             f"_machine_specs = {{'router': {{'image': {frr!r}}}, 'client': {{'weight': 0.5}}}}"))

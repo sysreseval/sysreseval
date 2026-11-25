@@ -476,7 +476,7 @@ class TestTopology:
             assert spec.get('allow_connection', True) == (m not in lab.OPERATORS), m
             assert (spec.get('shape') == 'box') == (m in lab.ROUTER_IFACES)
             if m in lab.ROUTER_IFACES:
-                assert spec['image'].endswith(params.sre_docker_image('routing-frr13').split('/')[-1])
+                assert spec['image'].endswith(params.sre_docker_image('netdev13').split('/')[-1])
             else:
                 assert 'image' not in spec
         assert lab.OPERATORS == ('tl_r2', 'tl_r3', 'tl_r4')

@@ -1,5 +1,5 @@
 """Helpers of the Docker and Docker Compose labs: a Docker host inside a lab machine (image
-``sysreseval/docker13``: docker-ce, containerd, the compose and buildx plugins, the Docker Hub images
+``sysreseval/devops13``: docker-ce, containerd, the compose and buildx plugins, the Docker Hub images
 of the labs as tarballs), states that start and fill it, and a grader that reads it.
 
 Named ``docker_helpers`` because a ``lib/docker.py`` would shadow the Docker SDK that Kathara imports
@@ -28,7 +28,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from state_helpers import WAIT_FOR_SYSTEMD_CMD
 
-#: the Docker Hub tarballs of the image and their loader (images/docker13/sre-docker-load)
+#: the Docker Hub tarballs of the image and their loader (images/devops13/sre-docker-load)
 IMAGES_DIR = "/usr/local/share/sre-docker-images"
 LOAD_CMD = "/usr/local/sbin/sre-docker-load"
 #: the aliases sre-docker-load gives (what the labs name)

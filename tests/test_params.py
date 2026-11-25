@@ -195,19 +195,24 @@ class TestDockerImages:
     def test_default_version(self, monkeypatch):
         monkeypatch.setattr(params, 'default_docker_image_version', '1.34')
         monkeypatch.setattr(params, 'docker_image_versions', {})
-        assert params.sre_docker_image('ldap-mail13') == f'{params.sre_docker_namespace}/ldap-mail13:1.34'
+        assert params.sre_docker_image('identity13') == f'{params.sre_docker_namespace}/identity13:1.34'
         assert params.sre_docker_image() == f'{params.sre_docker_namespace}/base13:1.34'
 
     def test_own_version(self, monkeypatch):
         monkeypatch.setattr(params, 'default_docker_image_version', '1.34')
-        monkeypatch.setattr(params, 'docker_image_versions', {'ldap-mail13': '1.35'})
-        assert params.sre_docker_image('ldap-mail13') == f'{params.sre_docker_namespace}/ldap-mail13:1.35'
+        monkeypatch.setattr(params, 'docker_image_versions', {'identity13': '1.35'})
+        assert params.sre_docker_image('identity13') == f'{params.sre_docker_namespace}/identity13:1.35'
         assert params.sre_docker_image('init13') == f'{params.sre_docker_namespace}/init13:1.34'
         assert params.sre_docker_image() == f'{params.sre_docker_namespace}/base13:1.34'
 
-    # The images built on base13 / init13 before they took their 13 suffix (2026-11-25)
-    RENAMED_13 = ('routing-frr', 'ldap-mail', 'proxy', 'monitoring', 'voip', 'aaa', 'ansible', 'ntp',
-                  'scan', 'sdn', 'docker', 'vagrant')
+    # The images built on base13 / init13 before they took their 13 suffix (2026-11-25), each with
+    # the image of images/ that took it over (three of them merged the same day)
+    SUCCESSORS_13 = {
+        'routing-frr': 'netdev13', 'sdn': 'netdev13', 'ntp': 'netdev13',
+        'ldap-mail': 'identity13', 'aaa': 'identity13',
+        'docker': 'devops13', 'vagrant': 'devops13', 'ansible': 'devops13',
+        'proxy': 'proxy13', 'monitoring': 'monitoring13', 'voip': 'voip13', 'scan': 'scan13',
+    }
 
     def test_legacy_version(self, monkeypatch):
         """The images renamed since keep their last published tag: base, init, frr 1.33, the
@@ -217,19 +222,19 @@ class TestDockerImages:
         ns = params.sre_docker_namespace
         for legacy in ('base', 'init', 'frr'):
             assert params.sre_docker_image(legacy) == f'{ns}/{legacy}:1.33'
-        for legacy in self.RENAMED_13:
+        for legacy, successor in self.SUCCESSORS_13.items():
             assert params.sre_docker_image(legacy) == f'{ns}/{legacy}:1.35'
-            assert params.sre_docker_image(f'{legacy}13') == f'{ns}/{legacy}13:1.36'
-        assert set(params.legacy_docker_image_versions) == {'base', 'init', 'frr', *self.RENAMED_13}
+            assert params.sre_docker_image(successor) == f'{ns}/{successor}:1.36'
+        assert set(params.legacy_docker_image_versions) == {'base', 'init', 'frr', *self.SUCCESSORS_13}
         assert params.sre_docker_image('base12') == f'{ns}/base12:1.36'
         assert params.sre_docker_image() == f'{ns}/base13:1.36'
 
     def test_renamed_13_are_images_of_the_tree(self):
-        """Each former name has its <name>13 image in images/."""
+        """Each former name has its successor in images/."""
         if not IMAGES_DIR.is_dir():
             pytest.skip(f"no {IMAGES_DIR} in this tree")
-        for name in self.RENAMED_13:
-            assert (IMAGES_DIR / f'{name}13' / 'Dockerfile').is_file(), name
+        for name, successor in self.SUCCESSORS_13.items():
+            assert (IMAGES_DIR / successor / 'Dockerfile').is_file(), name
 
     def test_legacy_names_are_not_images_of_the_tree(self):
         """A legacy name reused by a new image of images/ would be pinned to the old tag."""
@@ -240,8 +245,8 @@ class TestDockerImages:
             assert name not in params.docker_image_versions, name
 
     @pytest.mark.parametrize('image, short', [
-        ('sysreseval/routing-frr13:1.35', 'routing-frr13'),
-        ('routing-frr13', 'routing-frr13'),
+        ('sysreseval/netdev13:1.35', 'netdev13'),
+        ('netdev13', 'netdev13'),
         ('debian:13', 'debian'),
         ('registry:5000/sysreseval/init13:1.34', 'init13'),
         ('registry:5000/sysreseval/init13', 'init13'),
@@ -253,7 +258,7 @@ class TestDockerImages:
         assert params.docker_image_short_name(image) == short
 
     def test_short_name_of_the_images_of_the_labs(self):
-        assert params.docker_image_short_name(params.sre_docker_image('ldap-mail13')) == 'ldap-mail13'
+        assert params.docker_image_short_name(params.sre_docker_image('identity13')) == 'identity13'
         assert params.docker_image_short_name(params.default_docker_image) == 'base13'
 
     def test_the_weights_name_images_of_the_tree(self):

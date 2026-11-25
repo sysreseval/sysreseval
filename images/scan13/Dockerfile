@@ -38,7 +38,8 @@ RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 
 ARG DEBIAN_FRONTEND="noninteractive"
-RUN apt update && apt install -y --no-install-recommends \
+# (the apt lists and caches are removed in the same step: a later step would leave them in this layer)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     vsftpd \
     openbsd-inetd \
     inetutils-telnetd \
@@ -48,7 +49,9 @@ RUN apt update && apt install -y --no-install-recommends \
     redis-tools \
     tftpd-hpa \
     ndiff \
-    xsltproc
+    xsltproc \
+ && apt-get clean \
+ && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 # Like the init13 image: no service starts by itself when the entrypoint is /sbin/init (the labs'
 # states or the students start the daemons).  Only the systemd links go: the /etc/rc*.d links of
@@ -64,9 +67,6 @@ RUN rm -f /etc/systemd/system/multi-user.target.wants/vsftpd.service \
  && systemctl enable vsftpd >/dev/null 2>&1 \
  && systemctl disable vsftpd >/dev/null 2>&1 \
  && test -z "$(ls /etc/systemd/system/multi-user.target.wants/ | grep -E 'vsftpd|inetd|snmpd|redis|tftpd')"
-
-RUN apt clean && \
-    rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 WORKDIR /
 

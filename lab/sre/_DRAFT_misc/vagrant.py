@@ -4,7 +4,7 @@ catalog and a Vagrantfile driven by YAML.
 
 Two machines on the network ``lan`` (a switch: the macvlan of part 6 needs one):
 
-- ``dev`` (image ``vagrant13`` = init13 + vagrant 2.3.7 + docker.io + ansible-core + a small Debian 13
+- ``dev`` (image ``devops13`` = init13 + vagrant 2.3.7 + docker-ce + ansible-core + a small Debian 13
   box root filesystem; privileged, a genuine systemd): the developer workstation.  Vagrant creates
   its guests with the **docker provider** in a Docker daemon of its own (no hypervisor in a
   container), and the students work there as root, one project directory per part under
@@ -48,8 +48,8 @@ from ips import random_ipv4networks
 from net_config import set_net_config_entry
 from state_helpers import WAIT_FOR_SYSTEMD_CMD
 from vagrant_helpers import (
-    INSECURE_KEY_BLOBS, box_catalog_json, build_box_cmd, docker_box_files, docker_containers_cmd,
-    docker_networks_cmd, import_rootfs_cmd, parse_docker_containers, parse_docker_networks,
+    DAEMON_JSON, DAEMON_JSON_PATH, INSECURE_KEY_BLOBS, box_catalog_json, build_box_cmd, docker_box_files,
+    docker_containers_cmd, docker_networks_cmd, import_rootfs_cmd, parse_docker_containers, parse_docker_networks,
     parse_vagrant_inventory, parse_vagrant_machines, start_docker_cmd, started_after_creation,
     strip_ruby_comments, vagrant_cmd, vagrant_machines_cmd,
 )
@@ -70,9 +70,9 @@ eval_before_exit = True
 # constants
 # ---------------------------------------------------------------------------
 
-#: the workstation: Vagrant + its own Docker daemon (images/vagrant13), under a genuine systemd.
+#: the workstation: Vagrant + its own Docker daemon (images/devops13), under a genuine systemd.
 #: Weight measured live: 373 MiB with the 14 guests of `final` (1 unit ~ 3 MiB, see params.image_weights)
-DEV = {'image': sre_docker_image("vagrant13"), 'privileged': True, 'entrypoint': "/sbin/init", 'weight': 120}
+DEV = {'image': sre_docker_image("devops13"), 'privileged': True, 'entrypoint': "/sbin/init", 'weight': 120}
 
 ROOT = "/root/vagrant"
 VAGRANT_VERSION = "2.3.7"
@@ -876,6 +876,7 @@ vagrant up --debug                  # tout ce que fait Vagrant (commandes docker
         self.file('dev', f"{_project(FLEET)}/machines.yml", self.machines_yml(d))
         self.cmd('dev', f"mkdir -p {' '.join(_project(p) for p in (HELLO, CLUSTER, KIOSK, BOXES, TRIGGERS))}",
                  step=2)
+        self.file('dev', DAEMON_JSON_PATH, DAEMON_JSON)    # the image has none
         self.cmd('dev', WAIT_FOR_SYSTEMD_CMD, timeout=40, step=2)
         self.cmd('dev', start_docker_cmd(), timeout=90, step=2)
         self.cmd('dev', import_rootfs_cmd(ROOTFS, d.box_image), timeout=180, step=2)

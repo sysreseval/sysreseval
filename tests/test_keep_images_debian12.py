@@ -43,7 +43,7 @@ class NetScheme(NetScheme0):
         "r3": {"image": sre_docker_image()},
         "r4": {"image": sre_docker_image("base13")},
         "r5": {"image": sre_docker_image("init13")},
-        "r6": {"image": sre_docker_image("routing-frr13")},
+        "r6": {"image": sre_docker_image("netdev13")},
     }
     _topology = {"net1": ["m1", "r1"]}
 '''
@@ -76,7 +76,7 @@ class TestConvert:
         assert 'sre_docker_image("init12"), "privileged": True' in text
         assert "sre_docker_image('base12')" in text  # quote style kept
         assert '"r3": {"image": sre_docker_image("base12")}' in text
-        for kept in ('sre_docker_image("base13")', 'sre_docker_image("init13")', 'sre_docker_image("routing-frr13")'):
+        for kept in ('sre_docker_image("base13")', 'sre_docker_image("init13")', 'sre_docker_image("netdev13")'):
             assert kept in text
         assert 'sre_docker_image("init")' not in text and "sre_docker_image('base')" not in text
         assert "sre_docker_image()" not in text

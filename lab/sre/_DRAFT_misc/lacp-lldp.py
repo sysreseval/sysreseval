@@ -73,8 +73,8 @@ record_sessions = False
 # constants
 # ---------------------------------------------------------------------------
 
-IMAGE = sre_docker_image("routing-frr13")        # base13 + lldpd (FRR itself is not used)
-#: routing-frr weighs 6 by default (FRR daemons running): here no FRR runs
+IMAGE = sre_docker_image("netdev13")        # base13 + lldpd (FRR itself is not used)
+#: netdev13 weighs 6 by default (FRR daemons running): here no FRR runs
 MACHINE = {'image': IMAGE, 'weight': 1}
 HIDDEN = {**MACHINE, 'hidden': True, 'allow_connection': False}
 

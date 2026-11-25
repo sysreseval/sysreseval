@@ -106,7 +106,8 @@ LABEL version="${SRE_VERSION}"
 
 ARG DEBIAN_FRONTEND="noninteractive"
 
-RUN apt update && apt install -y \
+# (the apt lists and caches are removed in the same step: a later step would leave them in this layer)
+RUN apt-get update && apt-get install -y \
     libedit2 \
     libjansson4 \
     libsqlite3-0 \
@@ -118,10 +119,9 @@ RUN apt update && apt install -y \
     baresip-core \
     sngrep \
     sipsak \
-    sox
-
-RUN apt clean && \
-    rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
+    sox \
+ && apt-get clean \
+ && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 COPY --from=build /out/ /
 COPY etc-asterisk/ /etc/asterisk/

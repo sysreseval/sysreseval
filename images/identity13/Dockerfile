@@ -1,0 +1,153 @@
+ARG VERSION=latest
+# version of the parent image: its own when it has one (images/Makefile), else the same as this image
+ARG PARENT_VERSION=${VERSION}
+ARG NAMESPACE=sysreseval
+FROM ${NAMESPACE}/init13:${PARENT_VERSION}
+ARG VERSION
+LABEL org.opencontainers.image.authors="SysResEval"
+
+#
+# Directory, authentication and mail image (the LDAP lab, the mail labs and the AAA lab), on top of
+# the init13 image so that the servers run under a genuine systemd (systemctl, journalctl; the
+# systemctl replacement of the base13 image cannot stop an init.d-started slapd).  slapd, sshd and
+# Apache come from the base13 image.  Debian 13's packages:
+#
+#   - the LDAP client side: ldap-utils and nss-pam-ldapd (nslcd, libnss-ldapd, libpam-ldapd),
+#     left unconfigured (the LDAP lab's students configure them);
+#   - electronic mail: Postfix, Dovecot (IMAP, LMTP, Sieve + ManageSieve), OpenDKIM, policyd-spf
+#     and the clients swaks and mutt;
+#   - FreeRADIUS (+ its LDAP module and radclient / radtest), hostapd (its "wired" driver is the
+#     802.1X authenticator of a Linux switch), wpa_supplicant (wired supplicant) and eapol_test;
+#   - the MIT Kerberos KDC, kadmind and clients, pam_krb5, pam_radius_auth, Apache's
+#     mod_auth_gssapi (SPNEGO), oathtool (TOTP codes).
+#
+# Declare the machines like the init ones:
+#
+#   _machine_specs = {
+#        'mx1': {"privileged": True,
+#                "entrypoint": "/sbin/init",
+#                "image": sre_docker_image("identity13")},
+#       .....
+#   }
+#
+# A client machine may use the image without /sbin/init (mutt, swaks, radclient, eapol_test,
+# kinit, curl).  Nothing starts by itself when the entrypoint is /sbin/init.
+#
+# (sre/identity13 merges the former ldap-mail13 and aaa13 images, 2026-11-25)
+#
+
+ENV SRE_VERSION="sre/identity13:${VERSION}"
+RUN echo "${SRE_VERSION}" >/etc/sre_version
+LABEL version="${SRE_VERSION}"
+
+ARG DEBIAN_FRONTEND="noninteractive"
+
+# "Internet Site" gives the Debian skeleton main.cf (relay restrictions, aliases, snakeoil TLS);
+# "No configuration" would leave no main.cf at all.  Postfix replaces exim4 (mail-transport-agent).
+# nslcd: a neutral default configuration (its postinst guesses the base from the build host's domain).
+# krb5-config writes /etc/krb5.conf from its answers: a neutral realm without servers (the labs
+# write their own krb5.conf).
+RUN echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections \
+ && echo "postfix postfix/mailname string localhost.localdomain" | debconf-set-selections \
+ && echo "nslcd nslcd/ldap-uris string ldap://127.0.0.1/" | debconf-set-selections \
+ && echo "nslcd nslcd/ldap-base string dc=example,dc=com" | debconf-set-selections \
+ && echo "krb5-config krb5-config/default_realm string EXAMPLE.ORG" | debconf-set-selections \
+ && echo "krb5-config krb5-config/add_servers_realm string EXAMPLE.ORG" | debconf-set-selections \
+ && echo "krb5-config krb5-config/add_servers boolean false" | debconf-set-selections \
+ && echo "krb5-config krb5-config/read_conf boolean true" | debconf-set-selections \
+ && echo "krb5-admin-server krb5-admin-server/kadmind boolean false" | debconf-set-selections \
+ && echo "krb5-kdc krb5-kdc/debconf boolean false" | debconf-set-selections
+
+# libsasl2-modules: the PLAIN / LOGIN plugins of Cyrus SASL, without which Postfix's SMTP client cannot
+# authenticate to a relay (`SASL authentication failure: No worthy mechs found`; mail1.py, part 4).
+# The apt lists and caches are removed in the same step (a later step would leave them in this layer).
+RUN apt-get update && apt-get install -y \
+    postfix \
+    postfix-policyd-spf-python \
+    libsasl2-modules \
+    dovecot-core \
+    dovecot-imapd \
+    dovecot-lmtpd \
+    dovecot-sieve \
+    dovecot-managesieved \
+    opendkim \
+    opendkim-tools \
+    swaks \
+    mutt \
+    python3-dkim \
+    ldap-utils \
+    libnss-ldapd \
+    libpam-ldapd \
+    nslcd \
+    freeradius \
+    freeradius-utils \
+    freeradius-ldap \
+    hostapd \
+    wpasupplicant \
+    eapoltest \
+    krb5-kdc \
+    krb5-admin-server \
+    krb5-user \
+    libpam-krb5 \
+    libapache2-mod-auth-gssapi \
+    libpam-radius-auth \
+    oathtool \
+ && apt-get clean \
+ && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
+
+# Neutralise the build host (the labs or the students set myhostname); IPv6 is disabled in the
+# Kathara containers.
+RUN postconf -X myhostname && postconf -e 'inet_protocols = ipv4'
+
+# The queue directories.  Debian 13's postfix creates them at its first start (`postfix check`,
+# the ExecStartPre of its unit), Debian 12's did at installation.  Dovecot puts its LMTP and SASL
+# sockets in /var/spool/postfix/private: without that directory it does not start, so a
+# `systemctl restart dovecot postfix` would fail on a server where Postfix never ran.
+RUN postfix check >/dev/null 2>&1 && test -d /var/spool/postfix/private
+
+# The LDAP and Kerberos clients left unconfigured: libnss-ldapd, libpam-ldapd and libpam-krb5 enable
+# themselves at installation (ldap in nsswitch.conf, pam_ldap and pam_krb5 in the common-* files);
+# the students do that configuration.
+RUN pam-auth-update --package --remove ldap \
+ && pam-auth-update --package --remove krb5 \
+ && sed -i -E 's/^((passwd|group|shadow|netgroup|aliases|ethers|hosts|networks|protocols|rpc|services):.*[[:space:]])ldap[[:space:]]*$/\1/' /etc/nsswitch.conf \
+ && sed -i -E 's/[[:space:]]+$//' /etc/nsswitch.conf
+
+# mod_auth_gssapi is enabled at installation: the students enable it.
+RUN a2dismod -f auth_gssapi || true
+
+# The configuration of FreeRADIUS as installed (bootstrap certificates included), so that a lab can
+# put a server back in its installed state.
+RUN mkdir -p /usr/local/share/sre && cp -a /etc/freeradius /usr/local/share/sre/freeradius-pristine
+
+# The per-interface units of hostapd and wpa_supplicant depend on the udev device unit of the
+# interface (BindsTo= / Requires= sys-subsystem-net-devices-%i.device), which never becomes active
+# in a container (no udev): systemd stops hostapd@eth1 as soon as it has started.  Copies without
+# that dependency in /etc/systemd/system take precedence.
+RUN for u in hostapd@ wpa_supplicant-wired@ wpa_supplicant@ wpa_supplicant-nl80211@; do \
+        sed -e '/^BindsTo=sys-subsystem-net-devices/d' -e '/^Requires=sys-subsystem-net-devices/d' \
+            -e '/^After=sys-subsystem-net-devices/d' -e 's/ sys-subsystem-net-devices-%i.device//' \
+            /lib/systemd/system/$u.service > /etc/systemd/system/$u.service; \
+    done
+
+# Like the init13 image: no service starts by itself when the entrypoint is /sbin/init (nslcd
+# has a native unit on Debian 13, a SysV script on Debian 12: the /etc/rc* links below).
+RUN rm -f /etc/systemd/system/multi-user.target.wants/postfix.service \
+    /etc/systemd/system/multi-user.target.wants/dovecot.service \
+    /etc/systemd/system/multi-user.target.wants/opendkim.service \
+    /etc/systemd/system/multi-user.target.wants/nslcd.service \
+    /etc/systemd/system/sockets.target.wants/dovecot.socket \
+    /etc/systemd/system/multi-user.target.wants/freeradius.service \
+    /etc/systemd/system/multi-user.target.wants/hostapd.service \
+    /etc/systemd/system/multi-user.target.wants/krb5-kdc.service \
+    /etc/systemd/system/multi-user.target.wants/krb5-admin-server.service \
+    /etc/systemd/system/multi-user.target.wants/wpa_supplicant.service \
+    /etc/systemd/system/dbus-fi.w1.wpa_supplicant1.service
+
+RUN rm -f /etc/rc*/S*postfix* /etc/rc*/S*dovecot* /etc/rc*/S*opendkim* /etc/rc*/S*nslcd* /etc/rc*/S*slapd* \
+    /etc/rc*/S*freeradius* /etc/rc*/S*hostapd* /etc/rc*/S*krb5*
+
+WORKDIR /
+
+VOLUME /hosthome
+VOLUME /shared

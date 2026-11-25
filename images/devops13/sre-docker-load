@@ -1,7 +1,7 @@
 #!/bin/sh
 #
-# sre-docker-load [repository...]: load the Docker Hub images shipped with the sysreseval/docker13
-# image (/usr/local/share/sre-docker-images/<repository>_<tag>.tar, see images/docker13/Dockerfile)
+# sre-docker-load [repository...]: load the Docker Hub images shipped with the sysreseval/devops13
+# image (/usr/local/share/sre-docker-images/<repository>_<tag>.tar, see images/devops13/Dockerfile)
 # into the local Docker daemon, then give each one its short alias:
 #
 #   <repository>:<x>-alpine  ->  <repository>:alpine     (nginx, python, redis)

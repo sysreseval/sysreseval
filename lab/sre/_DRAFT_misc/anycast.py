@@ -1,7 +1,7 @@
 """Anycast lab: one DNS service address announced from several sites, by OSPF and by BGP.
 
 IPv4 only.  Nine independent sites, one per part (completing a part gives all its points whatever
-the others), each one with its own copy of the service.  The instances are ``routing-frr``
+the others), each one with its own copy of the service.  The instances are ``netdev13``
 containers ``*_dnsN`` running FRR and unbound; unbound answers ``id.server`` (class CH, type TXT)
 with the name of the machine, so ``dig @<service> id.server CH TXT`` tells which instance
 answered.
@@ -341,7 +341,7 @@ class Data(Data0):
 def _machine_spec(machine: str) -> dict:
     spec = {'color': SITE_COLORS[site_of(machine)]}
     if machine in ROUTER_IFACES:
-        spec['image'] = sre_docker_image("routing-frr13")
+        spec['image'] = sre_docker_image("netdev13")
     if machine in ROUTERS:
         spec['shape'] = 'box'
     if machine in ISPS:

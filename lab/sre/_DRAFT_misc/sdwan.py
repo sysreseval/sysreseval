@@ -23,7 +23,7 @@ tunnel for 4 s on the hub (only when BFD is up) while ``pc2`` pings the data cen
 ``final`` applies the reference solution (``solve_<part>`` one part); every question ends with its
 solution, shown to the instructor only.
 
-Images: ``sysreseval/routing-frr13`` for the hub and the edges (FRR, WireGuard, nftables), base13 for the
+Images: ``sysreseval/netdev13`` for the hub and the edges (FRR, WireGuard, nftables), base13 for the
 other machines.
 """
 
@@ -76,7 +76,7 @@ eval_interval_without_exam_mode = 240
 eval_before_exit = True
 record_sessions = False
 
-ROUTER = {"image": sre_docker_image("routing-frr13")}
+ROUTER = {"image": sre_docker_image("netdev13")}
 SITES = (1, 2, 3, 4, 5, 6)
 EDGES = tuple(f"edge{i}" for i in SITES)
 PCS = tuple(f"pc{i}" for i in SITES)

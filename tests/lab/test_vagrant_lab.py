@@ -286,7 +286,7 @@ class TestData:
         assert set(ns.get_machine_names()) == {'dev', 'client'}
         dev = lab.NetScheme._machine_specs['dev']
         assert dev['privileged'] and dev['entrypoint'] == '/sbin/init' and dev['image'].split('/')[-1].startswith(
-            'vagrant13:')
+            'devops13:')
         assert lab.NetScheme._network_specs['lan']['mode'] == 'switch'
         assert ns.get_weight() == 120 + params.default_machine_weight
 

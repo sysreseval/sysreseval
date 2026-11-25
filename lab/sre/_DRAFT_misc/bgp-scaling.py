@@ -252,7 +252,7 @@ class Data(Data0):
 def _machine_spec(machine: str) -> dict:
     spec = {'color': SITE_COLORS[site_of(machine)]}
     if machine in FRR_ROUTERS:
-        spec['image'] = sre_docker_image("routing-frr13")
+        spec['image'] = sre_docker_image("netdev13")
         spec['shape'] = 'box'
     if machine not in TERMINALS:
         spec['allow_connection'] = False

@@ -374,7 +374,7 @@ def _ipv6(network, identifier: int) -> IPv6Interface:
 
 
 def _machine_spec(machine: str) -> dict:
-    spec = {'image': sre_docker_image("routing-frr13"), 'color': SITE_COLORS[site_of(machine)]}
+    spec = {'image': sre_docker_image("netdev13"), 'color': SITE_COLORS[site_of(machine)]}
     if machine in V6_MACHINES:
         spec['ipv6'] = True
     if machine in ROUTER_IFACES:

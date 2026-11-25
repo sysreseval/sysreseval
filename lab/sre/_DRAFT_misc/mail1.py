@@ -14,7 +14,7 @@ Les machines cachées ``h1`` (lan1) et ``h2`` (wan) envoient les messages de tes
 solution ; chaque question se termine par sa solution dans un bloc ``instructor()``.  La suite,
 TLS, soumission authentifiée, LMTP / Sieve, SPF / DKIM / DMARC et anti-spam, est le TP ``mail2.py``.
 
-Image : ``sysreseval/ldap-mail13`` (``images/ldap-mail13``, sur ``init13`` : Postfix, Dovecot, swaks, mutt).
+Image : ``sysreseval/identity13`` (``images/identity13``, sur ``init13`` : Postfix, Dovecot, swaks, mutt).
 """
 
 import base64
@@ -90,10 +90,10 @@ FQDN = {
     "h1": f"h1.{DOMAIN_A}", "mx2": f"mx2.{DOMAIN_B}", "pc2": f"pc2.{DOMAIN_B}", "h2": f"h2.{DOMAIN_B}",
     "relay": RELAY_HOST, "mx3": f"mx3.{DOMAIN_C}", "mx4": f"mx4.{DOMAIN_Z}",
 }
-# The ldap-mail image (images/ldap-mail13: init13 + postfix, dovecot, opendkim, policyd-spf, swaks, mutt, nslcd),
+# The identity13 image (images/identity13: init13 + postfix, dovecot, opendkim, policyd-spf, swaks, mutt, nslcd),
 # written in full so that `sre preload-images` finds it.
 MAIL_MACHINE = {
-    "image": sre_docker_image("ldap-mail13"),
+    "image": sre_docker_image("identity13"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
@@ -169,7 +169,7 @@ class NetScheme(NetScheme0):
         "mx1": {**MAIL_MACHINE, "color": "lightgreen"},
         "pc1": {**MAIL_MACHINE, "color": "lightyellow"},
         "mx2": {**MAIL_MACHINE, "color": "lightblue"},
-        "pc2": {"image": sre_docker_image("ldap-mail13"), "color": "lightyellow"},  # mutt, swaks; no init
+        "pc2": {"image": sre_docker_image("identity13"), "color": "lightyellow"},  # mutt, swaks; no init
         "relay": {**MAIL_MACHINE, "color": "lightblue"},
         "mx3": {**MAIL_MACHINE, "color": "lightblue"},
         "mx4": {**MAIL_MACHINE, "color": "pink"},

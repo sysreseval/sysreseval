@@ -22,7 +22,7 @@ Every interface has a fixed MAC (EUI-64 link-local addresses known at generation
 link-local answers have static cheat answers).  Grading reads the json output of vtysh (lib/frr.py),
 ``ip -j -6 route`` and real pings.  The states ``solve_<part>`` apply the reference solution of one
 part, ``final`` all of them.  Facts verified on FRR 9.1.3: memory note frr-ospf6-bgp6-facts; the lab
-reaches full marks on the FRR 10.3 of the Debian 13 ``routing-frr`` image too (2026-11-19).
+reaches full marks on the FRR 10.3 of the Debian 13 ``routing-frr`` image (now ``netdev13``) too (2026-11-19).
 """
 import json
 import random
@@ -323,7 +323,7 @@ class Data(Data0):
 
 
 def _machine_spec(machine: str) -> dict:
-    spec = {'image': sre_docker_image("routing-frr13"), 'color': SITE_COLORS[site_of(machine)], 'sysctls': SYSCTLS}
+    spec = {'image': sre_docker_image("netdev13"), 'color': SITE_COLORS[site_of(machine)], 'sysctls': SYSCTLS}
     if machine in ROUTER_IFACES:
         spec['shape'] = 'box'
     if machine in OPERATORS:

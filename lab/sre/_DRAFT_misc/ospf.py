@@ -174,13 +174,13 @@ class Data(Data0):
 
 class NetScheme(NetScheme0):
     _machine_specs = {
-        'r1': {'image': sre_docker_image("routing-frr13"), 'color': AREA_COLORS[0]},
-        'r2': {'image': sre_docker_image("routing-frr13"), 'color': AREA_COLORS[0]},
-        'r3': {'image': sre_docker_image("routing-frr13"), 'color': AREA_COLORS[0]},
-        'r4': {'image': sre_docker_image("routing-frr13"), 'color': AREA_COLORS[0]},
-        'r5': {'image': sre_docker_image("routing-frr13"), 'color': AREA_COLORS[1]},
-        'r6': {'image': sre_docker_image("routing-frr13"), 'color': AREA_COLORS[2]},
-        'r7': {'image': sre_docker_image("routing-frr13"), 'color': AREA_COLORS[2]},
+        'r1': {'image': sre_docker_image("netdev13"), 'color': AREA_COLORS[0]},
+        'r2': {'image': sre_docker_image("netdev13"), 'color': AREA_COLORS[0]},
+        'r3': {'image': sre_docker_image("netdev13"), 'color': AREA_COLORS[0]},
+        'r4': {'image': sre_docker_image("netdev13"), 'color': AREA_COLORS[0]},
+        'r5': {'image': sre_docker_image("netdev13"), 'color': AREA_COLORS[1]},
+        'r6': {'image': sre_docker_image("netdev13"), 'color': AREA_COLORS[2]},
+        'r7': {'image': sre_docker_image("netdev13"), 'color': AREA_COLORS[2]},
         'm1': {}, 'm4': {}, 'm5': {}, 'm6': {}, 'm7': {},
         'isp': {'hidden': True},
     }
