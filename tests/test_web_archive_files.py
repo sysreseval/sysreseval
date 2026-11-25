@@ -2,6 +2,7 @@
 name wherever they are moved (one summary per directory, a probe, a reading of the tree on a
 miss), read with a size cap, shown as ``sre cat`` shows them, and the asyncio side of the routes."""
 import asyncio
+import errno
 import json
 import os
 import shutil
@@ -28,6 +29,16 @@ GONE = '20261122130000_20261122110000@@@sre@dns.py@@@zoe.zst'
 OLD = '20250301100000_20250301090000@@@sre@dns.py@@@amy.zst'
 
 not_root = pytest.mark.skipif(os.geteuid() == 0, reason="root reads everything")
+
+
+def reason(code: int) -> str:
+    """The text of an errno as this process words it, which is what the module reports
+    (``OSError.strerror``): English, or the language of the host once the process has taken
+    the locale of its environment for the messages.  On a French workstation that is from the
+    start in a ssh session opened from a Mac (it sends ``LC_CTYPE=UTF-8``, no locale of Linux:
+    the interpreter coerces the C locale and applies the whole environment), else from the
+    first QApplication of the run (the GUI test files create one when they are imported)."""
+    return os.strerror(code)
 
 
 def archive(**over) -> dict:
@@ -175,9 +186,14 @@ class TestLookup:
         write(tmp_path / 'current' / NAME)
         write(tmp_path / 'current' / OTHER)
         write(tmp_path / '2025' / OLD)
+        # an old directory has an old time.  Left as written an instant ago, the move below may
+        # not change it: Linux stamps a directory with the clock of the last tick (4 ms), this
+        # test fits in one, and the clock of settle() is not the one of the file system
+        old = time.time() - 2 * F.OLD_MTIME
+        os.utime(tmp_path / '2025', (old, old))
         files, clock = lookup(tmp_path, hot_dirs=0)
         settle(files, clock)
-        assert files.locate(NAME).directory == 'current'
+        assert files.locate(NAME).directory == 'current' and files._dirs['2025'].settled is True
         before = dict(files.stats)
         (tmp_path / 'current' / NAME).rename(tmp_path / '2025' / NAME)
         location = files.locate(NAME)
@@ -297,7 +313,7 @@ class TestUnavailable:
         root = tmp_path / 'archives'
         files, _clock = lookup(root)
         location = files.locate(NAME)
-        assert location.status == F.UNAVAILABLE and str(root) in location.detail and 'No such file' in location.detail
+        assert location.status == F.UNAVAILABLE and location.detail == f"{root}: {reason(errno.ENOENT)}"
         root.mkdir()
         location = files.locate(NAME)               # the mount point alone: empty
         assert location.status == F.UNAVAILABLE and 'no archive file' in location.detail
@@ -308,7 +324,7 @@ class TestUnavailable:
         (tmp_path / 'archives').write_text('x')
         files, _clock = lookup(tmp_path / 'archives')
         location = files.locate(NAME)
-        assert location.status == F.UNAVAILABLE and 'Not a directory' in location.detail
+        assert location.status == F.UNAVAILABLE and reason(errno.ENOTDIR) in location.detail
 
     def test_the_root_may_be_a_symbolic_link(self, tmp_path):
         write(tmp_path / 'real' / 'current' / NAME)
@@ -329,7 +345,7 @@ class TestUnavailable:
             assert files.locate(NAME).status == F.FOUND
             location = files.locate(OTHER)
             assert location.status == F.UNSURE
-            assert location.detail == "1 directory cannot be read (e.g. current/a13: Permission denied)"
+            assert location.detail == f"1 directory cannot be read (e.g. current/a13: {reason(errno.EACCES)})"
             assert files.status()['unread'] == 1
         finally:
             closed.chmod(0o700)
@@ -343,7 +359,7 @@ class TestUnavailable:
         (tmp_path / 'current').chmod(0)
         try:
             location = files.locate(NAME)
-            assert location.status == F.UNSURE and 'current: Permission denied' in location.detail
+            assert location.status == F.UNSURE and f'current: {reason(errno.EACCES)}' in location.detail
         finally:
             (tmp_path / 'current').chmod(0o700)
 
@@ -355,7 +371,7 @@ class TestUnavailable:
         files, _clock = lookup(tmp_path)
         location, fd = files.open(NAME)
         assert fd is None and (location.status, location.directory, location.detail) == \
-            (F.DENIED, 'current/a12', 'Permission denied')
+            (F.DENIED, 'current/a12', reason(errno.EACCES))
         path.chmod(0o600)
         assert files.locate(NAME).status == F.FOUND
 
@@ -641,6 +657,6 @@ class TestStore:
             assert (status['directories'], status['files'], status['error']) == (2, 1, '')
             assert any('1 archive(s) in 2 directories' in r.getMessage() for r in caplog.records)
             status = asyncio.run(go(tmp_path / 'missing'))
-            assert 'No such file' in status['error']
+            assert status['error'] == f"{tmp_path / 'missing'}: {reason(errno.ENOENT)}"
             assert any(r.levelname == 'WARNING' and 'looked for again at each request' in r.getMessage()
                        for r in caplog.records)

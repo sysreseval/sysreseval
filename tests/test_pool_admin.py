@@ -50,6 +50,15 @@ async def pool_row(h, predicate, name='a01', timeout=10.0) -> dict:
             await asyncio.sleep(0.05)
 
 
+async def reservations_consumed(h, name='a01', timeout=10.0):
+    """Waits until a status asked after the end of the last start has consumed its reservation:
+    until then the project counts twice (the agent lists it, the reservation holds), in the
+    number of projects, in the load and in the spare capacity of host *name*."""
+    async with asyncio.timeout(timeout):
+        while h.portal.pool._reservations[name]:
+            await asyncio.sleep(0.02)
+
+
 class TestAdminApi:
     def test_token_membership_and_persistence(self, tmp_path):
         state = tmp_path / 'state' / 'pool.json'
@@ -968,12 +977,7 @@ class TestCli:
                 await pool_row(h, lambda row: row['cpus'] == 1)
                 # an empty host takes a project whatever it costs; a lab never seen: 512 MiB, 0.2 core
                 assert (await h.start())['status'] == 'created'
-                # the row is asked once a status asked after the end of the start has consumed its
-                # reservation: until then the project counts twice (the agent lists it, the
-                # reservation holds), in the number of projects and in the load
-                async with asyncio.timeout(10):
-                    while h.portal.pool._reservations['a01']:
-                        await asyncio.sleep(0.02)
+                await reservations_consumed(h)      # else the row still counts the start
                 row = await pool_row(h, lambda row: row['projects'] == 1)
                 assert row['cpu_used'] == 0.2
                 assert (row['cpu_capacity'], row['cpu_room'], row['memory_room']) == expected['rooms']
@@ -982,6 +986,7 @@ class TestCli:
                 assert resp.status == expected['second_start'], await resp.text()
                 if resp.status == 200:
                     await resp.text()
+                    await reservations_consumed(h)  # else the tool may count a third project: no spare slot
                 r = await loop.run_in_executor(None, cli, 'status')
                 assert r.returncode == 0, r.stderr
                 assert expected['status_line'] in r.stdout.splitlines(), r.stdout

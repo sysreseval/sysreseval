@@ -1920,6 +1920,7 @@ class TestHistory:
             async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
                 prof, bob = who('prof', 'Prof Essor', groups=TEACHERS), who('bob', 'Bob Test', group='INFO2')
                 await h.client.get('/api/me', headers=bob)                  # bob's session is open
+                assert h.portal.access.db.flush(5)          # its line written: the writer thread is connected
                 server.select_names = NAMES
                 server.select_rows = rows
                 page = await (await h.client.get('/api/history/sessions', headers=prof)).json()
@@ -2026,6 +2027,7 @@ class TestHistory:
             async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
                 prof, bob = who('prof', 'Prof Essor', groups=TEACHERS), who('bob', 'Bob Test', group='INFO2')
                 await h.client.get('/api/me', headers=bob)                  # bob's session is open
+                assert h.portal.access.db.flush(5)          # its line written: the writer thread is connected
                 server.select_names = NAMES
                 server.select_rows = rows
                 stats = await (await h.client.get(f'/api/history/statistics?since={since}&until={until}',

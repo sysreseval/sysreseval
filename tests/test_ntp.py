@@ -10,6 +10,7 @@ import shlex
 import socket
 import sys
 import threading
+import time
 from ipaddress import IPv4Interface
 from pathlib import Path
 
@@ -207,6 +208,12 @@ def fake_server():
                  'precision': -21},
                 {'address': '127.0.0.1', 'port': unsync_port, 'leap': 3, 'stratum': 16, 'refid': 'INIT'}]
     threading.Thread(target=ntp_probe.serve, args=(personas,), daemon=True).start()
+    # serve() binds its sockets in the thread: a request sent before that is lost, and the first
+    # test would read "not answered" after its two seconds
+    deadline = time.monotonic() + 10
+    for port in (false_port, unsync_port):
+        while not ntp_probe.query('127.0.0.1', port=port, timeout=0.2)['answered']:
+            assert time.monotonic() < deadline, f"the fake NTP server does not answer on port {port}"
     return false_port, unsync_port
 
 

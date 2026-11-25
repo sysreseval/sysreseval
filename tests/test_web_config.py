@@ -1,7 +1,9 @@
 """Tests of sreweb.config: the TOML configuration of sre-web and sre-agent, and the ``import``
 key merging other files into the main one."""
+import errno
 import ipaddress
 import os
+import re
 
 import pytest
 
@@ -886,7 +888,8 @@ class TestImports:
             load_web_config(main)
         if os.geteuid() != 0:
             bad.chmod(0)
-            with pytest.raises(ConfigError, match=r'40-bad\.toml: Permission denied'):
+            # the text of the libc: in the language of the host when the process has its locale
+            with pytest.raises(ConfigError, match=r'40-bad\.toml: ' + re.escape(os.strerror(errno.EACCES))):
                 load_web_config(main)
             bad.chmod(0o600)
 
