@@ -1,3 +1,26 @@
+sysreseval (0.19.1-1) unstable; urgency=medium
+
+  * sre-web portal: saved projects. A user saves a running project (labs with
+    allow_save_restore) into a directory shared by the pool hosts, restores it
+    later on any host and shares it with groups; a Saved projects page, a limit
+    per user ([saves] of web.toml and agent.toml, off by default); a host that
+    cannot use the directory is flagged "saves unusable" on the Pool page and by
+    sre-web-tool list, with the reason * sre-web portal: the Archives page shows
+    the content of an archive file (as sre cat does) and downloads it
+    ([archives] directory of web.toml) * sre save / restore: a project restored
+    from a save and saved again restores on any host (updated Kathara fork, in
+    python3-kathara; a checkout runs make venv again) * question hashes come
+    from the default language of the lab only: adding or correcting a
+    translation no longer detaches the stored answers (answers under the former
+    hash are still graded); new command pin-question-hashes (sbin/ of a
+    checkout, /usr/bin of the package) writes hash= on every question of a lab *
+    lab tree: "@subtitle..." keys in a titles.json in manual order group the
+    labs under subtitles (Open dialog of the GUI, Open page of the web site);
+    the _DRAFT_misc labs grouped under ten topics
+  * various new draft labs and fixes
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Wed, 25 Nov 2026 12:39:54 +0100
+
 sysreseval (0.19.0-1) unstable; urgency=medium
 
   * sre-web portal use mesured values of a project cost (memory, CPU)
