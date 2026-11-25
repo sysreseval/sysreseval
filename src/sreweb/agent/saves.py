@@ -213,8 +213,11 @@ class SaveStore:
         self.total_mb = answer.get('total_mb') if isinstance(answer.get('total_mb'), int) else None
 
     def status(self) -> dict:
-        """The keys of ``GET /v1/status``: whether this host saves and restores projects."""
-        return {savestore.STATUS_SAVES: self.enabled and self.available, savestore.STATUS_SAVES_ERROR: self.error}
+        """The keys of ``GET /v1/status``: whether this host saves and restores projects, why not,
+        and whether it is meant to (a directory is configured: the Pool page of the portal and
+        `sre-web-tool list` name the hosts that are meant to and cannot)."""
+        return {savestore.STATUS_SAVES: self.enabled and self.available, savestore.STATUS_SAVES_ERROR: self.error,
+                savestore.STATUS_SAVES_CONFIGURED: self.enabled}
 
     def require(self):
         if not self.enabled:

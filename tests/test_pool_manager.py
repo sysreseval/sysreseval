@@ -643,6 +643,18 @@ class TestStatusCoercion:
         assert status_from_json({}).mem_available_mb is None        # an agent older than the key
         assert status_from_json({'occupied_by': ['a', 3, None, 'b']}).occupied_by == ['a', 'b']
         assert status_from_json({'hostname': 'x' * 500}).hostname == 'x' * MAX_STATUS_TEXT
+        # the saved projects: usable, configured, and why not; an agent older than the keys (or
+        # an unreachable host) is not configured and says nothing
+        assert (st.saves, st.saves_configured, st.saves_error) == (False, False, '')
+        assert (HostStatus().saves, HostStatus().saves_configured, HostStatus().saves_error) == (False, False, '')
+        told = status_from_json(up(saves=False, saves_configured=True, saves_error='/srv/saves/.sre-saves: not found'))
+        assert (told.saves, told.saves_configured, told.saves_error) == \
+            (False, True, '/srv/saves/.sre-saves: not found')
+        for odd_value in ('true', 1, [True], None, False):
+            assert status_from_json(up(saves_configured=odd_value)).saves_configured is False, odd_value
+        for odd_value in (5, ['x'], {'error': 'x'}, None, True):
+            assert status_from_json(up(saves_configured=True, saves_error=odd_value)).saves_error == '', odd_value
+        assert status_from_json(up(saves_error='x' * 500)).saves_error == 'x' * MAX_STATUS_TEXT
         for body in ([1, 2], 'up', None, 3):
             st = status_from_json(body)
             assert not st.reachable and 'object' in st.error, body

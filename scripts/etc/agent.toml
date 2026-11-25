@@ -139,10 +139,14 @@ at_start = false
 # the saved projects, a volume every pool host mounts at the same place (NFS); nothing is saved
 # without it.  The agent itself never touches the directory: each access is a small program run
 # as `user` (sre), so the export may squash root and the directory stays closed to the local
-# users of the host.  Prepare the volume once, as that user:
+# users of the host.  Prepare the volume once:
 #     mkdir /srv/sre-saves ; chown sre:sre /srv/sre-saves ; chmod 700 /srv/sre-saves
-#     touch /srv/sre-saves/.sre-saves        # the marker: a host whose volume is not mounted saves nothing
-# and leave the mount point itself to root on each host.  max_size_mb: a project whose save is
+#     runuser -u sre -- touch /srv/sre-saves/.sre-saves
+# and leave the mount point itself to root on each host.  The last line makes the marker of the
+# volume, and nothing else ever does (the agent could not tell the volume from the empty
+# directory under it): without the marker a host saves nothing and its projects have no Save
+# Project button; the Pool page and `sre-web-tool list` then show the host as "saves unusable"
+# with the reason, which is also in the journal of the agent.  max_size_mb: a project whose save is
 # larger is not saved; min_free_mb: no save below this much free space, in the directory and
 # where sre save builds its archive (/var/lib/sre/tmp); max_concurrent: saves running at once on
 # this host; timeout: the time one access to the directory may take (a volume that hangs).

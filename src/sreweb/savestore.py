@@ -85,9 +85,12 @@ STALE_ORPHAN = 3600
 CHUNK = 1 << 20
 
 #: The keys of ``GET /v1/status`` of an agent: whether the host saves and restores projects (its
-#: directory is configured and usable), and why not.
+#: directory is configured and usable), why not, and whether a directory is configured at all
+#: (configured and not usable is what an administrator has to hear about: a volume that is not
+#: mounted, a marker nobody created).
 STATUS_SAVES = 'saves'
 STATUS_SAVES_ERROR = 'saves_error'
+STATUS_SAVES_CONFIGURED = 'saves_configured'
 
 CODE_QUOTA = 'quota'
 CODE_TOO_LARGE = 'too_large'
@@ -184,7 +187,13 @@ def check(root: str) -> dict:
     this account.  Its free and total space in MiB."""
     try:
         _real_directory(root)
-        marker = os.lstat(os.path.join(root, MARKER))
+        try:
+            marker = os.lstat(os.path.join(root, MARKER))
+        except FileNotFoundError as e:
+            # the directory is there and the marker is not: nothing ever creates it but the
+            # administrator, once, so a volume that is mounted lacks it until then
+            raise StoreError(503, f"{e.filename}: not found (the volume of the saved projects is not mounted, "
+                                  f"or its marker was never created)", CODE_UNAVAILABLE) from None
         if not stat.S_ISREG(marker.st_mode):
             raise StoreError(503, f"{MARKER} is not a file", CODE_UNAVAILABLE)
         if not os.access(root, os.W_OK | os.X_OK):

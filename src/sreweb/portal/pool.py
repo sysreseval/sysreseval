@@ -23,7 +23,7 @@ from ..config import (HostConfig, Priority, host_config_from_dict, host_entry, c
                       check_usable_capacity, ConfigError, CAPACITY_PROJECTS, CAPACITY_RESOURCES,
                       DEFAULT_USABLE_CAPACITY, USABLE_CAPACITY_KEY)
 from ..identity import Identity, is_valid_login, ROLE_INSTRUCTOR
-from ..savestore import STATUS_SAVES
+from ..savestore import STATUS_SAVES, STATUS_SAVES_CONFIGURED, STATUS_SAVES_ERROR
 from .costs import (Cost, CostBook, HostLoad, Usage, host_capacity, host_load, lab_key, figure, DEFAULT_MEMORY_MB,
                     DEFAULT_CPU, MAX_NAME)
 
@@ -209,6 +209,12 @@ class HostStatus:
     # whether the host saves and restores projects (``savestore.STATUS_SAVES``: its directory of
     # the saved projects is configured and usable); false for an agent older than the key
     saves: bool = False
+    # whether that directory is configured at all (``STATUS_SAVES_CONFIGURED``) and, when it is
+    # not usable, what the agent found (``STATUS_SAVES_ERROR``): a host that is meant to save
+    # and cannot is told on the Pool page (``savesUnusable()`` of pool.js) and by
+    # `sre-web-tool list` (``poolctl.saves_unusable()``)
+    saves_configured: bool = False
+    saves_error: str = ''
     hostname: str = ''
     sre_version: str = ''
     error: str = ''
@@ -392,6 +398,8 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       hostname=_text(data.get('hostname')),
                       sre_version=_text(data.get('sre_version')),
                       saves=data.get(STATUS_SAVES) is True,
+                      saves_configured=data.get(STATUS_SAVES_CONFIGURED) is True,
+                      saves_error=_text(data.get(STATUS_SAVES_ERROR)),
                       **preload_fields(data.get('preload')),
                       **local_drain_fields(data.get('local_drain')))
 

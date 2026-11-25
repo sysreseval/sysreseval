@@ -4,9 +4,12 @@
 // uptime, the cores its projects are counted for and those they may use (CPU), its flags
 // (reserved for instructors, power, drain, power off sent, restart sent, memory
 // full with [pool] project_memory_mb, memory full / cpu full with [pool] capacity =
-// "resources", and where the
-// preload of the Docker images is: queued, preloading 2/5, failed), the agent's version and
-// its last error, and the summary of `sre-web-tool status` above the table.  The rows can be
+// "resources", where the
+// preload of the Docker images is: queued, preloading 2/5, failed, and saves unusable for a
+// host whose agent.toml has a directory of the saved projects it cannot use), the agent's
+// version and its last error (for a host with unusable saves, what its agent found: a volume
+// that is not mounted, a marker never created), and the summary of `sre-web-tool status` above
+// the table.  The rows can be
 // sorted by any column and filtered by host name.  The buttons are the commands of the tool (Enable /
 // Disable, Wake, Drain, Power off: POST /api/pool/hosts/{name}/{action}; add, remove and restart
 // stay with the tool), each disabled with the reason as its tooltip when it does not apply; the
@@ -130,7 +133,25 @@ function flagsText(row) {
   if (preload) {
     flags.push(preload);
   }
+  if (savesUnusable(row)) {
+    flags.push(_('saves unusable'));
+  }
   return flags.join(', ');
+}
+
+// the host is meant to save and restore projects ([saves] dir of its agent.toml) and cannot: its
+// volume is not mounted, the marker of the store was never created…  Never an unreachable host,
+// nor one whose agent or portal is older than the key (as poolctl.saves_unusable() of the tool)
+function savesUnusable(row) {
+  return Boolean(row.reachable && row.saves_configured === true && !row.saves);
+}
+
+// what the agent of such a host found, as the Last error cell and the tooltips tell it
+function savesError(row) {
+  if (!savesUnusable(row)) {
+    return '';
+  }
+  return row.saves_error ? format(_('saves: {reason}'), {reason: row.saves_error}) : _('saves unusable');
 }
 
 // whether the host may ask for its own drain (sre set-drain there): told when it may, and when it
@@ -162,16 +183,21 @@ function preloadFlag(row) {
   }
 }
 
-// the tooltip of the Flags cell: the image being pulled, or why the preload failed, else where a
-// local drain comes from
+// the tooltip of the Flags cell, one line per flag that has more to say, in the order of the
+// flags: where a local drain comes from, the image being pulled or why the preload failed, why
+// the saves are unusable
 function flagsTitle(row) {
+  const lines = [];
+  if (row.local_drain) {
+    lines.push(_('drain asked on the host itself (sre set-drain)'));
+  }
   if (row.preload === 'running') {
-    return row.preload_image || '';
+    lines.push(row.preload_image || '');
+  } else if (row.preload === 'failed') {
+    lines.push(row.preload_error || '');
   }
-  if (row.preload === 'failed') {
-    return row.preload_error || '';
-  }
-  return row.local_drain ? _('drain asked on the host itself (sre set-drain)') : '';
+  lines.push(savesError(row));
+  return lines.filter(Boolean).join('\n');
 }
 
 function memoryText(row) {   // 12.3 GiB: the MemAvailable of the host (an older agent says nothing)
@@ -227,8 +253,14 @@ function uptimeText(seconds) {   // 1h02, as the tool
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`;
 }
 
+// the Last error cell: why the host does not answer; for a host that does, why its saves are
+// unusable (the cell is free then).  The whole text is the tooltip of the cell
+function errorTitle(row) {
+  return row.reachable ? savesError(row) : (row.error || '');
+}
+
 function errorText(row) {
-  const text = row.reachable ? '' : (row.error || '');
+  const text = errorTitle(row);
   return text.length <= ERROR_WIDTH ? text : text.slice(0, ERROR_WIDTH - 1) + '…';
 }
 
@@ -888,7 +920,7 @@ function renderRow(row) {
     priorityCell(row),
     el('td', {class: 'flags', title: flagsTitle(row)}, flagsText(row)),
     el('td', {}, row.sre_version || ''),
-    el('td', {class: 'error', title: row.reachable ? '' : (row.error || '')}, errorText(row)),
+    el('td', {class: 'error', title: errorTitle(row)}, errorText(row)),
     el('td', {class: 'actions'}, ...actions(row)));
 }
 

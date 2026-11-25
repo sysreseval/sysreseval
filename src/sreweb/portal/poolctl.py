@@ -86,6 +86,18 @@ class PoolClient:
         return json.loads(text) if text else None
 
 
+def saves_unusable(row: dict) -> bool:
+    """The host is meant to save and restore projects (``[saves] dir`` of its agent.toml) and
+    cannot: its volume is not mounted, the marker of the store was never created…  The reason
+    is the ``saves_error`` of the row.  Never an unreachable host, nor one whose agent or portal
+    is older than the key."""
+    return bool(row.get('reachable') and row.get('saves_configured') is True and not row.get('saves'))
+
+
+def _cut(text: str) -> str:
+    return text if len(text) <= ERROR_WIDTH else text[:ERROR_WIDTH - 1] + '…'
+
+
 def _cell(row: dict, key: str) -> str:
     value = row.get(key)
     if key == 'projects':
@@ -135,6 +147,8 @@ def _cell(row: dict, key: str) -> str:
             extra.append('preload queued')
         elif row.get('preload') == PRELOAD_FAILED:
             extra.append('preload failed')
+        if saves_unusable(row):         # [saves] of its agent.toml: the reason is in LAST ERROR
+            extra.append('saves unusable')
         if row.get('instructors_only'):
             extra.append('instructors')
         if row.get('priority') not in (None, 0, str(Priority())):    # group:order, not the default: the lowest is used first
@@ -143,8 +157,10 @@ def _cell(row: dict, key: str) -> str:
             extra.append(f"capacity {row[USABLE_CAPACITY_KEY]}%")
         return value + (f" ({', '.join(extra)})" if extra else '')
     if key == 'error':
-        text = '' if row.get('reachable') else (value or '')
-        return text if len(text) <= ERROR_WIDTH else text[:ERROR_WIDTH - 1] + '…'
+        if saves_unusable(row):         # a reachable host: the cell is free for what its agent found
+            reason = row.get('saves_error')
+            return _cut(f"saves: {reason}" if reason and isinstance(reason, str) else 'saves unusable')
+        return _cut('' if row.get('reachable') else (value or ''))
     return '' if value is None else str(value)
 
 

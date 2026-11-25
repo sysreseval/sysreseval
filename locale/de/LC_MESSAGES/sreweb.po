@@ -1097,6 +1097,12 @@ msgstr "wird vorgeladen {current}/{total}"
 msgid "preload failed"
 msgstr "Vorladen fehlgeschlagen"
 
+msgid "saves unusable"
+msgstr "Sicherungen nicht nutzbar"
+
+msgid "saves: {reason}"
+msgstr "Sicherungen: {reason}"
+
 msgid "the agent does not know the preload (older version)"
 msgstr "der Agent kennt das Vorladen nicht (ältere Version)"
 

@@ -7,7 +7,8 @@ is said in red in the status line, for as long as it lasts; the Priority column 
 dialog that changes the two numbers of a host, or the group, the order or both of the selected
 hosts, the column sorted, the priorities back after a restart; Enable cancelling a drain, from the row (in place of Drain) and from the bar, and
 not once the power off of the host is sent; a drain the host asked for itself, its flag, Enable
-cancelling it, the local drains forbidden and allowed from the bar; the CPU column (the cores the
+cancelling it, the local drains forbidden and allowed from the bar; a host whose saved projects
+are configured and unusable, its flag and the agent's reason; the CPU column (the cores the
 projects of a host are counted for / those they may use); the Capacity column (the whole host) and
 the Usable capacity one, its dialog for a host and for the selection, the values set by hand in
 bold, Reset to initial settings and its dialog; the costs of the labs are no longer on
@@ -89,6 +90,10 @@ BAR_ALLOW = '#pool-selection button[data-action="allow-local-drain"]'
 BAR_FORBID = '#pool-selection button[data-action="forbid-local-drain"]'
 FLAGS = f"({ROW} ? {ROW}.querySelector('td.flags').textContent : null)"
 FLAGS_TITLE = f"{ROW}.querySelector('td.flags').title"
+# the Last error cell of a01 and its tooltip (the whole text)
+ERROR = f"({ROW} ? {ROW}.querySelector('td.error').textContent : null)"
+ERROR_TITLE = f"{ROW}.querySelector('td.error').title"
+ERROR_WIDTH = 60                                              # ERROR_WIDTH of pool.js and of the tool
 
 
 # the capacity of the whole host and the share of it its projects may fill: the cells of a row, the
@@ -627,5 +632,64 @@ class TestPoolPage:
                 await page.click(BAR_ALLOW)
                 await page.wait_for(f"{FLAGS} === 'local drain allowed'", what="the local drain allowed again")
                 assert h.agent.local_drain.allowed is True
+                assert page.errors == []
+        P.run(go())
+
+    def test_saves_unusable(self, tmp_path):
+        """A host whose agent.toml names a directory of the saved projects it cannot use (here a
+        directory whose marker was never created): the flag, and what its agent found in the Last
+        error cell (cut, the whole text in its tooltip) and in the tooltip of the flags, one line
+        per flag that has something to say; all gone once the marker exists."""
+        from SRE import local_drain
+        from sreweb import savestore as store
+        from test_agent_saves import store_user
+        state = tmp_path / 'state' / 'pool.json'
+        directory = tmp_path / 'saves'
+        directory.mkdir()
+        marker = directory / store.MARKER
+        saves = {'dir': str(directory), 'user': store_user(), 'min_free_mb': 0}
+
+        async def go():
+            async with browser_of(tmp_path / 'first', state, host_over={},
+                                  agent_over={'allow_local_drain': True, 'saves': saves}) as (h, browser, url):
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(f"{FLAGS} === 'local drain allowed, saves unusable'",
+                                    what="the flag of the unusable saves")
+                assert await page.evaluate(STATE) == 'up'
+                # what the agent found, as the portal keeps it: the file first
+                reason = 'saves: ' + h.portal.pool.status['a01'].saves_error
+                assert reason.startswith(f'saves: {marker}: not found (')
+                assert await page.evaluate(ERROR_TITLE) == reason and await page.evaluate(FLAGS_TITLE) == reason
+                assert await page.evaluate(ERROR) == reason[:ERROR_WIDTH - 1] + '…'
+                # a host that can save still takes projects: its buttons are the usual ones
+                assert await page.evaluate(button(action(3))) == ['Drain', False, '']
+                # another flag with something to say: one line each, in the order of the flags
+                local_drain.write_request(local_drain.request_path(str(h.pub)), local_drain.boot_id())
+                await page.wait_for(f"{FLAGS} === 'local drain, saves unusable'", timeout=POLL,
+                                    what="the two flags")
+                assert await page.evaluate(FLAGS_TITLE) == f'drain asked on the host itself (sre set-drain)\n{reason}'
+                assert await page.evaluate(ERROR_TITLE) == reason
+                # the marker created (once, by the administrator): the agent sees it at its next
+                # check, the page at its next poll
+                marker.touch()
+                assert await h.agent.saves.refresh() is True
+                await page.wait_for(f"{FLAGS} === 'local drain'", timeout=POLL, what="the saves usable")
+                assert await page.evaluate(f"[{ERROR}, {ERROR_TITLE}]") == ['', '']
+                assert await page.evaluate(FLAGS_TITLE) == 'drain asked on the host itself (sre set-drain)'
+                assert page.errors == []
+        P.run(go())
+
+    def test_no_saves_flag_without_a_directory(self, tmp_path):
+        """A host whose agent has no directory of the saved projects is not meant to save: no
+        flag, and the Last error cell of an unreachable host is still the error of its poll."""
+        state = tmp_path / 'state' / 'pool.json'
+
+        async def go():
+            async with browser_of(tmp_path / 'first', state, host_over={}) as (h, browser, url):
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(f"{STATE} === 'up'", what="the host up")
+                assert await page.evaluate(f"[{FLAGS}, {FLAGS_TITLE}, {ERROR}, {ERROR_TITLE}]") == ['', '', '', '']
+                row = h.portal.pool.summary()[0]
+                assert (row['saves_configured'], row['saves_error']) == (False, 'not configured')
                 assert page.errors == []
         P.run(go())

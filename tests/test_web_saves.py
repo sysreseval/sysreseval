@@ -548,6 +548,58 @@ class TestHostsAndLabs:
                 await start(h, ALICE)
         run(go())
 
+    def test_a_host_meant_to_save_and_unable_to_is_told(self, tmp_path):
+        """The rows of ``GET /api/pool`` (the Pool page, `sre-web-tool list`) say that the host
+        has a directory of the saved projects, whether it is usable, and the agent's reason."""
+        from sreweb.portal.pool import MAX_STATUS_TEXT
+        from sreweb.portal.poolctl import saves_unusable, _cell
+
+        async def row(h) -> dict:
+            await h.agent.saves.refresh()
+            await h.portal.pool.refresh()
+            resp = await h.client.get('/api/pool', headers=PROF)
+            assert resp.status == 200, await resp.text()
+            (found,) = [r for r in await resp.json() if r['name'] == 'a01']
+            return found
+
+        async def go():
+            async with harness(tmp_path) as h:
+                usable = await row(h)
+                assert (usable['saves'], usable['saves_configured'], usable['saves_error']) == (True, True, '')
+                assert not saves_unusable(usable) and _cell(usable, 'state') == 'up' and _cell(usable, 'error') == ''
+                # the marker is gone (the volume not mounted, or a marker nobody created)
+                marker = tmp_path / 'saves' / store.MARKER
+                marker.unlink()
+                told = await row(h)
+                assert (told['saves'], told['saves_configured'], told['reachable']) == (False, True, True)
+                # the agent's text, cut by the portal like every text of a status (the path of a
+                # test directory is long): the file and what is wrong with it come first
+                reason = h.agent.saves.error
+                assert reason.startswith(f"{marker}: not found (") and 'never created' in reason
+                assert told['saves_error'] == reason[:MAX_STATUS_TEXT]
+                assert saves_unusable(told) and _cell(told, 'state') == 'up (saves unusable)'
+                assert _cell(told, 'error').startswith(f"saves: {marker}"[:40])
+                # a student is told nothing of the pool
+                assert (await h.client.get('/api/pool', headers=ALICE)).status == 403
+                # created: the host is back at its next check
+                marker.touch()
+                back = await row(h)
+                assert (back['saves'], back['saves_configured'], back['saves_error']) == (True, True, '')
+        run(go())
+
+    def test_a_host_without_a_directory_is_not_told(self, tmp_path):
+        """No ``[saves] dir`` on the agent: the host is not meant to save, nothing is flagged."""
+        from sreweb.portal.poolctl import saves_unusable
+
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy',
+                                 web_over={**P.PROXY_OVER, 'saves': {'enabled': True}}) as h:
+                await h.portal.pool.refresh()
+                (found,) = await (await h.client.get('/api/pool', headers=PROF)).json()
+                assert (found['saves'], found['saves_configured'], found['saves_error']) == (False, False, 'not configured')
+                assert found['reachable'] and not saves_unusable(found)
+        run(go())
+
     def test_a_named_host_without_the_saves(self, tmp_path):
         async def go():
             async with harness(tmp_path) as h:

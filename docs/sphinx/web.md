@@ -901,8 +901,12 @@ placed on a host that has the directory. Prepare the volume once:
 ```
 mkdir /srv/sre-saves
 chown sre:sre /srv/sre-saves && chmod 700 /srv/sre-saves
-touch /srv/sre-saves/.sre-saves        # as sre: the marker of the volume
+runuser -u sre -- touch /srv/sre-saves/.sre-saves        # the marker of the volume
 ```
+
+The last line is not optional, and **nothing does it for you**: no host saves or shows the *Save
+Project* button until the marker exists (*A host that cannot use the volume* below). On a volume
+that squashes root, run it on a host that mounts it: once is enough, the file is in the volume.
 
 - Every access runs as the `sre` account (a small program the agent starts for it, the agent
   itself never opens the directory), so the export may **squash root**; it must be reachable
@@ -911,7 +915,8 @@ touch /srv/sre-saves/.sre-saves        # as sre: the marker of the volume
 - The directory is `0700`: the local users of a pool host cannot read the saves of the others.
 - `.sre-saves` is the **marker**: a host whose volume is not mounted finds none and saves
   nothing, instead of writing on its own disk a save no other host would see. Leave the mount
-  point itself to root.
+  point itself to root. The agent never creates the marker, on purpose: it could not tell the
+  volume from the empty directory under it.
 - The agent starts after the remote file systems; for a mount that may come later, a drop-in of
   its unit says so:
 
@@ -950,6 +955,29 @@ enabled = true
 
 The saved projects need users who log in: `enabled = true` is refused with
 `auth.mode = "anonymous"` (a pseudonym lasts as long as its cookie).
+
+**A host that cannot use the volume.** A host whose `agent.toml` names a directory it cannot use
+— the volume is not mounted, the marker was never created, the directory does not belong to
+`sre` — saves and restores nothing, and its projects have no *Save Project* button; the other
+hosts are not affected, and it still takes projects. It is told in three places, with what its
+agent found:
+
+- the Pool page: the flag *saves unusable*, and the reason in the *Last error* cell of the host
+  (the whole text as its tooltip);
+- `sre-web-tool list`: `(saves unusable)` after the state of the host and `saves: <reason>` in
+  LAST ERROR (cut there; `list --json` has it whole, as `saves_error`);
+- the journal of the agent on the host: one warning when it happens, one line when the
+  directory is usable again.
+
+```
+NAME  STATE                PROJECTS  ...  LAST ERROR
+x07   up (saves unusable)  1/25      ...  saves: /srv/sre-saves/.sre-saves: not found (the volume of…
+```
+
+Nothing is to be restarted once the cause is fixed: the agent finds the directory at its next
+check, within a minute, and a project page shows the button when it is loaded again. A host
+without `[saves] dir` is not meant to save: it is not flagged. (An agent older than this flag
+says nothing either: restart the agents after an update.)
 
 **The limit.** A user at their limit is told so before anything is saved, with the list of their
 saves: one deleted, the project is saved. The host counts again in the directory right before
@@ -1672,7 +1700,7 @@ portal through its administration API (`[admin] token`, loopback only by default
 `--url`, `--token` override the configuration):
 
 ```
-sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
+sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime, last error (why it does not answer, or why its saved projects are unusable)
 sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking, the state file
 sre-web-tool costs                # what a project of each lab costs a host (memory, processors): measured, else declared by the lab
 sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only] [--priority 0:0] [--total-usable-capacity 100]
@@ -2252,7 +2280,9 @@ What an instructor gets:
   *A pool of virtual machines* above; with `capacity = "resources"`: *memory full* / *cpu full*
   for a host whose memory or processors hold no more project like those running), and where the preload of the Docker
   images is: *preload queued*, *preloading 2/5* with the image as tooltip, *preload failed* with
-  the error), the agent's version and its last error, the line
+  the error, and *saves unusable* for a host whose directory of the saved projects is configured
+  and cannot be used, *Saved projects* above), the agent's version and its last error (for a
+  host with *saves unusable*, what its agent found), the line
   of `sre-web-tool status` above the table (in red, with the reason, when the state file of the
   pool cannot be written: a restart of the portal would undo what is changed on the page);
   the state cell is green (up), amber (waking,

@@ -1077,6 +1077,12 @@ msgstr "préchargement {current}/{total}"
 msgid "preload failed"
 msgstr "préchargement échoué"
 
+msgid "saves unusable"
+msgstr "enregistrements inutilisables"
+
+msgid "saves: {reason}"
+msgstr "enregistrements : {reason}"
+
 msgid "the agent does not know the preload (older version)"
 msgstr "l'agent ne connaît pas le préchargement (version plus ancienne)"
 

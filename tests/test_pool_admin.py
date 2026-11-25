@@ -1104,6 +1104,37 @@ class TestCli:
         assert _cell({'state': 'up', 'reachable': True, 'memory_room': None}, 'state') == 'up'
         assert _cell({'state': 'off', 'reachable': False, 'memory_room': 0}, 'state') == 'off'
 
+    def test_saves_unusable_in_the_table(self):
+        """A host whose agent.toml has a directory of the saved projects it cannot use: told in
+        the STATE cell, the agent's reason in LAST ERROR (free for a host that answers)."""
+        from sreweb.portal.poolctl import table, _cell, saves_unusable, ERROR_WIDTH
+        reason = '/srv/saves/.sre-saves: not found (the volume of the saved projects is not mounted, or its marker…)'
+        unusable = {'name': 'x07', 'state': 'up', 'reachable': True, 'projects': 1, 'max_projects': 3,
+                    'saves': False, 'saves_configured': True, 'saves_error': reason, 'error': ''}
+        assert saves_unusable(unusable)
+        assert _cell(unusable, 'state') == 'up (saves unusable)'
+        cell = _cell(unusable, 'error')
+        assert len(cell) == ERROR_WIDTH and cell == ('saves: ' + reason)[:ERROR_WIDTH - 1] + '…'
+        assert _cell({**unusable, 'saves_error': 'no marker'}, 'error') == 'saves: no marker'
+        # a reason the row lost (it never does: the agent always gives one) still says something
+        for nothing in ('', None, 5):
+            assert _cell({**unusable, 'saves_error': nothing}, 'error') == 'saves unusable', nothing
+        assert _cell({**unusable, 'instructors_only': True, 'preload': 'failed'}, 'state') == \
+            'up (preload failed, saves unusable, instructors)'
+        line = table([unusable]).splitlines()[1]
+        assert line.split()[:4] == ['x07', 'up', '(saves', 'unusable)'] and line.endswith('…')
+        # nothing for a host that is not meant to save, that saves, that does not answer (its own
+        # error stays), nor for the row of a portal or an agent older than the key
+        for row in ({**unusable, 'saves_configured': False, 'saves_error': 'not configured'},
+                    {**unusable, 'saves': True, 'saves_error': ''},
+                    {k: v for k, v in unusable.items() if k != 'saves_configured'},
+                    {**unusable, 'saves_configured': 'yes'}):
+            assert not saves_unusable(row), row
+            assert _cell(row, 'state') == 'up' and _cell(row, 'error') == '', row
+        down = {**unusable, 'state': 'off', 'reachable': False, 'error': 'Cannot connect to host x07'}
+        assert not saves_unusable(down)
+        assert _cell(down, 'state') == 'off' and _cell(down, 'error') == 'Cannot connect to host x07'
+
     def test_add_sends_the_priority_only_when_one_is_given(self, capsys):
         """A portal still running older code (synced, not restarted yet) refuses a host entry it
         does not understand: ``add`` without ``--priority`` sends the body it always sent."""

@@ -70,6 +70,9 @@ class TestCheck:
         with pytest.raises(StoreError) as e:
             store.check(root)
         assert e.value.status == 503 and e.value.code == store.CODE_UNAVAILABLE
+        # the text names the file and both causes: nothing creates the marker but the administrator
+        assert e.value.message.startswith(f"{os.path.join(root, store.MARKER)}: not found (")
+        assert 'not mounted' in e.value.message and 'never created' in e.value.message
         with pytest.raises(StoreError):
             store.run('list', {'root': root}, None, None)
         with pytest.raises(StoreError):
@@ -80,6 +83,7 @@ class TestCheck:
         with pytest.raises(StoreError) as e:
             store.check(str(tmp_path / 'nowhere'))
         assert e.value.status == 503
+        assert e.value.message.startswith(f"{tmp_path / 'nowhere'}: not found (") and 'marker' not in e.value.message
         (tmp_path / 'file').write_text('x')
         with pytest.raises(StoreError):
             store.check(str(tmp_path / 'file'))

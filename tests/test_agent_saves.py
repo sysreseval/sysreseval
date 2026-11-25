@@ -104,6 +104,8 @@ class TestStatus:
             async with Harness(tmp_path) as h:
                 status = await (await h.client.get('/v1/status', headers=headers(None))).json()
                 assert status[store.STATUS_SAVES] is False and status[store.STATUS_SAVES_ERROR] == 'not configured'
+                # no directory: the host is not meant to save, nothing to tell an administrator
+                assert status[store.STATUS_SAVES_CONFIGURED] is False
                 rln = await h.started()
                 project = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['project']
                 assert project['can_save'] is False
@@ -116,6 +118,7 @@ class TestStatus:
             async with harness(tmp_path) as h:
                 status = await (await h.client.get('/v1/status', headers=headers(None))).json()
                 assert status[store.STATUS_SAVES] is True and status[store.STATUS_SAVES_ERROR] == ''
+                assert status[store.STATUS_SAVES_CONFIGURED] is True
                 rln = await h.started()
                 project = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['project']
                 assert project['can_save'] is True
@@ -125,6 +128,9 @@ class TestStatus:
                 assert await h.agent.saves.refresh() is False
                 status = await (await h.client.get('/v1/status', headers=headers(None))).json()
                 assert status[store.STATUS_SAVES] is False and 'not found' in status[store.STATUS_SAVES_ERROR]
+                # still configured: meant to save and unable to, what the Pool page flags
+                assert status[store.STATUS_SAVES_CONFIGURED] is True
+                assert status[store.STATUS_SAVES_ERROR].startswith(str(tmp_path / 'saves' / store.MARKER))
                 code, answer = await save(h, rln)
                 assert code == 503 and answer['code'] == store.CODE_UNAVAILABLE
                 assert (await h.client.get('/v1/saves', headers=headers(None))).status == 503
@@ -140,6 +146,10 @@ class TestStatus:
         async def go():
             async with harness(tmp_path, marker=False) as h:
                 assert h.agent.saves.available is False
+                # the volume mounted and its marker never created: told from the first status
+                status = await (await h.client.get('/v1/status', headers=headers(None))).json()
+                assert (status[store.STATUS_SAVES], status[store.STATUS_SAVES_CONFIGURED]) == (False, True)
+                assert 'never created' in status[store.STATUS_SAVES_ERROR]
                 rln = await h.started()
                 assert (await save(h, rln))[0] == 503
                 assert files_of(tmp_path) == []
@@ -153,6 +163,9 @@ class TestStatus:
         s = SaveStore(SavesConfig(dir=str(saves_dir(tmp_path)), user='no-such-user-xyz'))
         run(s.start())
         assert s.available is False and 'does not exist' in s.error
+        # a store that never started is configured and unusable, with its reason
+        assert s.status() == {store.STATUS_SAVES: False, store.STATUS_SAVES_CONFIGURED: True,
+                              store.STATUS_SAVES_ERROR: s.error}
 
     def test_the_helper_runs_as_the_account_of_the_store(self, tmp_path, monkeypatch):
         """As root the helper is spawned under ``saves.user``, with no group of the agent."""
