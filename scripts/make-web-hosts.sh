@@ -47,22 +47,30 @@
 #   INSTRUCTOR_MACHINES none             the machines ("s0 h3", names as in the file, any case) whose host
 #                                        gets instructors_only = true on its own, whatever its room; a name
 #                                        that is not one of the selected hosts is reported and ignored
-#   ROOM_PRIORITIES     none             the priority of the hosts of a room, "<room>=<group>:<order>" pairs
-#                                        ("z=0:1 h=1:0", each number from -9999 to 9999): priority =
-#                                        "<group>:<order>" in [[hosts]].  A new project goes to the lowest
-#                                        group that has an available host and, in it, to the lowest order
-#                                        among the hosts without project; the portal wakes the hosts in
-#                                        that order.  A room not named has 0:0, the default, and
-#                                        "<room>=<integer>" is that order in group 0.  A priority changed
-#                                        since on the Pool page (or with `sre-web-tool priority`) holds
-#                                        until this value changes
-#   ROOM_USABLE_CAPACITIES none          the share of the hosts of a room their projects may fill,
-#                                        "<room>=<percent>" pairs ("z=80 h=50", each an integer from 1 to
-#                                        100): total_usable_capacity = <percent> in [[hosts]].  With
-#                                        [pool] capacity = "resources" such a host counts as a machine
-#                                        that share of its memory and processors.  A room not named has
-#                                        100, the default (the whole host).  A share changed since with
-#                                        `sre-web-tool usable-capacity` holds until this value changes
+#   ROOM_PRIORITIES     none             the priority of the hosts of a room or of one machine,
+#                                        "<room|machine>=<group>:<order>" pairs ("z=0:1 h=1:0", "a=50 a3=35
+#                                        b=10", each number from -9999 to 9999): priority = "<group>:<order>"
+#                                        in [[hosts]].  A new project goes to the lowest group that has an
+#                                        available host and, in it, to the lowest order among the hosts
+#                                        without project; the portal wakes the hosts in that order.  A key
+#                                        that is the name of a selected host (as in the file, any case) is
+#                                        that machine, another one a room; a host takes the value of its
+#                                        own name, else of its room, else 0:0, the default (a3 above:
+#                                        0:35, whatever the order of the pairs, the other hosts of room
+#                                        a 0:50).  "<key>=<integer>" is that order in group 0.  A key that
+#                                        is neither a room nor a name of the selected hosts is reported
+#                                        and ignored.  A priority changed since on the Pool page (or with
+#                                        `sre-web-tool priority`) holds until this value changes
+#   ROOM_USABLE_CAPACITIES none          the share of the hosts of a room or of one machine their
+#                                        projects may fill, "<room|machine>=<percent>" pairs ("z=80 h=50",
+#                                        "z=80 z07=50", each an integer from 1 to 100):
+#                                        total_usable_capacity = <percent> in [[hosts]].  With [pool]
+#                                        capacity = "resources" such a host counts as a machine that share
+#                                        of its memory and processors.  The keys are read as those of
+#                                        ROOM_PRIORITIES (the machine before its room); a host named by
+#                                        neither has 100, the default (the whole host).  A share changed
+#                                        since with `sre-web-tool usable-capacity` holds until this value
+#                                        changes
 #   DOMAIN              none             when set, DNS:<name>.<DOMAIN> is a SAN of the certificate too
 #   PORTAL_ADDRESS      none             when set, allowed_clients = ["<it>"] in agent-<name>.toml
 #   TLS_DIR_ON_HOSTS    /etc/sreweb/tls  where the hosts and the portal keep the files (the paths
@@ -113,25 +121,24 @@ in_list() {   # in_list WORD LIST: WORD is one of the space-separated LIST
     return 1
 }
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
-priority_of() {   # priority_of ROOM: the priority ("group:order") ROOM_PRIORITIES gives the hosts of ROOM, 0:0 when
-                  # it does not name it; one integer there is that order in group 0
-    local pair value
-    for pair in $ROOM_PRIORITIES; do
-        if [ "${pair%%=*}" = "$1" ]; then
-            value="${pair#*=}"
-            case "$value" in *:*) ;; *) value="0:$value";; esac
-            printf '%s' "$value"; return 0
-        fi
-    done
-    printf '0:0'
-}
-usable_capacity_of() {   # usable_capacity_of ROOM: the percentage ROOM_USABLE_CAPACITIES gives the hosts of ROOM,
-                         # 100 when it does not name it
+pair_value() {   # pair_value LIST KEY: the value of KEY in the space-separated "<key>=<value>" LIST, status 1
+                 # when it does not name KEY (an empty KEY never matches: the keys are not empty)
     local pair
-    for pair in $ROOM_USABLE_CAPACITIES; do
-        if [ "${pair%%=*}" = "$1" ]; then printf '%s' "${pair#*=}"; return 0; fi
+    for pair in $1; do
+        if [ "${pair%%=*}" = "$2" ]; then printf '%s' "${pair#*=}"; return 0; fi
     done
-    printf '100'
+    return 1
+}
+priority_of() {   # priority_of NAME ROOM: the priority ("group:order") ROOM_PRIORITIES gives the host NAME (lower-
+                  # cased) of ROOM: that of its name, else of its room, else 0:0; one integer is that order in group 0
+    local value
+    value=$(pair_value "$ROOM_PRIORITIES" "$1") || value=$(pair_value "$ROOM_PRIORITIES" "$2") || value=0:0
+    case "$value" in *:*) ;; *) value="0:$value";; esac
+    printf '%s' "$value"
+}
+usable_capacity_of() {   # usable_capacity_of NAME ROOM: the percentage ROOM_USABLE_CAPACITIES gives the host NAME
+                         # (lower-cased) of ROOM: that of its name, else of its room, else 100
+    pair_value "$ROOM_USABLE_CAPACITIES" "$1" || pair_value "$ROOM_USABLE_CAPACITIES" "$2" || printf '100'
 }
 entries_of() {   # entries_of FILE: the [[hosts]] entries of a hosts.toml, one line each, to compare two runs:
                  # "name;url;token;max_projects;mac;power;enabled;instructors_only;priority;total_usable_capacity"
@@ -242,31 +249,25 @@ ROOMS=$(lower "$ROOMS"); DISABLED_ROOMS=$(lower "$DISABLED_ROOMS")
 INSTRUCTOR_ROOMS=$(lower "$INSTRUCTOR_ROOMS"); INSTRUCTOR_MACHINES=$(lower "$INSTRUCTOR_MACHINES")
 ROOM_PRIORITIES=$(lower "$ROOM_PRIORITIES")
 ROOM_USABLE_CAPACITIES=$(lower "$ROOM_USABLE_CAPACITIES")
-# <room>=<group>:<order> (or <room>=<order>, in group 0), integers written without a leading zero from
-# -9999 to 9999, a room once
+# <room|machine>=<group>:<order> (or <room|machine>=<order>, in group 0), integers written without a
+# leading zero from -9999 to 9999, a key once
 priority_int='(0|-?[1-9][0-9]{0,3})'
 priority_re="^[^=]+=($priority_int:)?$priority_int\$"
-priority_rooms=""
+priority_keys=""
 for pair in $ROOM_PRIORITIES; do
-    [[ $pair =~ $priority_re ]] || die "ROOM_PRIORITIES: '$pair' is not <room>=<group>:<order> (integers from -9999 to 9999)"
-    ! in_list "${pair%%=*}" "$priority_rooms" || die "ROOM_PRIORITIES: the room '${pair%%=*}' is given twice"
-    priority_rooms="$priority_rooms ${pair%%=*}"
+    [[ $pair =~ $priority_re ]] || die "ROOM_PRIORITIES: '$pair' is not <room|machine>=<group>:<order> (integers from -9999 to 9999)"
+    ! in_list "${pair%%=*}" "$priority_keys" || die "ROOM_PRIORITIES: '${pair%%=*}' is given twice"
+    priority_keys="$priority_keys ${pair%%=*}"
 done
-# <room>=<percent>, an integer written without a leading zero from 1 to 100, a room once
+# <room|machine>=<percent>, an integer written without a leading zero from 1 to 100, a key once
 capacity_re='^[^=]+=(100|[1-9][0-9]?)$'
-capacity_rooms=""
+capacity_keys=""
 for pair in $ROOM_USABLE_CAPACITIES; do
-    [[ $pair =~ $capacity_re ]] || die "ROOM_USABLE_CAPACITIES: '$pair' is not <room>=<percent> (an integer from 1 to 100)"
-    ! in_list "${pair%%=*}" "$capacity_rooms" || die "ROOM_USABLE_CAPACITIES: the room '${pair%%=*}' is given twice"
-    capacity_rooms="$capacity_rooms ${pair%%=*}"
+    [[ $pair =~ $capacity_re ]] || die "ROOM_USABLE_CAPACITIES: '$pair' is not <room|machine>=<percent> (an integer from 1 to 100)"
+    ! in_list "${pair%%=*}" "$capacity_keys" || die "ROOM_USABLE_CAPACITIES: '${pair%%=*}' is given twice"
+    capacity_keys="$capacity_keys ${pair%%=*}"
 done
 if [ -n "$ROOMS" ]; then
-    for room in $priority_rooms; do
-        in_list "$room" "$ROOMS" || warn "the room '$room' of ROOM_PRIORITIES is not in ROOMS ($ROOMS): its machines are left out"
-    done
-    for room in $capacity_rooms; do
-        in_list "$room" "$ROOMS" || warn "the room '$room' of ROOM_USABLE_CAPACITIES is not in ROOMS ($ROOMS): its machines are left out"
-    done
     for room in $DISABLED_ROOMS; do
         in_list "$room" "$ROOMS" || warn "disabled room '$room' is not in ROOMS ($ROOMS): its machines are left out"
     done
@@ -317,6 +318,16 @@ done
 selected_names=$(printf '%s\n' "$hosts" | cut -d';' -f1 | tr '[:upper:]' '[:lower:]' | tr '\n' ' ')
 for machine in $INSTRUCTOR_MACHINES; do
     in_list "$machine" "$selected_names" || warn "instructor machine '$machine' is not one of the selected hosts: ignored"
+done
+# a key of ROOM_PRIORITIES / ROOM_USABLE_CAPACITIES names a selected host or the room of one
+selected_rooms=$(printf '%s\n' "$hosts" | cut -d';' -f4 | awk 'NF && !seen[$0]++' | tr '\n' ' ')
+selected_rooms=${selected_rooms% }
+for var in ROOM_PRIORITIES ROOM_USABLE_CAPACITIES; do
+    keys=$priority_keys; [ "$var" = ROOM_PRIORITIES ] || keys=$capacity_keys
+    for key in $keys; do
+        in_list "$key" "$selected_names" || in_list "$key" "$selected_rooms" \
+            || warn "$var: '$key' is neither a room of the selected hosts${selected_rooms:+ ($selected_rooms)} nor one of these hosts: ignored"
+    done
 done
 
 mkdir -p "$out"
@@ -375,8 +386,8 @@ while IFS=';' read -r name ip mac room; do
         instructors_only=true; instructors=$((instructors + 1))
     fi
     power=false; [ "$POWER" != true ] || power=true
-    priority=0:0; [ -z "$room" ] || priority=$(priority_of "$room")
-    share=100; [ -z "$room" ] || share=$(usable_capacity_of "$room")
+    priority=$(priority_of "$(lower "$name")" "$room")
+    share=$(usable_capacity_of "$(lower "$name")" "$room")
     entry="$name;https://$ip:$AGENT_PORT;$token;$MAX_PROJECTS;$mac;$power;$enabled;$instructors_only;$priority;$share"
     new_entries="$new_entries$entry
 "

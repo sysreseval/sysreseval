@@ -1,10 +1,10 @@
 """scripts/make-web-hosts.sh, run for real (bash + openssl) on a small machine list in a temporary
 directory: the selection by REGEXP / ROOMS and the order of the entries, the disabled and the
 reserved hosts (DISABLED_ROOMS, INSTRUCTOR_ROOMS, INSTRUCTOR_MACHINES), the priorities of the rooms
-(ROOM_PRIORITIES), the share of their hosts the projects may fill (ROOM_USABLE_CAPACITIES), the TLS
-material and its
-SANs, the tokens, hosts.toml and agent-<name>.toml loaded by sreweb.config, the plain rerun against
---keep, the change report of a second run, an existing CA, the errors."""
+and of single machines (ROOM_PRIORITIES), the share of their hosts the projects may fill
+(ROOM_USABLE_CAPACITIES, rooms and machines too), the TLS material and its SANs, the tokens,
+hosts.toml and agent-<name>.toml loaded by sreweb.config, the plain rerun against --keep, the
+change report of a second run, an existing CA, the errors."""
 import os
 import shutil
 import subprocess
@@ -181,7 +181,7 @@ class TestSelection:
         result = site.run(env={'ROOM_PRIORITIES': 'H=1:-1 s=5 a=0:0 z=3:0', 'TLS_DIR_ON_HOSTS': str(site.out)})
         hosts = site.hosts()
         assert [h.get('priority') for h in hosts.values()] == [None, None, '1:-1', '1:-1', '0:5']
-        assert "the room 'z' of ROOM_PRIORITIES is not in ROOMS (a h s)" in result.stderr
+        assert "ROOM_PRIORITIES: 'z' is neither a room of the selected hosts (a h s) nor one of these hosts: ignored" in result.stderr
         text = (site.out / 'hosts.toml').read_text()
         assert 'room priorities: h=1:-1 s=5 a=0:0 z=3:0.' in text.split('\n[[hosts]]')[0]
         assert text.count('priority = ') == 3 and 'priority = "0:0"' not in text
@@ -224,7 +224,7 @@ class TestSelection:
         result = site.run(env={'ROOM_USABLE_CAPACITIES': 'H=50 s=1 a=100 z=80', 'TLS_DIR_ON_HOSTS': str(site.out)})
         hosts = site.hosts()
         assert [h.get('total_usable_capacity') for h in hosts.values()] == [None, None, 50, 50, 1]
-        assert "the room 'z' of ROOM_USABLE_CAPACITIES is not in ROOMS (a h s)" in result.stderr
+        assert "ROOM_USABLE_CAPACITIES: 'z' is neither a room of the selected hosts (a h s) nor one of these hosts: ignored" in result.stderr
         text = (site.out / 'hosts.toml').read_text()
         assert 'room usable capacities: h=50 s=1 a=100 z=80.' in text.split('\n[[hosts]]')[0]
         assert text.count('total_usable_capacity = ') == 3 and 'total_usable_capacity = 100' not in text
@@ -252,6 +252,43 @@ class TestSelection:
         assert 'total_usable_capacity' not in (site.out / 'hosts.toml').read_text()
         result = site.run('--keep', env={'TLS_DIR_ON_HOSTS': str(site.out)})
         assert result.stdout.splitlines()[-1] == 'make-web-hosts: hosts.toml unchanged; no agent-<name>.toml changed'
+
+    def test_machine_priorities_and_capacities(self, site):
+        """A key of ROOM_PRIORITIES / ROOM_USABLE_CAPACITIES that is the name of a selected host
+        (any case) is that machine, the others rooms: a host takes the value of its name before
+        that of its room, whatever their order; a key that is neither is reported and ignored; a
+        machine without room (REGEXP without group) gets its own; a second run reports the host
+        whose machine key went."""
+        result = site.run(env={'ROOM_PRIORITIES': 'H0=2:5 h=1:0 a02=-3 s0=9 z=4 f-paul=1',
+                               'ROOM_USABLE_CAPACITIES': 'a=80 A01=40 h0=60', 'TLS_DIR_ON_HOSTS': str(site.out)})
+        hosts = site.hosts()
+        assert [h.get('priority') for h in hosts.values()] == [None, '0:-3', '1:0', '2:5', '0:9']
+        assert [h.get('total_usable_capacity') for h in hosts.values()] == [40, 80, None, 60, None]
+        warned = [line for line in result.stderr.splitlines() if 'nor one of these hosts' in line]
+        assert warned == [f"make-web-hosts: ROOM_PRIORITIES: '{key}' is neither a room of the selected hosts (a h s) "
+                          'nor one of these hosts: ignored' for key in ('z', 'f-paul')]
+        pool = f'[pool]\nca = "{site.out}/ca.crt"\nclient_cert = "{site.out}/portal.crt"\nclient_key = "{site.out}/portal.key"'
+        (site.out / 'web.toml').write_text(f'secret = "{"s" * 32}"\nimport = ["hosts.toml"]\n{pool}\n')
+        web = load_web_config(site.out / 'web.toml')
+        assert [(h.name, str(h.priority), h.total_usable_capacity) for h in web.hosts] == [
+            ('a01', '0:0', 40), ('a02', '0:-3', 80), ('h01', '1:0', 100), ('h0', '2:5', 60), ('S0', '0:9', 100)]
+        # the machine key of h0 gone: h0 takes the priority of its room, the only change
+        result = site.run('--keep', env={'ROOM_PRIORITIES': 'h=1:0 a02=-3 s0=9',
+                                         'ROOM_USABLE_CAPACITIES': 'a=80 a01=40 h0=60', 'TLS_DIR_ON_HOSTS': str(site.out)})
+        lines = [line for line in result.stdout.splitlines() if line.startswith('make-web-hosts: ') and ': hosts.toml: ' in line]
+        assert lines == ['make-web-hosts: h0: hosts.toml: priority 2:5 -> 1:0']
+        # a machine of a room left out of ROOMS is not a selected host
+        result = site.run('--keep', env={'ROOMS': 'a h', 'ROOM_PRIORITIES': 's0=9'})
+        assert ("make-web-hosts: ROOM_PRIORITIES: 's0' is neither a room of the selected hosts (a h) "
+                'nor one of these hosts: ignored') in result.stderr
+        assert 'priority' not in (site.out / 'hosts.toml').read_text()
+        # no room: the machines alone
+        result = site.run(env={'REGEXP': '^[ah][0-9]+$', 'ROOMS': '', 'ROOM_PRIORITIES': 'a01=1:0 h=5',
+                               'ROOM_USABLE_CAPACITIES': 'h0=30'})
+        assert [h.get('priority') for h in site.hosts().values()] == ['1:0', None, None, None]
+        assert [h.get('total_usable_capacity') for h in site.hosts().values()] == [None, None, None, 30]
+        assert ("make-web-hosts: ROOM_PRIORITIES: 'h' is neither a room of the selected hosts "
+                'nor one of these hosts: ignored') in result.stderr
 
     def test_names_not_selected_are_reported(self, site):
         result = site.run(env={'ROOMS': 'a', 'DISABLED_ROOMS': 'h', 'INSTRUCTOR_ROOMS': 's', 'INSTRUCTOR_MACHINES': 's0 a02 nope'})
@@ -419,27 +456,27 @@ class TestErrors:
         ({'REGEXP': '^zz'}, [], "no machine of"),
         ({'ROOMS': 'z'}, [], "none of the 5 machines matching REGEXP '^([a-z])[0-9]+$' is in the rooms 'z'"),
         ({'ROOM_PRIORITIES': 'a'}, [],
-         "ROOM_PRIORITIES: 'a' is not <room>=<group>:<order> (integers from -9999 to 9999)"),
-        ({'ROOM_PRIORITIES': 'a=1 h=high'}, [], "ROOM_PRIORITIES: 'h=high' is not <room>=<group>:<order>"),
-        ({'ROOM_PRIORITIES': 'a=10000'}, [], "ROOM_PRIORITIES: 'a=10000' is not <room>=<group>:<order>"),
-        ({'ROOM_PRIORITIES': 'a=01'}, [], "ROOM_PRIORITIES: 'a=01' is not <room>=<group>:<order>"),
-        ({'ROOM_PRIORITIES': 'a=1.5'}, [], "ROOM_PRIORITIES: 'a=1.5' is not <room>=<group>:<order>"),
-        ({'ROOM_PRIORITIES': 'a=1:'}, [], "ROOM_PRIORITIES: 'a=1:' is not <room>=<group>:<order>"),
-        ({'ROOM_PRIORITIES': 'a=:1'}, [], "ROOM_PRIORITIES: 'a=:1' is not <room>=<group>:<order>"),
-        ({'ROOM_PRIORITIES': 'a=1:10000'}, [], "ROOM_PRIORITIES: 'a=1:10000' is not <room>=<group>:<order>"),
-        ({'ROOM_PRIORITIES': 'a=1:02'}, [], "ROOM_PRIORITIES: 'a=1:02' is not <room>=<group>:<order>"),
-        ({'ROOM_PRIORITIES': 'a=1:2:3'}, [], "ROOM_PRIORITIES: 'a=1:2:3' is not <room>=<group>:<order>"),
-        ({'ROOM_PRIORITIES': 'a=1 h=2 A=3'}, [], "ROOM_PRIORITIES: the room 'a' is given twice"),
+         "ROOM_PRIORITIES: 'a' is not <room|machine>=<group>:<order> (integers from -9999 to 9999)"),
+        ({'ROOM_PRIORITIES': 'a=1 h=high'}, [], "ROOM_PRIORITIES: 'h=high' is not <room|machine>=<group>:<order>"),
+        ({'ROOM_PRIORITIES': 'a=10000'}, [], "ROOM_PRIORITIES: 'a=10000' is not <room|machine>=<group>:<order>"),
+        ({'ROOM_PRIORITIES': 'a=01'}, [], "ROOM_PRIORITIES: 'a=01' is not <room|machine>=<group>:<order>"),
+        ({'ROOM_PRIORITIES': 'a=1.5'}, [], "ROOM_PRIORITIES: 'a=1.5' is not <room|machine>=<group>:<order>"),
+        ({'ROOM_PRIORITIES': 'a=1:'}, [], "ROOM_PRIORITIES: 'a=1:' is not <room|machine>=<group>:<order>"),
+        ({'ROOM_PRIORITIES': 'a=:1'}, [], "ROOM_PRIORITIES: 'a=:1' is not <room|machine>=<group>:<order>"),
+        ({'ROOM_PRIORITIES': 'a=1:10000'}, [], "ROOM_PRIORITIES: 'a=1:10000' is not <room|machine>=<group>:<order>"),
+        ({'ROOM_PRIORITIES': 'a=1:02'}, [], "ROOM_PRIORITIES: 'a=1:02' is not <room|machine>=<group>:<order>"),
+        ({'ROOM_PRIORITIES': 'a=1:2:3'}, [], "ROOM_PRIORITIES: 'a=1:2:3' is not <room|machine>=<group>:<order>"),
+        ({'ROOM_PRIORITIES': 'a=1 h=2 A=3'}, [], "ROOM_PRIORITIES: 'a' is given twice"),
         ({'ROOM_USABLE_CAPACITIES': 'a'}, [],
-         "ROOM_USABLE_CAPACITIES: 'a' is not <room>=<percent> (an integer from 1 to 100)"),
-        ({'ROOM_USABLE_CAPACITIES': 'a=50 h=half'}, [], "ROOM_USABLE_CAPACITIES: 'h=half' is not <room>=<percent>"),
-        ({'ROOM_USABLE_CAPACITIES': 'a=0'}, [], "ROOM_USABLE_CAPACITIES: 'a=0' is not <room>=<percent>"),
-        ({'ROOM_USABLE_CAPACITIES': 'a=101'}, [], "ROOM_USABLE_CAPACITIES: 'a=101' is not <room>=<percent>"),
-        ({'ROOM_USABLE_CAPACITIES': 'a=-5'}, [], "ROOM_USABLE_CAPACITIES: 'a=-5' is not <room>=<percent>"),
-        ({'ROOM_USABLE_CAPACITIES': 'a=050'}, [], "ROOM_USABLE_CAPACITIES: 'a=050' is not <room>=<percent>"),
-        ({'ROOM_USABLE_CAPACITIES': 'a=12.5'}, [], "ROOM_USABLE_CAPACITIES: 'a=12.5' is not <room>=<percent>"),
-        ({'ROOM_USABLE_CAPACITIES': 'a=50%'}, [], "ROOM_USABLE_CAPACITIES: 'a=50%' is not <room>=<percent>"),
-        ({'ROOM_USABLE_CAPACITIES': 'a=50 h=60 A=70'}, [], "ROOM_USABLE_CAPACITIES: the room 'a' is given twice"),
+         "ROOM_USABLE_CAPACITIES: 'a' is not <room|machine>=<percent> (an integer from 1 to 100)"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=50 h=half'}, [], "ROOM_USABLE_CAPACITIES: 'h=half' is not <room|machine>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=0'}, [], "ROOM_USABLE_CAPACITIES: 'a=0' is not <room|machine>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=101'}, [], "ROOM_USABLE_CAPACITIES: 'a=101' is not <room|machine>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=-5'}, [], "ROOM_USABLE_CAPACITIES: 'a=-5' is not <room|machine>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=050'}, [], "ROOM_USABLE_CAPACITIES: 'a=050' is not <room|machine>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=12.5'}, [], "ROOM_USABLE_CAPACITIES: 'a=12.5' is not <room|machine>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=50%'}, [], "ROOM_USABLE_CAPACITIES: 'a=50%' is not <room|machine>=<percent>"),
+        ({'ROOM_USABLE_CAPACITIES': 'a=50 h=60 A=70'}, [], "ROOM_USABLE_CAPACITIES: 'a' is given twice"),
     ])
     def test_variables(self, site, env, unset, message):
         result = site.run(env=env, unset=unset, check=False)

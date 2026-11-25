@@ -1402,12 +1402,20 @@ the portal has it disabled, as the rooms of `DISABLED_ROOMS` are), `DOMAIN` (a `
 `PORTAL_ADDRESS` (`allowed_clients` of the agents), `INSTRUCTOR_ROOMS` (the rooms whose hosts
 get `instructors_only = true`) and `INSTRUCTOR_MACHINES` (the names of the hosts that get it on
 their own, whatever their room), `ROOM_PRIORITIES` (`"z=0:1 h=1:0"`: the `priority`, `group:order`, of
-the hosts of a room, `0:0` for a room it does not name; see *Priorities*), `ROOM_USABLE_CAPACITIES`
-(`"z=80 h=50"`: the `total_usable_capacity`, a percentage, of the hosts of a room, `100` for a room it
+the hosts of a room, `0:0` for a host it does not name; see *Priorities*), `ROOM_USABLE_CAPACITIES`
+(`"z=80 h=50"`: the `total_usable_capacity`, a percentage, of the hosts of a room, `100` for a host it
 does not name; see *The load of a host*), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
 the paths written in the files) and `CA_KEY` / `CA_CRT` (both set: an existing CA copied into
 `OUT_DIR` instead of a new one, so that the hosts of a new `OUT_DIR` are signed by the CA the
 portal already knows; refused when `OUT_DIR` holds another CA) are optional.
+
+A key of `ROOM_PRIORITIES` and `ROOM_USABLE_CAPACITIES` is a room or a single machine: the name of
+a selected host (as in the list, any case) is that machine, any other key a room. A host takes the
+value of its own name, else that of its room, whatever the order of the pairs: with
+`ROOM_PRIORITIES="a=50 a3=35 b=10"` the host `a3` gets `0:35` and the other hosts of room `a` `0:50`.
+A machine whose name gives no room (a `REGEXP` without a group) can only be named that way. A key
+that is neither a room of the selected hosts nor one of them (a room left out of `ROOMS`, a
+machine of such a room, a typo) is reported and ignored.
 
 In `OUT_DIR` (private keys and tokens: outside any repository) it writes, through `web-tls.sh`,
 the CA and the portal's client certificate once, then per host a key and a certificate (SANs
@@ -1553,7 +1561,8 @@ The priority is changed without a restart on the **Pool** page (the *Priority* c
 kept across the restarts of the portal and holds until the `priority` of the host in `web.toml`
 changes (*Restarting the portal* below); *Reset to initial settings* of the Pool page and
 `sre-web-tool reset-settings` put every host back to the priority of the configuration at once.
-`ROOM_PRIORITIES` of `make-web-hosts.sh` writes the priorities of whole rooms into `hosts.toml`.
+`ROOM_PRIORITIES` of `make-web-hosts.sh` writes the priorities of whole rooms, or of single machines,
+into `hosts.toml`.
 
 The priority used to be one integer: `priority = 5` in a `[[hosts]]` entry, a state file,
 `ROOM_PRIORITIES` or `sre-web-tool priority a03 5` is still read, as `0:5` (that order in group
@@ -1928,7 +1937,7 @@ Pool page (the value of the *Usable capacity* column, or *Usable capacity…* fo
 hosts) and with `sre-web-tool usable-capacity a03 50`: kept across the restarts of the portal,
 until the `total_usable_capacity` of the host in `web.toml` changes (*Restarting the portal*
 above), or until *Reset to initial settings* of the page (`sre-web-tool reset-settings`);
-`ROOM_USABLE_CAPACITIES` of `make-web-hosts.sh` writes the shares of whole rooms into
+`ROOM_USABLE_CAPACITIES` of `make-web-hosts.sh` writes the shares of whole rooms, or of single machines, into
 `hosts.toml`.
 
 The elastic pool counts the same thing: a free slot is room for one more **reference project**,
