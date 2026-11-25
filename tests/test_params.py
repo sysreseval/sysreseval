@@ -195,26 +195,41 @@ class TestDockerImages:
     def test_default_version(self, monkeypatch):
         monkeypatch.setattr(params, 'default_docker_image_version', '1.34')
         monkeypatch.setattr(params, 'docker_image_versions', {})
-        assert params.sre_docker_image('ldap-mail') == f'{params.sre_docker_namespace}/ldap-mail:1.34'
+        assert params.sre_docker_image('ldap-mail13') == f'{params.sre_docker_namespace}/ldap-mail13:1.34'
         assert params.sre_docker_image() == f'{params.sre_docker_namespace}/base13:1.34'
 
     def test_own_version(self, monkeypatch):
         monkeypatch.setattr(params, 'default_docker_image_version', '1.34')
-        monkeypatch.setattr(params, 'docker_image_versions', {'ldap-mail': '1.35'})
-        assert params.sre_docker_image('ldap-mail') == f'{params.sre_docker_namespace}/ldap-mail:1.35'
+        monkeypatch.setattr(params, 'docker_image_versions', {'ldap-mail13': '1.35'})
+        assert params.sre_docker_image('ldap-mail13') == f'{params.sre_docker_namespace}/ldap-mail13:1.35'
         assert params.sre_docker_image('init13') == f'{params.sre_docker_namespace}/init13:1.34'
         assert params.sre_docker_image() == f'{params.sre_docker_namespace}/base13:1.34'
 
+    # The images built on base13 / init13 before they took their 13 suffix (2026-11-25)
+    RENAMED_13 = ('routing-frr', 'ldap-mail', 'proxy', 'monitoring', 'voip', 'aaa', 'ansible', 'ntp',
+                  'scan', 'sdn', 'docker', 'vagrant')
+
     def test_legacy_version(self, monkeypatch):
-        """The images renamed since (base, init, frr) keep their last published tag."""
-        monkeypatch.setattr(params, 'default_docker_image_version', '1.35')
+        """The images renamed since keep their last published tag: base, init, frr 1.33, the
+        former names of the base13 / init13 children 1.35."""
+        monkeypatch.setattr(params, 'default_docker_image_version', '1.36')
         monkeypatch.setattr(params, 'docker_image_versions', {})
         ns = params.sre_docker_namespace
         for legacy in ('base', 'init', 'frr'):
             assert params.sre_docker_image(legacy) == f'{ns}/{legacy}:1.33'
-        assert params.sre_docker_image('base12') == f'{ns}/base12:1.35'
-        assert params.sre_docker_image('routing-frr') == f'{ns}/routing-frr:1.35'
-        assert params.sre_docker_image() == f'{ns}/base13:1.35'
+        for legacy in self.RENAMED_13:
+            assert params.sre_docker_image(legacy) == f'{ns}/{legacy}:1.35'
+            assert params.sre_docker_image(f'{legacy}13') == f'{ns}/{legacy}13:1.36'
+        assert set(params.legacy_docker_image_versions) == {'base', 'init', 'frr', *self.RENAMED_13}
+        assert params.sre_docker_image('base12') == f'{ns}/base12:1.36'
+        assert params.sre_docker_image() == f'{ns}/base13:1.36'
+
+    def test_renamed_13_are_images_of_the_tree(self):
+        """Each former name has its <name>13 image in images/."""
+        if not IMAGES_DIR.is_dir():
+            pytest.skip(f"no {IMAGES_DIR} in this tree")
+        for name in self.RENAMED_13:
+            assert (IMAGES_DIR / f'{name}13' / 'Dockerfile').is_file(), name
 
     def test_legacy_names_are_not_images_of_the_tree(self):
         """A legacy name reused by a new image of images/ would be pinned to the old tag."""
@@ -225,20 +240,20 @@ class TestDockerImages:
             assert name not in params.docker_image_versions, name
 
     @pytest.mark.parametrize('image, short', [
-        ('sysreseval/routing-frr:1.34', 'routing-frr'),
-        ('routing-frr', 'routing-frr'),
+        ('sysreseval/routing-frr13:1.35', 'routing-frr13'),
+        ('routing-frr13', 'routing-frr13'),
         ('debian:13', 'debian'),
         ('registry:5000/sysreseval/init13:1.34', 'init13'),
         ('registry:5000/sysreseval/init13', 'init13'),
-        ('ghcr.io/site/monitoring@sha256:0123abcd', 'monitoring'),
-        ('ghcr.io/site/monitoring:2@sha256:0123abcd', 'monitoring'),
+        ('ghcr.io/site/monitoring13@sha256:0123abcd', 'monitoring13'),
+        ('ghcr.io/site/monitoring13:2@sha256:0123abcd', 'monitoring13'),
     ])
     def test_short_name(self, image, short):
         """The key of `image_weights`: the image without registry, namespace, tag and digest."""
         assert params.docker_image_short_name(image) == short
 
     def test_short_name_of_the_images_of_the_labs(self):
-        assert params.docker_image_short_name(params.sre_docker_image('ldap-mail')) == 'ldap-mail'
+        assert params.docker_image_short_name(params.sre_docker_image('ldap-mail13')) == 'ldap-mail13'
         assert params.docker_image_short_name(params.default_docker_image) == 'base13'
 
     def test_the_weights_name_images_of_the_tree(self):

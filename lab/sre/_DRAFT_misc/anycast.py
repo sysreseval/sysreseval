@@ -341,7 +341,7 @@ class Data(Data0):
 def _machine_spec(machine: str) -> dict:
     spec = {'color': SITE_COLORS[site_of(machine)]}
     if machine in ROUTER_IFACES:
-        spec['image'] = sre_docker_image("routing-frr")
+        spec['image'] = sre_docker_image("routing-frr13")
     if machine in ROUTERS:
         spec['shape'] = 'box'
     if machine in ISPS:

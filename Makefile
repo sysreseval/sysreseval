@@ -6,7 +6,7 @@ ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
 # The images with their own version (the `VERSION_<image> := <version>` lines of images/Makefile), as
-# the items of the dict params.docker_image_versions: "ldap-mail": "1.35", "voip": "1.36"
+# the items of the dict params.docker_image_versions: "ldap-mail13": "1.35", "voip13": "1.36"
 IMAGE_VERSIONS := $(shell awk '/^VERSION_[^[:space:]:?=]+[[:space:]]*[:?]?=/ {name = $$0; sub(/^VERSION_/, "", name); sub(/[[:space:]]*[:?]?=.*/, "", name); value = $$0; sub(/^[^=]*=[[:space:]]*/, "", value); sub(/[[:space:]]+$$/, "", value); printf "%s\"%s\": \"%s\"", sep, name, value; sep = ", "}' $(ROOT_DIR)/images/Makefile)
 
 # DejaVu fonts embedded in the PDFs of "sre export" and "sre outline" (params.pdf_font_files).

@@ -2,7 +2,7 @@
 
 Topology (the lab networks drawn in 10.0.0.0/8, away from Docker's default address pools):
 
-- ``lan`` (a switch): ``docker1`` and ``docker2``, two Docker hosts (image ``sysreseval/docker``:
+- ``lan`` (a switch): ``docker1`` and ``docker2``, two Docker hosts (image ``sysreseval/docker13``:
   docker-ce 29, containerd, compose, buildx, a genuine systemd, privileged; the Docker Hub images of
   the lab loaded from tarballs, since the lab has no Internet access), and the router ``gw``;
 - ``ext``: ``client``, behind ``gw``, from which the published services are reached.
@@ -67,7 +67,7 @@ eval_before_exit = True
 # constants
 # ---------------------------------------------------------------------------
 
-DOCKER_IMAGE = sre_docker_image("docker")
+DOCKER_IMAGE = sre_docker_image("docker13")
 DOCKER_HOST = {'image': DOCKER_IMAGE, 'privileged': True, 'entrypoint': "/sbin/init"}
 
 WWW_DIR = "/srv/www"

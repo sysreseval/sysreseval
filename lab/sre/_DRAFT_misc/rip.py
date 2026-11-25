@@ -224,7 +224,7 @@ def _ipv6(network, identifier: int) -> IPv6Interface:
 
 class NetScheme(NetScheme0):
     _machine_specs = {
-        **{r: {'image': sre_docker_image("routing-frr"), 'color': ROUTER_COLOR, 'sysctls': ROUTER_SYSCTLS}
+        **{r: {'image': sre_docker_image("routing-frr13"), 'color': ROUTER_COLOR, 'sysctls': ROUTER_SYSCTLS}
            for r in ROUTER_IFACES},
         'pc1': {'color': 'lightyellow'},
         'pc2': {'color': 'lightyellow'},

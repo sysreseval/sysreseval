@@ -310,7 +310,7 @@ class TestLab:
         assert {m.name for m in ns.get_machines()} == {'docker1', 'docker2', 'gw', 'client'}
         for name in ('docker1', 'docker2'):
             spec = lab.NetScheme._machine_specs[name]
-            assert spec['privileged'] and spec['entrypoint'] == '/sbin/init' and spec['image'].split(':')[0].endswith('/docker')
+            assert spec['privileged'] and spec['entrypoint'] == '/sbin/init' and spec['image'].split(':')[0].endswith('/docker13')
         assert ns.get_weight() == 100 + 45 + 1 + 1
 
     def test_states(self, lab, data):

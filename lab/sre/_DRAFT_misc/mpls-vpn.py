@@ -316,7 +316,7 @@ class Data(Data0):
 def _machine_spec(machine: str) -> dict:
     spec = {'color': SITE_COLORS[site_of(machine)]}
     if machine in ROUTER_IFACES:
-        spec['image'] = sre_docker_image("routing-frr")
+        spec['image'] = sre_docker_image("routing-frr13")
         spec['shape'] = 'box'
     if machine in OPERATORS:
         spec['allow_connection'] = False

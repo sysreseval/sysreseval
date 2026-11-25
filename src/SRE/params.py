@@ -173,7 +173,7 @@ terminal_title_opt = "--title"
 # included), stored by `sre make-titles` in titles.json and carried by `sre list --with-titles`:
 # the first estimate the web portal has of what a project of the lab costs, until it has measured
 # some.  A machine takes the `weight` of its spec, else the weight of its image here (by short
-# name: "routing-frr" for sysreseval/routing-frr:1.34), else default_machine_weight.  The stored
+# name: "routing-frr13" for sysreseval/routing-frr13:1.35), else default_machine_weight.  The stored
 # weights are those of the last `sre make-titles` run: run it again after a change here.
 # The figures below come from real projects measured on a classroom workstation (2026-11, the
 # Debian 13 images; a plain container idles at 1 to 3 MiB): they make the weight of a lab, at
@@ -184,13 +184,13 @@ terminal_title_opt = "--title"
 default_machine_weight = 1.0
 image_weights = {
     "init12": 12, "init13": 12,     # systemd as PID 1 and the service of the lab (bind9, a DHCP server): 37 MiB on average
-    "routing-frr": 6,               # zebra and the routing daemons: 26 to 31 MiB per router, 1 MiB per host of the lab
-    "ldap-mail": 8,                 # slapd, Postfix, Dovecot: 30 MiB
-    "proxy": 10,                    # nginx, Varnish, HAProxy: 28 MiB
-    "voip": 7,                      # Asterisk: 21 MiB
-    "aaa": 10,                      # FreeRADIUS, slapd, a KDC, hostapd: 41 MiB
-    "monitoring": 14,               # Prometheus, Nagios and their exporters: 49 MiB
-    "docker": 45,                   # systemd, containerd and dockerd before any container: 170 MiB
+    "routing-frr13": 6,             # zebra and the routing daemons: 26 to 31 MiB per router, 1 MiB per host of the lab
+    "ldap-mail13": 8,               # slapd, Postfix, Dovecot: 30 MiB
+    "proxy13": 10,                  # nginx, Varnish, HAProxy: 28 MiB
+    "voip13": 7,                    # Asterisk: 21 MiB
+    "aaa13": 10,                    # FreeRADIUS, slapd, a KDC, hostapd: 41 MiB
+    "monitoring13": 14,             # Prometheus, Nagios and their exporters: 49 MiB
+    "docker13": 45,                 # systemd, containerd and dockerd before any container: 170 MiB
 }
 
 
@@ -318,14 +318,21 @@ del _fhs, _root
 
 sre_version = "0.19.1"
 default_docker_image_version = "1.35"
-# Version of the images that have their own, e.g. {"ldap-mail": "1.35"}; the others take
+# Version of the images that have their own, e.g. {"ldap-mail13": "1.35"}; the others take
 # default_docker_image_version.  Both lines are written by `make images` from images/Makefile
 # (VERSION and its VERSION_<image> lines): keep this one on a single line.
 docker_image_versions = {}
 # The last version of the images renamed since: base → base12 and init → init12 (2026-11-18), frr →
-# routing-frr.  They are never built again but stay on Docker Hub under that version, so a lab that
-# still names them (sre_docker_image("base")) keeps running.  Not written by `make images`.
-legacy_docker_image_versions = {"base": "1.33", "init": "1.33", "frr": "1.33"}
+# routing-frr, and the images built on base13 / init13 took a 13 suffix (routing-frr → routing-frr13,
+# monitoring → monitoring13..., 2026-11-25).  They are never built again but stay on Docker Hub under
+# that version, so a lab that still names them (sre_docker_image("base")) keeps running.  Not written
+# by `make images`.
+legacy_docker_image_versions = {
+    "base": "1.33", "init": "1.33", "frr": "1.33",
+    "routing-frr": "1.35", "ansible": "1.35", "ntp": "1.35", "sdn": "1.35",
+    "ldap-mail": "1.35", "proxy": "1.35", "monitoring": "1.35", "voip": "1.35", "aaa": "1.35",
+    "scan": "1.35", "docker": "1.35", "vagrant": "1.35",
+}
 sre_docker_namespace = "sysreseval"
 
 def sre_docker_image(image_name: str = "base13") -> str:
@@ -334,8 +341,8 @@ def sre_docker_image(image_name: str = "base13") -> str:
     return f"{sre_docker_namespace}/{image_name}:{version}"
 
 def docker_image_short_name(image: str) -> str:
-    """The name of an image without its registry, namespace, tag and digest: ``routing-frr`` for
-    ``sysreseval/routing-frr:1.34`` or ``registry:5000/sysreseval/routing-frr@sha256:...`` (the
+    """The name of an image without its registry, namespace, tag and digest: ``routing-frr13`` for
+    ``sysreseval/routing-frr13:1.35`` or ``registry:5000/sysreseval/routing-frr13@sha256:...`` (the
     key of ``image_weights``)."""
     return image.partition('@')[0].rpartition('/')[2].partition(':')[0]
 

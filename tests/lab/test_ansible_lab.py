@@ -243,7 +243,7 @@ class TestData:
         assert set(ns.get_machine_names()) == {'control', 'web1', 'web2', 'lb', 'gw', 'client'}
         specs = lab.NetScheme._machine_specs
         assert all(specs[m]['privileged'] and specs[m]['entrypoint'] == '/sbin/init' for m in lab.NODES)
-        assert specs['control']['image'].split('/')[-1].startswith('ansible:')
+        assert specs['control']['image'].split('/')[-1].startswith('ansible13:')
         assert ns.net_config['gw'] == [([fresh.ips.gw], []), ([fresh.ips.gw_ext], [])]
         assert ns.get_weight() == 4 * 12 + 2
 

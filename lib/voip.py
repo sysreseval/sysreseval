@@ -1,6 +1,6 @@
 """VoIP lab helpers: SIP / RTP with Asterisk (chan_pjsip) and the baresip softphone.
 
-Verified on Asterisk 22.12.0 (compiled in the ``voip`` image, ``images/voip/Dockerfile``) and
+Verified on Asterisk 22.12.0 (compiled in the ``voip`` image, ``images/voip13/Dockerfile``) and
 baresip 1.0.0 (Debian 12); the fixtures of ``tests/mock_data/voip/`` were captured live.
 
 **Active probe** (``lib/sip_probe.py``, standard library only: a SIP user agent with G.711 audio).

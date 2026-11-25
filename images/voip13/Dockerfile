@@ -88,7 +88,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 #   _machine_specs = {
 #        'pbx': {"privileged": True,
 #                "entrypoint": "/sbin/init",
-#                "image": sre_docker_image("voip")},
+#                "image": sre_docker_image("voip13")},
 #       .....
 #   }
 #
@@ -100,7 +100,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # pjsip.conf, extensions.conf, rtp.conf and voicemail.conf.  Asterisk runs as root.
 #
 
-ENV SRE_VERSION="sre/voip:${VERSION}"
+ENV SRE_VERSION="sre/voip13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

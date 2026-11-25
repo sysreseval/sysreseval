@@ -12,7 +12,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # but the students' ansible / ansible-playbook commands, so the image needs no systemd:
 #
 #   _machine_specs = {
-#        'control': {"image": sre_docker_image("ansible")},
+#        'control': {"image": sre_docker_image("ansible13")},
 #       .....
 #   }
 #
@@ -23,7 +23,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # ansible-lint and yamllint.
 #
 
-ENV SRE_VERSION="sre/ansible:${VERSION}"
+ENV SRE_VERSION="sre/ansible13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

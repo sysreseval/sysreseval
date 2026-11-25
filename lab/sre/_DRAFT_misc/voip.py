@@ -28,7 +28,7 @@ Asterisk is only read for what cannot be observed (contacts, a few options).
 The state ``final`` applies the reference solution; every question ends with its solution in an
 ``instructor()`` block.
 
-Image: ``sysreseval/voip`` (``images/voip/Dockerfile``: init13 + Asterisk compiled from its sources
+Image: ``sysreseval/voip13`` (``images/voip13/Dockerfile``: init13 + Asterisk compiled from its sources
 + baresip, sngrep, sipsak, sox) for ``pbx`` (under systemd), ``pbx2``, the softphones and
 ``monitor``; the routers and the hidden probes use the base13 image.
 """
@@ -97,9 +97,9 @@ PBX = "pbx"
 PBX2 = "pbx2"
 PROBE_OFFICE = "probe_office"
 PROBE_HOME = "probe_home"
-# The voip image (images/voip: init13 + Asterisk, baresip, sngrep), written in full so that
+# The voip image (images/voip13: init13 + Asterisk, baresip, sngrep), written in full so that
 # `sre preload-images` finds it.
-VOIP_MACHINE = {"image": sre_docker_image("voip"), "privileged": True, "entrypoint": "/sbin/init"}
+VOIP_MACHINE = {"image": sre_docker_image("voip13"), "privileged": True, "entrypoint": "/sbin/init"}
 SOFTPHONES = {"phone1": "1001", "phone2": "1002", "laptop": "1005"}  # machine -> its number
 PHONE_TONES = {"phone1": 400, "phone2": 480, "laptop": 560}  # the sine each softphone sends (Hz)
 
@@ -258,14 +258,14 @@ class Data(Data0):
 class NetScheme(NetScheme0):
     _machine_specs = {
         PBX: {**VOIP_MACHINE, "color": "lightgreen"},
-        "phone1": {"image": sre_docker_image("voip"), "color": "lightyellow"},
-        "phone2": {"image": sre_docker_image("voip"), "color": "lightyellow"},
+        "phone1": {"image": sre_docker_image("voip13"), "color": "lightyellow"},
+        "phone2": {"image": sre_docker_image("voip13"), "color": "lightyellow"},
         # capture station on the office hub; bridged: X11 (Wireshark) goes through the host
-        "monitor": {"image": sre_docker_image("voip"), "bridged": True, "x11_host": True, "color": "lightcyan"},
+        "monitor": {"image": sre_docker_image("voip13"), "bridged": True, "x11_host": True, "color": "lightcyan"},
         "gw": {"color": "lightgrey"},
-        PBX2: {"image": sre_docker_image("voip"), "allow_connection": False, "color": "lightblue"},
+        PBX2: {"image": sre_docker_image("voip13"), "allow_connection": False, "color": "lightblue"},
         "box": {"color": "lightgrey"},
-        "laptop": {"image": sre_docker_image("voip"), "color": "lightyellow"},
+        "laptop": {"image": sre_docker_image("voip13"), "color": "lightyellow"},
         # Hidden helpers used only by the auto-grader: the colleagues' phones and its own calls.
         PROBE_OFFICE: {"hidden": True, "allow_connection": False},
         PROBE_HOME: {"hidden": True, "allow_connection": False},

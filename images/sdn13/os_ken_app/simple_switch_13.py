@@ -2,7 +2,7 @@
 
 OS-Ken 3 (the OpenStack fork of Ryu packaged by Debian 13) no longer ships the sample
 applications of Ryu.  This one plays the part of Ryu's classic ``simple_switch_13``, written
-again for the SysResEval image ``sdn`` (images/sdn/Dockerfile):
+again for the SysResEval image ``sdn`` (images/sdn13/Dockerfile):
 
     osken-manager os_ken.app.simple_switch_13
 

@@ -14,7 +14,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 #   _machine_specs = {
 #        'docker1': {"privileged": True,
 #                    "entrypoint": "/sbin/init",
-#                    "image": sre_docker_image("docker")},
+#                    "image": sre_docker_image("docker13")},
 #       .....
 #   }
 #
@@ -39,7 +39,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # Docker and containerd do not start at boot: the labs start them.
 #
 
-ENV SRE_VERSION="sre/docker:${VERSION}"
+ENV SRE_VERSION="sre/docker13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

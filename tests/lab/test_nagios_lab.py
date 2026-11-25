@@ -553,16 +553,16 @@ class TestTopology:
         for m in lab.SYSTEMD_MACHINES:
             machine = ns.get_machine(m)
             assert machine.privileged and machine.entrypoint == '/sbin/init' and not machine.hidden
-            assert machine.image == params.sre_docker_image('monitoring')
+            assert machine.image == params.sre_docker_image('monitoring13')
         pc = ns.get_machine('pc')
         assert pc.bridged and pc.x11_host and pc.image == params.default_docker_image
         assert not ns.get_machine('router').allow_connection and not ns.get_machine('router').privileged
         probe = ns.get_machine('probe')
-        assert probe.hidden and not probe.allow_connection and probe.image == params.sre_docker_image('monitoring')
+        assert probe.hidden and not probe.allow_connection and probe.image == params.sre_docker_image('monitoring13')
         assert lab.allow_user_states is True and lab.export_kathara_project is False
 
     def test_image_is_written_literally(self):
-        assert _LAB_PATH.read_text().count('"image": sre_docker_image("monitoring")') >= 3
+        assert _LAB_PATH.read_text().count('"image": sre_docker_image("monitoring13")') >= 3
 
     def test_routes(self, lab, data):
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())

@@ -419,7 +419,7 @@ class TestTopology:
         specs = lab.NetScheme._machine_specs
         assert len(specs) == 18
         assert all(spec['image'] == lab.IMAGE and spec['weight'] == 1 for spec in specs.values())
-        assert lab.IMAGE.split('/')[-1].startswith('routing-frr:')
+        assert lab.IMAGE.split('/')[-1].startswith('routing-frr13:')
         assert {m for m, spec in specs.items() if spec.get('hidden')} == {'lldp_core1', 'lldp_core2', 'lldp_isp'}
         assert all(not spec.get('allow_connection', True) for spec in specs.values() if spec.get('hidden'))
 

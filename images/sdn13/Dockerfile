@@ -26,7 +26,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # controller with osken_start_cmd().
 #
 
-ENV SRE_VERSION="sre/sdn:${VERSION}"
+ENV SRE_VERSION="sre/sdn13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

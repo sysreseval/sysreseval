@@ -18,7 +18,7 @@ file, and forces a rotation of a sandbox copy of that file limited to one direct
 before a last message tells whether rsyslog reopened its files.  The state ``final`` applies the
 reference solution; every question ends with its solution, shown to the instructor only.
 
-Image: ``sysreseval/monitoring`` (``images/monitoring/Dockerfile``) for the three visible machines
+Image: ``sysreseval/monitoring13`` (``images/monitoring13/Dockerfile``) for the three visible machines
 (systemd, rsyslog with the GnuTLS driver); ``probe`` is a base machine.
 """
 
@@ -94,7 +94,7 @@ record_sessions = False
 
 DOMAIN = "corp.lan"
 SYSTEMD_MACHINE = {
-    "image": sre_docker_image("monitoring"),
+    "image": sre_docker_image("monitoring13"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }

@@ -521,7 +521,7 @@ class TestTopology:
         assert len(lab.MACHINES) == 35 == len(lab.NetScheme._machine_specs)
         for m, spec in lab.NetScheme._machine_specs.items():
             assert (spec.get('shape') == 'box') == (m in lab.ROUTER_IFACES), m
-            assert ('routing-frr' in spec.get('image', '')) == (m in lab.ROUTER_IFACES), m
+            assert ('routing-frr13' in spec.get('image', '')) == (m in lab.ROUTER_IFACES), m
 
     def test_sites_are_islands(self, lab, data):
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())

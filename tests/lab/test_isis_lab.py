@@ -477,9 +477,9 @@ class TestTopology:
     def test_machines(self, lab):
         specs = lab.NetScheme._machine_specs
         assert len(specs) == 33
-        assert all(specs[r]['image'].endswith(':' + params.default_docker_image_version) or 'routing-frr' in specs[r]['image']
+        assert all(specs[r]['image'].endswith(':' + params.default_docker_image_version) or 'routing-frr13' in specs[r]['image']
                    for r in lab.ROUTER_IFACES)
-        assert all('routing-frr' in specs[r]['image'] for r in lab.ROUTER_IFACES)
+        assert all('routing-frr13' in specs[r]['image'] for r in lab.ROUTER_IFACES)
         assert {m for m, s in specs.items() if s.get('allow_connection') is False} == {'auth_r2', 'ext_isp'}
         assert all('image' not in specs[h] for h in lab.HOSTS) and 'image' not in specs['ext_isp']
 

@@ -196,7 +196,7 @@ class TestTopology:
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())
         assert set(ns.get_machine_names()) == {'router', 'collector', 'pc', 'srv', 'gen', 'sink'}
         for m in ('router', 'collector'):
-            assert ns.get_machine(m).privileged and ns.get_machine(m).image == params.sre_docker_image('monitoring')
+            assert ns.get_machine(m).privileged and ns.get_machine(m).image == params.sre_docker_image('monitoring13')
         assert ns.get_machine('gen').hidden and ns.get_machine('sink').hidden
         assert len(ns.net_config['gen'][0][0]) == 7 and len(ns.net_config['sink'][0][0]) == 7
         assert len(ns.net_config['router']) == 3

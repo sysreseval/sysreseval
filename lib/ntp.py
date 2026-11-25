@@ -1,6 +1,6 @@
 """NTP / chrony helpers of the NTP lab (``lab/sre/_DRAFT_misc/ntp.py``).
 
-The machines run the image ``sysreseval/ntp`` (``images/ntp/Dockerfile``): Debian 13's chrony 4.6,
+The machines run the image ``sysreseval/ntp13`` (``images/ntp13/Dockerfile``): Debian 13's chrony 4.6,
 ``chronyd -x`` (the clock of a container is the clock of the Docker host and cannot be changed
 without ``CAP_SYS_TIME``: chronyd measures, selects and serves time without touching it), its
 messages in ``/var/log/chrony/chronyd.log``, ``systemctl`` / ``service chrony`` usable.

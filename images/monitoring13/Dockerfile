@@ -17,7 +17,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 #   _machine_specs = {
 #        'monitor': {"privileged": True,
 #                    "entrypoint": "/sbin/init",
-#                    "image": sre_docker_image("monitoring")},
+#                    "image": sre_docker_image("monitoring13")},
 #       .....
 #   }
 #
@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # hidden probe using the tools).
 #
 
-ENV SRE_VERSION="sre/monitoring:${VERSION}"
+ENV SRE_VERSION="sre/monitoring13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

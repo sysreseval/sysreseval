@@ -419,7 +419,7 @@ class TestTopology:
         assert probe.hidden and not probe.allow_connection and not probe.privileged and probe.image == params.sre_docker_image('base13')
         for m in lab.SYSTEMD_MACHINES:
             machine = ns.get_machine(m)
-            assert machine.privileged and machine.entrypoint == "/sbin/init" and '/ldap-mail:' in machine.image, m
+            assert machine.privileged and machine.entrypoint == "/sbin/init" and '/ldap-mail13:' in machine.image, m
         assert {n.name for n in ns.get_visible_networks()} == {'lan'}
         assert lab.SUFFIX == "dc=corp,dc=lan" and lab.ADMIN_DN == "cn=admin,dc=corp,dc=lan"
         assert lab.fqdn('ldap1') == "ldap1.corp.lan"

@@ -430,7 +430,7 @@ class TestTopology:
     def test_machines(self, lab):
         specs = lab.NetScheme._machine_specs
         assert len(specs) == 21
-        assert all('routing-frr' in specs[r]['image'] for r in lab.ROUTER_IFACES)
+        assert all('routing-frr13' in specs[r]['image'] for r in lab.ROUTER_IFACES)
         assert {m for m, s in specs.items() if s.get('allow_connection') is False} == {'tl_r2', 'tl_r3', 'tl_r4',
                                                                                        'bfd_sw'}
         assert {m for m, s in specs.items() if s.get('ipv6')} == {'mt_r1', 'mt_r2', 'mt_r3', 'mt_r4', 'mt_h1', 'mt_h4'}

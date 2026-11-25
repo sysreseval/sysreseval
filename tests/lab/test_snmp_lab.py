@@ -441,14 +441,14 @@ class TestTopology:
             assert ns.get_machine(m).hidden and not ns.get_machine(m).allow_connection
         router = ns.get_machine('router')
         assert not router.allow_connection and not router.hidden and not router.privileged
-        assert all(ns.get_machine(m).image == params.sre_docker_image('monitoring') for m in ns.get_machine_names())
+        assert all(ns.get_machine(m).image == params.sre_docker_image('monitoring13') for m in ns.get_machine_names())
         assert {m.name for m in ns.get_visibles_machines()} == {'nms', 'router', 'srv1', 'srv2'}
         assert lab.export_kathara_project is False and lab.shared_path is True
 
     def test_image_is_written_literally(self):
         # `sre preload-images` reads the file as text
         source = _LAB_PATH.read_text()
-        assert source.count('"image": sre_docker_image("monitoring")') >= 3
+        assert source.count('"image": sre_docker_image("monitoring13")') >= 3
 
     def test_networks_and_pinned_mac(self, lab, data):
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())

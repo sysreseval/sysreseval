@@ -3,7 +3,7 @@
 Topology (the lab networks drawn in 10.0.0.0/8, away from Docker's default address pools):
 
 - ``lan`` (a switch): ``docker1`` (where the students work) and ``docker2`` (the target of the bonus),
-  two Docker hosts (image ``sysreseval/docker``: docker-ce 29, compose plugin, a genuine systemd,
+  two Docker hosts (image ``sysreseval/docker13``: docker-ce 29, compose plugin, a genuine systemd,
   privileged; the Docker Hub images of the lab loaded from tarballs, since the lab has no Internet
   access), and the router ``gw``;
 - ``ext``: ``client``, behind ``gw``, from which the published services are reached.
@@ -64,7 +64,7 @@ eval_before_exit = True
 # constants
 # ---------------------------------------------------------------------------
 
-DOCKER_IMAGE = sre_docker_image("docker")
+DOCKER_IMAGE = sre_docker_image("docker13")
 DOCKER_HOST = {'image': DOCKER_IMAGE, 'privileged': True, 'entrypoint': "/sbin/init"}
 
 COMPOSE_DIR = "/root/compose"

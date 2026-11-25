@@ -4,7 +4,7 @@ delegation, and a router configured by Ansible.
 One control node and four managed nodes on a management network ``mgmt``, an outside host behind
 the router:
 
-- ``control`` (image ``ansible`` = base13 + ansible-core 2.19 + the community collections): the
+- ``control`` (image ``ansible13`` = base13 + ansible-core 2.19 + the community collections): the
   students work there as root, in ``/root/ansible``;
 - ``web1``, ``web2`` (web servers), ``lb`` (load balancer), ``gw`` (router / firewall between ``mgmt``
   and ``ext``): init13 machines (a genuine systemd: nginx and nftables units), sshd started by
@@ -78,8 +78,8 @@ eval_before_exit = True
 # constants
 # ---------------------------------------------------------------------------
 
-# The control node: base13 + Ansible (images/ansible); the managed nodes: a genuine systemd.
-CONTROL = {'image': sre_docker_image("ansible")}
+# The control node: base13 + Ansible (images/ansible13); the managed nodes: a genuine systemd.
+CONTROL = {'image': sre_docker_image("ansible13")}
 NODE = {'image': sre_docker_image("init13"), 'privileged': True, 'entrypoint': "/sbin/init"}
 
 NODES = ('web1', 'web2', 'lb', 'gw')

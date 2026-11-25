@@ -4,7 +4,7 @@ catalog and a Vagrantfile driven by YAML.
 
 Two machines on the network ``lan`` (a switch: the macvlan of part 6 needs one):
 
-- ``dev`` (image ``vagrant`` = init13 + vagrant 2.3.7 + docker.io + ansible-core + a small Debian 13
+- ``dev`` (image ``vagrant13`` = init13 + vagrant 2.3.7 + docker.io + ansible-core + a small Debian 13
   box root filesystem; privileged, a genuine systemd): the developer workstation.  Vagrant creates
   its guests with the **docker provider** in a Docker daemon of its own (no hypervisor in a
   container), and the students work there as root, one project directory per part under
@@ -70,9 +70,9 @@ eval_before_exit = True
 # constants
 # ---------------------------------------------------------------------------
 
-#: the workstation: Vagrant + its own Docker daemon (images/vagrant), under a genuine systemd.
+#: the workstation: Vagrant + its own Docker daemon (images/vagrant13), under a genuine systemd.
 #: Weight measured live: 373 MiB with the 14 guests of `final` (1 unit ~ 3 MiB, see params.image_weights)
-DEV = {'image': sre_docker_image("vagrant"), 'privileged': True, 'entrypoint': "/sbin/init", 'weight': 120}
+DEV = {'image': sre_docker_image("vagrant13"), 'privileged': True, 'entrypoint': "/sbin/init", 'weight': 120}
 
 ROOT = "/root/vagrant"
 VAGRANT_VERSION = "2.3.7"

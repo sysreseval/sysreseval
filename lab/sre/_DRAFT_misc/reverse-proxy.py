@@ -18,7 +18,7 @@ cannot show it (``backup`` in nginx, the health of the servers in HAProxy and Va
 keepalived tracks).  The state ``final`` applies the reference solution; every question ends
 with its solution in an instructor block.
 
-Image: ``sysreseval/proxy`` (``images/proxy/Dockerfile``: HAProxy, keepalived, Varnish, socat,
+Image: ``sysreseval/proxy13`` (``images/proxy13/Dockerfile``: HAProxy, keepalived, Varnish, socat,
 hatop, apache2-utils on the init13 image) for ``proxy``, ``lb1``, ``lb2`` (systemd) and ``client``
 (no init); the base13 image for the backends and the probe.
 """
@@ -96,10 +96,10 @@ APP_SITE = f"app.{DOMAIN}"  # the virtual address of the HAProxy pair
 INTRANET_SITE = f"intranet.{DOMAIN}"  # a virtual host of the backends, found by hand in part 1
 UNKNOWN_SITE = f"nothing.{DOMAIN}"  # a name the proxy must not serve
 CA_NAME = "Shop Internal CA"
-# The proxy image (images/proxy: init13 + haproxy, keepalived, varnish), written in full so that
+# The proxy image (images/proxy13: init13 + haproxy, keepalived, varnish), written in full so that
 # `sre preload-images` finds it.
 PROXY_MACHINE = {
-    "image": sre_docker_image("proxy"),
+    "image": sre_docker_image("proxy13"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
@@ -248,7 +248,7 @@ def probe_sources(data) -> list:
 class NetScheme(NetScheme0):
     _machine_specs = {
         # ab, hatop, curl, Firefox on the students' screen; no init
-        "client": {"image": sre_docker_image("proxy"), "bridged": True, "x11_host": True, "color": "lightyellow"},
+        "client": {"image": sre_docker_image("proxy13"), "bridged": True, "x11_host": True, "color": "lightyellow"},
         "proxy": {**PROXY_MACHINE, "color": "lightgreen"},
         "lb1": {**PROXY_MACHINE, "color": "lightblue"},
         "lb2": {**PROXY_MACHINE, "color": "lightblue"},

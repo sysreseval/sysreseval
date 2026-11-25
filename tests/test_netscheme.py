@@ -1230,7 +1230,7 @@ class TestX11DisplayEnv:
 class DefaultImageScheme(NetScheme0):
     _machine_specs = {
         'm1': {'color': 'red'},
-        'r1': {'image': params.sre_docker_image('routing-frr')},
+        'r1': {'image': params.sre_docker_image('routing-frr13')},
     }
     _topology = {'net1': ['m1', 'r1']}
 
@@ -1239,7 +1239,7 @@ class DefaultImageScheme(NetScheme0):
 
 
 class TestDefaultImage:
-    FRR = params.sre_docker_image('routing-frr')
+    FRR = params.sre_docker_image('routing-frr13')
 
     def test_without_lab_module(self, monkeypatch):
         monkeypatch.delitem(sys.modules, 'srelab', raising=False)
@@ -1277,8 +1277,8 @@ class TestDefaultImage:
 class WeightScheme(NetScheme0):
     _machine_specs = {
         'm1': {},
-        'r1': {'image': params.sre_docker_image('routing-frr')},
-        'r2': {'image': params.sre_docker_image('routing-frr'), 'weight': 1},
+        'r1': {'image': params.sre_docker_image('routing-frr13')},
+        'r2': {'image': params.sre_docker_image('routing-frr13'), 'weight': 1},
         'big': {'weight': 7.5},
         'probe': {'hidden': True, 'image': 'registry:5000/site/custom@sha256:0123'},
     }
@@ -1293,7 +1293,7 @@ class TestWeight:
     def _table(self, monkeypatch):
         monkeypatch.delitem(sys.modules, 'srelab', raising=False)
         monkeypatch.setattr(params, 'default_machine_weight', 1.0)
-        monkeypatch.setattr(params, 'image_weights', {'routing-frr': 3, 'custom': 0.5})
+        monkeypatch.setattr(params, 'image_weights', {'routing-frr13': 3, 'custom': 0.5})
 
     def test_the_spec_then_the_image_then_the_default(self):
         s = WeightScheme(MockData())
@@ -1304,7 +1304,7 @@ class TestWeight:
         assert s.probe.get_weight() == 0.5        # registry, port and digest left out of the name
 
     def test_a_weight_of_zero_is_a_weight(self):
-        assert Machine(name='m', image=params.sre_docker_image('routing-frr'), weight=0).get_weight() == 0
+        assert Machine(name='m', image=params.sre_docker_image('routing-frr13'), weight=0).get_weight() == 0
 
     def test_the_table_is_read_when_asked(self, monkeypatch):
         s = WeightScheme(MockData())

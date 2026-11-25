@@ -734,7 +734,7 @@ def set_snmp_agent(net_scheme: NetScheme0, machine: str, community: Optional[str
     """Give *machine* a running SNMP agent: listening on UDP 161 of every address, the whole tree
     readable with *community* from *sources* (networks or addresses; everywhere when omitted).
 
-    ``systemd=False`` (default) starts ``snmpd`` directly: a machine of the monitoring image
+    ``systemd=False`` (default) starts ``snmpd`` directly: a machine of the monitoring13 image
     without ``/sbin/init`` (a router, a hidden probe).  The other keywords are those of
     :func:`render_snmpd_conf`."""
     communities = list(render_kwargs.pop("communities", ()))

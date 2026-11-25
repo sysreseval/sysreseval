@@ -13,7 +13,7 @@ from ..utils import user_not_allowed, error_quit
 
 # What names an image in a lab file.  The file is parsed (ast), never imported, and two things are read:
 # - every call of the helper, wherever it is written: `"image": sre_docker_image("init13")`, but also
-#   `SCAN_IMAGE = sre_docker_image("scan")` used later in the specs, `spec['image'] = sre_docker_image(...)`,
+#   `SCAN_IMAGE = sre_docker_image("scan13")` used later in the specs, `spec['image'] = sre_docker_image(...)`,
 #   `default_image = sre_docker_image("base12")`;
 # - an image given as a plain string where an image is expected: the 'image' key of a dict, the `image=`
 #   keyword of Machine(...) / dict(...), `spec['image'] = ...`, the lab attribute `default_image`; the

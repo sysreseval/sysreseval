@@ -12,7 +12,7 @@ ARG NAMESPACE=sysreseval
 #   _machine_specs = {
 #        'dev': {"privileged": True,
 #                "entrypoint": "/sbin/init",
-#                "image": sre_docker_image("vagrant")},
+#                "image": sre_docker_image("vagrant13")},
 #       .....
 #   }
 #
@@ -40,7 +40,7 @@ FROM ${NAMESPACE}/init13:${PARENT_VERSION} AS tools
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
-ENV SRE_VERSION="sre/vagrant:${VERSION}"
+ENV SRE_VERSION="sre/vagrant13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

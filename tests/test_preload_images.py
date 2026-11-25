@@ -26,7 +26,7 @@ from SRE.params import sre_docker_image
 class NetScheme(NetScheme0):
     _machine_specs = {
         "m1": {"image": "debian:12"},
-        'r1': {'image': sre_docker_image("routing-frr")},
+        'r1': {'image': sre_docker_image("routing-frr13")},
         "srv": {"image": params.sre_docker_image()},
     }
     extra = Machine("m2", image='alpine:3.20')
@@ -66,13 +66,13 @@ def events(err: str) -> list:
     return [json.loads(line) for line in err.splitlines() if line.startswith('{')]
 
 
-EXPECTED = sorted({'debian:12', 'alpine:3.20', params.sre_docker_image('routing-frr'), params.default_docker_image})
+EXPECTED = sorted({'debian:12', 'alpine:3.20', params.sre_docker_image('routing-frr13'), params.default_docker_image})
 
 
 class TestImages:
     def test_forms_found_in_a_lab_file(self, lab_dir):
         found = preload_images._extract_images_from_file(lab_dir / 'lab.py')
-        assert found == {'debian:12', 'alpine:3.20', params.sre_docker_image('routing-frr'), params.sre_docker_image()}
+        assert found == {'debian:12', 'alpine:3.20', params.sre_docker_image('routing-frr13'), params.sre_docker_image()}
 
     def test_directory_scanned_recursively(self, lab_dir, pulls, capsys):
         run([lab_dir])
@@ -104,25 +104,25 @@ class TestFormsOfALabFile:
     def test_helper_call_kept_in_a_constant(self, tmp_path):
         # the form of lab/sre/_DRAFT_misc/scan-hardening.py, whose image was never pulled
         assert found_in(tmp_path, '''
-SCAN_IMAGE = sre_docker_image("scan")
+SCAN_IMAGE = sre_docker_image("scan13")
 INIT_MACHINE = {"image": SCAN_IMAGE, "privileged": True, "entrypoint": "/sbin/init"}
 BASE_MACHINE = {"image": sre_docker_image("base13")}
-''') == {params.sre_docker_image('scan'), params.sre_docker_image('base13')}
+''') == {params.sre_docker_image('scan13'), params.sre_docker_image('base13')}
 
     def test_helper_call_assigned_to_the_key_of_a_spec(self, tmp_path):
         assert found_in(tmp_path, '''
 class NetScheme(NetScheme0):
     def __init__(self, data):
         for spec in self._machine_specs.values():
-            spec['image'] = sre_docker_image("routing-frr")
-''') == {params.sre_docker_image('routing-frr')}
+            spec['image'] = sre_docker_image("routing-frr13")
+''') == {params.sre_docker_image('routing-frr13')}
 
     @pytest.mark.parametrize('call, name', [
         ('sre_docker_image()', None),
         ('sre_docker_image("")', None),
         ("params.sre_docker_image('init12')", 'init12'),
-        ('SRE.params.sre_docker_image("voip")', 'voip'),
-        ('sre_docker_image(image_name="ntp")', 'ntp'),
+        ('SRE.params.sre_docker_image("voip13")', 'voip13'),
+        ('sre_docker_image(image_name="ntp13")', 'ntp13'),
     ])
     def test_helper_call_forms(self, tmp_path, call, name):
         expected = params.sre_docker_image(name) if name else params.default_docker_image
@@ -130,7 +130,7 @@ class NetScheme(NetScheme0):
 
     def test_helper_call_with_a_computed_name_is_left_out(self, tmp_path):
         assert found_in(tmp_path, '''
-for name in ("proxy", "voip"):
+for name in ("proxy13", "voip13"):
     specs[name] = {"image": sre_docker_image(name)}
 other = sre_docker_image(*names)
 ''') == set()
@@ -197,7 +197,7 @@ class TestLabTree:
 
     def test_scan_hardening_lab(self):
         found = preload_images._extract_images_from_file(_LAB_TREE / '_DRAFT_misc' / 'scan-hardening.py')
-        assert found == {params.sre_docker_image('scan'), params.sre_docker_image('base13')}
+        assert found == {params.sre_docker_image('scan13'), params.sre_docker_image('base13')}
 
     def test_every_helper_call_of_every_lab(self):
         files = sorted(_LAB_TREE.rglob('*.py'))

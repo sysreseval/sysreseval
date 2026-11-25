@@ -1,5 +1,5 @@
 """Vagrant helpers: a workstation running Vagrant with the docker provider in a Docker daemon of
-its own (the ``vagrant`` image), the boxes of that provider, and what an evaluation reads back.
+its own (the ``vagrant13`` image), the boxes of that provider, and what an evaluation reads back.
 
 Named ``vagrant_helpers`` like ``ansible_helpers``: a ``lib/vagrant.py`` would shadow nothing
 today, but the convention keeps the lib directory free of names a Python package could take.

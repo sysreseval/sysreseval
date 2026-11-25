@@ -201,10 +201,10 @@ class TestTopology:
         for m in lab.VISIBLE:
             machine = ns.get_machine(m)
             assert machine.privileged and machine.entrypoint == '/sbin/init' and not machine.hidden
-            assert machine.image == params.sre_docker_image('monitoring')
+            assert machine.image == params.sre_docker_image('monitoring13')
         probe = ns.get_machine('probe')
         assert probe.hidden and not probe.allow_connection and probe.image == params.default_docker_image
-        assert _LAB_PATH.read_text().count('"image": sre_docker_image("monitoring")') == 1
+        assert _LAB_PATH.read_text().count('"image": sre_docker_image("monitoring13")') == 1
 
 
 class TestStates:

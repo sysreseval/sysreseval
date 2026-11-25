@@ -1,6 +1,6 @@
 """Offline tests of the HTTP reverse proxy lab (lab/sre/_DRAFT_misc/reverse-proxy.py): the data
 (addresses, the CA and the certificate of the site), the topology (three init machines of the
-proxy image, closed backends, the hidden probe), the state ops (the backends of `initial`, the
+proxy13 image, closed backends, the hidden probe), the state ops (the backends of `initial`, the
 whole solution of `final`, every command on one line, the staged reference configurations), the
 grading, the texts (instructor texts in both languages, the numbered course, the stripped lab
 file, English identifiers).
@@ -224,7 +224,7 @@ class TestTopology:
     def test_machines(self, lab, data):
         specs = lab.NetScheme._machine_specs
         assert set(specs) == {'client', 'probe', 'proxy', 'lb1', 'lb2', 'web1', 'web2', 'web3', 'web4'}
-        image = params.sre_docker_image('proxy')
+        image = params.sre_docker_image('proxy13')
         for m in lab.SYSTEMD_MACHINES:
             assert specs[m]['image'] == image and specs[m]['privileged'] and specs[m]['entrypoint'] == '/sbin/init'
         assert specs['client']['image'] == image and specs['client']['bridged'] and specs['client']['x11_host']
@@ -234,7 +234,7 @@ class TestTopology:
         assert specs['probe'] == {'hidden': True, 'allow_connection': False}
         assert lab.export_kathara_project is False
         # the image name is written in full for `sre preload-images`
-        assert 'sre_docker_image("proxy")' in _LAB_PATH.read_text()
+        assert 'sre_docker_image("proxy13")' in _LAB_PATH.read_text()
 
     def test_networks(self, lab, data):
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())

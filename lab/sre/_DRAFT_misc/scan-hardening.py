@@ -2,7 +2,7 @@
 
 The lab: a router `gw` between "the Internet" (`wan`: the students' scanning station `attacker` and
 the hidden grader `probe`), an office network to audit (`office`: five **hidden** hosts the students
-can only scan), a DMZ (`dmz`: four servers to harden, systemd machines of the `scan` image) and an
+can only scan), a DMZ (`dmz`: four servers to harden, systemd machines of the `scan13` image) and an
 administrators' network (`admin`: the workstation `admin`, also the grader's inside view).
 
 Parts (each independent, see the Organisation question):
@@ -73,7 +73,7 @@ record_sessions = False
 # Constants
 # ---------------------------------------------------------------------------
 
-SCAN_IMAGE = sre_docker_image("scan")
+SCAN_IMAGE = sre_docker_image("scan13")
 INIT_MACHINE = {"image": SCAN_IMAGE, "privileged": True, "entrypoint": "/sbin/init", "weight": 12}
 SCAN_MACHINE = {"image": SCAN_IMAGE}
 BASE_MACHINE = {"image": sre_docker_image("base13")}

@@ -323,7 +323,7 @@ class Data(Data0):
 
 
 def _machine_spec(machine: str) -> dict:
-    spec = {'image': sre_docker_image("routing-frr"), 'color': SITE_COLORS[site_of(machine)], 'sysctls': SYSCTLS}
+    spec = {'image': sre_docker_image("routing-frr13"), 'color': SITE_COLORS[site_of(machine)], 'sysctls': SYSCTLS}
     if machine in ROUTER_IFACES:
         spec['shape'] = 'box'
     if machine in OPERATORS:

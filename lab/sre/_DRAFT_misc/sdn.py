@@ -17,7 +17,7 @@ the HTTP echo server of ``lib/server_echo.py``, iperf3) and ``ovs-appctl ofproto
 host).  The state ``final`` applies the reference solution (``solve_<part>`` one part); every
 question ends with its solution, shown to the instructor only.
 
-Image: ``sysreseval/sdn`` (``images/sdn/Dockerfile``: base13 + Open vSwitch 3.5 + OS-Ken 3.0 and
+Image: ``sysreseval/sdn13`` (``images/sdn13/Dockerfile``: base13 + Open vSwitch 3.5 + OS-Ken 3.0 and
 the applications ``simple_switch_13`` / ``ofctl_rest``) for the switches and controllers; base13
 for the hosts.
 """
@@ -63,7 +63,7 @@ eval_interval_without_exam_mode = 180
 eval_before_exit = True
 record_sessions = False
 
-SDN = {"image": sre_docker_image("sdn")}
+SDN = {"image": sre_docker_image("sdn13")}
 BRIDGE = "br0"
 MAC_PREFIX = "02:53:44"
 P1_HOSTS = ("h11", "h12", "h13")

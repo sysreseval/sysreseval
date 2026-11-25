@@ -14,7 +14,7 @@ packets and bytes are known), and captures one export datagram on the collector;
 measured with the collector's own clock.  The state ``final`` applies the reference solution;
 every question ends with its solution, shown to the instructor only.
 
-Image: ``sysreseval/monitoring`` (``images/monitoring/Dockerfile``) for ``router`` and
+Image: ``sysreseval/monitoring13`` (``images/monitoring13/Dockerfile``) for ``router`` and
 ``collector`` (systemd); ``pc``, ``srv``, ``gen`` and ``sink`` are base machines.
 """
 
@@ -69,7 +69,7 @@ record_sessions = False
 
 DOMAIN = "corp.lan"
 SYSTEMD_MACHINE = {
-    "image": sre_docker_image("monitoring"),
+    "image": sre_docker_image("monitoring13"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }

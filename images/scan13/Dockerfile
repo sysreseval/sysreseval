@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 #   _machine_specs = {
 #        'legacy': {"privileged": True,
 #                   "entrypoint": "/sbin/init",
-#                   "image": sre_docker_image("scan")},
+#                   "image": sre_docker_image("scan13")},
 #       .....
 #   }
 #
@@ -33,7 +33,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # daemons a state starts directly, a probe using the tools).
 #
 
-ENV SRE_VERSION="sre/scan:${VERSION}"
+ENV SRE_VERSION="sre/scan13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

@@ -227,15 +227,15 @@ class TestTopology:
         for m in lab.SYSTEMD_MACHINES:
             machine = ns.get_machine(m)
             assert machine.privileged and machine.entrypoint == '/sbin/init'
-            assert machine.image == params.sre_docker_image('monitoring')
+            assert machine.image == params.sre_docker_image('monitoring13')
         assert ns.get_machine('pc').bridged and ns.get_machine('pc').x11_host
         assert ns.get_machine('chat').image == params.default_docker_image
         router = ns.get_machine('router')
-        assert not router.allow_connection and router.image == params.sre_docker_image('monitoring')
+        assert not router.allow_connection and router.image == params.sre_docker_image('monitoring13')
         assert not any(ns.get_machine(m).hidden for m in ns.get_machine_names())
 
     def test_image_is_written_literally(self):
-        assert _LAB_PATH.read_text().count('"image": sre_docker_image("monitoring")') >= 2
+        assert _LAB_PATH.read_text().count('"image": sre_docker_image("monitoring13")') >= 2
 
     def test_routes_and_names(self, lab, data):
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())

@@ -6,7 +6,7 @@ FROM ${NAMESPACE}/base13:${PARENT_VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
-ENV SRE_VERSION="sre/routing-frr:${VERSION}"
+ENV SRE_VERSION="sre/routing-frr13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

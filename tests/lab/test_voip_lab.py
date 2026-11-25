@@ -289,9 +289,9 @@ class TestLab:
     def test_machines(self, lab):
         specs = lab.NetScheme._machine_specs
         assert specs['pbx']['privileged'] and specs['pbx']['entrypoint'] == '/sbin/init'
-        assert all('/voip:' in specs[m]['image'] for m in ('pbx', 'pbx2', 'phone1', 'phone2', 'laptop', 'monitor'))
+        assert all('/voip13:' in specs[m]['image'] for m in ('pbx', 'pbx2', 'phone1', 'phone2', 'laptop', 'monitor'))
         assert specs['probe_office']['hidden'] and specs['probe_home']['hidden'] and not specs['pbx2']['allow_connection']
-        assert params.sre_docker_image('voip') in preload_images._extract_images_from_file(_LAB_PATH)
+        assert params.sre_docker_image('voip13') in preload_images._extract_images_from_file(_LAB_PATH)
 
     def test_initial(self, lab, data):
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())

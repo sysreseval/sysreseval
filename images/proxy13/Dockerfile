@@ -16,14 +16,14 @@ LABEL org.opencontainers.image.authors="SysResEval"
 #   _machine_specs = {
 #        'lb1': {"privileged": True,
 #                "entrypoint": "/sbin/init",
-#                "image": sre_docker_image("proxy")},
+#                "image": sre_docker_image("proxy13")},
 #       .....
 #   }
 #
 # A client machine may use the image without /sbin/init (then only ab / hatop matter).
 #
 
-ENV SRE_VERSION="sre/proxy:${VERSION}"
+ENV SRE_VERSION="sre/proxy13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

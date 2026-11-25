@@ -16,7 +16,7 @@ NRPE refuses a host that is not the supervision server.  The states ``incident_d
 recover.  The state ``final`` applies the reference solution; every question ends with its
 solution, shown to the instructor only.
 
-Image: ``sysreseval/monitoring`` (``images/monitoring/Dockerfile``) for ``monitor``, ``web1`` and
+Image: ``sysreseval/monitoring13`` (``images/monitoring13/Dockerfile``) for ``monitor``, ``web1`` and
 ``db1`` (systemd) and, without init, for ``router`` and ``probe``; ``pc`` is a base machine.
 """
 
@@ -92,10 +92,10 @@ eval_before_exit = True
 record_sessions = False
 
 DOMAIN = "corp.lab"
-# The monitoring image (images/monitoring: init13 + Nagios 4, the plugins, NRPE, Net-SNMP...), written
+# The monitoring image (images/monitoring13: init13 + Nagios 4, the plugins, NRPE, Net-SNMP...), written
 # in full so that `sre preload-images` finds it.
 SYSTEMD_MACHINE = {
-    "image": sre_docker_image("monitoring"),
+    "image": sre_docker_image("monitoring13"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
@@ -201,11 +201,11 @@ class NetScheme(NetScheme0):
         # firefox started on pc is displayed on the student's screen: the Nagios interface
         "pc": {"bridged": True, "x11_host": True, "color": "lightyellow"},
         # An appliance: supervised over SNMP and ping only, no terminal on it.
-        "router": {"image": sre_docker_image("monitoring"), "allow_connection": False, "color": "lightgrey"},
+        "router": {"image": sre_docker_image("monitoring13"), "allow_connection": False, "color": "lightgrey"},
         "web1": {**SYSTEMD_MACHINE, "color": "lightgreen"},
         "db1": {**SYSTEMD_MACHINE, "color": "lightgreen"},
         # Hidden helper of the auto-grader: a machine of the lan that is not the supervision server.
-        "probe": {"image": sre_docker_image("monitoring"), "hidden": True, "allow_connection": False},
+        "probe": {"image": sre_docker_image("monitoring13"), "hidden": True, "allow_connection": False},
     }
     _network_specs = {"lan": {"color": "lightyellow"}, "dmz": {"color": "lightgreen"}}
     _topology = {

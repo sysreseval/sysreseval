@@ -1,5 +1,5 @@
 """check-tarballs.py DIR ARCH: every DIR/*.tar is a `docker save` archive holding one tagged image
-of the architecture ARCH (run at build time by images/docker/Dockerfile, removed after)."""
+of the architecture ARCH (run at build time by images/docker13/Dockerfile, removed after)."""
 import glob
 import json
 import sys

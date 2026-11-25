@@ -19,7 +19,7 @@ requests, ``chronyd -Q`` with the right and a wrong key, with NTS, and a burst a
 limit.  The state ``final`` applies the reference solution (``solve_<part>`` one part); every
 question ends with its solution, shown to the instructor only.
 
-Image: ``sysreseval/ntp`` (``images/ntp/Dockerfile``: base13 + chrony) for every machine.
+Image: ``sysreseval/ntp13`` (``images/ntp13/Dockerfile``: base13 + chrony) for every machine.
 """
 
 import random
@@ -76,8 +76,8 @@ record_sessions = False
 
 DOMAIN = "corp.lan"
 PUBLIC_DOMAIN = "example.net"
-# Never privileged: a privileged container may change the clock of the host (images/ntp/Dockerfile).
-MACHINE = {"image": sre_docker_image("ntp")}
+# Never privileged: a privileged container may change the clock of the host (images/ntp13/Dockerfile).
+MACHINE = {"image": sre_docker_image("ntp13")}
 PUBLIC = ("ntp1", "ntp2", "ntp3", "ntp4")
 ROLES = ("gps", "secondary", "false", "unsync")
 CHRONY_MACHINES = ("border", "ts1", "ts2", "ts3", "pc1", "pc2", "cam1", "web1", "legacy", "probe")

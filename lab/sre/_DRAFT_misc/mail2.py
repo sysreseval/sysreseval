@@ -22,7 +22,7 @@ dans les Maildir puis effacé.  Les états ``part1`` … ``part7`` et ``bonus`` 
 d'une partie seule, ``final`` toute la solution ; chaque question se termine par sa solution dans un
 bloc ``instructor()``.
 
-Image : ``sysreseval/ldap-mail`` (``images/ldap-mail``, sur ``init13`` : Postfix, Dovecot avec LMTP,
+Image : ``sysreseval/ldap-mail13`` (``images/ldap-mail13``, sur ``init13`` : Postfix, Dovecot avec LMTP,
 Sieve et ManageSieve, OpenDKIM, policyd-spf, swaks, mutt).
 """
 
@@ -109,10 +109,10 @@ FQDN = {
     "probe1": f"probe1.{DOMAIN}", "dns": f"dns.{HOME_DOMAIN}", "peermx": PEER_MX,
     "laptop": f"laptop.{HOME_DOMAIN}", "probe2": f"mx.{HOME_DOMAIN}",
 }
-# The ldap-mail image (images/ldap-mail: init13 + postfix, dovecot, opendkim, policyd-spf, swaks, mutt, nslcd),
+# The ldap-mail image (images/ldap-mail13: init13 + postfix, dovecot, opendkim, policyd-spf, swaks, mutt, nslcd),
 # written in full so that `sre preload-images` finds it.
 MAIL_MACHINE = {
-    "image": sre_docker_image("ldap-mail"),
+    "image": sre_docker_image("ldap-mail13"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
@@ -239,11 +239,11 @@ class NetScheme(NetScheme0):
         "gw": {"allow_connection": False, "color": "lightgrey"},
         "mail": {**MAIL_MACHINE, "color": "lightgreen"},
         "submit": {**MAIL_MACHINE, "color": "lightgreen"},
-        "pc": {"image": sre_docker_image("ldap-mail"), "color": "lightyellow"},  # mutt, swaks, openssl; no init
+        "pc": {"image": sre_docker_image("ldap-mail13"), "color": "lightyellow"},  # mutt, swaks, openssl; no init
         "old": {**MAIL_MACHINE, "color": "pink"},
         "dns": {"color": "lightgrey"},
         "peermx": {**MAIL_MACHINE, "color": "lightblue"},
-        "laptop": {"image": sre_docker_image("ldap-mail"), "color": "lightyellow"},
+        "laptop": {"image": sre_docker_image("ldap-mail13"), "color": "lightyellow"},
         # Hidden helpers used only by the auto-grader (one per network).
         "probe1": {"hidden": True},
         "probe2": {"hidden": True},

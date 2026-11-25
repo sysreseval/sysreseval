@@ -456,7 +456,7 @@ class TestWeights:
     @pytest.fixture(autouse=True)
     def _table(self, monkeypatch):
         monkeypatch.setattr(params, 'default_machine_weight', 1.0)
-        monkeypatch.setattr(params, 'image_weights', {'routing-frr': 3})
+        monkeypatch.setattr(params, 'image_weights', {'routing-frr13': 3})
 
     def test_written_among_the_options(self, tmp_lab_dir):
         _write(tmp_lab_dir / 'a.py', _lab(head='title = "A"\n'))
@@ -473,7 +473,7 @@ class TestWeights:
         assert "weight" not in capsys.readouterr().err
 
     def test_the_spec_and_the_image_of_each_machine(self, tmp_lab_dir):
-        frr = params.sre_docker_image('routing-frr')
+        frr = params.sre_docker_image('routing-frr13')
         _write(tmp_lab_dir / 'a.py', _lab(
             f"{{'router': {{'image': {frr!r}}}, 'client': {{'weight': 0.25}}, 'probe': {{'hidden': True}}}}"))
         _make(tmp_lab_dir)
@@ -482,7 +482,7 @@ class TestWeights:
     def test_the_default_image_of_the_lab(self, tmp_lab_dir):
         """The machines without image take the `default_image` of their lab: the module is the
         lab being built while its NetScheme is."""
-        frr = params.sre_docker_image('routing-frr')
+        frr = params.sre_docker_image('routing-frr13')
         _write(tmp_lab_dir / 'a.py', _lab(head=f"default_image = {frr!r}\n"))
         _write(tmp_lab_dir / 'b.py', _lab())
         _make(tmp_lab_dir)

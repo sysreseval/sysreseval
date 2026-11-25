@@ -497,7 +497,7 @@ class TestTopology:
     def test_machines(self, lab):
         assert len(lab.MACHINES) == 35 == len(lab.NetScheme._machine_specs)
         for m, spec in lab.NetScheme._machine_specs.items():
-            assert spec['image'].startswith('sysreseval/routing-frr:'), m
+            assert spec['image'].startswith('sysreseval/routing-frr13:'), m
             assert spec['sysctls'] == lab.SYSCTLS
             assert spec.get('allow_connection', True) == (m not in lab.OPERATORS), m
             assert (spec.get('shape') == 'box') == (m in lab.ROUTER_IFACES)

@@ -17,14 +17,14 @@ LABEL org.opencontainers.image.authors="SysResEval"
 #   _machine_specs = {
 #        'mx1': {"privileged": True,
 #                "entrypoint": "/sbin/init",
-#                "image": sre_docker_image("ldap-mail")},
+#                "image": sre_docker_image("ldap-mail13")},
 #       .....
 #   }
 #
 # A client machine may use the image without /sbin/init (then only mutt / swaks matter).
 #
 
-ENV SRE_VERSION="sre/ldap-mail:${VERSION}"
+ENV SRE_VERSION="sre/ldap-mail13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

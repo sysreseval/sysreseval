@@ -18,14 +18,14 @@ LABEL org.opencontainers.image.authors="SysResEval"
 #   _machine_specs = {
 #        'radius': {"privileged": True,
 #                   "entrypoint": "/sbin/init",
-#                   "image": sre_docker_image("aaa")},
+#                   "image": sre_docker_image("aaa13")},
 #       .....
 #   }
 #
 # A client machine may use the image without /sbin/init (radclient, eapol_test, kinit, curl).
 #
 
-ENV SRE_VERSION="sre/aaa:${VERSION}"
+ENV SRE_VERSION="sre/aaa13:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

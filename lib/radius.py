@@ -38,7 +38,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from SRE.lib_sre import Grade0
 
 FREERADIUS_DIR = "/etc/freeradius/3.0"
-PRISTINE_DIR = "/usr/local/share/sre/freeradius-pristine"   #: the configuration as installed (aaa image)
+PRISTINE_DIR = "/usr/local/share/sre/freeradius-pristine"   #: the configuration as installed (aaa13 image)
 CLIENTS_FILE = f"{FREERADIUS_DIR}/clients.conf"
 USERS_FILE = f"{FREERADIUS_DIR}/mods-config/files/authorize"  #: what ``users`` points to
 HUNTGROUPS_FILE = f"{FREERADIUS_DIR}/mods-config/preprocess/huntgroups"

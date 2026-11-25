@@ -15,7 +15,7 @@ start: the students measure it with two readings of an interface counter (part 7
 measures it on the router's kernel counters.  The state ``final`` applies the reference solution;
 every question ends with its solution, shown to the instructor only.
 
-Image: ``sysreseval/monitoring`` (``images/monitoring/Dockerfile``: Net-SNMP and its MIB files on
+Image: ``sysreseval/monitoring13`` (``images/monitoring13/Dockerfile``: Net-SNMP and its MIB files on
 the init13 image) for ``nms``, ``srv1`` and ``srv2`` (systemd) and, without init, for ``router`` and
 the two hidden machines.
 """
@@ -94,10 +94,10 @@ record_sessions = False
 
 DOMAIN = "corp.lab"
 CONTACT = "Equipe reseau <noc@corp.lab>"  # ASCII: a DisplayString
-# The monitoring image (images/monitoring: init13 + Net-SNMP, its MIB files...), written in full so
+# The monitoring image (images/monitoring13: init13 + Net-SNMP, its MIB files...), written in full so
 # that `sre preload-images` finds it.
 SYSTEMD_MACHINE = {
-    "image": sre_docker_image("monitoring"),
+    "image": sre_docker_image("monitoring13"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
@@ -231,12 +231,12 @@ class NetScheme(NetScheme0):
     _machine_specs = {
         "nms": {**SYSTEMD_MACHINE, "color": "lightyellow"},
         # The students explore the router over SNMP only: no terminal on it.
-        "router": {"image": sre_docker_image("monitoring"), "allow_connection": False, "color": "lightgrey"},
+        "router": {"image": sre_docker_image("monitoring13"), "allow_connection": False, "color": "lightgrey"},
         "srv1": {**SYSTEMD_MACHINE, "color": "lightgreen"},
         "srv2": {**SYSTEMD_MACHINE, "color": "lightblue"},
         # Hidden helpers used only by the auto-grader: an allowed and a refused source.
-        "probe": {"image": sre_docker_image("monitoring"), "hidden": True, "allow_connection": False},
-        "outsider": {"image": sre_docker_image("monitoring"), "hidden": True, "allow_connection": False},
+        "probe": {"image": sre_docker_image("monitoring13"), "hidden": True, "allow_connection": False},
+        "outsider": {"image": sre_docker_image("monitoring13"), "hidden": True, "allow_connection": False},
     }
     _network_specs = {"lan": {"color": "lightyellow"}, "dmz": {"color": "lightgreen"}}
 

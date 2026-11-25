@@ -482,7 +482,7 @@ class TestTopology:
         machines = set(ns.get_machine_names())
         assert len(machines) == 29 and machines == set(lab.ROUTER_IFACES) | set(lab.HOSTS) | {lab.SWITCH}
         for machine, spec in lab.NetScheme._machine_specs.items():
-            assert spec['image'].startswith('sysreseval/routing-frr:')
+            assert spec['image'].startswith('sysreseval/routing-frr13:')
             assert spec.get('ipv6') is (True if machine in lab.V6_MACHINES else None)
             assert not spec.get('hidden')
 

@@ -18,7 +18,7 @@ receiver, their inhibition read back.  The states ``incident_node``, ``incident_
 ``repair`` let the students watch alerts go pending, firing and resolved; ``final`` applies the
 reference solution; every question ends with its solution, shown to the instructor only.
 
-Image: ``sysreseval/monitoring`` (``images/monitoring/Dockerfile``) for ``prom``, ``web1`` and
+Image: ``sysreseval/monitoring13`` (``images/monitoring13/Dockerfile``) for ``prom``, ``web1`` and
 ``db1`` (systemd) and, without init, for ``router``; ``pc`` and ``chat`` are base machines.
 """
 
@@ -111,10 +111,10 @@ eval_before_exit = True
 record_sessions = False
 
 DOMAIN = "shop.lan"
-# The monitoring image (images/monitoring: init13 + Prometheus, Alertmanager, the exporters...),
+# The monitoring image (images/monitoring13: init13 + Prometheus, Alertmanager, the exporters...),
 # written in full so that `sre preload-images` finds it.
 SYSTEMD_MACHINE = {
-    "image": sre_docker_image("monitoring"),
+    "image": sre_docker_image("monitoring13"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
@@ -271,7 +271,7 @@ class NetScheme(NetScheme0):
         # the team chat: a webhook receiver (lib/webhook_sink.py), its log is for the students
         "chat": {"color": "lightyellow"},
         # An appliance: supervised over SNMP and ping only, no terminal on it.
-        "router": {"image": sre_docker_image("monitoring"), "allow_connection": False, "color": "lightgrey"},
+        "router": {"image": sre_docker_image("monitoring13"), "allow_connection": False, "color": "lightgrey"},
         "web1": {**SYSTEMD_MACHINE, "color": "lightgreen"},
         "db1": {**SYSTEMD_MACHINE, "color": "lightgreen"},
     }
