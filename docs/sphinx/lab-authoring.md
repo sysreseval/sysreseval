@@ -930,17 +930,17 @@ In the releases up to 0.19.0 every language of the texts counted. A question wri
 - an evaluation (`sre eval`, `sre re-eval`, `sre check-eval`) looks for the answer under the hash of the question, then under the former hash. The answers of the older archives are therefore still graded, as long as no text of the question, translations included, changed since the archive was made — the limit those archives always had;
 - the Questions tab only knows the hash of the question. A project that was running during the update of SRE, or that is restored from a save file made before it, shows its questions without their answers once `info.json` is written again (at the next evaluation). The former answers are still graded until the student types in the question: the new answer then replaces the former one for the whole question, every field of a form included. Update SRE when no project is running (`sre update` closes them all).
 
-#### Fixing the hashes of a lab — `scripts/pin-question-hashes`
+#### Fixing the hashes of a lab — `sbin/pin-question-hashes`
 
-Rewording a question in the default language still gives it another hash, unless the lab names it with `hash=`. `scripts/pin-question-hashes` writes that keyword on every `question_text()`, `question_form()` and `question_dummy()` call of a lab file, so that the texts can change afterwards:
+Rewording a question in the default language still gives it another hash, unless the lab names it with `hash=`. `sbin/pin-question-hashes` writes that keyword on every `question_text()`, `question_form()` and `question_dummy()` call of a lab file, so that the texts can change afterwards:
 
 ```bash
-venv/bin/python3 scripts/pin-question-hashes -n --diff lab/s4/mylab.py   # show what would be written
-venv/bin/python3 scripts/pin-question-hashes lab/s4/mylab.py             # write the hashes
-venv/bin/python3 scripts/pin-question-hashes --hash former -r lab/s4     # every lab file below a directory
+sbin/pin-question-hashes -n --diff lab/s4/mylab.py   # show what would be written
+sbin/pin-question-hashes lab/s4/mylab.py             # write the hashes
+sbin/pin-question-hashes --hash former -r lab/s4     # every lab file below a directory
 ```
 
-The hash cannot be read from the source (section prefix, `tr()`, `format()`): the script builds the lab without Docker, as `sre check` does, and matches each question `grade()` registers with its call in the file. It therefore runs with the Python of SRE (`/opt/sre/venv/bin/python3` on an installed system) and executes the module of the lab. `--hash` chooses the value:
+The hash cannot be read from the source (section prefix, `tr()`, `format()`): the tool builds the lab without Docker, as `sre check` does, and matches each question `grade()` registers with its call in the file. It therefore executes the module of the lab, with the Python of SRE: the command sees to that, like `sbin/strip-instructor` and the translation tools (`/usr/bin/pin-question-hashes` with the Debian package). Any user may run it, without `sudo`; since the lab is built, the caller must be able to read what the lab imports, and `lib/` is closed to the students: an account that cannot read it is told so when a lab fails to import its helpers. `--hash` chooses the value:
 
 | `--hash` | Value written | Answers already stored |
 |---|---|---|

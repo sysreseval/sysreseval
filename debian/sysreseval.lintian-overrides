@@ -1,6 +1,7 @@
 # no manual pages yet: `sre --help` and the documentation of sysreseval-doc describe the commands
 sysreseval: no-manual-page [usr/bin/add-sre-translations]
 sysreseval: no-manual-page [usr/bin/check-sre-translations]
+sysreseval: no-manual-page [usr/bin/pin-question-hashes]
 sysreseval: no-manual-page [usr/bin/prepare-sre-translations]
 sysreseval: no-manual-page [usr/bin/sre-wrapper]
 sysreseval: no-manual-page [usr/bin/strip-instructor]

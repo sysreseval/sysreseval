@@ -14,6 +14,7 @@ debian/build/sre-wrapper usr/bin/
 debian/launchers/sre usr/sbin/
 debian/launchers/sysreseval usr/bin/
 debian/launchers/strip-instructor usr/bin/
+debian/launchers/pin-question-hashes usr/bin/
 debian/launchers/add-sre-translations usr/bin/
 debian/launchers/check-sre-translations usr/bin/
 debian/launchers/prepare-sre-translations usr/bin/

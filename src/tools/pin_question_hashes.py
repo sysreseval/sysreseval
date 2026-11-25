@@ -24,9 +24,13 @@ processed.  The value written is chosen with --hash:
 
 The hash cannot be read from the source (section prefix, tr(), format()): the lab is built without
 Docker, as `sre check` does, with several generated Data, and each question registered by grade() is
-matched with its call in the source.  It must therefore be run with the Python of SRE:
+matched with its call in the source.  It therefore needs the Python of SRE, which the command gives it
+(sbin/pin-question-hashes of a checkout, /usr/bin/pin-question-hashes of the Debian package):
 
-    /opt/sre/venv/bin/python3 /opt/sre/scripts/pin-question-hashes lab/s4/mylab.py
+    sbin/pin-question-hashes lab/s4/mylab.py
+
+Any user may run it, as the other lab-authoring tools; building the lab needs what the lab imports,
+so the grading helpers of lib/ (kept from the students) must be readable by the caller.
 
 A question whose hash differs from one generated Data to another (an address drawn at random in its
 description) has a different hash in every project: `sre re-eval` finds it again from the Data kept
@@ -62,6 +66,7 @@ import importlib.abc
 import importlib.util
 import io
 import itertools
+import os
 import secrets
 import sys
 import tokenize
@@ -69,7 +74,9 @@ import types
 from dataclasses import dataclass, field
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# Where the SRE package is: src/ of a checkout, /usr/lib/sysreseval of the Debian package
+SRC_DIR = Path(__file__).resolve().parent.parent
+COMMAND = "pin-question-hashes"
 
 LAB_BASE_CLASS = "Grade0"
 LAB_GRADE_CLASS = "Grade"
@@ -125,14 +132,14 @@ def sre():
     try:
         import SRE  # noqa: F401            (the tests, a Python that already finds it)
     except ImportError:
-        sys.path.insert(0, str(ROOT / "src"))    # a checkout or /opt/sre: ../src
+        sys.path.insert(0, str(SRC_DIR))
     try:
         from SRE import params, utils
         from SRE.common import TranslatedText
         from SRE.lib_sre import Grade0
     except ImportError as e:
-        raise SetupError(f"cannot import SRE ({e}): run this script with the Python of SRE, "
-                         f"{ROOT / 'venv' / 'bin' / 'python3'} {Path(__file__).resolve()} ...") from e
+        raise SetupError(f"cannot import SRE ({e}): run the command {COMMAND} of SRE "
+                         f"({SRC_DIR.parent / 'sbin' / COMMAND} of a checkout), which uses its Python") from e
     if str(params.lib_dir) not in sys.path:
         sys.path.insert(0, str(params.lib_dir))    # the grading helpers the labs import
     if params.SRE.args is None:
@@ -546,6 +553,16 @@ def _random_hash(used: set) -> str:
             return value
 
 
+def _closed_lib_hint(error: Exception) -> str:
+    """What an import error of the lab is told with when the caller cannot read the grading
+    helpers the labs import (lib/ is closed to the students): the reason, and who can."""
+    lib_dir = sre().params.lib_dir
+    if not isinstance(error, ImportError) or not os.path.isdir(lib_dir) or os.access(lib_dir, os.R_OK | os.X_OK):
+        return ""
+    return (f" ({lib_dir}, the grading helpers the labs import, is not readable by this user: "
+            "run the command as a user of its group, or as root)")
+
+
 def convert(text: str, path: Path, mode: str = MODE_CURRENT, keep_variable: bool = False,
             draws: int = DRAWS) -> Result | None:
     """What the lab file of source *text* becomes, None when it is not a lab file."""
@@ -571,7 +588,7 @@ def convert(text: str, path: Path, mode: str = MODE_CURRENT, keep_variable: bool
     except SetupError:
         raise
     except Exception as e:
-        raise FileError(f"cannot run the lab: {type(e).__name__}: {e}") from e
+        raise FileError(f"cannot run the lab: {type(e).__name__}: {e}{_closed_lib_hint(e)}") from e
 
     elsewhere = []
     for number, records in enumerate(runs):
@@ -753,7 +770,7 @@ def collect_files(arg: str, recursive: bool) -> list:
 
 def main(argv: list | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="pin-question-hashes",
+        prog=COMMAND,
         description="Write hash=\"...\" on every question_text(), question_form() and question_dummy() call of "
                     "the lab files, so that the texts of the questions can change without detaching the answers "
                     "already stored.")
@@ -789,7 +806,7 @@ def main(argv: list | None = None) -> int:
             try:
                 totals[process_file(path, explicit, args)] += 1
             except SetupError as e:
-                print(f"pin-question-hashes: {e}", file=sys.stderr)
+                print(f"{COMMAND}: {e}", file=sys.stderr)
                 return 2
             except FileError as e:
                 print(f"{path}: {e}", file=sys.stderr)

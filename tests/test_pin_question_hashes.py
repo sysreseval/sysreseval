@@ -1,7 +1,9 @@
-"""Tests for scripts/pin-question-hashes: hash="..." written on the questions of a lab file."""
-import importlib.machinery
-import importlib.util
+"""Tests for src/tools/pin_question_hashes.py (sbin/pin-question-hashes): hash="..." written on the
+questions of a lab file."""
+import os
 import re
+import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -10,20 +12,15 @@ import pytest
 from SRE.common import QuestionText
 from SRE.lib_sre import Grade0
 
-SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "pin-question-hashes"
+# The tool lives in src/tools/, outside the normal package tree.
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'src' / 'tools'))
+import pin_question_hashes as pq  # noqa: E402
+
+WRAPPER = ROOT / 'sbin' / 'pin-question-hashes'
 RUNNING_LAB = '20260101000000@@@test/test1@@@user'
 HASH_RE = re.compile(r'hash="([0-9a-f]+)"')
-
-
-def _load_script():
-    loader = importlib.machinery.SourceFileLoader("pin_question_hashes", str(SCRIPT))
-    spec = importlib.util.spec_from_loader(loader.name, loader)
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
-    return module
-
-
-pq = _load_script()
+needs_venv = pytest.mark.skipif(not (ROOT / 'venv' / 'bin' / 'activate').exists(), reason="the wrapper needs the venv")
 
 # A French lab with English translations.  Data.generate() gives 1, 2, 3...: the texts using
 # d.value differ from one generated Data to the next, and the first Data has the value 1.
@@ -554,8 +551,27 @@ class TestCommandLine:
         assert len(written(lab)) == 3
         assert "hash=" not in _read(broken)
 
+    def test_grading_helpers_closed_to_the_caller(self, tmp_path, capsys, monkeypatch):
+        """lib/ is closed to the students: a lab that cannot import its helpers is told why."""
+        lab = _write(tmp_path / "lab.py", "import sre_helper_nobody_has\n" + lab_text(THREE_QUESTIONS))
+        missing = f"{lab}: cannot run the lab: ModuleNotFoundError: No module named 'sre_helper_nobody_has'"
+        assert pq.main([str(lab)]) == 1
+        assert missing + "\n" in capsys.readouterr().err           # a readable lib/: nothing to add
+        if os.geteuid() == 0:
+            return                                                  # root reads a closed directory
+        closed = tmp_path / "lib"
+        closed.mkdir()
+        closed.chmod(0)
+        monkeypatch.setattr(pq.sre().params, "lib_dir", str(closed))
+        try:
+            assert pq.main([str(lab)]) == 1
+        finally:
+            closed.chmod(0o700)
+        assert (f"{missing} ({closed}, the grading helpers the labs import, is not readable by this user: "
+                "run the command as a user of its group, or as root)\n") in capsys.readouterr().err
+        assert "hash=" not in _read(lab)
+
     def test_the_core_is_left_as_it_was(self, tmp_path):
-        import sys
         originals = [Grade0.__dict__[name] for name in pq.QUESTION_METHODS]
         marker = object()
         sys.modules["srelab"] = marker
@@ -567,6 +583,44 @@ class TestCommandLine:
         finally:
             del sys.modules["srelab"]
         assert [Grade0.__dict__[name] for name in pq.QUESTION_METHODS] == originals
+
+
+class TestCommand:
+    """sbin/pin-question-hashes: the tool run with the Python of SRE, as the other lab-authoring tools."""
+
+    def test_wrapper_is_executable(self):
+        assert WRAPPER.is_file() and os.access(WRAPPER, os.X_OK)
+        assert 'src/tools/pin_question_hashes.py' in WRAPPER.read_text()
+
+    def test_the_tool_finds_sre_from_its_own_place(self):
+        assert (pq.SRC_DIR / 'SRE' / 'lib_sre.py').is_file()
+
+    @needs_venv
+    def test_wrapper(self, tmp_path):
+        lab = make_lab(tmp_path, THREE_QUESTIONS)
+        before = hashes(lab)
+        r = subprocess.run([str(WRAPPER), str(lab)], capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        assert f"{lab}: 3 question call(s), 3 hash(es) added (current)" in r.stdout
+        assert written(lab) == before
+
+    @needs_venv
+    def test_wrapper_through_a_link(self, tmp_path):
+        """As from /usr/local/sbin, where scripts/install.sh links the commands of sbin/."""
+        link = tmp_path / "sbin" / WRAPPER.name
+        link.parent.mkdir()
+        link.symlink_to(WRAPPER)
+        lab = make_lab(tmp_path, THREE_QUESTIONS)
+        r = subprocess.run([str(link), "-n", "lab.py"], capture_output=True, text=True, cwd=tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert "lab.py: 3 question call(s), 3 hash(es) to add (current)" in r.stdout
+        assert not written(lab)
+
+    @needs_venv
+    def test_wrapper_gives_the_exit_status(self, tmp_path):
+        r = subprocess.run([str(WRAPPER), str(tmp_path / "missing.py")], capture_output=True, text=True)
+        assert r.returncode == 1
+        assert "missing.py: no such file or directory" in r.stderr
 
 
 class TestChecks:

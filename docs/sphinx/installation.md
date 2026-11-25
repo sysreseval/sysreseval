@@ -73,7 +73,7 @@ The package follows the FHS instead of the `/opt/sre` tree:
 | Path | Content |
 |---|---|
 | `/usr/sbin/sre`, `/usr/bin/sysreseval`, `/usr/bin/sre-wrapper` | the CLI, the GUI, the wrapper (`sudo /usr/sbin/sre --user`) |
-| `/usr/bin/strip-instructor`, `/usr/bin/*-sre-translations` | the lab-authoring tools |
+| `/usr/bin/strip-instructor`, `/usr/bin/pin-question-hashes`, `/usr/bin/*-sre-translations` | the lab-authoring tools |
 | `/usr/sbin/sysreseval-network-plugin` | `make network-plugin` of a checkout (`scripts/network-plugin.sh`) |
 | `/usr/lib/sysreseval/` | the Python code (`src/`), `lib/` readable by the `sre` user only |
 | `/usr/share/sysreseval/lab/sre/` | the labs of the project, linked as `/var/lib/sre/lab/sre` |

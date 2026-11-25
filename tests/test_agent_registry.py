@@ -398,7 +398,7 @@ class TestAnswersStore:
 
     def test_put_accepts_a_hash_given_by_the_lab(self, tmp_pub_dir):
         """A question keeps the ``hash=`` of its lab, of any length (the 16 characters written by
-        ``scripts/pin-question-hashes --hash random``): only an unknown hash is refused."""
+        ``sbin/pin-question-hashes --hash random``): only an unknown hash is refused."""
         path = make_project(tmp_pub_dir)
         info = json.loads((path / params.info_json_name).read_text())
         short_hash = 'a1b2c3d4e5f60718'
