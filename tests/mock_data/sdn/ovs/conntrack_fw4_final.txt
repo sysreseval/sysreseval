@@ -1,0 +1,2 @@
+icmp,orig=(src=172.31.149.252,dst=172.31.149.119,id=133,type=8,code=0),reply=(src=172.31.149.119,dst=172.31.149.252,id=133,type=0,code=0)
+tcp,orig=(src=172.31.149.252,dst=172.31.149.119,sport=45684,dport=80),reply=(src=172.31.149.119,dst=172.31.149.252,sport=80,dport=45684),protoinfo=(state=TIME_WAIT)

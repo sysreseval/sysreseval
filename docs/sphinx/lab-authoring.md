@@ -1969,6 +1969,10 @@ names the service `telnet` without a product (the probes take about 45 s). Examp
 from sdn import (ovs_start_cmd, ovs_bridge_cmd, osken_start_cmd, rest_cmd, get_ovs_state, parse_ovs_state,
                  get_flows, parse_flows, table_miss, get_trace, trace_flow, parse_trace, get_meters, parse_meters,
                  parse_ofctl_show, normalize_dpid, normalize_decimal_dpid)
+# Open vSwitch without controller (VLANs, bonds, tunnels, conntrack, mirrors, QoS)
+from sdn import (ovs_bond_cmd, ovs_tunnel_cmd, ovs_internal_port_cmd, ovs_mirror_cmd, ovs_policing_cmd,
+                 ovs_qos_cmd, OVS_TABLES_FULL, get_bond_show, parse_bond_show, get_lacp_show, parse_lacp_show,
+                 get_conntrack, parse_conntrack, capture_start_cmd, capture_read_cmd, count_icmp_echo)
 ```
 
 The switches and controllers run the image `sysreseval/netdev13` (`images/netdev13/Dockerfile`, base13 + FRR, Open
@@ -1987,6 +1991,13 @@ API: `/stats/switches`, `/stats/flow/<dpid>`, `/stats/flowentry/add`, `/stats/me
 | `get_trace(grade, m, br, trace_flow(in_port=, proto=, eth_src=, eth_dst=, ip_src=, ip_dst=, dport=))` | `ovs-appctl ofproto/trace` → `Trace` (`dropped`, `forwarded`, the last `Datapath actions:`): what a switch does of a packet, whatever the hosts filter |
 | `get_meters(grade, m, br)` / `parse_meters(text)`, `parse_ofctl_show(text)` | `dump-meters` → `{id: Meter(flags, bands)}`; `show` → `{'dpid', 'ports': {name: number}}` |
 | `normalize_dpid(answer)` / `normalize_decimal_dpid(answer)` | a datapath ID typed in hexadecimal (`00000000000000a1`, `0xa1`, with colons) / in decimal (the form of the REST API) |
+| `ovs_bond_cmd(br, bond, ifaces, bond_mode=, lacp=, lacp_time=, other_config=)`, `ovs_tunnel_cmd(br, port, 'vxlan', remote_ip, key, tag=)`, `ovs_internal_port_cmd(br, port, tag=)` | one `ovs-vsctl` transaction each (`--may-exist`: a state can be applied again) |
+| `ovs_mirror_cmd(br, name, [ports], output_port)`, `ovs_policing_cmd(iface, kbps, burst_kb)`, `ovs_qos_cmd(port, max_bps, {queue: max_bps})` | a mirror replacing the mirrors of the bridge; `ingress_policing_rate` / `burst` (kbit/s, kbit); a `linux-htb` QoS and its queues (bit/s) |
+| `get_ovs_state(grade, m, tables=OVS_TABLES_FULL)` | the four tables plus Mirror, QoS and Queue: `OvsBridge.mirrors` (`OvsMirror`: `select_src_ports` / `select_dst_ports` / `output_port` as port names, `select_all`), `OvsPort.qos` (`OvsQos`: `type`, `other_config`, `queues` → `OvsQueue.other_config`); in any case `OvsPort.bond_mode` / `lacp` / `other_config`, `OvsInterface.options` (`remote_ip`, `key`) / `ingress_policing_rate` / `burst` / `mtu` / `status`, `OvsState.ports_of_type('vxlan')`. The default tables keep the command of the SDN lab unchanged |
+| `get_bond_show(grade, m)` / `get_lacp_show(grade, m)` | `ovs-appctl bond/show` → `{bond: BondStatus(bond_mode, lacp_status, members, enabled_members())}`; `lacp/show` → `{bond: LacpStatus(status, negotiated, sys_id, lacp_time, members: LacpMember(states, aggregated, partner_sys_id...))}` |
+| `get_conntrack(grade, m)` / `parse_conntrack(text)` | `ovs-appctl dpctl/dump-conntrack` → `ConnEntry(proto, orig, reply, state, zone)`, `matches(src=, dst=, dport=, sport=)` |
+| `trace_flow(..., sport=, tcp_flags=0x012)`, `get_trace(..., ct_next=['trk,new'])` | the exact TCP flags of a traced segment; the state the connection tracking gives the packet after each `ct()` (`--ct-next`): the last `Datapath actions:` line is still the verdict |
+| `capture_start_cmd(name, iface, bpf)` / `capture_read_cmd(name, bpf)`, `count_icmp_echo(text, a, b)` | a background `tcpdump -U -w` started in one step of the evaluation and read in a later one (the steps run one after the other, the machines of a step at the same time) |
 
 Verified on Debian 13 (s17, 2026-11-24): the kernel datapath works in a non-privileged Kathara container (caps
 `NET_ADMIN`, `SYS_ADMIN`...) and on its VDE interfaces, one `ovs-system` datapath per network namespace; `ovs-ctl`
@@ -1997,6 +2008,20 @@ the rate loses nothing, so measure with three times the rate (≤ 1.33 times the
 `udp_dst` / `tcp_dst` work in both; a flow refused by the switch (`ipv4_dst` without `eth_type`) makes the REST call
 succeed and comes back as an ERROR (`OFPBMC_BAD_PREREQ`); `osken-manager` also listens on 6633. Example:
 `lab/sre/_DRAFT_misc/sdn.py`.
+
+Verified for Open vSwitch without controller (s17, 2026-11-25, `netdev13:1.36`): a tunnel port takes a `tag`
+like any port (VLAN local ↔ VNI without any flow), the kernel loads `vxlan` and `geneve` by itself (OVS creates
+`vxlan_sys_4789` / `genev_sys_6081` in the container); an oversized frame sent into a VXLAN tunnel gets back an ICMP
+*fragmentation needed* (PMTU 1450 cached by the host, flushed by `vxlan.df_ping_cmd`), and only the side whose
+underlay MTU is too small fails: a DF ping tests the egress of the sender's hypervisor (the replies carry no DF);
+`ct()` works in a container network namespace, `dpctl/dump-conntrack` shows its entries (a TCP connection stays two
+minutes in TIME_WAIT: grade the connection of the evaluation's own request, by its source port),
+`ofproto/trace ... --ct-next trk,new` simulates the state and refuses `tcp_flags=+syn+ack` (exact flags only);
+LACP between two OVS bonds negotiates over VDE links, and a `lacp=active` bond without partner keeps its members
+disabled (two unbonded links facing it make no loop); `ingress_policing_rate` (a `tc` police filter) and a
+`linux-htb` queue limit a 3 s UDP iperf3 to 1.01 and 0.97 times their rates; with `tag` and `trunks` and no
+`vlan_mode` the port is an access port (`ignoring trunks in favor of implicit vlan` in the log). Example:
+`lab/sre/_DRAFT_misc/openvswitch.py`.
 
 ### SD-WAN helpers (from `/opt/sre/lib/sdwan.py` and `/opt/sre/lib/sdwan_agent.py`)
 

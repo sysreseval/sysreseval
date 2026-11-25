@@ -1,0 +1,11 @@
+Flow: tcp,in_port=35,vlan_tci=0x0000,dl_src=02:4f:56:a9:87:82,dl_dst=02:4f:56:7f:7c:06,nw_src=172.22.47.226,nw_dst=172.22.47.49,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=80,tp_dst=40000,tcp_flags=syn|ack
+
+bridge("br0")
+-------------
+ 0. tcp,nw_src=172.22.47.226,nw_dst=172.22.47.49,tp_src=80, priority 100
+    NORMAL
+     -> forwarding to learned port
+
+Final flow: unchanged
+Megaflow: recirc_id=0,eth,tcp,in_port=35,dl_src=02:4f:56:a9:87:82,dl_dst=02:4f:56:7f:7c:06,nw_src=172.22.47.226,nw_dst=172.22.47.49,nw_frag=no,tp_src=80
+Datapath actions: 1

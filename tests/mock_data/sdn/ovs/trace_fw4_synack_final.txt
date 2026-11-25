@@ -1,0 +1,30 @@
+Flow: tcp,in_port=45,vlan_tci=0x0000,dl_src=02:4f:56:bf:b3:66,dl_dst=02:4f:56:7c:95:09,nw_src=172.31.149.119,nw_dst=172.31.149.252,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=80,tp_dst=40000,tcp_flags=syn|ack
+
+bridge("br0")
+-------------
+ 0. ct_state=-trk,ip, priority 100
+    ct(table=1)
+    drop
+     -> A clone of the packet is forked to recirculate. The forked pipeline will be resumed at table 1.
+     -> Sets the packet to an untracked state, and clears all the conntrack fields.
+
+Final flow: unchanged
+Megaflow: recirc_id=0,ct_state=-trk,eth,ip,in_port=45,nw_frag=no
+Datapath actions: ct,recirc(0xb)
+
+===============================================================================
+recirc(0xb) - resume conntrack with ct_state=new|trk
+===============================================================================
+
+Flow: recirc_id=0xb,ct_state=new|trk,eth,tcp,in_port=45,vlan_tci=0x0000,dl_src=02:4f:56:bf:b3:66,dl_dst=02:4f:56:7c:95:09,nw_src=172.31.149.119,nw_dst=172.31.149.252,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=80,tp_dst=40000,tcp_flags=syn|ack
+
+bridge("br0")
+-------------
+    thaw
+        Resuming from table 1
+ 1. priority 0
+    drop
+
+Final flow: unchanged
+Megaflow: recirc_id=0xb,ct_state=+new-est-rel+trk,eth,ip,in_port=45,nw_dst=172.31.149.128/25,nw_frag=no
+Datapath actions: drop

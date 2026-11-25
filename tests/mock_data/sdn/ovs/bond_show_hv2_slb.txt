@@ -1,0 +1,21 @@
+---- bond0 ----
+bond_mode: balance-slb
+bond may use recirculation: no, Recirc-ID : -1
+bond-hash-basis: 0
+lb_output action: disabled, bond-id: -1
+all members active: false
+updelay: 0 ms
+downdelay: 0 ms
+next rebalance: 6224 ms
+lacp_status: negotiated
+lacp_fallback_ab: false
+active-backup primary: <none>
+active member mac: f2:bd:94:45:68:16(eth0)
+
+member eth0: enabled
+  active member
+  may_enable: true
+
+member eth1: enabled
+  may_enable: true
+

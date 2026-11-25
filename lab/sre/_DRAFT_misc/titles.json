@@ -33,6 +33,7 @@
     "nftables-nat.py": 36,
     "ntp.py": 13,
     "openvpn.py": 42,
+    "openvswitch.py": 26,
     "ospf.py": 48,
     "ospfv3-bgp-ipv6.py": 210,
     "policy-routing.py": 21,
@@ -155,6 +156,10 @@
   "sdn.py": {
     "en": "SDN: Open vSwitch, OpenFlow and controllers",
     "fr": "SDN : Open vSwitch, OpenFlow et contrôleurs"
+  },
+  "openvswitch.py": {
+    "en": "Open vSwitch: VLANs, bonding, tunnels, stateful firewall and QoS",
+    "fr": "Open vSwitch : VLAN, agrégation, tunnels, pare-feu avec état et QoS"
   },
   "sdwan.py": {
     "en": "SD-WAN: tunnels, control plane, application-aware routing and SLA",

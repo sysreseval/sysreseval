@@ -1,0 +1,8 @@
+18:57:40.653259 IP 192.168.222.84 > 192.168.222.6: ICMP echo request, id 143, seq 1, length 64
+18:57:40.653467 IP 192.168.222.6 > 192.168.222.84: ICMP echo reply, id 143, seq 1, length 64
+18:57:40.855328 IP 192.168.222.84 > 192.168.222.6: ICMP echo request, id 143, seq 2, length 64
+18:57:40.856106 IP 192.168.222.6 > 192.168.222.84: ICMP echo reply, id 143, seq 2, length 64
+18:57:41.056680 IP 192.168.222.84 > 192.168.222.6: ICMP echo request, id 143, seq 3, length 64
+18:57:41.057497 IP 192.168.222.6 > 192.168.222.84: ICMP echo reply, id 143, seq 3, length 64
+18:57:41.258106 IP 192.168.222.84 > 192.168.222.6: ICMP echo request, id 143, seq 4, length 64
+18:57:41.258892 IP 192.168.222.6 > 192.168.222.84: ICMP echo reply, id 143, seq 4, length 64

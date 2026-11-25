@@ -1,0 +1,44 @@
+---- bond0 ----
+  status: active negotiated
+  sys_id: 4a:f8:c7:00:96:4d
+  sys_priority: 65534
+  aggregation key: 4
+  lacp_time: fast
+
+member: eth0: current attached
+  port_id: 4
+  port_priority: 65535
+  may_enable: true
+
+  actor sys_id: 4a:f8:c7:00:96:4d
+  actor sys_priority: 65534
+  actor port_id: 4
+  actor port_priority: 65535
+  actor key: 4
+  actor state: activity timeout aggregation synchronized collecting distributing
+
+  partner sys_id: 02:1a:17:2e:f7:9a
+  partner sys_priority: 65534
+  partner port_id: 2
+  partner port_priority: 65535
+  partner key: 2
+  partner state: activity timeout aggregation synchronized collecting distributing
+
+member: eth1: current attached
+  port_id: 5
+  port_priority: 65535
+  may_enable: true
+
+  actor sys_id: 4a:f8:c7:00:96:4d
+  actor sys_priority: 65534
+  actor port_id: 5
+  actor port_priority: 65535
+  actor key: 4
+  actor state: activity timeout aggregation synchronized collecting distributing
+
+  partner sys_id: 02:1a:17:2e:f7:9a
+  partner sys_priority: 65534
+  partner port_id: 3
+  partner port_priority: 65535
+  partner key: 2
+  partner state: activity timeout aggregation synchronized collecting distributing

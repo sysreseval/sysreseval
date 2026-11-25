@@ -3,6 +3,9 @@
 The fixtures of tests/mock_data/sdn/ are outputs captured on s17 (2026-11-24, Open vSwitch 3.5.0, OS-Ken
 3.0.1, iperf3 3.18), extracted from the real evaluations of tests/mock_data/sdn/lab/ (``ovs_state_*``,
 ``flows_*``, ``meters_*``, ``trace_*``, ``iperf_udp_final.json``) or run by hand (``ofctl_show_sw2.txt``).
+Those of tests/mock_data/sdn/ovs/ come from the evaluations of the Open vSwitch lab
+(tests/mock_data/openvswitch/lab/, s17, 2026-11-25, image netdev13:1.36), but ``*_tor2_no_partner.txt``, run
+by hand on its switch tor2 before the other end had its bond.
 """
 import json
 import shlex
@@ -63,6 +66,54 @@ class TestStateSide:
 
     def test_dpid_text(self):
         assert sdn.dpid_text(161) == '00000000000000a1'
+
+
+class TestOvsHelpersStateSide:
+    """The helpers of the Open vSwitch lab (lab/sre/_DRAFT_misc/openvswitch.py)."""
+
+    def test_bond(self):
+        cmd = sdn.ovs_bond_cmd('br0', 'bond0', ['eth0', 'eth1'], other_config={'lacp-system-id': '02:1a:00:00:00:01'})
+        assert cmd.split(' -- ') == [
+            'ovs-vsctl --timeout=5 --may-exist add-bond br0 bond0 eth0 eth1',
+            'set port bond0 bond_mode=balance-tcp lacp=active other_config:lacp-system-id=02:1a:00:00:00:01 '
+            'other_config:lacp-time=fast']
+        assert sdn.ovs_bond_cmd('br0', 'b', ['a', 'c'], bond_mode=None, lacp=None, lacp_time=None) == \
+            'ovs-vsctl --timeout=5 --may-exist add-bond br0 b a c'
+
+    def test_tunnel(self):
+        cmd = sdn.ovs_tunnel_cmd('br-int', 'vx', 'vxlan', '198.51.100.2/24', 5000, tag=12)
+        assert cmd.split(' -- ') == ['ovs-vsctl --timeout=5 --may-exist add-port br-int vx',
+                                     'set interface vx type=vxlan options:key=5000 options:remote_ip=198.51.100.2',
+                                     'set port vx tag=12']
+        assert 'options:key' not in sdn.ovs_tunnel_cmd('br0', 'g', 'gre', '192.0.2.1')
+
+    def test_internal_port(self):
+        assert sdn.ovs_internal_port_cmd('br0', 'gw', tag=7).split(' -- ') == [
+            'ovs-vsctl --timeout=5 --may-exist add-port br0 gw', 'set interface gw type=internal', 'set port gw tag=7']
+
+    def test_mirror(self):
+        cmd = sdn.ovs_mirror_cmd('br0', 'span', ['eth0', 'eth1'], 'eth2')
+        assert cmd.split(' -- ') == [
+            'ovs-vsctl --timeout=5', '--id=@p0 get port eth0', '--id=@p1 get port eth1', '--id=@out get port eth2',
+            '--id=@m create mirror name=span select_src_port=@p0,@p1 select_dst_port=@p0,@p1 output_port=@out',
+            'set bridge br0 mirrors=@m']
+
+    def test_policing_and_qos(self):
+        assert sdn.ovs_policing_cmd('eth3', 2000, 200) == \
+            'ovs-vsctl --timeout=5 set interface eth3 ingress_policing_rate=2000 ingress_policing_burst=200'
+        cmd = sdn.ovs_qos_cmd('eth4', 30_000_000, {1: 7_000_000, 0: 30_000_000})
+        assert cmd.split(' -- ') == [
+            'ovs-vsctl --timeout=5', 'set port eth4 qos=@qos',
+            '--id=@qos create qos type=linux-htb other_config:max-rate=30000000 queues:0=@q0 queues:1=@q1',
+            '--id=@q0 create queue other_config:max-rate=30000000', '--id=@q1 create queue other_config:max-rate=7000000']
+
+    def test_capture(self):
+        start = sdn.capture_start_cmd('span', bpf='icmp', seconds=20)
+        assert start.startswith('rm -f /tmp/sre-span.pcap /tmp/sre-span.pid; setsid -f sh -c ')
+        assert 'exec timeout 20 tcpdump -n -U -i eth0 -w /tmp/sre-span.pcap icmp' in start
+        assert start.endswith('test -s /tmp/sre-span.pid') and '@@@' not in start
+        read = sdn.capture_read_cmd('span', 'icmp')
+        assert 'kill $(cat /tmp/sre-span.pid)' in read and read.endswith('tcpdump -n -r /tmp/sre-span.pcap icmp 2>/dev/null')
 
 
 class TestOvsState:
@@ -203,3 +254,125 @@ class TestAnswers:
     def test_decimal_dpid(self):
         assert sdn.normalize_decimal_dpid(' 6947 ') == 6947
         assert sdn.normalize_decimal_dpid('0x1b23') is None and sdn.normalize_decimal_dpid(None) is None
+
+
+# ---------------------------------------------------------------------------
+# the Open vSwitch lab: full OVSDB state, bonds, LACP, conntrack, traces with ct, captures
+# ---------------------------------------------------------------------------
+
+
+def _ovs(name: str) -> str:
+    return (_MOCK / 'ovs' / name).read_text()
+
+
+class TestFullOvsState:
+    def test_mirror_qos_policing(self):
+        state = sdn.parse_ovs_state(_ovs('ovs_state_sw5_final_full.txt'), sdn.OVS_TABLES_FULL)
+        bridge = state.bridge('br0')
+        assert [(m.name, m.select_src_ports, m.select_dst_ports, m.output_port, m.select_all) for m in bridge.mirrors] == \
+            [('span', ['eth0'], ['eth0'], 'eth2', False)]
+        qos = state.port_of('eth4').qos
+        assert qos.type == 'linux-htb' and qos.other_config == {'max-rate': '30000000'}
+        assert {n: q.other_config for n, q in qos.queues.items()} == {0: {'max-rate': '30000000'},
+                                                                      1: {'max-rate': '7000000'}}
+        assert state.port_of('eth0').qos is None
+        eth3 = state.interfaces['eth3']
+        assert (eth3.ingress_policing_rate, eth3.ingress_policing_burst) == (2000, 200)
+        assert state.interfaces['eth0'].ingress_policing_rate == 0 and state.ofport('eth3') == 17
+
+    def test_default_tables_ignore_the_others(self):
+        """The first four chunks are the default tables: the SDN lab's parse still works on a full state."""
+        state = sdn.parse_ovs_state(_ovs('ovs_state_sw5_final_full.txt'))
+        assert state.running and state.bridge('br0').mirrors == [] and state.port_of('eth4').qos is None
+        assert state.ofport('eth3') == 17
+        assert sdn.ovs_state_cmd() == sdn.ovs_state_cmd(sdn.OVS_TABLES)
+        assert sdn.ovs_state_cmd(sdn.OVS_TABLES_FULL).endswith('list Mirror; echo ==SRE-SDN==; '
+                                                               'ovs-vsctl --timeout=3 --format=json list QoS; '
+                                                               'echo ==SRE-SDN==; ovs-vsctl --timeout=3 --format=json list Queue')
+
+    def test_tunnels(self):
+        state = sdn.parse_ovs_state(_ovs('ovs_state_hv3a_final.txt'))
+        vx = state.interfaces['vxlan-red']
+        assert vx.type == 'vxlan' and vx.options == {'key': '94068', 'remote_ip': '192.168.171.173'}
+        assert vx.status.get('tunnel_egress_iface') == 'eth0'
+        assert state.interfaces['geneve-blue'].options['key'] == '57426'
+        assert [p.name for p in state.ports_of_type('vxlan')] == ['vxlan-red']
+        assert state.port_of('vxlan-red').tag == 789 and state.bridge_of('vxlan-red').name == 'br-int'
+
+    def test_bond_port(self):
+        state = sdn.parse_ovs_state(_ovs('ovs_state_hv2_final.txt'))
+        bond = state.bridge('br0').port('bond0')
+        assert sorted(bond.interfaces) == ['eth0', 'eth1'] and bond.bond_mode == 'balance-tcp'
+        assert bond.lacp == 'active' and bond.other_config == {'lacp-time': 'fast'}
+        assert state.bridge('br0').port('eth2').bond_mode is None
+
+
+class TestBondLacp:
+    def test_negotiated(self):
+        bonds = sdn.parse_bond_show(_ovs('bond_show_hv2_final.txt'))
+        bond = bonds['bond0']
+        assert bond.bond_mode == 'balance-tcp' and bond.lacp_status == 'negotiated'
+        assert bond.enabled_members() == ['eth0', 'eth1'] and sum(m.active for m in bond.members.values()) == 1
+        lacp = sdn.parse_lacp_show(_ovs('lacp_show_hv2_final.txt'))['bond0']
+        assert lacp.negotiated and lacp.status == ['active', 'negotiated'] and lacp.lacp_time == 'fast'
+        assert lacp.sys_priority == 65534 and lacp.partner_sys_ids() == ['02:1a:17:2e:f7:9a']
+        assert all(m.aggregated and m.states == ['current', 'attached'] for m in lacp.members.values())
+
+    def test_slb(self):
+        bond = sdn.parse_bond_show(_ovs('bond_show_hv2_slb.txt'))['bond0']
+        assert bond.bond_mode == 'balance-slb' and bond.lacp_status == 'negotiated'
+
+    def test_no_partner(self):
+        bond = sdn.parse_bond_show(_ovs('bond_show_tor2_no_partner.txt'))['bond0']
+        assert bond.lacp_status == 'configured' and bond.enabled_members() == []
+        assert not any(m.may_enable for m in bond.members.values())
+        lacp = sdn.parse_lacp_show(_ovs('lacp_show_tor2_no_partner.txt'))['bond0']
+        assert not lacp.negotiated and lacp.sys_id == '02:1a:17:2e:f7:9a'
+        assert lacp.partner_sys_ids() == ['00:00:00:00:00:00']
+        assert all(m.states == ['defaulted', 'detached'] and not m.aggregated and m.partner_state == []
+                   for m in lacp.members.values())
+
+    def test_empty(self):
+        assert sdn.parse_bond_show('') == {} and sdn.parse_lacp_show('ovs-appctl: no such bond') == {}
+
+
+class TestConntrackTraceCapture:
+    def test_conntrack(self):
+        entries = sdn.parse_conntrack(_ovs('conntrack_fw4_final.txt'))
+        assert [e.proto for e in entries] == ['icmp', 'tcp']
+        tcp = entries[1]
+        assert tcp.state == 'TIME_WAIT' and tcp.zone == 0 and tcp.reply['sport'] == '80'
+        assert tcp.matches(src='172.31.149.252', dst='172.31.149.119', dport=80, sport='45684')
+        assert not tcp.matches(src='172.31.149.252', dport=80, sport=1)
+        assert entries[0].orig == {'src': '172.31.149.252', 'dst': '172.31.149.119', 'id': '133', 'type': '8',
+                                   'code': '0'}
+        zone = sdn.parse_conntrack('udp,orig=(src=1.1.1.1,dst=2.2.2.2,sport=1,dport=2),reply=(src=2.2.2.2,'
+                                   'dst=1.1.1.1,sport=2,dport=1),zone=5')
+        assert zone[0].zone == 5 and zone[0].state == ''
+
+    def test_trace_after_recirculation(self):
+        """With ct(), a trace has a 'Datapath actions:' line per pass: the last one is the verdict."""
+        stateful = sdn.parse_trace(_ovs('trace_fw4_synack_final.txt'))
+        assert stateful.dropped and stateful.text.count('Datapath actions:') == 2
+        assert sdn.parse_trace(_ovs('trace_fw4_synack_stateless.txt')).forwarded
+
+    def test_trace_options(self):
+        flow = sdn.trace_flow(in_port=45, proto='tcp', eth_src='02:00:00:00:00:02', eth_dst='02:00:00:00:00:01',
+                              ip_src='192.0.2.2', ip_dst='192.0.2.1', sport=80, dport=40000, tcp_flags=0x012)
+        assert flow.endswith(',tcp_src=80,tcp_dst=40000,tcp_flags=0x012')
+        assert sdn.trace_cmd('br0', 'in_port=1,ip') == "ovs-appctl ofproto/trace br0 in_port=1,ip"
+        assert sdn.trace_cmd('br0', 'in_port=1,ip', ['trk,new', 'trk,est']) == \
+            "ovs-appctl ofproto/trace br0 in_port=1,ip --ct-next trk,new --ct-next trk,est"
+
+    def test_capture(self):
+        text = _ovs('capture_ids5_final.txt')
+        assert sdn.count_icmp_echo(text) == 8
+        assert sdn.count_icmp_echo(text, '192.168.222.84', '192.168.222.6') == 8
+        assert sdn.count_icmp_echo(text, '192.168.222.84', '192.168.222.7') == 0
+        assert sdn.count_icmp_echo('') == 0
+
+    def test_set_queue_flow(self):
+        flows = sdn.parse_flows(_ovs('flows_sw5_final.txt'))
+        queued = flows[0]
+        assert queued.actions == ['set_queue:1', 'NORMAL'] and queued.outputs() == ['NORMAL']
+        assert queued.fields()['ipv4_src'] == '192.168.222.84' and queued.priority == 100
