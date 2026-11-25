@@ -28,8 +28,10 @@ import argparse
 import datetime
 import json
 import os
+import pwd
 import queue
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -37,7 +39,7 @@ import threading
 import time
 from pathlib import Path
 
-from SRE import params
+from SRE import params, procscan
 
 # ---------------------------------------------------------------------------
 # Timing constants
@@ -48,6 +50,58 @@ START_IN = 20                # seconds from now to start_after when setting up e
 DURATION_MIN = 1             # exam duration in minutes
 EVAL_INTERVAL = 60           # seconds between auto-evals
 PRE_START_MARGIN = 60        # params.max_duration_between_exam_pre_start_and_start
+
+
+# ---------------------------------------------------------------------------
+# The GUI processes of the machine
+# ---------------------------------------------------------------------------
+
+def _parent_of(pid: int) -> int | None:
+    """The parent of process *pid* (``/proc/<pid>/stat``), ``None`` when it ended."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(errors='replace')
+        return int(stat[stat.rindex(')') + 1:].split()[1])      # the fields after the command name
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _descends_from(pid: int | None, ancestor: int) -> bool:
+    seen = set()
+    while pid and pid not in seen:
+        if pid == ancestor:
+            return True
+        seen.add(pid)
+        pid = _parent_of(pid)
+    return False
+
+
+def _pub_dir_of(pid: int) -> str | None:
+    """The SRE_PUB_DIR process *pid* was given (root, or its owner, reads its environment)."""
+    try:
+        environ = Path(f"/proc/{pid}/environ").read_bytes()
+    except OSError:
+        return None
+    for entry in environ.split(b'\0'):
+        if entry.startswith(b'SRE_PUB_DIR='):
+            return entry[len(b'SRE_PUB_DIR='):].decode(errors='replace')
+    return None
+
+
+def _describe_gui(pid: int) -> str:
+    started = procscan.start_time('/proc', pid)
+    since = time.strftime('%H:%M:%S', time.localtime(started)) if started is not None else 'an unknown time'
+    argv = ' '.join(procscan.command_line('/proc', pid) or ['(ended)'])
+    pub_dir = _pub_dir_of(pid)
+    return f"pid {pid}, started at {since}: {argv}" + (f" (SRE_PUB_DIR={pub_dir})" if pub_dir else "")
+
+
+def _left_by_a_series(pid: int) -> bool:
+    """Whether GUI *pid* is what a series of exam tests left behind: a ``--debug`` GUI nothing
+    launched any more, on a SRE_PUB_DIR that was removed (never the GUI of a session, which has
+    no ``--debug``, nor the one of a series running now, whose directory exists)."""
+    argv = procscan.command_line('/proc', pid) or []
+    pub_dir = _pub_dir_of(pid)
+    return '--debug' in argv and _parent_of(pid) == 1 and pub_dir is not None and not Path(pub_dir).exists()
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +122,7 @@ class ExamTestHarness:
         self.mock_wrapper = mock_wrapper
 
         self._proc: subprocess.Popen | None = None
+        self._stopping = False
         self._stderr_thread: threading.Thread | None = None
         self.events: list[dict] = []
         self._events_lock = threading.Lock()
@@ -76,9 +131,62 @@ class ExamTestHarness:
     # sysreseval process management
     # ------------------------------------------------------------------
 
+    def _guis_of_user(self) -> list[int]:
+        """The pids of the GUIs of self.user running on the machine."""
+        uid = pwd.getpwnam(self.user).pw_uid
+        return [gui['pid'] for gui in procscan.gui_processes() if gui['uid'] == uid]
+
+    def _own_gui(self) -> int | None:
+        """The GUI under what this harness launched (runuser, the shell script of
+        bin/sysreseval, then the Python process: only the first one is ``self._proc``)."""
+        if self._proc is None:
+            return None
+        return next((pid for pid in self._guis_of_user() if _descends_from(pid, self._proc.pid)), None)
+
+    def _clear_the_way(self):
+        """Before a start.  The GUI is single-instance per user (src/sysreseval.py: a GUI that
+        starts sends SIGTERM to the one its pid file names), so another GUI of self.user would
+        be ended by ours, and ours by its next start.  What an earlier series left is ended
+        here; any other GUI stops the tests, with what it is."""
+        for pid in self._guis_of_user():
+            if _left_by_a_series(pid):
+                print(f"Ending the GUI an earlier series of exam tests left: {_describe_gui(pid)}")
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except OSError:
+                    pass
+                continue
+            raise RuntimeError(
+                f"Another sysreseval of {self.user} is running on this machine:\n"
+                f"  {_describe_gui(pid)}\n"
+                f"The GUI is single-instance per user: starting the one of the tests would end it, and "
+                f"its next start would end ours.\nRun one series of exam tests at a time "
+                f"(exam-tests, web-exam-tests), and none while {self.user} uses the GUI."
+            )
+
+    def ended_note(self) -> str:
+        """What can be said of a GUI that ended without being stopped ('' while it runs)."""
+        rc = self._proc.poll() if self._proc is not None else None
+        if rc is None:
+            return ""
+        note = f"sysreseval exited with code {rc}."
+        if rc in (128 + signal.SIGTERM, -signal.SIGTERM):
+            note += " It was ended by a SIGTERM (the shell script of bin/sysreseval reports it: 128 + 15)."
+            others = self._guis_of_user()
+            if others:
+                note += (f"\nAnother sysreseval of {self.user} is running: the GUI is single-instance per "
+                         f"user, a GUI that starts ends the one running. Another series of exam tests, or a "
+                         f"session of {self.user}, uses the GUI on this machine:\n"
+                         + "\n".join(f"  {_describe_gui(pid)}" for pid in others))
+            else:
+                note += (f"\nNo other sysreseval of {self.user} is running now: either the GUI that ended "
+                         f"ours has ended too, or the signal came from elsewhere on the machine.")
+        return note
+
     def start_sysreseval(self):
         """Launch sysreseval --debug as self.user."""
         assert self._proc is None, "sysreseval already running"
+        self._clear_the_way()
         self.events = []
 
         env_pairs = [
@@ -91,7 +199,8 @@ class ExamTestHarness:
         cmd_inner = f"{env_str} {self.sysreseval_path} --debug"
 
         if self.user == _current_user():
-            full_cmd = ["bash", "-c", f"exec {cmd_inner}"]
+            # `exec` takes no assignments before the command: env sets them
+            full_cmd = ["bash", "-c", f"exec env {cmd_inner}"]
         else:
             # runuser: switches user from root without a password prompt
             full_cmd = ["runuser", "-u", self.user, "--", "bash", "-c", cmd_inner]
@@ -107,31 +216,46 @@ class ExamTestHarness:
 
         # Give the process a moment and check it didn't die immediately
         time.sleep(1.5)
-        rc = self._proc.poll()
-        if rc is not None:
+        if self._proc.poll() is not None:
             raise RuntimeError(
-                f"sysreseval exited immediately with code {rc}.\n"
-                f"Command: {' '.join(full_cmd)}\n"  
+                f"sysreseval did not stay up: {self.ended_note()}\n"
+                f"Command: {' '.join(full_cmd)}\n"
                 f"Events captured: {self.events}"
             )
 
     def stop_sysreseval(self, timeout: float = 5.0):
-        """Terminate sysreseval and wait for it to exit."""
+        """End the GUI and what launched it.  The GUI itself first: a SIGTERM to runuser ends the
+        shell script of bin/sysreseval and leaves the Python process under it running, on the
+        SRE_PUB_DIR of the tests and with our pipe open, until the next GUI of the user replaces
+        it (it then handled the first seconds of the next scenario, and the last one stayed)."""
         if self._proc is None:
             return
-        try:
-            self._proc.terminate()
-        except ProcessLookupError:
-            pass
-        try:
-            self._proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            self._proc.kill()
-            self._proc.wait()
+        self._stopping = True
+        gui = self._own_gui()
+        if gui is not None:
+            try:
+                os.kill(gui, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                self._proc.wait(timeout=timeout)    # the shell script ends with its GUI, runuser with it
+            except subprocess.TimeoutExpired:
+                pass
+        if self._proc.poll() is None:
+            try:
+                self._proc.terminate()
+            except ProcessLookupError:
+                pass
+            try:
+                self._proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
         self._proc = None
         if self._stderr_thread:
             self._stderr_thread.join(timeout=2.0)
             self._stderr_thread = None
+        self._stopping = False
 
     # Qt offscreen plugin warnings that are harmless and should not pollute output
     _IGNORED_STDERR = (
@@ -153,8 +277,10 @@ class ExamTestHarness:
                 with self._events_lock:
                     self.events.append(event)
             except json.JSONDecodeError:
-                # Print non-JSON lines (Python tracebacks, Qt errors, etc.)
-                print(f"[sysreseval] {line}", file=sys.stderr, flush=True)
+                # Print non-JSON lines (Python tracebacks, Qt errors, etc.), but not what the
+                # shell says of the GUI we are ending ("Terminated", in the language of the host)
+                if not self._stopping:
+                    print(f"[sysreseval] {line}", file=sys.stderr, flush=True)
 
     # ------------------------------------------------------------------
     # exam.json manipulation
@@ -304,6 +430,8 @@ def run_scenario(name: str, fn, harness: ExamTestHarness):
     except AssertionError as e:
         print(f"[{FAIL}] {name}")
         print(f"  {e}")
+        if harness.ended_note():
+            print(f"  The GUI is no longer running: {harness.ended_note()}")
         log = harness.pub_dir / "mock_wrapper.log"
         if log.exists():
             print(f"  --- mock_wrapper.log ---")

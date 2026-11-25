@@ -358,6 +358,8 @@ make docker-tests                   # the Docker integration tests, left out of 
 make all-tests                      # tests + docker-tests + exam-tests + web-exam-tests
 ```
 
+The two exam series start the GUI as `EXAM_USER`, and the GUI is single-instance per user (a GUI that starts ends the one already running for that user): run them one after the other, never at the same time on a machine, and not while that user works with the GUI there. A series refuses to start beside another GUI of that user, which it names, and says so when its own GUI was ended by one started meanwhile; it ends the GUIs it starts, and the one an earlier interrupted series may have left.
+
 `make web-exam-tests` (`tests/test_exam_mode_web.py`) is the end-to-end series of the exams the web site puts on machines of the pool (see *On the workstations* in the [web server](web.md) chapter). Like `make exam-tests` it runs `sysreseval --debug` as a normal user (`EXAM_USER`, `etudiant` by default) on a temporary `SRE_PUB_DIR` with the mock `sre-wrapper`, as root; but nothing writes `exam.json` by hand: the web agent of the tree does (`PUT` / `DELETE /v1/exam`), driven by the portal's own code — the registry of the exams, a pool polling that agent and the reconciler of the machines, without the HTTP server nor the database. The thirteen scenarios (`SCENARIO=2`, `SCENARIOS="1 3"`):
 
 | | Scenario |

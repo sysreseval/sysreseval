@@ -40,9 +40,7 @@ import argparse
 import asyncio
 import json
 import os
-import pwd
 import shutil
-import signal
 import socket
 import stat
 import subprocess
@@ -83,23 +81,6 @@ def _free_port() -> int:
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
         return s.getsockname()[1]
-
-
-def end_gui_of(user: str):
-    """The GUI of *user*, for good.  ``ExamTestHarness.stop_sysreseval`` ends what it launched
-    (runuser, the shell script of bin/sysreseval), whose python child lives on until the next
-    GUI of that user replaces it; the pid file of the GUI (its single-instance lock) names it:
-    ended here when it is a ``sysreseval --debug`` (never the GUI of a real session)."""
-    try:
-        pid = int(Path(f"/tmp/sysreseval-{pwd.getpwnam(user).pw_uid}.pid").read_text().strip())
-        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
-    except (KeyError, OSError, ValueError):
-        return
-    if b'sysreseval' in cmdline and b'--debug' in cmdline:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -393,9 +374,9 @@ class Stage:
         self.agent.forget_calls()
 
     def end_gui(self):
-        """The student logs out: the GUI ended for good (``start_sysreseval`` starts the next)."""
+        """The student logs out: the GUI ended for good (``stop_sysreseval`` ends the GUI process
+        itself; ``start_sysreseval`` starts the next)."""
         self.h.stop_sysreseval()
-        end_gui_of(self.h.user)
 
     def wait_no_file(self, timeout: float = 20.0, stable: float = 3.0):
         """exam.json gone, and for *stable* seconds: an `end-exam` of the GUI that read the file
@@ -947,6 +928,8 @@ def run_scenario(name: str, fn, stage: Stage) -> bool:
     except AssertionError as e:
         print(f"[{FAIL}] {name}")
         print(f"  {e}")
+        if stage.h.ended_note():
+            print(f"  The GUI is no longer running: {stage.h.ended_note()}")
         print(f"  exam.json: {stage.h.read_exam_json()}")
         print(f"  calls of the agent's sre: {stage.agent.calls()}")
         for title, text in (("mock_wrapper.log", _read(stage.h.pub_dir / "mock_wrapper.log")),
@@ -1016,7 +999,6 @@ def main():
             results[n] = run_scenario(name, fn, stage)
     finally:
         harness.stop_sysreseval()
-        end_gui_of(args.user)
         if web is not None:
             web.stop()
         agent.stop()
