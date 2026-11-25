@@ -1,0 +1,5 @@
+===SRE_CERT
+issuer=CN=CORP Proxy CA
+subject=CN=CORP Proxy CA
+X509v3 Basic Constraints: critical
+    CA:TRUE

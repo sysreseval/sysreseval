@@ -1,0 +1,11 @@
+HTTP/1.1 302 Found
+Server: squid
+Date: Wed, 25 Nov 2026 21:39:07 GMT
+Content-Length: 0
+Location: http://intranet.corp.tp/blocked?url=http://phish.tp/login
+Cache-Status: proxy.corp.tp;detail=mismatch
+Connection: keep-alive
+
+
+===SRE_META 1.1 0.024635 000
+===SRE_CODE 302

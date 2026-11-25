@@ -12,6 +12,7 @@
     "docker-compose.py": 177,
     "docker.py": 147,
     "evpn-mpls.py": 116,
+    "forward-proxy.py": 23,
     "ipsec.py": 53,
     "ipv6.py": 22,
     "isis-ipv6-sr-bfd.py": 101,
@@ -239,6 +240,10 @@
   "reverse-proxy.py": {
     "en": "HTTP: reverse proxy, cache, load balancing and high availability",
     "fr": "HTTP : reverse proxy, cache, répartition de charge et haute disponibilité"
+  },
+  "forward-proxy.py": {
+    "en": "Squid: web proxy, authentication and filtering",
+    "fr": "Squid : proxy web, authentification et filtrage"
   },
   "voip.py": {
     "en": "VoIP: SIP and RTP with Asterisk",

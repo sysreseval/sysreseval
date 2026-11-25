@@ -1,0 +1,6 @@
+===SRE_PAC_FETCH 200 application/x-ns-proxy-autoconfig
+===SRE_PAC_RESULT http://www.news.tp/	PROXY proxy.corp.tp:3128
+===SRE_PAC_RESULT https://secure.news.tp/	PROXY proxy.corp.tp:3128
+===SRE_PAC_RESULT http://intranet.corp.tp/	DIRECT
+===SRE_PAC_RESULT http://intranet/	DIRECT
+===SRE_PAC_RESULT http://192.168.139.133/	DIRECT

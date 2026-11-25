@@ -1,0 +1,30 @@
+HTTP/1.1 200 OK
+Server: nginx/1.30.8
+Date: Wed, 25 Nov 2026 21:39:00 GMT
+Content-Type: text/plain; charset=utf-8
+Content-Length: 321
+X-Powered-By: ShopApp/1.0
+X-Backend-Server: internet
+Cache-Control: no-store
+Cache-Status: proxy.corp.tp;detail=mismatch
+Connection: keep-alive
+
+SERVER=internet
+APP=web
+SERVER_IP=127.0.0.1
+SERVER_PORT=80
+CLIENT_IP=127.0.0.1
+CLIENT_PORT=50468
+METHOD=GET
+PATH=/check/bump
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=internet-000013
+HOST=secure.news.tp
+HEADER_HOST=secure.news.tp
+HEADER_USER_AGENT=curl/8.14.1
+HEADER_ACCEPT=*/*
+HEADER_CACHE_CONTROL=max-age=259200
+
+===SRE_META 1.1 0.011178 200
+===SRE_CODE 200

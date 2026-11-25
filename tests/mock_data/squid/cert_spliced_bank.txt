@@ -1,0 +1,3 @@
+===SRE_CERT
+issuer=CN=SRE Public Root CA
+subject=CN=secure.news.tp

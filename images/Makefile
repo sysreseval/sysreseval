@@ -13,6 +13,8 @@ NAMESPACE ?= sysreseval
 # - when VERSION is raised, remove these lines (or raise them): an image that keeps its own version
 #   is built again on the new version of its parent, under its old tag.
 # VERSION_identity13 := 1.35
+# proxy13 1.37: Squid, squidclient, squidGuard, ldap-utils and duktape for the forward proxy lab, after 1.36 was published
+VERSION_proxy13 := 1.37
 
 IMAGES := base13 init13 netdev13 identity13 proxy13 monitoring13 voip13 scan13 nsm13 devops13 base12 init12
 

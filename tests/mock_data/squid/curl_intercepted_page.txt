@@ -1,0 +1,31 @@
+HTTP/1.1 200 OK
+Server: ShopApp
+Date: Wed, 25 Nov 2026 21:39:00 GMT
+Content-Type: text/plain; charset=utf-8
+Content-Length: 357
+X-Powered-By: ShopApp/1.0
+X-Backend-Server: internet
+Cache-Control: no-store
+Cache-Status: proxy.corp.tp;detail=mismatch
+Connection: keep-alive
+
+SERVER=internet
+APP=web
+SERVER_IP=203.0.113.248
+SERVER_PORT=80
+CLIENT_IP=172.31.86.105
+CLIENT_PORT=55940
+METHOD=GET
+PATH=/check/intercept
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=internet-000001
+HOST=www.news.tp
+HEADER_HOST=www.news.tp
+HEADER_USER_AGENT=curl/8.14.1
+HEADER_ACCEPT=*/*
+HEADER_CACHE_CONTROL=max-age=259200
+HEADER_CONNECTION=keep-alive
+
+===SRE_META 1.1 0.012457
+===SRE_CODE 200

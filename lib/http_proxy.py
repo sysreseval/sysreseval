@@ -147,7 +147,11 @@ def distribution(bodies: Sequence[str]) -> Counter:
 class HttpReply:
     """One answer read by :func:`http_request`: *code* is ``None`` when no HTTP answer came
     (refused or reset connection, TLS failure, timeout, or the tests have not run yet);
-    *headers* are lower-cased (last value), *all_headers* keeps every ``(name, value)``."""
+    *headers* are lower-cased (last value), *all_headers* keeps every ``(name, value)``.
+    Through a proxy (option ``proxy``), *connect_code* is the status the proxy gave to the
+    ``CONNECT`` of an HTTPS URL (``None`` without a tunnel): a 407 or a 403 there leaves *code*
+    ``None``, the request never reached the server (Squid on an ``ssl-bump`` port answers 200 to a
+    denied ``CONNECT`` and sends its 403 page inside TLS: *code* 403)."""
     code: Optional[int] = None
     headers: Dict[str, str] = dataclass_field(default_factory=dict)
     all_headers: List[Tuple[str, str]] = dataclass_field(default_factory=list)
@@ -155,6 +159,7 @@ class HttpReply:
     http_version: str = ''
     time_total: Optional[float] = None
     exit_code: int = 0
+    connect_code: Optional[int] = None
 
     @property
     def ok(self) -> bool:
@@ -195,8 +200,15 @@ def _address(value) -> str:
 
 def _curl_options(connect_ip=None, connect_port=None, method=None, headers=None, data=None, cookies=None,
                   user=None, cacert=None, insecure=False, http2=False, source=None, compressed=False,
-                  jar=None, http3=False) -> List[str]:
+                  jar=None, http3=False, proxy=None, proxy_user=None, proxy_tunnel=False) -> List[str]:
     opts = []
+    if proxy is not None:
+        # the headers of the proxy's answer to CONNECT are left out: the first header block is the server's
+        opts.append(f"-x {shlex.quote(str(proxy))} --suppress-connect-headers")
+        if proxy_user:
+            opts.append(f"-U {shlex.quote(f'{proxy_user[0]}:{proxy_user[1]}')}")
+        if proxy_tunnel:
+            opts.append("-p")
     if jar:
         opts.append(f"-b {shlex.quote(jar)} -c {shlex.quote(jar)}")
     if connect_ip is not None:
@@ -243,21 +255,27 @@ def request_cmd(url: str, connect_ip=None, connect_port: Optional[int] = None, m
     ``cookies`` (dict), ``user`` ((login, password): basic authentication), ``cacert`` (a path on
     the machine), ``insecure``, ``http2``, ``http3`` (``--http3-only``: QUIC, no fallback to TCP;
     needs a curl built with HTTP/3, the ``base13`` image), ``source`` (a local address to send from),
-    ``compressed`` (asks for gzip without decoding it), ``jar`` (a cookie file read and written).
-    *no_body* drops the body (a compressed one is not text); *shell_url* leaves ``$variables`` of
-    the URL to the shell (:func:`sequence_cmd`).  The output holds the response headers, the
-    body, then the HTTP version, the duration and the status (:func:`parse_reply`)."""
+    ``compressed`` (asks for gzip without decoding it), ``jar`` (a cookie file read and written),
+    ``proxy`` (``http://ip:port``: the request goes through that forward proxy, ``CONNECT`` for an
+    HTTPS URL), ``proxy_user`` ((login, password): basic authentication to the proxy, ``-U``),
+    ``proxy_tunnel`` (``-p``: a ``CONNECT`` tunnel for a plain HTTP URL too).  The proxy options
+    and the ``CONNECT`` status in the output appear only when ``proxy`` is given, so that the
+    other commands keep their text (the lab archives are keyed by command).  *no_body* drops the
+    body (a compressed one is not text); *shell_url* leaves ``$variables`` of the URL to the shell
+    (:func:`sequence_cmd`).  The output holds the response headers, the body, then the HTTP
+    version, the duration (and the status of ``CONNECT``) and the status (:func:`parse_reply`)."""
     opts = _curl_options(connect_ip, connect_port, **options)
     target = _shell_url(url) if shell_url else shlex.quote(url)
+    connect = ' %{http_connect}' if options.get('proxy') is not None else ''
     return (f"curl -s -S --max-time {int(max_time)} {' '.join(opts)} -D - -o {'/dev/null' if no_body else '-'} "
-            f"-w '\\n{META_MARK}%{{http_version}} %{{time_total}}\\n===SRE_CODE %{{http_code}}' "
+            f"-w '\\n{META_MARK}%{{http_version}} %{{time_total}}{connect}\\n===SRE_CODE %{{http_code}}' "
             f"{target} 2>&1")
 
 
 def parse_reply(out: str, exit_code: int = 0) -> HttpReply:
     """The :class:`HttpReply` of the output of a :func:`request_cmd` command."""
     text = out or ''
-    http_version, time_total = '', None
+    http_version, time_total, connect_code = '', None, None
     head, mark, tail = text.rpartition('\n' + META_MARK)
     if mark:
         meta_line, _, rest = tail.partition('\n')
@@ -269,11 +287,14 @@ def parse_reply(out: str, exit_code: int = 0) -> HttpReply:
                 time_total = float(parts[1].replace(',', '.'))
             except ValueError:
                 time_total = None
+        if len(parts) > 2 and parts[2].isdigit() and int(parts[2]):
+            connect_code = int(parts[2])
         text = head + '\n' + rest
     result = parse_curl_output(text, exit_code)
     body = result.body[:-1] if result.body.endswith('\n') and mark else result.body
     return HttpReply(code=result.code, headers=result.headers, all_headers=list(result.all_headers), body=body,
-                     http_version=http_version, time_total=time_total, exit_code=exit_code)
+                     http_version=http_version, time_total=time_total, exit_code=exit_code,
+                     connect_code=connect_code)
 
 
 def http_request(grade: Grade0, src: str, url: str, connect_ip=None, connect_port: Optional[int] = None,

@@ -1,0 +1,24 @@
+HTTP/1.1 403 Forbidden
+Server: squid
+Mime-Version: 1.0
+Date: Wed, 25 Nov 2026 21:39:00 GMT
+Content-Type: text/html;charset=utf-8
+Content-Length: 338
+X-Squid-Error: ERR_CORP_BLOCKED 0
+Vary: Accept-Language
+Content-Language: en
+Cache-Status: proxy.corp.tp
+Connection: keep-alive
+
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Accès bloqué</title></head>
+<body>
+<h1>Site bloqué par la charte informatique de CORP</h1>
+<p>L'adresse <code>http://games.tp/</code> n'est pas autorisée (référence CORP-BLOCK-D71990).</p>
+<p>Proxy proxy.corp.tp, Wed, 25 Nov 2026 21:39:00 GMT.</p>
+</body>
+</html>
+
+===SRE_META 1.1 0.000939 000
+===SRE_CODE 403

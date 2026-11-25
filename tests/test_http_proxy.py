@@ -91,6 +91,21 @@ class TestCommands:
         assert "--http3-only" in cmd and "--connect-to ::192.0.2.10:443" in cmd and "--http2" not in cmd
         assert "--http3" not in hp.request_cmd('https://www.quic.tp/', '192.0.2.10', 443)
 
+    def test_request_cmd_through_a_proxy(self):
+        """The forward proxy lab: -x / -U / -p, and the status of CONNECT in the META line."""
+        cmd = hp.request_cmd('https://secure.news.tp/a', '203.0.113.5', 443, insecure=True,
+                             proxy='http://10.0.0.1:3128', proxy_user=('alice', 'p w'))
+        for piece in ("-x http://10.0.0.1:3128 --suppress-connect-headers", "-U 'alice:p w'",
+                      "--connect-to ::203.0.113.5:443", "===SRE_META %{http_version} %{time_total} %{http_connect}"):
+            assert piece in cmd, piece
+        assert " -p " not in cmd and '\n' not in cmd
+        assert " -p " in hp.request_cmd('http://x/', proxy='http://p:3128', proxy_tunnel=True)
+        assert " -U " not in hp.request_cmd('http://x/', proxy='http://p:3128', proxy_user=None)
+        # without a proxy the command keeps its text: the archives of the labs are keyed by command
+        assert hp.request_cmd('http://x/') == (
+            "curl -s -S --max-time 6  -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n"
+            "===SRE_CODE %{http_code}' http://x/ 2>&1")
+
     def test_shell_url(self):
         cmd = hp.request_cmd('http://www.shop.tp$u', '10.0.0.1', 6081, shell_url=True)
         assert cmd.endswith('"http://www.shop.tp$u" 2>&1')
@@ -201,6 +216,46 @@ class TestReplies:
         assert kwargs == {'step': 2, 'timeout': 14, 'allow_error': True}
         # registration pass: no result yet
         assert hp.http_request(make_grade(), 'probe', 'http://x/').code is None
+        assert hp.parse_reply(fixture('curl_www_https.txt')).connect_code is None   # no proxy: no CONNECT status
+
+
+class TestRepliesThroughAForwardProxy:
+    """Answers of Squid 6.13 to the grader's requests (fixtures of tests/mock_data/squid/, the forward
+    proxy lab after its final state, s16, 2026-11-25)."""
+
+    @staticmethod
+    def squid_fixture(name):
+        return (Path(__file__).parent / 'mock_data' / 'squid' / name).read_text()
+
+    def test_authentication_asked(self):
+        reply = hp.parse_reply(self.squid_fixture('curl_proxy_407.txt'))
+        assert reply.code == 407 and reply.connect_code is None
+        assert reply.header('proxy-authenticate').startswith('Basic realm="CORP Web Access ')
+        assert reply.header('server') == 'squid'           # httpd_suppress_version_string on
+
+    def test_page_through_the_proxy(self):
+        reply = hp.parse_reply(self.squid_fixture('curl_proxy_page.txt'))
+        assert reply.ok and reply.server == 'internet' and reply.connect_code is None
+        assert reply.header('cache-status').startswith('proxy.corp.tp')
+        assert reply.field('HEADER_VIA') == '' and reply.field('HEADER_X_FORWARDED_FOR') == ''
+        assert reply.field('HEADER_PROXY_AUTHORIZATION') == ''     # never passed on to the server
+
+    def test_https_tunnels(self):
+        bumped = hp.parse_reply(self.squid_fixture('curl_proxy_https_bumped.txt'))
+        assert bumped.ok and bumped.connect_code == 200 and bumped.server == 'internet'
+        assert bumped.field('PATH') == '/check/bump'                # the headers of CONNECT are left out
+        cut = hp.parse_reply(self.squid_fixture('curl_proxy_https_terminated.txt'), 35)
+        assert cut.code is None and cut.connect_code == 200 and cut.exit_code == 35   # ssl_bump terminate
+        denied = hp.parse_reply(self.squid_fixture('curl_proxy_connect_denied_bump_port.txt'))
+        # a CONNECT denied on an ssl-bump port: 200, then Squid's 403 page inside the bumped connection
+        assert denied.connect_code == 200 and denied.code == 403 and denied.header('x-squid-error').startswith('ERR_ACCESS_DENIED')
+        refused = hp.parse_reply(self.squid_fixture('curl_proxy_refused.txt'), 7)
+        assert refused.code is None and refused.connect_code is None and 'Could not connect' in refused.body
+
+    def test_redirect_of_squidguard(self):
+        reply = hp.parse_reply(self.squid_fixture('curl_proxy_squidguard_302.txt'))
+        assert reply.code == 302 and reply.redirect
+        assert reply.header('location') == 'http://intranet.corp.tp/blocked?url=http://phish.tp/login'
 
 
 # ---------------------------------------------------------------------------

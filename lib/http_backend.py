@@ -35,6 +35,9 @@ Special paths:
 ``/account``                ``200`` with ``USER=`` for a session this backend knows, ``401`` otherwise
 ``/slow?ms=N``              answers after N milliseconds
 ``/big``                    20 kB of text (compression)
+``/cacheable/<x>``          the whoami, cacheable for 10 minutes (``Cache-Control: public``, ``Last-Modified``)
+``/files/<x>?size=N``       N bytes of text (at most 8 MiB), cacheable for 10 minutes; the ``X-Request-Id``
+                            header carries the ``REQUEST_ID`` (a forward proxy's disk cache, delay pools)
 ``/admin/...``              the whoami plus ``AREA=admin``
 ``/status/<code>``          answers with that status
 ``/old-page``               ``301`` to ``/catalog/<old_slug>``
@@ -67,6 +70,9 @@ TRACKING_COOKIE = 'tracking'
 CART_COOKIE = 'cart'
 PRODUCT = 'ShopApp'
 BIG_SIZE = 20000
+FILE_DEFAULT_SIZE = 1 << 20
+FILE_MAX_SIZE = 8 << 20
+CACHEABLE = 'public, max-age=600'
 MAX_SLOW_MS = 15000
 MAX_DOWN_SECONDS = 300
 MAX_SESSIONS = 10000
@@ -141,6 +147,11 @@ def header_key(name):
     return 'HEADER_' + ''.join(c if c.isalnum() else '_' for c in name.upper())
 
 
+def http_date(timestamp):
+    """*timestamp* in the format of the HTTP date headers (``Last-Modified``)."""
+    return time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(timestamp))
+
+
 def item_price(item):
     """A stable price for a catalog item."""
     return sum(item.encode()) % 90 + 10
@@ -161,6 +172,7 @@ class App:
         self.state_dir = str(config.get('state_dir', DEFAULT_STATE_DIR))
         self.log_file = str(config.get('log_file', DEFAULT_LOG_FILE))
         self.clock = clock
+        self.started = max(0.0, clock() - 3600)   # Last-Modified of the cacheable pages: an hour before the start
         self.sleep = sleep
         self.sessions = {}
         self.counter = 0
@@ -264,6 +276,11 @@ class App:
             line = f"SERVER={self.name} " + 'lorem ipsum dolor sit amet ' * 3 + '\n'
             return Response(200, text=line * (BIG_SIZE // len(line) + 1),
                             headers=[('Cache-Control', 'public, max-age=60')])
+        if path.startswith('/cacheable/'):
+            return Response(200, self.whoami(req, ["CACHEABLE=yes"]),
+                            headers=[('Cache-Control', CACHEABLE), ('Last-Modified', http_date(self.started))])
+        if path.startswith('/files/'):
+            return self.handle_file(req)
         if path == '/slow':
             try:
                 delay = max(0, min(int(req.param('ms', '1000')), MAX_SLOW_MS))
@@ -283,6 +300,18 @@ class App:
         if path.startswith('/api/'):
             extra.append("API=ok")
         return Response(200, self.whoami(req, extra), headers=[('Cache-Control', 'no-store')])
+
+    def handle_file(self, req):
+        """``/files/<name>?size=N``: N bytes of text, the request id in ``X-Request-Id``."""
+        try:
+            size = max(0, min(int(req.param('size', str(FILE_DEFAULT_SIZE))), FILE_MAX_SIZE))
+        except ValueError:
+            size = FILE_DEFAULT_SIZE
+        request_id = self.next_id()
+        line = f"{request_id} {req.path} " + 'lorem ipsum dolor sit amet ' * 2 + '\n'
+        body = (line * (size // len(line) + 1))[:size]
+        return Response(200, text=body, headers=[('Cache-Control', CACHEABLE), ('X-Request-Id', request_id),
+                                                 ('Last-Modified', http_date(self.started))])
 
     def handle_form(self, req):
         if req.method != 'POST':

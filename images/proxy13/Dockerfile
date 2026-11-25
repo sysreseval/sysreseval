@@ -11,7 +11,15 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # Varnish (which pulls gcc: it compiles its VCL configuration), plus socat (HAProxy's admin
 # socket), hatop and apache2-utils (ab, htpasswd), on top of the init13 image so that the proxies
 # run under a genuine systemd (systemctl reload, journalctl).  nginx, Apache and Caddy come from
-# the base13 image.  Declare the machines like the init ones:
+# the base13 image.
+#
+# The forward proxy lab (forward-proxy.py) adds Squid 6: the package squid (the GnuTLS build and
+# the helpers: basic_ncsa_auth, basic_ldap_auth, ext_ldap_group_acl...) and squid-openssl (the
+# OpenSSL build, the only one with SslBump, and security_file_certgen), /usr/sbin/squid being the
+# OpenSSL build; squidclient (the cache manager), squidGuard (URL filter by category), ldap-utils
+# (ldapsearch, to test the directory from the proxy) and duktape (duk, a small JavaScript
+# interpreter: the grader runs the students' PAC files with it).  Declare the machines like the
+# init ones:
 #
 #   _machine_specs = {
 #        'lb1': {"privileged": True,
@@ -37,6 +45,12 @@ RUN apt-get update && apt-get install -y \
     socat \
     hatop \
     apache2-utils \
+    squid \
+    squid-openssl \
+    squidclient \
+    squidguard \
+    ldap-utils \
+    duktape \
  && apt-get clean \
  && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
@@ -45,9 +59,10 @@ RUN apt-get update && apt-get install -y \
 RUN rm -f /etc/systemd/system/multi-user.target.wants/haproxy.service \
     /etc/systemd/system/multi-user.target.wants/keepalived.service \
     /etc/systemd/system/multi-user.target.wants/varnish.service \
-    /etc/systemd/system/multi-user.target.wants/varnishncsa.service
+    /etc/systemd/system/multi-user.target.wants/varnishncsa.service \
+    /etc/systemd/system/multi-user.target.wants/squid.service
 
-RUN rm -f /etc/rc*/S*haproxy* /etc/rc*/S*keepalived* /etc/rc*/S*varnish*
+RUN rm -f /etc/rc*/S*haproxy* /etc/rc*/S*keepalived* /etc/rc*/S*varnish* /etc/rc*/S*squid*
 
 WORKDIR /
 

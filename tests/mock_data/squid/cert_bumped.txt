@@ -1,0 +1,3 @@
+===SRE_CERT
+issuer=CN=CORP Proxy CA
+subject=CN=secure.news.tp

@@ -184,6 +184,29 @@ class TestPages:
         assert app.handle(request(target='/status/99')).status == 404
         assert app.handle(request(target='/status/abc')).status == 404
 
+    def test_cacheable_page(self, tmp_path):
+        """/cacheable/<x>: the whoami a forward proxy may keep ten minutes (the forward proxy lab)."""
+        app = make_app(tmp_path)
+        page = app.handle(request(target='/cacheable/logo?v=2'))
+        headers = dict(page.headers)
+        assert page.status == 200 and headers['Cache-Control'] == hb.CACHEABLE == 'public, max-age=600'
+        assert headers['Last-Modified'] == 'Thu, 01 Jan 1970 00:00:00 GMT'   # an hour before the clock of 1000 s, clamped
+        assert field(text(page), 'CACHEABLE') == 'yes' and field(text(page), 'PATH') == '/cacheable/logo?v=2'
+
+    def test_files_of_any_size(self, tmp_path):
+        """/files/<x>?size=N: N bytes, the request id in X-Request-Id (disk cache, delay pools)."""
+        app = make_app(tmp_path)
+        page = app.handle(request(target='/files/report.pdf?size=1048576'))
+        headers = dict(page.headers)
+        assert page.status == 200 and len(page.body) == 1048576
+        assert headers['Cache-Control'] == hb.CACHEABLE and headers['X-Request-Id'] == 'web1-000001'
+        assert page.body.startswith(b'web1-000001 /files/report.pdf ')
+        assert len(app.handle(request(target='/files/a?size=0')).body) == 0
+        assert len(app.handle(request(target='/files/a?size=999999999')).body) == hb.FILE_MAX_SIZE
+        assert len(app.handle(request(target='/files/a?size=abc')).body) == hb.FILE_DEFAULT_SIZE
+        assert len(app.handle(request(target='/files/a')).body) == hb.FILE_DEFAULT_SIZE
+        assert dict(app.handle(request(target='/files/b')).headers)['X-Request-Id'] == 'web1-000006'
+
     def test_methods(self, tmp_path):
         app = make_app(tmp_path)
         options = app.handle(request('OPTIONS', '/anything'))
