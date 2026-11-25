@@ -747,3 +747,385 @@ def eval_ssh_connection_with_key(
 
     log_output, _ = log
     return _accepted_then_session_opened(log_output, 'publickey', username)
+
+
+# ---------------------------------------------------------------------------
+# Keys, configurations, certificates and logins (the ssh2 lab: tunnels, jumps, certificates)
+# ---------------------------------------------------------------------------
+
+import base64 as _base64
+import hashlib as _hashlib
+from dataclasses import dataclass as _dataclass, field as _field
+from datetime import datetime as _datetime
+from typing import Dict, Optional
+
+# Never `@@@` in a grader command: it separates the commands of exetests.py.
+_MARK = "==SRE-SSH=="
+
+
+def generate_ed25519_keypair(comment: str = "") -> Tuple[str, str]:
+    """A new Ed25519 key pair made in Python (no ssh-keygen needed).
+
+    Returns ``(private, public)``: the private key in the OpenSSH format, unencrypted, ending
+    with a newline (write it with mode 0600), and the public key line ``ssh-ed25519 AAAA…
+    [comment]`` without newline.  Meant for ``Data.generate()``: the pair is stored in the data
+    of the project and written to the machines by the states.
+    """
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    key = Ed25519PrivateKey.generate()
+    private = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH,
+                                serialization.NoEncryption()).decode()
+    public = key.public_key().public_bytes(serialization.Encoding.OpenSSH,
+                                           serialization.PublicFormat.OpenSSH).decode()
+    return private, (f"{public} {comment}" if comment else public)
+
+
+def public_key_fingerprint(public_line: str) -> str:
+    """``SHA256:…`` of a public key line (``type base64 [comment]``), as ssh-keygen -l prints it;
+    '' when the line holds no key."""
+    parts = (public_line or "").split()
+    if len(parts) < 2:
+        return ""
+    try:
+        blob = _base64.b64decode(parts[1], validate=True)
+    except (ValueError, _base64.binascii.Error):
+        return ""
+    return "SHA256:" + _base64.b64encode(_hashlib.sha256(blob).digest()).decode().rstrip("=")
+
+
+def public_key_blob(public_line: str) -> str:
+    """The base64 field of a public key or certificate line ('' when there is none)."""
+    parts = (public_line or "").split()
+    return parts[1] if len(parts) >= 2 else ""
+
+
+@_dataclass
+class KeyFingerprint:
+    """A line of ``ssh-keygen -l -f``: ``256 SHA256:… comment (ED25519)``."""
+    bits: int
+    fingerprint: str
+    comment: str
+    key_type: str
+
+
+def parse_key_fingerprint(text: str) -> Optional[KeyFingerprint]:
+    """The first ``ssh-keygen -l`` line of *text*, or None."""
+    for line in (text or "").splitlines():
+        m = re.match(r"^\s*(\d+)\s+(SHA256:\S+|MD5:\S+)\s*(.*?)\s*\(([^()]+)\)\s*$", line)
+        if m:
+            return KeyFingerprint(int(m.group(1)), m.group(2), m.group(3), m.group(4))
+    return None
+
+
+def get_key_fingerprint(grade: Grade0, machine: str, path: str, step: int = 1) -> Optional[KeyFingerprint]:
+    """``ssh-keygen -l -f path`` on *machine* (a public key, a private key or a certificate)."""
+    output, _ = grade.test(machine_name=machine, command=f"ssh-keygen -l -f {shlex.quote(path)} 2>&1",
+                           step=step, allow_error=True)
+    return parse_key_fingerprint(output)
+
+
+def parse_ssh_config_dump(text: str) -> Dict[str, List[str]]:
+    """The ``keyword value`` lines of ``ssh -G`` or ``sshd -T``: {keyword (lower case): [values]}.
+
+    A keyword printed several times (``identityfile``, ``localforward``, ``hostcertificate``…)
+    keeps every value in order; a keyword without value gets ''.
+    """
+    values: Dict[str, List[str]] = {}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith(_MARK) or not re.match(r"^[A-Za-z][A-Za-z0-9]*(\s|$)", line):
+            continue
+        key, _, value = line.partition(" ")
+        values.setdefault(key.lower(), []).append(value.strip())
+    return values
+
+
+def config_value(values: Dict[str, List[str]], key: str, default: str = "") -> str:
+    """The first value of *key* in a parsed ``ssh -G`` / ``sshd -T`` dump."""
+    found = values.get(key.lower())
+    return found[0] if found else default
+
+
+def get_ssh_client_config(grade: Grade0, machine: str, user: str, host: str, step: int = 1) -> Dict[str, List[str]]:
+    """``ssh -G host`` run by *user* on *machine*: what the client configuration of that user
+    (``~/.ssh/config`` and ``/etc/ssh/ssh_config``) gives for *host*, without connecting.
+    {} when ssh refuses the configuration."""
+    command = f"su - {shlex.quote(user)} -c {shlex.quote('ssh -G ' + shlex.quote(host))} 2>/dev/null"
+    output, code = grade.test(machine_name=machine, command=command, step=step, allow_error=True)
+    return parse_ssh_config_dump(output) if code == 0 else {}
+
+
+@_dataclass
+class SshdConfig:
+    """What ``get_sshd_config()`` learned of the sshd of a machine.
+
+    ``values``: the effective configuration (``sshd -T``, for a connection when one was given);
+    ``valid``: ``sshd -T`` accepted the configuration; ``running``: the process of
+    ``/run/sshd.pid`` is alive; ``stale``: the configuration files written after sshd started
+    (``sshd_config`` and ``*.conf`` under ``/etc/ssh``, newer than the pid file): a change not
+    applied yet.
+    """
+    values: Dict[str, List[str]] = _field(default_factory=dict)
+    valid: bool = False
+    running: bool = False
+    stale: List[str] = _field(default_factory=list)
+
+    def get(self, key: str, default: str = "") -> str:
+        return config_value(self.values, key, default)
+
+    @property
+    def applied(self) -> bool:
+        """The configuration is valid, sshd runs and nothing was written after it started."""
+        return self.valid and self.running and not self.stale
+
+
+def sshd_config_cmd(connection: Optional[Dict[str, str]] = None) -> str:
+    """The shell command of ``get_sshd_config()``."""
+    spec = ""
+    if connection:
+        spec = " -C " + shlex.quote(",".join(f"{k}={v}" for k, v in connection.items()))
+    return (f"sshd -T{spec} 2>&1; echo \"{_MARK} rc=$?\"; "
+            f"if [ -f /run/sshd.pid ] && kill -0 \"$(cat /run/sshd.pid)\" 2>/dev/null; "
+            f"then echo '{_MARK} running'; fi; "
+            f"find /etc/ssh -newer /run/sshd.pid \\( -name '*.conf' -o -name sshd_config \\) 2>/dev/null "
+            f"| sed 's/^/{_MARK} stale /'")
+
+
+def parse_sshd_config(output: str) -> SshdConfig:
+    config = SshdConfig(values=parse_ssh_config_dump(output))
+    for line in (output or "").splitlines():
+        if line.startswith(f"{_MARK} rc="):
+            config.valid = line.strip() == f"{_MARK} rc=0"
+        elif line.strip() == f"{_MARK} running":
+            config.running = True
+        elif line.startswith(f"{_MARK} stale "):
+            config.stale.append(line[len(f"{_MARK} stale "):].strip())
+    if not config.valid:
+        config.values = {}
+    return config
+
+
+def get_sshd_config(grade: Grade0, machine: str, connection: Optional[Dict[str, str]] = None,
+                    step: int = 1) -> SshdConfig:
+    """The sshd of *machine*: effective configuration (``sshd -T``, with ``-C`` when
+    *connection* is given, e.g. ``{'user': 'upload', 'host': 'laptop', 'addr': '10.0.0.5'}``,
+    so that the ``Match`` blocks are evaluated for that connection), whether sshd runs and the
+    configuration files written since it started (one command)."""
+    output, _ = grade.test(machine_name=machine, command=sshd_config_cmd(connection), step=step,
+                           allow_error=True)
+    return parse_sshd_config(output)
+
+
+@_dataclass
+class SshCertificate:
+    """``ssh-keygen -L -f <certificate>``.
+
+    ``kind``: 'user' or 'host'; ``public_key`` / ``ca``: the ``SHA256:…`` fingerprints of the
+    certified key and of the signing CA; ``valid_from`` / ``valid_to``: None when unbounded (the
+    times are those of the machine, compared with its clock ``now``).
+    """
+    kind: str = ""
+    cert_type: str = ""
+    public_key: str = ""
+    ca: str = ""
+    ca_type: str = ""
+    key_id: str = ""
+    serial: int = -1
+    valid_from: Optional[_datetime] = None
+    valid_to: Optional[_datetime] = None
+    principals: List[str] = _field(default_factory=list)
+    critical_options: List[str] = _field(default_factory=list)
+    extensions: List[str] = _field(default_factory=list)
+    now: Optional[_datetime] = None
+
+    @property
+    def forever(self) -> bool:
+        return self.valid_from is None and self.valid_to is None
+
+    def valid_at(self, when: Optional[_datetime] = None) -> bool:
+        when = when or self.now
+        if when is None:
+            return False
+        return ((self.valid_from is None or self.valid_from <= when)
+                and (self.valid_to is None or when < self.valid_to))
+
+    @property
+    def lifetime_seconds(self) -> Optional[float]:
+        """Seconds between the bounds; None when one of them is open."""
+        if self.valid_from is None or self.valid_to is None:
+            return None
+        return (self.valid_to - self.valid_from).total_seconds()
+
+
+def _cert_time(text: str) -> Optional[_datetime]:
+    try:
+        return _datetime.fromisoformat(text.strip())
+    except ValueError:
+        return None
+
+
+def parse_ssh_certificate(text: str) -> Optional[SshCertificate]:
+    """The certificate printed by ``ssh-keygen -L`` in *text* (None when there is none). A line
+    ``==SRE-SSH== now <ISO time>`` sets ``now`` (``get_ssh_certificate()`` adds it)."""
+    cert = SshCertificate()
+    seen = False
+    section = None
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if line.startswith(f"{_MARK} now "):
+            cert.now = _cert_time(line[len(f"{_MARK} now "):])
+            continue
+        m = re.match(r"^(Type|Public key|Signing CA|Key ID|Serial|Valid|Principals|Critical Options|Extensions):\s*(.*)$",
+                     line)
+        if m:
+            name, value = m.group(1), m.group(2).strip()
+            section = None
+            if name == "Type":
+                seen = True
+                parts = value.split()
+                cert.cert_type = parts[0] if parts else ""
+                cert.kind = "user" if " user certificate" in f" {value}" else (
+                    "host" if " host certificate" in f" {value}" else "")
+            elif name == "Public key":
+                parts = value.split()
+                cert.public_key = parts[1] if len(parts) >= 2 else ""
+            elif name == "Signing CA":
+                parts = value.split()
+                cert.ca_type = parts[0] if parts else ""
+                cert.ca = parts[1] if len(parts) >= 2 else ""
+            elif name == "Key ID":
+                cert.key_id = value[1:-1] if len(value) >= 2 and value[0] == value[-1] == '"' else value
+            elif name == "Serial":
+                try:
+                    cert.serial = int(value)
+                except ValueError:
+                    cert.serial = -1
+            elif name == "Valid":
+                mv = re.match(r"^from (\S+) to (\S+)$", value)
+                if mv:
+                    cert.valid_from, cert.valid_to = _cert_time(mv.group(1)), _cert_time(mv.group(2))
+                elif value.startswith("after "):
+                    cert.valid_from = _cert_time(value[len("after "):])
+                elif value.startswith("before "):
+                    cert.valid_to = _cert_time(value[len("before "):])
+            else:
+                section = {"Principals": cert.principals, "Critical Options": cert.critical_options,
+                           "Extensions": cert.extensions}[name]
+                if value and value != "(none)":
+                    section.append(value)
+            continue
+        if section is not None and line and line != "(none)":
+            section.append(line)
+    return cert if seen else None
+
+
+def get_ssh_certificate(grade: Grade0, machine: str, path: str, step: int = 1) -> Optional[SshCertificate]:
+    """``ssh-keygen -L -f path`` on *machine*, with the clock of the machine (``now``)."""
+    command = (f"ssh-keygen -L -f {shlex.quote(path)} 2>&1; "
+               f"echo \"{_MARK} now $(date +%Y-%m-%dT%H:%M:%S)\"")
+    output, _ = grade.test(machine_name=machine, command=command, step=step, allow_error=True)
+    return parse_ssh_certificate(output)
+
+
+@_dataclass
+class AcceptedLogin:
+    """An ``Accepted <method> for <user> from <source> port <port> ssh2[: <key>]`` line of sshd.
+
+    ``key``: what follows ``ssh2:`` (``ED25519 SHA256:…`` for a key,
+    ``ED25519-CERT SHA256:… ID <id> (serial <n>) CA ED25519 SHA256:…`` for a certificate);
+    ``session``: the next line opens the PAM session of the user.
+    """
+    user: str
+    method: str
+    source: str
+    port: int
+    key: str = ""
+    session: bool = False
+
+    @property
+    def certificate(self) -> bool:
+        return "-CERT " in f"{self.key} "
+
+    @property
+    def key_fingerprint(self) -> str:
+        parts = self.key.split()
+        return parts[1] if len(parts) >= 2 else ""
+
+    @property
+    def ca_fingerprint(self) -> str:
+        m = re.search(r"\bCA \S+ (SHA256:\S+)", self.key)
+        return m.group(1) if m else ""
+
+    @property
+    def cert_id(self) -> str:
+        m = re.search(r"\bID (.*) \(serial -?\d+\) CA ", self.key)
+        return m.group(1) if m else ""
+
+
+_ACCEPTED_RE = re.compile(r"\bsshd(?:-session)?\[\d+\]: Accepted (\S+) for (\S+) from (\S+) port (\d+) ssh2(?:: (.*))?$")
+
+
+def parse_accepted_logins(log_output: str) -> List[AcceptedLogin]:
+    """Every accepted login of an auth.log, in order."""
+    lines = (log_output or "").splitlines()
+    logins = []
+    for i, line in enumerate(lines):
+        m = _ACCEPTED_RE.search(line)
+        if not m:
+            continue
+        method, user, source, port, key = m.groups()
+        session = (i + 1 < len(lines) and _SSHD_TAG_RE.search(lines[i + 1]) is not None
+                   and f"pam_unix(sshd:session): session opened for user {user}" in lines[i + 1])
+        logins.append(AcceptedLogin(user, method, source, int(port), (key or "").strip(), session))
+    return logins
+
+
+@_dataclass
+class Listener:
+    """A listening TCP socket of ``ss -Hltne``: local address, port, owner (uid) and, when ss can
+    read them, the names of the processes (``-p``: only for the processes of root, without
+    ``CAP_SYS_PTRACE`` in a container)."""
+    address: str
+    port: int
+    uid: Optional[int] = None
+    processes: List[str] = _field(default_factory=list)
+
+
+def parse_ss_listeners(output: str) -> List[Listener]:
+    """The ``LISTEN`` sockets of ``ss -Hltne`` / ``ss -Hltnp`` output (with or without header)."""
+    listeners = []
+    for line in (output or "").splitlines():
+        fields = line.split()
+        if len(fields) < 5 or fields[0] != "LISTEN":
+            continue
+        m = re.match(r"^(\[[^\]]*\]|[^\s\[\]]*?)(?:%\S+)?:(\d+)$", fields[3])
+        if not m:
+            continue
+        address = m.group(1).strip("[]")
+        uid = re.search(r"\buid:(\d+)\b", line)
+        listeners.append(Listener(address, int(m.group(2)), int(uid.group(1)) if uid else None,
+                                  re.findall(r'\("([^"]+)",pid=', line)))
+    return listeners
+
+
+def ssh_listener_cmd() -> str:
+    """The command whose output ``parse_ss_listeners()`` reads (``-e``: the uid of each socket;
+    the cgroup warning of ss in a container dropped)."""
+    return "ss -Hltne 2>/dev/null"
+
+
+def parse_keyscan_certificates(output: str) -> List[str]:
+    """The base64 blobs of the host certificates printed by ``ssh-keyscan -c`` (the lines whose
+    type ends with ``-cert-v01@openssh.com``, with or without the host name in front)."""
+    blobs = []
+    for line in (output or "").splitlines():
+        if line.startswith("#"):
+            continue
+        parts = line.split()
+        for i, part in enumerate(parts[:-1]):
+            if part.endswith("-cert-v01@openssh.com"):
+                blobs.append(parts[i + 1])
+                break
+    return blobs

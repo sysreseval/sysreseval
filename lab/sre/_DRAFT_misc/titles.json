@@ -47,6 +47,7 @@
     "sdn.py": 23,
     "sdwan.py": 53,
     "snmp.py": 84,
+    "ssh2.py": 11,
     "suricata-fail2ban.py": 64,
     "tc.py": 14,
     "tcp.py": 5,
@@ -180,6 +181,10 @@
   "@subtitle vpn": {
     "en": "Tunnels and VPN",
     "fr": "Tunnels et VPN"
+  },
+  "ssh2.py": {
+    "en": "SSH 2: tunnels, jump hosts and certificates",
+    "fr": "SSH 2 : tunnels, rebonds et certificats"
   },
   "openvpn.py": "OpenVPN : tunnels, PKI, accès distant, site à site",
   "wireguard.py": "WireGuard : tunnels, pairs, site à site, tunnel complet",

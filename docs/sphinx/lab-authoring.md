@@ -2240,6 +2240,29 @@ from ssh import (check_ssh_key, eval_ssh_public_key_in_authorized_keys,
 | `eval_ssh_connection_with_ssh_agent(grade, machine_name, username, key_on_host, password=None, step=1)` | `bool` | Read `/var/log/.ssh_monitor.log` (written by `add_ssh_monitor_agent`); return `True` if `username` logged in using an agent carrying `key_on_host`. |
 | `eval_synchronized_file(grade, machine_list, filename, step=1)` | `tuple[bool, str]` | Return `(True, content)` if `filename` has identical content and mtime on every machine in `machine_list`; `(False, '')` otherwise. |
 
+Keys, configurations, certificates and logins (written for `lab/sre/_DRAFT_misc/ssh2.py`; one command per
+reader, the parsing done in Python, so that the commands are the same on every pass of `grade()`):
+
+```python
+from ssh import (generate_ed25519_keypair, public_key_fingerprint, public_key_blob,
+                 get_key_fingerprint, parse_key_fingerprint,
+                 get_ssh_client_config, get_sshd_config, config_value, parse_ssh_config_dump,
+                 get_ssh_certificate, parse_ssh_certificate, parse_keyscan_certificates,
+                 parse_accepted_logins, parse_ss_listeners, ssh_listener_cmd)
+```
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `generate_ed25519_keypair(comment='')` | `(private, public)` | A new Ed25519 pair made in Python (`cryptography`): the OpenSSH private key, unencrypted, and the public line `ssh-ed25519 AAAA… [comment]`. For `Data.generate()`: the states write the pair to the machines. |
+| `public_key_fingerprint(line)` / `public_key_blob(line)` | `str` | `SHA256:…` as `ssh-keygen -l` prints it / the base64 field of a key or certificate line (`''` when there is none). |
+| `get_key_fingerprint(grade, machine, path, step=1)` | `KeyFingerprint \| None` | `ssh-keygen -l -f path`: `bits`, `fingerprint`, `comment`, `key_type` (`ED25519`, `RSA`…). |
+| `get_ssh_client_config(grade, machine, user, host, step=1)` | `dict[str, list[str]]` | `ssh -G host` run by `user` (`su -`): the effective client configuration, without connecting (`{}` when ssh refuses the configuration). `config_value(values, key, default)` gives the first value. |
+| `get_sshd_config(grade, machine, connection=None, step=1)` | `SshdConfig` | `sshd -T` (`-C user=…,host=…,addr=…` with *connection*, so that the `Match` blocks are evaluated): `values`, `get(key)`, `valid`, `running` (the process of `/run/sshd.pid`), `stale` (the configuration files newer than the pid file: written after sshd started or was reloaded), `applied` (valid, running, nothing stale). |
+| `get_ssh_certificate(grade, machine, path, step=1)` | `SshCertificate \| None` | `ssh-keygen -L -f path` with the clock of the machine: `kind` (`user` / `host`), `public_key` and `ca` fingerprints, `key_id`, `serial`, `valid_from` / `valid_to` (None when open), `principals`, `critical_options`, `extensions`, `valid_at()`, `lifetime_seconds`. |
+| `parse_keyscan_certificates(output)` | `list[str]` | The blobs of the host certificates printed by `ssh-keyscan -c` (compare with `public_key_blob()` of the certificate file). |
+| `parse_accepted_logins(auth_log)` | `list[AcceptedLogin]` | Every `Accepted <method> for <user> from <ip> port <n> ssh2[: <key>]` line: `user`, `method`, `source`, `port`, `key`, `session` (the next line opens the PAM session), `certificate`, `key_fingerprint`, `ca_fingerprint`, `cert_id`. |
+| `parse_ss_listeners(output)` with `ssh_listener_cmd()` | `list[Listener]` | The listening TCP sockets of `ss -Hltne`: `address`, `port`, `uid` (the owner; `ss -p` cannot name the processes of another user in a container without `CAP_SYS_PTRACE`), `processes` when known. |
+
 ### Packet capture helpers (from `/opt/sre/lib/pcap_gen.py`)
 
 Used in `@sre_state` methods (state setup):
