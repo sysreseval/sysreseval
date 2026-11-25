@@ -13,3 +13,12 @@ download.docker.com (the room workstations when their Internet access is off):
                                         https://download.docker.com/linux/debian/dists/trixie/pool/stable/amd64/
 
 The directory is otherwise empty; the files are not committed (.gitignore).
+
+The images of the Kubernetes lab that the Docker labs do not use (KUBE_HUB_IMAGES of
+images/Makefile: traefik/whoami) are saved by the same target into kube/.
+
+Optionally, for a build host that cannot reach GitHub, the k3s release files in k3s/ (named as in
+the release, checked against the sha256 of the Dockerfile; K3S_VERSION there):
+
+  k3s  k3s-airgap-images-amd64.tar.zst            (arm64: k3s-arm64  k3s-airgap-images-arm64.tar.zst)
+                                        https://github.com/k3s-io/k3s/releases/tag/<K3S_VERSION>

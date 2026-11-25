@@ -323,7 +323,7 @@ default_docker_image_version = "1.36"
 # Version of the images that have their own, e.g. {"identity13": "1.35"}; the others take
 # default_docker_image_version.  Both lines are written by `make images` from images/Makefile
 # (VERSION and its VERSION_<image> lines): keep this one on a single line.
-docker_image_versions = {"proxy13": "1.37"}
+docker_image_versions = {"proxy13": "1.37", "devops13": "1.37"}
 # The last version of the images renamed since: base → base12 and init → init12 (2026-11-18), frr →
 # routing-frr, and the images built on base13 / init13 took a 13 suffix (monitoring → monitoring13...,
 # 2026-11-25), some of them merged the same day (routing-frr, sdn, ntp → netdev13; ldap-mail, aaa →

@@ -15,6 +15,8 @@ NAMESPACE ?= sysreseval
 # VERSION_identity13 := 1.35
 # proxy13 1.37: Squid, squidclient, squidGuard, ldap-utils and duktape for the forward proxy lab, after 1.36 was published
 VERSION_proxy13 := 1.37
+# devops13 1.37: k3s (the binary, its air-gap images, traefik/whoami) for the Kubernetes lab, after 1.36 was published
+VERSION_devops13 := 1.37
 
 IMAGES := base13 init13 netdev13 identity13 proxy13 monitoring13 voip13 scan13 nsm13 devops13 base12 init12
 
@@ -91,10 +93,14 @@ devops13: init13 docker-hub-images
 # (nginx:alpine, python:alpine, redis:alpine, alpine, busybox, registry, hello-world).
 DOCKER_HUB_IMAGES ?= hello-world:latest alpine:3.24 busybox:1.38 nginx:1.30-alpine python:3.14-alpine \
 	redis:8.6-alpine registry:3
+# The images of the Kubernetes lab that the Docker labs do not use, saved the same way into
+# devops13/cache/kube/ (k3s imports them; sre-docker-load does not see them).
+KUBE_HUB_IMAGES ?= traefik/whoami:v1.11.0 traefik/whoami:v1.12.0
 docker-hub-images:
-	@arch=$$(docker version --format '{{.Server.Arch}}'); \
-	for image in $(DOCKER_HUB_IMAGES); do \
-		file=devops13/cache/$$(echo "$$image" | tr ':/' '_-').tar; \
+	@arch=$$(docker version --format '{{.Server.Arch}}'); mkdir -p devops13/cache/kube; \
+	for image in $(DOCKER_HUB_IMAGES) $(addprefix kube/,$(KUBE_HUB_IMAGES)); do \
+		dir=devops13/cache; case "$$image" in kube/*) dir=devops13/cache/kube; image=$${image#kube/};; esac; \
+		file=$$dir/$$(echo "$$image" | tr ':/' '_-').tar; \
 		if [ -s "$$file" ]; then echo "$$file: kept"; continue; fi; \
 		docker pull -q --platform linux/$$arch "$$image" \
 		&& docker save --platform linux/$$arch -o "$$file.part" "$$image" \

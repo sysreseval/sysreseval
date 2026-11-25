@@ -1969,6 +1969,48 @@ reach, and every lookup of a missing service waits for a timeout. A Docker host 
 container (`image_weights`), 400 to 500 MiB with the containers of a lab. Examples: `lab/sre/_DRAFT_misc/docker.py`,
 `lab/sre/_DRAFT_misc/docker-compose.py`.
 
+### Kubernetes helpers (from `/opt/sre/lib/kube_helpers.py`)
+
+A machine of the image `sysreseval/devops13` (1.37 and later) is also a **k3s** node (v1.37.2+k3s1: API server,
+scheduler, controllers and SQLite datastore in `k3s server`, a kubelet in both, containerd, flannel, CoreDNS,
+Traefik, ServiceLB, local-path, metrics-server, the NetworkPolicy controller): give it `"privileged": True` and
+`"entrypoint": "/sbin/init"`. Its units `k3s` and `k3s-agent` are not enabled; the helpers write the
+configuration and start them.
+
+```python
+from kube_helpers import (start_server, start_agent, prepare_agent, agent_config, wait_node_ready_cmd, apply_cmd,
+                          rollout_cmd, snapshot_cmd, parse_snapshot, exec_cmd, wget_matrix_cmd, parse_wget_matrix,
+                          can_i_cmd, parse_can_i, whoami_hostnames, dig_cmd, parse_addresses,
+                          AIRGAP_IMAGES, NODE_IMAGES, APP_IMAGES)
+```
+
+| Function | Returns / does |
+|----------|----------------|
+| `start_server(ns, m, node_ip, token, images, names=(), step)` | `/etc/rancher/k3s/config.yaml` (node-ip, flannel on eth0, token, readable kubeconfig, certificate names), the settings drop-in, the images linked, `systemctl enable --now k3s`, then waits for the node and for CoreDNS / metrics-server / local-path / Traefik |
+| `start_agent(ns, m, server_ip, token, node_ip, images, step)` / `prepare_agent(ns, m, images, step)` | an agent configured and started / only its drop-in and images (a node the students join themselves) |
+| `node_settings()` | the drop-in `config.yaml.d/10-sre.yaml` of every node: no kubelet eviction nor image garbage collection on the host's disk (the images come back from nowhere offline), `conntrack-max-per-core=0` (the host's `nf_conntrack_max` is left alone) |
+| `wait_node_ready_cmd(name)`, `wait_daemonsets_cmd()`, `apply_cmd(path)`, `rollout_cmd(ns, target)` | state commands on the server (`kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml`, whatever `~/.kube/config` says); wait for the DaemonSets of `kube-system` after a node joins or a LoadBalancer Service appears: the ServiceLB pod of a new node takes ~10 s, its ports are closed meanwhile |
+| `snapshot_cmd(namespaces)` / `parse_snapshot(out)` | one `kubectl get` of the objects of the lab's namespaces plus the nodes, namespaces and PVs, reduced by `jq` (no `managedFields`, no `last-applied-configuration`, no service-account volume, nodes without their image list) → `KubeSnapshot`: `items(kind, ns)`, `get(kind, name, ns)`, `node`, `pods(ns, selector)`, `pods_of(workload or Service)`, `replicasets_of(deployment)`, `secret_value(ns, name, key)`; accessors `node_ready`, `taints`, `pod_ready`, `restarts`, `qos_class`, `pod_spec` (Pod, workload or CronJob), `container`, `image_of`, `same_image`, `env_from_source`, `mount_at`, `revision`, `deployment_ready(dep, replicas)`, `endpoints(snap, ns, service)`, `service_port`, `target_port_matches`, `lb_addresses`, `selector_matches`, `quantity` |
+| `exec_cmd(ns, target, cmd)` | a command in a pod (`target` = a pod or `deploy/<name>`), bounded |
+| `wget_matrix_cmd({key: (ns, source, url)})` / `parse_wget_matrix(out)` | busybox `wget` from several pods in parallel → `reached` / `blocked` (refused, timeout, unknown name) / `error` (no such pod) per key: the probes of NetworkPolicies |
+| `can_i_cmd(user, ns, [(verb, resource)])` / `parse_can_i(out)` | `kubectl auth can-i --as=<user>` per pair |
+| `whoami_hostnames(body)`, `dig_cmd(name)` / `parse_addresses(out)` | the pods that answered a `traefik/whoami` Service; a name asked to CoreDNS from a node |
+
+The images: `AIRGAP_IMAGES` (the whole air-gap archive of the release, for the server), `NODE_IMAGES` (pause,
+klipper-lb and the busybox of local-path's helper pods: what a worker needs when the system pods stay on the
+server), `APP_IMAGES` (`traefik/whoami:v1.11.0` / `v1.12.0`, `busybox:1.38`, `redis:8.6-alpine`,
+`nginx:1.30-alpine`); k3s imports what is linked into `/var/lib/rancher/k3s/agent/images/` at its start, so link
+before the first start. A pod naming another image (or a `latest` tag) stays in `ImagePullBackOff`: give the nodes
+a `/etc/resolv.conf` whose server refuses (the lab's router), and an unknown tag fails at once. The containerd
+store of k3s is a `VOLUME` (~1 GB on the server once the air-gap archive is imported, 150-300 MB on a worker);
+k3s's runtime is unpacked in the image. Verified on s14 (Debian 13, kernel 6.12, 2026-11-25): systemd cgroup driver,
+flannel VXLAN between Kathara machines, ClusterIP with a backend on the same node even without `br_netfilter`
+(k3s's own `modprobe` fails; but `br_netfilter` and `xt_physdev` were found loaded on the host after the lab's
+runs, which makes the bridged traffic of every namespace pass through iptables until the host reboots), NodePort / ServiceLB / Traefik from a machine behind a router,
+NetworkPolicies enforced, local-path volumes, metrics-server and the HPA; k3s's embedded registry mirror (Spegel)
+did not reliably advertise tarball-imported images, hence the per-node imports. A server with the system pods
+weighs about 1 GiB, a worker 380 MiB with the pods of a lab. Example: `lab/sre/_DRAFT_misc/kubernetes.py`.
+
 ### NTP and chrony helpers (from `/opt/sre/lib/ntp.py` and `/opt/sre/lib/ntp_probe.py`)
 
 ```python

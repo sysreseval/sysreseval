@@ -60,7 +60,25 @@ ARG NAMESPACE=sysreseval
 # keys are installed), python3-passlib (the password_hash filter: Python 3.13 has no crypt module),
 # python3-jmespath (json_query), ansible-lint and yamllint.
 #
-# (sre/devops13 merges the former docker13, vagrant13 and ansible13 images, 2026-11-25)
+# Kubernetes (the lab lab/sre/_DRAFT_misc/kubernetes.py): k3s (K3S_VERSION below), the single
+# binary of the GitHub release checked against its sha256, as /usr/local/bin/k3s with the kubectl
+# and crictl links (not ctr: /usr/bin/ctr is the one of Docker's containerd).  Its runtime (the
+# containerd, runc, CNI plugins and iptables it unpacks into /var/lib/rancher/k3s/data/ at its first
+# run, ~270 MB) is unpacked at build time: every node and every kubectl would do it otherwise.  The
+# units k3s.service (server) and k3s-agent.service (agent) of the install script, not enabled, with
+# the same container=docker drop-in as Docker (the CRI of k3s's containerd then neither loads nor
+# applies an AppArmor profile).  The images of the cluster, in /usr/local/share/sre-k3s-images/
+# (the lab links the ones a node needs into /var/lib/rancher/k3s/agent/images/, which k3s imports
+# at start): the air-gap archive of the release (CoreDNS, Traefik, metrics-server, local-path,
+# klipper-lb / -helm, pause), k3s-node-images.tar (pause, klipper-lb and the busybox of the
+# local-path helper pods only, for the workers: made by k3s-node-images.py) and the Docker Hub
+# images of KUBE_HUB_IMAGES of images/Makefile (cache/kube/: traefik/whoami); the lab also takes
+# busybox and redis from the Docker tarballs.
+# The containerd store of k3s is a VOLUME (overlayfs, as for Docker).  Without access to GitHub,
+# the k3s binary and the air-gap archive of the release in cache/k3s/ (see cache/README).
+#
+# (sre/devops13 merges the former docker13, vagrant13 and ansible13 images, 2026-11-25; k3s added
+# for 1.37)
 #
 
 # --- the tools --------------------------------------------------------------------------------
@@ -172,6 +190,38 @@ COPY --from=box / /rootfs/
 RUN apt-get update && apt-get install -y --no-install-recommends zstd \
     && tar -C /rootfs --numeric-owner -cf - . | zstd -19 -T0 -q -o /debian13-rootfs.tar.zst
 
+# --- k3s: the binary and the images of the cluster ----------------------------------------------
+FROM tools AS k3s
+ARG K3S_VERSION=v1.37.2+k3s1
+# the sha256 of sha256sum-<arch>.txt of the release
+ARG K3S_SHA256_AMD64=265b3ee6a3198ef14033c63ef46cbb32370d83795199fb6d1b01f21575eddbda
+ARG K3S_AIRGAP_SHA256_AMD64=35a5af1e69b57b8b627a4f6b1c29ea104209b661067b8c97fd40dc3f860bfcd2
+ARG K3S_SHA256_ARM64=a779ccf1e5e2e33a62f5a29c2f1c0bbf99431e100579d4c10f0aa0742a6aa84b
+ARG K3S_AIRGAP_SHA256_ARM64=ca384f1a77aa83024bd82ad26fa4774971adb038e656a3b5b9af926be445a442
+COPY k3s-node-images.py /tmp/k3s-node-images.py
+RUN --mount=type=bind,source=cache,target=/cache \
+    set -e; arch=$(dpkg --print-architecture); \
+    case "$arch" in \
+        amd64) bin=k3s; sum=$K3S_SHA256_AMD64; airgap_sum=$K3S_AIRGAP_SHA256_AMD64 ;; \
+        arm64) bin=k3s-arm64; sum=$K3S_SHA256_ARM64; airgap_sum=$K3S_AIRGAP_SHA256_ARM64 ;; \
+        *) echo "no k3s for $arch" >&2; exit 1 ;; \
+    esac; \
+    airgap=k3s-airgap-images-$arch.tar.zst; \
+    url="https://github.com/k3s-io/k3s/releases/download/$(echo "$K3S_VERSION" | sed 's/+/%2B/')"; \
+    mkdir -p /k3s/images; \
+    for f in $bin $airgap; do \
+        if [ -s "/cache/k3s/$f" ]; then cp "/cache/k3s/$f" "/k3s/$f"; else curl -fsSL -o "/k3s/$f" "$url/$f"; fi; \
+    done; \
+    echo "$sum  /k3s/$bin" | sha256sum -c -; \
+    echo "$airgap_sum  /k3s/$airgap" | sha256sum -c -; \
+    if [ "$bin" != k3s ]; then mv "/k3s/$bin" /k3s/k3s; fi; chmod 0755 /k3s/k3s; \
+    mv "/k3s/$airgap" /k3s/images/k3s-airgap-images.tar.zst; \
+    zstd -q -dc /k3s/images/k3s-airgap-images.tar.zst > /tmp/airgap.tar; \
+    python3 /tmp/k3s-node-images.py /tmp/airgap.tar /k3s/images/k3s-node-images.tar \
+        rancher/mirrored-pause rancher/klipper-lb rancher/mirrored-library-busybox; \
+    chmod 0644 /k3s/images/*; \
+    rm -f /tmp/airgap.tar /tmp/k3s-node-images.py
+
 # --- the image ----------------------------------------------------------------------------------
 FROM tools
 
@@ -196,4 +246,23 @@ RUN docker --version && dockerd --version && containerd --version && docker comp
     && ansible-doc -t module ansible.posix.authorized_key >/dev/null \
     && zstd -t -q /usr/share/sre-vagrant/debian13-rootfs.tar.zst
 
-VOLUME /var/lib/docker /var/lib/containerd
+# k3s: the binary, its units (not enabled) and the images of the cluster; its runtime unpacked
+# once here (the first `k3s kubectl` unpacks it into /var/lib/rancher/k3s/data/<hash>/).
+COPY --from=k3s /k3s/k3s /usr/local/bin/k3s
+COPY --from=k3s /k3s/images/ /usr/local/share/sre-k3s-images/
+COPY --chmod=0644 cache/kube/*.tar /usr/local/share/sre-k3s-images/
+COPY --chmod=0644 k3s.service k3s-agent.service /etc/systemd/system/
+COPY check-tarballs.py /tmp/check-tarballs.py
+RUN ln -s k3s /usr/local/bin/kubectl && ln -s k3s /usr/local/bin/crictl \
+    && for unit in k3s k3s-agent; do \
+           mkdir -p /etc/systemd/system/$unit.service.d \
+           && printf '[Service]\nEnvironment=container=docker\n' > /etc/systemd/system/$unit.service.d/sre-docker-in-docker.conf; \
+       done \
+    && k3s --version && kubectl version --client >/dev/null \
+    && ls -d /var/lib/rancher/k3s/data/*/bin/containerd \
+    && rm -f /var/lib/rancher/k3s/data/.lock \
+    && ! ls /etc/systemd/system/multi-user.target.wants/ | grep -q k3s \
+    && python3 /tmp/check-tarballs.py /usr/local/share/sre-k3s-images "$(dpkg --print-architecture)" \
+    && rm -f /tmp/check-tarballs.py
+
+VOLUME /var/lib/docker /var/lib/containerd /var/lib/rancher/k3s/agent/containerd

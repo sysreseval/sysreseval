@@ -17,6 +17,7 @@
     "ipv6.py": 22,
     "isis-ipv6-sr-bfd.py": 101,
     "isis.py": 138,
+    "kubernetes.py": 457,
     "lacp-lldp.py": 18,
     "lan-attacks.py": 7,
     "ldap.py": 25,
@@ -297,5 +298,9 @@
   "docker-compose.py": {
     "en": "Docker Compose: multi-container applications",
     "fr": "Docker Compose : applications multi-conteneurs"
+  },
+  "kubernetes.py": {
+    "en": "Kubernetes: deployments, services and the network of a cluster",
+    "fr": "Kubernetes : déploiements, services et réseau d'un cluster"
   }
 }

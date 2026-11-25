@@ -1,0 +1,25 @@
+# k3s server: the server of the Kubernetes lab (control plane + kubelet).  The unit of the k3s install script (get.k3s.io), with the
+# options in /etc/rancher/k3s/config.yaml (written by the lab), not enabled in the image.
+[Unit]
+Description=Lightweight Kubernetes (server)
+Documentation=https://k3s.io
+Wants=network-online.target
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=notify
+EnvironmentFile=-/etc/default/%N
+KillMode=process
+Delegate=yes
+User=root
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+Restart=always
+RestartSec=5s
+ExecStart=/usr/local/bin/k3s server
