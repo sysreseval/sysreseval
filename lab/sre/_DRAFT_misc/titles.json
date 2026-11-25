@@ -42,6 +42,7 @@
     "prometheus.py": 58,
     "quic.py": 52,
     "reverse-proxy.py": 45,
+    "redistribution.py": 164,
     "rip.py": 30,
     "rsyslog.py": 43,
     "scan-hardening.py": 61,
@@ -125,6 +126,10 @@
     "fr": "BGP : communautés, multichemin, confédérations et amortissement"
   },
   "anycast.py": {
+  "redistribution.py": {
+    "en": "Route redistribution: exchanging routes between RIP, OSPF, BGP and static routes",
+    "fr": "Redistribution : échanger des routes entre RIP, OSPF, BGP et routes statiques"
+  },
     "en": "Anycast: one service announced from several sites (OSPF and BGP)",
     "fr": "Anycast : un service annoncé depuis plusieurs sites (OSPF et BGP)"
   },

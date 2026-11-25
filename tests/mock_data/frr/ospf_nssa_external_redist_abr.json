@@ -1,0 +1,44 @@
+{
+  "routerId":"10.213.255.21",
+  "nssaExternalLinkStates":{
+    "areas":{
+      "0.0.0.0":[],
+      "0.0.0.1":[
+        {
+          "lsaAge":305,
+          "options":"*|-|-|-|N/P|-|E|-",
+          "lsaFlags":6,
+          "lsaType":"NSSA-LSA",
+          "linkStateId":"10.213.113.0",
+          "advertisingRouter":"10.213.255.22",
+          "lsaSeqNumber":"80000002",
+          "checksum":"9d78",
+          "length":36,
+          "networkMask":24,
+          "metricType":"E2 (Larger than any link state path)",
+          "tos":0,
+          "metric":20,
+          "nssaForwardAddress":"10.213.112.6",
+          "externalRouteTag":0
+        },
+        {
+          "lsaAge":305,
+          "options":"*|-|-|-|N/P|-|E|-",
+          "lsaFlags":6,
+          "lsaType":"NSSA-LSA",
+          "linkStateId":"10.213.114.0",
+          "advertisingRouter":"10.213.255.22",
+          "lsaSeqNumber":"80000002",
+          "checksum":"9282",
+          "length":36,
+          "networkMask":24,
+          "metricType":"E2 (Larger than any link state path)",
+          "tos":0,
+          "metric":20,
+          "nssaForwardAddress":"10.213.112.6",
+          "externalRouteTag":0
+        }
+      ]
+    }
+  }
+}

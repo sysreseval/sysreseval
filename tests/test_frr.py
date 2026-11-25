@@ -2824,7 +2824,7 @@ def test_kernel_route_type():
 # two instances announcing the service address as type 2 externals, metrics 40 and 380)
 # ---------------------------------------------------------------------------
 
-from frr import get_ospf_external_lsas, parse_ospf_external_lsas  # noqa: E402
+from frr import get_ospf_external_lsas, get_ospf_nssa_lsas, parse_ospf_external_lsas  # noqa: E402
 
 
 class TestOspfExternalLsas:
@@ -2860,6 +2860,30 @@ class TestOspfExternalLsas:
         assert len(lsas) == 2
         grade.test.return_value = ('', 0)
         assert get_ospf_external_lsas(grade, 'r2') == {}
+
+
+class TestOspfNssaLsas:
+    """``show ip ospf database nssa-external json`` captured in the redistribution lab (FRR 10.3, the
+    nssa site solved): the ABR holds the two type 7 LSAs of the ASBR, the backbone router none."""
+
+    def test_abr_capture(self):
+        lsas = parse_ospf_external_lsas(json.loads(load('ospf_nssa_external_redist_abr.json')))
+        assert set(lsas) == {('10.213.113.0/24', '10.213.255.22'), ('10.213.114.0/24', '10.213.255.22')}
+        entry = lsas[('10.213.113.0/24', '10.213.255.22')]
+        assert (entry['metric_type'], entry['metric'], entry['forward'], entry['tag']) == (2, 20, '10.213.112.6', 0)
+
+    def test_backbone_router_has_none(self):
+        assert parse_ospf_external_lsas(json.loads(load('ospf_nssa_external_redist_core.json'))) == {}
+
+    def test_wrapper(self):
+        grade = MagicMock()
+        grade.test.return_value = (load('ospf_nssa_external_redist_abr.json'), 0)
+        lsas = get_ospf_nssa_lsas(grade, 'nssa_abr')
+        grade.test.assert_called_once_with('nssa_abr', 'vtysh -c "show ip ospf database nssa-external json"',
+                                           step=1, allow_error=True)
+        assert len(lsas) == 2
+        grade.test.return_value = ('', 0)
+        assert get_ospf_nssa_lsas(grade, 'nssa_abr') == {}
 
 
 class TestBgpPrefixNoExport:

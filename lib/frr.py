@@ -512,7 +512,7 @@ def parse_ospf_external_lsas(data: Any) -> Dict[tuple, Dict[str, Any]]:
         result[(prefix, adv)] = {
             'prefix': prefix, 'adv_router': adv, 'metric_type': metric_type,
             'metric': _int_or_none(e.get('metric')),
-            'forward': e.get('forwardAddress'),
+            'forward': e.get('forwardAddress', e.get('nssaForwardAddress')),
             'tag': _int_or_none(e.get('externalRouteTag', e.get('routeTag'))),
             'age': _int_or_none(e.get('lsaAge')),
         }
@@ -524,6 +524,17 @@ def get_ospf_external_lsas(grade: Grade0, machine_name: str, step: int = 1,
     """The AS-external LSAs in the database of *machine_name* (see
     :func:`parse_ospf_external_lsas`)."""
     return parse_ospf_external_lsas(_vtysh_json(grade, machine_name, 'show ip ospf database external', step,
+                                                allow_error))
+
+
+def get_ospf_nssa_lsas(grade: Grade0, machine_name: str, step: int = 1,
+                       allow_error: bool = True) -> Dict[tuple, Dict[str, Any]]:
+    """The NSSA-external LSAs (type 7) in the database of *machine_name*, every NSSA area
+    together: ``show ip ospf database nssa-external json`` (FRR 10.3 shape
+    ``nssaExternalLinkStates: {areas: {area: [...]}}``), parsed by
+    :func:`parse_ospf_external_lsas` (``forward`` from ``nssaForwardAddress``).  An ABR shows
+    the routes these LSAs give as ``N E2`` in ``show ip ospf route``, not ``N2``: read the LSAs."""
+    return parse_ospf_external_lsas(_vtysh_json(grade, machine_name, 'show ip ospf database nssa-external', step,
                                                 allow_error))
 
 

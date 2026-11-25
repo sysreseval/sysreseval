@@ -1432,6 +1432,11 @@ database (`show ip ospf database external json`), keyed by `(prefix, advertising
 which metric, including the routes a router did not choose (the backup instance of
 `lab/sre/_DRAFT_misc/anycast.py`).
 
+`get_ospf_nssa_lsas(grade, machine_name, step=1) → dict` — the NSSA-external LSAs (type 7) of every
+NSSA area of the database (`show ip ospf database nssa-external json`), with the same keys (`forward`
+read from `nssaForwardAddress`). An ABR of FRR 10.3 shows the routes of these LSAs as `N E2` in `show
+ip ospf route`, not `N2`: read the LSAs (the `nssa` bonus of `lab/sre/_DRAFT_misc/redistribution.py`).
+
 ### BGP helpers (from `/opt/sre/lib/frr.py`)
 
 ```python
