@@ -413,6 +413,15 @@ class NetScheme(NetScheme0):
 
 Port wildcards: `"80XX:80/tcp"` allocates the first free port in 8000–8099.
 
+**Machines running systemd.** A machine of the `init13` (or `init12`) image with `privileged=True` and `entrypoint="/sbin/init"` boots a genuine systemd. A privileged container is not confined like the others: it has the host's `/sys`, `/proc/sys` and device nodes, and a systemd left to itself treats them as its own. The init images therefore keep their systemd to the machine:
+
+- the udev coldplug replays the machine's own network interfaces only (`allow-hotplug` and the per-interface sysctls still work), never the devices of the host;
+- `systemd-sysctl` applies the `net.*` keys of `/etc/sysctl.d` only: the `kernel.*`, `fs.*` and `vm.*` keys are the host's;
+- no getty is started on a virtual terminal (the console of the machine keeps its own), logind reserves none and ignores the power and sleep keys and the lid;
+- `systemd-binfmt` is masked.
+
+An image of your own meant for a privileged systemd machine needs the same block (the *host guard* of `images/init13/Dockerfile`). Without it, each such machine replays at its start an `add` event for every device of the host — on a workstation with a camera the PipeWire session manager of the logged-in user aborts, one core dump per machine — sets the host's `kernel.core_pattern` to `core` (those dumps are then written in the user's home directory), and takes the host's first virtual terminal.
+
 ### `Network` parameters
 
 Each `_network_specs` entry gives the keyword arguments of one network; a network that only appears in `_topology` takes the defaults.

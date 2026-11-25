@@ -73,6 +73,42 @@ RUN rm -f /lib/systemd/system-generators/openvpn-generator
 
 RUN rm -f /etc/rc*/S*slapd* /etc/rc*/S*named* /etc/rc*/S*exim* /etc/rc*/S*openvpn*
 
+# A privileged machine is not confined like the others: /sys and /proc/sys are read-write and
+# /dev holds the device nodes of the host, so the systemd of the machine takes itself for the
+# init of a real host and acts on the HOST.  Seen on a workstation with a camera (2026-11-25,
+# the three privileged machines of the dhcp lab): the coldplug of systemd-udev-trigger wrote
+# "add" to the uevent file of every device of the host, the host's udev replayed them all and
+# the wireplumber of the logged-in user aborted on its camera (one core dump per machine);
+# systemd-sysctl set the host's kernel.core_pattern to "core" (Debian 13), so those dumps were
+# written in the home directory; a getty of the machine took the host's tty1 and its logind
+# watched the host's power and sleep keys.  The guard keeps what concerns the machine itself:
+# - the coldplug is limited to the network interfaces, which are the machine's own (their
+#   uevents stay in its network namespace): udev still tags them, so allow-hotplug and the
+#   per-interface sysctls of 99-systemd.rules work as before;
+# - systemd-sysctl applies the net.* keys only (kernel.*, fs.* and vm.* are the host's);
+# - no getty on a virtual terminal (console-getty, the machine's own console, stays); logind
+#   reserves none and ignores the keys and the lid of the host;
+# - systemd-binfmt registers nothing (binfmt_misc is the host's).
+# This block is the same in init12 and init13: tests/test_init_images.py.
+RUN mkdir -p /etc/systemd/system/systemd-udev-trigger.service.d \
+        /etc/systemd/system/systemd-sysctl.service.d /etc/systemd/logind.conf.d \
+    && printf '%s\n' '[Service]' 'ExecStart=' \
+        'ExecStart=-udevadm trigger --type=devices --action=add --subsystem-match=net' \
+        > /etc/systemd/system/systemd-udev-trigger.service.d/sre-host-guard.conf \
+    && printf '%s\n' '[Service]' 'ExecStart=' \
+        'ExecStart=/usr/lib/systemd/systemd-sysctl --prefix=/net' \
+        > /etc/systemd/system/systemd-sysctl.service.d/sre-host-guard.conf \
+    && printf '%s\n' '[Login]' 'NAutoVTs=0' 'ReserveVT=0' 'HandlePowerKey=ignore' \
+        'HandlePowerKeyLongPress=ignore' 'HandleRebootKey=ignore' 'HandleSuspendKey=ignore' \
+        'HandleHibernateKey=ignore' 'HandleLidSwitch=ignore' \
+        'HandleLidSwitchExternalPower=ignore' 'HandleLidSwitchDocked=ignore' \
+        > /etc/systemd/logind.conf.d/sre-host-guard.conf \
+    && rm -f /etc/systemd/system/getty.target.wants/getty@tty1.service \
+    && ln -sf /dev/null /etc/systemd/system/getty@.service \
+    && ln -sf /dev/null /etc/systemd/system/autovt@.service \
+    && ln -sf /dev/null /etc/systemd/system/systemd-binfmt.service \
+    && ln -sf /dev/null /etc/systemd/system/proc-sys-fs-binfmt_misc.automount
+
 RUN rm -f /usr/local/bin/systemctl
 
 WORKDIR /tmp
