@@ -49,6 +49,7 @@ Special paths:
 A request whose ``Host`` is one of ``vhosts`` gets the page of that virtual host (``VHOST=``,
 ``SECRET=``).  ``OPTIONS`` answers 200 on every path, other methods 405.
 """
+import email.utils
 import json
 import os
 import secrets
@@ -148,8 +149,9 @@ def header_key(name):
 
 
 def http_date(timestamp):
-    """*timestamp* in the format of the HTTP date headers (``Last-Modified``)."""
-    return time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(timestamp))
+    """*timestamp* in the format of the HTTP date headers (``Last-Modified``): English day and month
+    names whatever ``LC_TIME`` is (``time.strftime('%a … %b')`` would follow the locale)."""
+    return email.utils.formatdate(timestamp, usegmt=True)
 
 
 def item_price(item):

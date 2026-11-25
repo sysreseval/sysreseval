@@ -3,6 +3,7 @@ answers of ``App.handle()``, then the real HTTP/1.1 server on a loopback port (k
 POST, the simulated crash)."""
 import http.client
 import json
+import locale
 import sys
 import threading
 from pathlib import Path
@@ -192,6 +193,20 @@ class TestPages:
         assert page.status == 200 and headers['Cache-Control'] == hb.CACHEABLE == 'public, max-age=600'
         assert headers['Last-Modified'] == 'Thu, 01 Jan 1970 00:00:00 GMT'   # an hour before the clock of 1000 s, clamped
         assert field(text(page), 'CACHEABLE') == 'yes' and field(text(page), 'PATH') == '/cacheable/logo?v=2'
+
+    def test_http_date_is_locale_independent(self):
+        """An HTTP date is English whatever LC_TIME is: a Qt application, or Python's own C locale
+        coercion, sets it from the environment (`jeu., 01 janv. 1970` on a French host)."""
+        previous = locale.setlocale(locale.LC_TIME)
+        try:
+            locale.setlocale(locale.LC_TIME, 'fr_FR.UTF-8')
+        except locale.Error:
+            pytest.skip('fr_FR.UTF-8 locale not installed')
+        try:
+            assert hb.http_date(0) == 'Thu, 01 Jan 1970 00:00:00 GMT'
+            assert hb.http_date(1000000000.7) == 'Sun, 09 Sep 2001 01:46:40 GMT'
+        finally:
+            locale.setlocale(locale.LC_TIME, previous)
 
     def test_files_of_any_size(self, tmp_path):
         """/files/<x>?size=N: N bytes, the request id in X-Request-Id (disk cache, delay pools)."""

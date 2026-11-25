@@ -237,11 +237,13 @@ class TestDockerImages:
             assert (IMAGES_DIR / successor / 'Dockerfile').is_file(), name
 
     def test_legacy_names_are_not_images_of_the_tree(self):
-        """A legacy name reused by a new image of images/ would be pinned to the old tag."""
+        """A legacy name reused by a new image of images/ would be pinned to the old tag.  An image
+        is a directory with a Dockerfile: what a renamed image leaves behind in an installed tree
+        (its `cache/`, kept by the files a sync excludes) is not one."""
         if not IMAGES_DIR.is_dir():
             pytest.skip(f"no {IMAGES_DIR} in this tree")
         for name in params.legacy_docker_image_versions:
-            assert not (IMAGES_DIR / name).exists(), name
+            assert not (IMAGES_DIR / name / 'Dockerfile').is_file(), name
             assert name not in params.docker_image_versions, name
 
     @pytest.mark.parametrize('image, short', [
