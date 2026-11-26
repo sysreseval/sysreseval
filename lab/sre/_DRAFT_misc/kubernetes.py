@@ -32,6 +32,11 @@ a wget matrix between the pods of ``secure``, ``kubectl auth can-i``, HTTP reque
 them all and fills the forms; ``reset_release`` and ``reset_secure`` (allowed to the students)
 recreate the given objects.
 
+Side effect on the host: the NetworkPolicy controller of k3s (part 8) writes ``-m physdev`` rules,
+which makes the kernel load ``br_netfilter`` into the host kernel until its reboot; bridged traffic
+of every lab machine of that host then goes through iptables / nftables.  k3s needs the module anyway:
+without it a Service whose pod is on the client's node does not answer.
+
 Facts verified live are in ``.claude/rules/lib-kubernetes.md``.
 """
 import random
@@ -1744,6 +1749,12 @@ instance. Les états `solve_nodes`, `solve_shop`, `solve_release`, `solve_config
 formulaires (2 à 3 minutes, dont l'attente des mesures de l'HPA) : une évaluation lancée dès son
 retour donne tous les points, bonus compris. Les manifestes de référence sont écrits par ces états
 dans `{solutions}` sur `control`.
+
+**Effet sur la machine hôte.** Le contrôleur de NetworkPolicy de k3s fait charger le module noyau
+`br_netfilter` sur l'hôte, où il reste jusqu'au redémarrage : dans toutes les machines de tous les TP
+de cet hôte, le trafic qui traverse un pont Linux passe alors aussi par iptables / nftables (familles
+`ip` et `inet`). Aucun effet mesuré sur les TP `bridge`, `vlan`, `tc` et `latency` ; le cas à surveiller
+est une machine qui fait à la fois pont et filtrage.
 """).format(solutions=SOLUTIONS_DIR)),
         )
 
@@ -2609,6 +2620,12 @@ instance. Les états `solve_nodes`, `solve_shop`, `solve_release`, `solve_config
 formulaires (2 à 3 minutes, dont l'attente des mesures de l'HPA) : une évaluation lancée dès son
 retour donne tous les points, bonus compris. Les manifestes de référence sont écrits par ces états
 dans `{solutions}` sur `control`.
+
+**Effet sur la machine hôte.** Le contrôleur de NetworkPolicy de k3s fait charger le module noyau
+`br_netfilter` sur l'hôte, où il reste jusqu'au redémarrage : dans toutes les machines de tous les TP
+de cet hôte, le trafic qui traverse un pont Linux passe alors aussi par iptables / nftables (familles
+`ip` et `inet`). Aucun effet mesuré sur les TP `bridge`, `vlan`, `tc` et `latency` ; le cas à surveiller
+est une machine qui fait à la fois pont et filtrage.
 """: """
 **For the instructor.** Every question ends with its solution for the values of this instance. The
 states `solve_nodes`, `solve_shop`, `solve_release`, `solve_config`, `solve_health`, `solve_expose`,
@@ -2616,6 +2633,12 @@ states `solve_nodes`, `solve_shop`, `solve_release`, `solve_config`, `solve_heal
 `solve_batch` apply one part alone; `final` applies them all and fills the forms (2 to 3 minutes,
 the wait for the HPA's metrics included): an evaluation started as soon as it returns gives every
 point, bonus included. These states write the reference manifests in `{solutions}` on `control`.
+
+**Effect on the host.** The NetworkPolicy controller of k3s makes the host load the kernel module
+`br_netfilter`, which stays until the host reboots: in every machine of every lab of that host, the
+traffic crossing a Linux bridge then also goes through iptables / nftables (families `ip` and `inet`).
+No effect was measured on the `bridge`, `vlan`, `tc` and `latency` labs; the case to watch is a machine
+that both bridges and filters.
 """,
     """
 **Solution.** Sur `worker2` (le jeton : le contenu de `{node_token}` sur `control`, ou sa dernière

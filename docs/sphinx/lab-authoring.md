@@ -2004,12 +2004,22 @@ before the first start. A pod naming another image (or a `latest` tag) stays in 
 a `/etc/resolv.conf` whose server refuses (the lab's router), and an unknown tag fails at once. The containerd
 store of k3s is a `VOLUME` (~1 GB on the server once the air-gap archive is imported, 150-300 MB on a worker);
 k3s's runtime is unpacked in the image. Verified on s14 (Debian 13, kernel 6.12, 2026-11-25): systemd cgroup driver,
-flannel VXLAN between Kathara machines, ClusterIP with a backend on the same node even without `br_netfilter`
-(k3s's own `modprobe` fails; but `br_netfilter` and `xt_physdev` were found loaded on the host after the lab's
-runs, which makes the bridged traffic of every namespace pass through iptables until the host reboots), NodePort / ServiceLB / Traefik from a machine behind a router,
+flannel VXLAN between Kathara machines, NodePort / ServiceLB / Traefik from a machine behind a router,
 NetworkPolicies enforced, local-path volumes, metrics-server and the HPA; k3s's embedded registry mirror (Spegel)
 did not reliably advertise tarball-imported images, hence the per-node imports. A server with the system pods
 weighs about 1 GiB, a worker 380 MiB with the pods of a lab. Example: `lab/sre/_DRAFT_misc/kubernetes.py`.
+
+**A k3s lab changes the host**: the NetworkPolicy controller of k3s (kube-router) writes `-m physdev` rules, and
+the kernel then loads `br_netfilter` (with `xt_physdev`) into the **host** kernel, where it stays until the host
+reboots (k3s's own `modprobe` fails in a lab machine, the kernel's does not). In every network namespace of the
+host, the traffic crossing a Linux bridge then also goes through the `ip` / `inet` hooks of iptables and nftables.
+k3s needs it: without the module (measured with `--disable-network-policy`), a Service whose pod is on the client's
+node does not answer (0 of 10 requests, DNS included), since the reply crosses the bridge without its address
+translation being undone. A lab that must leave the host alone would run k3s with `--disable-network-policy` and
+`--kube-proxy-arg=masquerade-all=true` (10 of 10, no module loaded), and could not grade NetworkPolicies. No
+effect was measured on the labs that bridge or delay traffic (`bridge.py`, `vlan.py`, `tc.py`, `latency.py`: the
+same grades with and without the module, 19 runs each way for `tc.py`); a lab whose machine both bridges and
+filters in the `ip` / `inet` families is the case to check.
 
 ### NTP and chrony helpers (from `/opt/sre/lib/ntp.py` and `/opt/sre/lib/ntp_probe.py`)
 

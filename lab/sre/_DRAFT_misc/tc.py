@@ -19,6 +19,7 @@ question « Organisation du TP » ; chaque question se termine par sa solution d
 ``instructor()`` (mode enseignant), avec les commandes de l'état ``final``.
 """
 import random
+import statistics
 from dataclasses import dataclass
 from ipaddress import IPv4Network
 from typing import Dict
@@ -510,8 +511,16 @@ class Grade(Grade0):
 
         # ---------------- step 3: measurements from m1_h ----------------------------
         # part 1: RTT toward serveur2_h through r1_h eth2 (netem) and the hidden bridge
-        ping_s2 = tc.parse_ping(self.test(H('m1'), tc.ping_cmd(ip['serveur2'], count=20, interval=0.2),
-                                          step=3, timeout=14, allow_error=True)[0])
+        ping_s2_out = self.test(H('m1'), tc.ping_cmd(ip['serveur2'], count=20, interval=0.2),
+                                step=3, timeout=14, allow_error=True)[0]
+        ping_s2 = tc.parse_ping(ping_s2_out)
+        # the median of the echoes, not the average of the summary: the losses of part 2 (netem on r1
+        # and on serveur2) also drop ARP frames, and with a cold cache (the first evaluation) the lost
+        # request or reply is retried a second later; the echoes queued behind it come back up to
+        # 1.4 s late and the average is 250 to 410 ms for a 150 ms path (8 evaluations of 40 on s14,
+        # about what 5 % + 12 % of losses give)
+        times_s2 = tc.ping_times(ping_s2_out)
+        rtt_s2 = statistics.median(times_s2) if times_s2 else None
         # part 2: two concurrent flows toward m2_h (port 5201 → priority class, 5302 → default)
         # and a ping under load; one shell so that the flows really overlap
         flow_a = tc.iperf3_cmd(ip['m2'], PORT_A, seconds=5)
@@ -811,7 +820,7 @@ tc qdisc replace dev {rdev} root netem loss {rloss}%
 `r1` `{dev}` est un netem de délai {delay} ms et de gigue {jitter} ms à 2 ms près, de pertes
 {loss} % à 0,6 point près), `netem_pertes_retour` (1 : netem de pertes {rloss} % à la racine de
 `serveur2` `{rdev}`) et `netem_rtt_mesure` (2 : sur le miroir, 20 échos de `m1` vers `serveur2`,
-au moins 8 réponses et un RTT moyen de {rtt} ms à 25 % + 10 ms près).
+au moins 8 réponses et un RTT médian de {rtt} ms à 25 % + 10 ms près).
 """).format(dev=dev_netem, rdev=dev_rev, delay=d.netem_delay_ms, jitter=d.netem_jitter_ms,
             loss=d.netem_loss_pct, rloss=d.reverse_loss_pct, base=base_rtt_ms,
             rtt=base_rtt_ms + d.netem_delay_ms,
@@ -896,7 +905,7 @@ retransmissions rapides. `ss -ti` montre un `cwnd` qui reste à quelques segment
         self.add_grade_element(
             title=no_tr("netem_rtt_mesure"), max_grade=2, grade_part=part2,
             grade=2 * int((ping_s2.get('received') or 0) >= 8
-                          and _approx(ping_s2.get('avg'), expected_rtt, rel=0.25, abs_margin=10)),
+                          and _approx(rtt_s2, expected_rtt, rel=0.25, abs_margin=10)),
             description=tr("RTT mesuré sur le miroir de m1 vers serveur2 ≈ {rtt} ms").format(rtt=expected_rtt),
         )
         self.add_grade_element(

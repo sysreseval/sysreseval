@@ -1053,6 +1053,17 @@ def parse_ping(output: str) -> Dict[str, Any]:
     return result
 
 
+_PING_TIME_RE = re.compile(r'\bicmp_seq=\d+\b.*\btime[=<]([0-9.]+) ms')
+
+
+def ping_times(output: str) -> List[float]:
+    """The RTT of every echo of a ``ping`` output, in ms, in the order of the replies ([] when none
+    came back, or with ``-q``).  Their **median** is what to grade a delay on: one stall at the
+    start of a series (a lost ARP exchange is retried after a second, and the echoes queued behind
+    it all come back late) ruins the average of the summary line, not the median."""
+    return [float(m.group(1)) for m in _PING_TIME_RE.finditer(output or '')]
+
+
 def ping_cmd(dest_ip, count: int = 10, interval: float = 0.2, deadline: int = None) -> str:
     deadline = deadline if deadline is not None else int(count * interval) + 3
     return f"ping -n -c {int(count)} -i {interval} -w {int(deadline)} {dest_ip}"

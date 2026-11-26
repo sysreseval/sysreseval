@@ -4,6 +4,7 @@ Fixtures in tests/mock_data/tc were captured on 2026-10-01 in a sysreseval/base:
 container (Debian 12, iproute2 6.19.0, nftables 1.0.6, iperf3 3.12) on a Debian 13 /
 Linux 6.12 host; the rendered scripts were re-applied there and dumped identically.
 """
+import statistics
 import sys
 from ipaddress import IPv4Network
 from pathlib import Path
@@ -373,3 +374,25 @@ def test_parse_ping():
     lost = tc.parse_ping(load('ping_lost.txt'))
     assert (lost['sent'], lost['received'], lost['loss_pct'], lost['avg']) == (2, 0, 100.0, None)
     assert tc.parse_ping('') == {'sent': None, 'received': None, 'loss_pct': None, 'min': None, 'avg': None, 'max': None, 'mdev': None}
+
+
+def test_ping_times():
+    assert tc.ping_times(load('ping_ok.txt')) == [0.030, 0.026, 0.025, 0.024, 0.026]
+    assert tc.ping_times(load('ping_lost.txt')) == [] and tc.ping_times('') == [] and tc.ping_times(None) == []
+    # a sub-millisecond echo of an old ping, and a line that is not an echo
+    assert tc.ping_times("64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time<1 ms\n"
+                         "From 10.0.0.9 icmp_seq=2 Destination Host Unreachable\n"
+                         "64 bytes from 10.0.0.1: icmp_seq=3 ttl=64 time=12.5 ms\n") == [1.0, 12.5]
+
+
+def test_ping_times_of_a_stalled_series():
+    """A real series of the tc lab (s14): the ARP reply of serveur2 was dropped by its netem losses and
+    asked again a second later, the first echoes come back late together; the average of the summary
+    is far above the delay of the path, the median is not."""
+    out = load('ping_stall.txt')
+    summary, times = tc.parse_ping(out), tc.ping_times(out)
+    assert len(times) == summary['received'] >= 8
+    assert max(times) == pytest.approx(summary['max'], abs=1) and max(times) > 1000
+    median = statistics.median(times)
+    assert summary['avg'] > 1.5 * median
+    assert sum(1 for t in times if abs(t - median) <= 0.25 * median + 10) >= len(times) // 2
