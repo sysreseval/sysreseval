@@ -434,7 +434,7 @@ derrière un NAT ne peuvent pas se joindre sans relais (ou redirection de port s
             + info_subtitle(tr("Observation et diagnostic"), tag="diagnostic")
             + tr("""
 
-- `wg show` : le premier réflexe. `latest handshake` absent ou oldpc (> 3 min) = pas de
+- `wg show` : le premier réflexe. `latest handshake` absent ou ancien (> 3 min) = pas de
   session ; `transfer` qui n'augmente qu'en émission = l'autre côté ne répond pas ou nous jette.
   `endpoint` dit où le pair a été vu pour la dernière fois.
 - `ip -br a` (adresse de `wg0`), `ip route` (une route par préfixe des `AllowedIPs`), `ip rule`
@@ -2157,7 +2157,7 @@ behind a NAT cannot reach each other without a relay (or port forwarding on a bo
     "Observation et diagnostic": "Observation and troubleshooting",
     """
 
-- `wg show` : le premier réflexe. `latest handshake` absent ou oldpc (> 3 min) = pas de
+- `wg show` : le premier réflexe. `latest handshake` absent ou ancien (> 3 min) = pas de
   session ; `transfer` qui n'augmente qu'en émission = l'autre côté ne répond pas ou nous jette.
   `endpoint` dit où le pair a été vu pour la dernière fois.
 - `ip -br a` (adresse de `wg0`), `ip route` (une route par préfixe des `AllowedIPs`), `ip rule`

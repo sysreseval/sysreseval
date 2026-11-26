@@ -1277,7 +1277,7 @@ de `lacp_sw`, son premier membre), priorité {priority} ; clé {key} (10 Gbit/s,
             hash="407dd809ee404828",
             description=tr("""
 - débit d'un flux `iperf3`, en Mbit/s : @@{single:[0-9]+([.,][0-9]+)?}@@ ; de quatre flux (`-P 4`, ligne `SUM` du récepteur) : @@{multi:[0-9]+([.,][0-9]+)?}@@
-- `eth1` arrêtée sur `lacp_srv` seulement : au bout de combien de secondes environ `lacp_sw` la déclare-t-il non synchronisée (elle n'a plus de porteuse en panne de son côté) ? @@{seconds:[0-9]+([.,][0-9]+)?}@@
+- `eth1` arrêtée sur `lacp_srv` seulement : au bout de combien de secondes environ `lacp_sw` la déclare-t-il non synchronisée (sa porteuse ne tombe pas de son côté) ? @@{seconds:[0-9]+([.,][0-9]+)?}@@
 """)
             + instructor(tr("""
 **Solution.** ~19 Mbit/s et ~38 Mbit/s (deux membres de 20 Mbit/s ; recommencer si les quatre flux
@@ -2431,7 +2431,7 @@ of `lacp_sw`, its first member), priority {priority}; key {key} (10 Gbit/s, full
     "Débit et panne d'un membre": "Throughput and failure of a member",
     """
 - débit d'un flux `iperf3`, en Mbit/s : @@{single:[0-9]+([.,][0-9]+)?}@@ ; de quatre flux (`-P 4`, ligne `SUM` du récepteur) : @@{multi:[0-9]+([.,][0-9]+)?}@@
-- `eth1` arrêtée sur `lacp_srv` seulement : au bout de combien de secondes environ `lacp_sw` la déclare-t-il non synchronisée (elle n'a plus de porteuse en panne de son côté) ? @@{seconds:[0-9]+([.,][0-9]+)?}@@
+- `eth1` arrêtée sur `lacp_srv` seulement : au bout de combien de secondes environ `lacp_sw` la déclare-t-il non synchronisée (sa porteuse ne tombe pas de son côté) ? @@{seconds:[0-9]+([.,][0-9]+)?}@@
 """: """
 - throughput of one `iperf3` flow, in Mbit/s: @@{single:[0-9]+([.,][0-9]+)?}@@; of four flows (`-P 4`, `SUM` line of the receiver): @@{multi:[0-9]+([.,][0-9]+)?}@@
 - `eth1` set down on `lacp_srv` only: after about how many seconds does `lacp_sw` declare it out of sync (its carrier does not fail on its side)? @@{seconds:[0-9]+([.,][0-9]+)?}@@

@@ -956,7 +956,7 @@ DNSSEC rendent l'écoute et l'usurpation inopérantes. Question évaluée par le
             description=tr("""
 Sur `m1`, protégez le cache avec la famille `arp` de `nftables` (section @@ref:protection-filter@@
 des Informations) : une table `arp filter`, une chaîne `input` de politique **`drop`**, et une
-règle qui **accepte** l'ARP venant de la MAC de la passerelle (`{gw_mac}`, trouvée en partie 1).
+règle qui **accepte** l'ARP venant de la MAC de la passerelle (`{gw_mac}`, trouvée en partie 2).
 """).format(gw_mac=gw_mac)
             + no_tr(_code_block(self.net_scheme.cmds_nft_arp()))
             + tr("""
@@ -2082,7 +2082,7 @@ certificate) and DNSSEC make sniffing and spoofing useless. Question graded by t
     """
 Sur `m1`, protégez le cache avec la famille `arp` de `nftables` (section @@ref:protection-filter@@
 des Informations) : une table `arp filter`, une chaîne `input` de politique **`drop`**, et une
-règle qui **accepte** l'ARP venant de la MAC de la passerelle (`{gw_mac}`, trouvée en partie 1).
+règle qui **accepte** l'ARP venant de la MAC de la passerelle (`{gw_mac}`, trouvée en partie 2).
 """: """
 On `m1`, protect the cache with the `arp` family of `nftables` (section @@ref:protection-filter@@
 of the Informations): an `arp filter` table, an `input` chain with a **`drop`** policy, and a
