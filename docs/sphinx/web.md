@@ -926,6 +926,15 @@ that squashes root, run it on a host that mounts it: once is enough, the file is
   RequiresMountsFor=/srv/sre-saves
   ```
 
+  `RequiresMountsFor` also keeps the agent from starting while the server of the volume is
+  down. A systemd automount needs no drop-in and works as it is: the agent's check opens the
+  directory, and that mounts the volume (a mere `stat` would not):
+
+  ```
+  # /etc/fstab
+  server:/sre-saves  /srv/sre-saves  nfs  rw,nosuid,nodev,noexec,sync,x-systemd.automount  0  0
+  ```
+
   The agent checks the directory every minute anyway: a volume that comes or goes turns the
   saved projects of that host on or off (`saves` in its status; the *Save Project* button
   follows), and a volume that hangs blocks one small program for `timeout`, never the agent.

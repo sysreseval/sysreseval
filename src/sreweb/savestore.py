@@ -182,10 +182,27 @@ def _real_directory(path: str) -> os.stat_result:
     return st
 
 
+def _mount(root: str):
+    """Open *root* once, so that the volume of an automount point (``x-systemd.automount`` in
+    /etc/fstab) is mounted before it is checked.  A ``stat`` or ``lstat`` never triggers an
+    automount (Linux adds ``AT_NO_AUTOMOUNT`` to both): on a point not mounted yet it sees the
+    placeholder of autofs, owned by root, and the check refused the store, without ever touching
+    a path under it (which would have mounted it), on every host where nothing else had touched
+    the volume since the boot.  The open of a directory mounts it and waits for the mount.  A
+    path that is not a directory, or that this account may not open, is told better by the
+    checks that follow; a mount that fails is told here, by its error."""
+    try:
+        fd = os.open(root, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_CLOEXEC', 0))
+    except (NotADirectoryError, PermissionError):
+        return
+    os.close(fd)
+
+
 def check(root: str) -> dict:
     """The store is usable: its marker is there (the volume is mounted), its root belongs to
     this account.  Its free and total space in MiB."""
     try:
+        _mount(root)
         _real_directory(root)
         try:
             marker = os.lstat(os.path.join(root, MARKER))

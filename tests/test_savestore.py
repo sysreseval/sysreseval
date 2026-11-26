@@ -1,5 +1,6 @@
 """Tests of sreweb.savestore: the store of the saved projects of the web front-end, as a module
 and as the program the agent runs for every access to the volume."""
+import errno
 import io
 import json
 import os
@@ -93,6 +94,54 @@ class TestCheck:
         link.symlink_to(root)
         with pytest.raises(StoreError):
             store.check(str(link))
+
+    def test_an_automount_point_is_mounted_by_the_check(self, root, monkeypatch):
+        """Seen on every pool host after a boot (x-systemd.automount of the volume): a stat never
+        mounts it and sees the placeholder of autofs, owned by root, with nothing under it; the
+        check refused the store, and nothing ever mounted it."""
+        point = AutomountPoint(root)
+        monkeypatch.setattr(store, 'os', point)
+        space = store.check(root)
+        assert point.mounted and space['total_mb'] >= space['free_mb'] >= 0
+
+    def test_a_mount_that_fails_is_told(self, root, monkeypatch):
+        point = AutomountPoint(root, error=errno.EHOSTDOWN)
+        monkeypatch.setattr(store, 'os', point)
+        with pytest.raises(StoreError) as e:
+            store.check(root)
+        assert e.value.status == 503 and e.value.code == store.CODE_UNAVAILABLE
+        assert e.value.message == f"{root}: {os.strerror(errno.EHOSTDOWN)}"
+
+
+class AutomountPoint:
+    """The ``os`` module as the store sees an automount point not mounted yet: until *root* is
+    opened, its ``lstat`` is the placeholder of autofs (a directory of another account) and
+    nothing is under it; the open mounts the volume, or fails with *error*."""
+
+    def __init__(self, root: str, error: int = 0):
+        self.root = root
+        self.error = error
+        self.mounted = False
+
+    def __getattr__(self, name):
+        return getattr(os, name)
+
+    def open(self, path, flags, *args, **kwargs):
+        if path == self.root:
+            if self.error:
+                raise OSError(self.error, os.strerror(self.error), path)
+            self.mounted = True
+        return os.open(path, flags, *args, **kwargs)
+
+    def lstat(self, path, *args, **kwargs):
+        if not self.mounted:
+            if path == self.root:
+                fields = list(os.lstat(path)[:10])
+                fields[4] = os.geteuid() + 1          # st_uid: root's, not the account's
+                return os.stat_result(fields)
+            if os.path.dirname(path) == self.root:
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), path)
+        return os.lstat(path, *args, **kwargs)
 
 
 class TestPutAndCommit:
