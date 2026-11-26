@@ -397,14 +397,23 @@ class TestTexts:
                       data.cache_token, data.hello_token, data.app_version, 'Partie 1'):
             assert value not in text, value
 
-    def test_instructor_translations(self, lab):
+    def test_translations(self, lab):
+        """Every tr() text has its English (the markup kept: checked for every lab of the directory by
+        test_draft_misc_translations.py), the 14 instructor texts among them."""
         tree = check_sre_translations.ast.parse(_LAB_PATH.read_text())
         tr_strings = check_sre_translations.get_tr_strings(tree)
         english = lab._TRANSLATIONS['en']
-        assert set(english) <= set(tr_strings) and None not in english.values() and len(english) == 14
-        assert all(english[k] != k for k in english)
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        assert set(english) == set(tr_strings) and all(english.values())
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 14
+        # the only texts that read the same in both languages
+        assert {k for k in english if english[k] == k} == {"EXPOSE {port}", "ENV APP_VERSION={v}", "no-new-privileges"}
         for fr, en in english.items():
             assert set(re.findall(r'\{(\w+)\}', fr)) == set(re.findall(r'\{(\w+)\}', en)), fr[:60]
+        assert _text(lab.title, 'en') == "Docker: containers, images, volumes and networks"
+        for state in ('restore_docker', 'solve_containers', 'solve_routed', 'final'):
+            description = getattr(lab.NetScheme, state)._sre_state_description
+            assert _text(description, 'en') != _text(description, 'fr'), state
 
     def test_fragments_in_both_languages(self, lab, data, tmp_pub_dir):
         _, _, grade = _texts(lab, data, tmp_pub_dir)
@@ -444,5 +453,7 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('docker_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the other texts is kept
+        assert len(module._TRANSLATIONS['en']) == len(lab._TRANSLATIONS['en']) - 14
         grade = _replay(module, _evaluation('final'), answers='final')
         assert _totals(grade) == (TOTAL, TOTAL, 6)

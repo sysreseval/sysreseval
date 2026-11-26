@@ -713,23 +713,30 @@ ERROR. Vérifiez avec `GET /stats/flow/<dpid>` et `GET /stats/errors/<dpid>`.
                         f"{rest_cmd(ctl, 'meterentry/modify', meter)}", timeout=30)
         self.cmd("ops", "; ".join(rest_cmd(ctl, "flowentry/add", f) for f in self.guest_flows()), timeout=30)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (le pont de sw1 et ses VLAN)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (le pont de sw1 et ses VLAN)",
+                                                  en="Part 1: solution (the bridge of sw1 and its VLANs)"))
     def solve_part1(self):
         self._solve_part1()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (la table de flux de sw2)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (la table de flux de sw2)",
+                                                  en="Part 2: solution (the flow table of sw2)"))
     def solve_part2(self):
         self._solve_part2()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (contrôleur réactif sur ctl3, sw3 relié)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 3 : solution (contrôleur réactif sur ctl3, sw3 relié)",
+                              en="Part 3: solution (reactive controller on ctl3, sw3 connected to it)"))
     def solve_part3(self):
         self._solve_part3()
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (les flux des deux locataires par l'API REST)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 4 : solution (les flux des deux locataires par l'API REST)",
+                              en="Part 4: solution (the flows of the two tenants through the REST API)"))
     def solve_part4(self):
         self._solve_part4()
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (compteur de débit de guest4)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (compteur de débit de guest4)",
+                                                  en="Bonus: solution (meter of guest4)"))
     def solve_bonus(self):
         self._solve_bonus()
 
@@ -1419,5 +1426,979 @@ car le compteur, sans `burst_size`, laisse passer d'abord une seconde de trafic 
 iperf3 sends {sent} kbit/s, the server receives about {rate}: a little more on average over a short
 test, because the meter, without `burst_size`, first lets one second of traffic through ahead.
 """,
+        "SDN : Open vSwitch, OpenFlow et contrôleurs": "SDN: Open vSwitch, OpenFlow and controllers",
+        """**Sommaire**
+""": """**Contents**
+""",
+        "Pourquoi le SDN": "Why SDN",
+        """
+
+Un équipement réseau classique fait trois choses :
+
+- le **plan de données** (*data plane*) traite chaque paquet : il cherche dans ses tables (adresses MAC,
+  routes, listes d'accès) et transmet, modifie ou jette, à la vitesse du matériel ;
+- le **plan de contrôle** (*control plane*) remplit ces tables : apprentissage des adresses MAC, STP,
+  OSPF, BGP... ; chaque équipement calcule seul, avec ses voisins, par des protocoles distribués ;
+- le **plan de gestion** (*management plane*) : la configuration (CLI, SNMP, fichiers) et la supervision.
+
+Sur un réseau de centaines d'équipements, cette organisation montre ses limites : chaque boîte se
+configure à part, dans le langage de son constructeur ; une politique globale (isoler deux clients,
+faire passer un flux par un pare-feu) se traduit en dizaines de configurations à garder cohérentes ;
+ajouter une fonction attend que les constructeurs l'implémentent.
+
+Le **SDN** (*Software Defined Networking*, réseau défini par logiciel) **sépare le plan de contrôle du
+plan de données** :
+
+- les équipements (les *switchs* SDN) ne gardent que le plan de données : des tables de flux que
+  d'autres remplissent ;
+- un **contrôleur**, logiciel centralisé (logiquement : il peut être réparti sur plusieurs serveurs),
+  a la vue de tout le réseau et programme les tables de tous les équipements ;
+- les politiques sont écrites par des **applications**, au-dessus du contrôleur, dans un langage de
+  programmation ordinaire.
+
+Le réseau devient programmable comme un système informatique : configuration automatisée, réaction
+aux événements, fonctions nouvelles sans changer le matériel.
+""": """
+
+A classic network device does three things:
+
+- the **data plane** processes each packet: it looks it up in its tables (MAC addresses, routes,
+  access lists) and forwards, modifies or drops it, at hardware speed;
+- the **control plane** fills these tables: MAC address learning, STP, OSPF, BGP...; each device
+  computes on its own, with its neighbours, through distributed protocols;
+- the **management plane**: the configuration (CLI, SNMP, files) and the monitoring.
+
+On a network of hundreds of devices, this organisation shows its limits: each box is configured
+separately, in its vendor's language; a global policy (isolating two customers, sending a flow through
+a firewall) translates into dozens of configurations to keep consistent; adding a feature means waiting
+for the vendors to implement it.
+
+**SDN** (*Software Defined Networking*) **separates the control plane from the data plane**:
+
+- the devices (the SDN *switches*) keep only the data plane: flow tables that others fill;
+- a **controller**, centralised software (logically: it can be spread over several servers), has the
+  view of the whole network and programs the tables of every device;
+- the policies are written by **applications**, above the controller, in an ordinary programming
+  language.
+
+The network becomes programmable like a computer system: automated configuration, reaction to events,
+new features without changing the hardware.
+""",
+        "L'architecture": "The architecture",
+        """
+
+```
+     applications (politique, supervision, pare-feu, équilibrage...)
+              │  API nord (northbound) : REST, gRPC, bibliothèques
+     ┌────────┴────────┐
+     │   contrôleur    │ ── API est-ouest : entre contrôleurs (redondance, fédération)
+     └────────┬────────┘
+              │  API sud (southbound) : OpenFlow, OVSDB, NETCONF, P4Runtime
+     switch   switch   switch    (plan de données)
+```
+
+- L'**API sud** (*southbound*) relie le contrôleur aux équipements. **OpenFlow** programme les tables
+  de flux ; **OVSDB** (RFC 7047) configure Open vSwitch lui-même (ponts, ports, VLAN) ; **NETCONF**
+  et ses modèles YANG configurent les équipements classiques.
+- L'**API nord** (*northbound*) est celle que le contrôleur offre aux applications : très souvent une
+  API **REST** (HTTP + JSON), parfois une bibliothèque du langage du contrôleur.
+- Le réseau qui relie le contrôleur aux switchs est le **réseau de contrôle**. Il est souvent **hors
+  bande** (*out-of-band*) : un réseau de gestion séparé, qui ne dépend pas des flux qu'il programme.
+
+Deux façons de remplir les tables :
+
+| mode | principe | avantages / inconvénients |
+|------|----------|---------------------------|
+| **réactif** | un paquet qui ne correspond à aucune entrée est envoyé au contrôleur, qui décide et installe une entrée pour la suite du flux | s'adapte au trafic ; le premier paquet de chaque flux est lent, le contrôleur est très sollicité et sa perte bloque les nouveaux flux |
+| **proactif** | le contrôleur installe à l'avance toutes les entrées nécessaires | aucune latence au premier paquet, le réseau survit à une panne du contrôleur ; les tables doivent tout prévoir |
+""": """
+
+```
+     applications (policy, monitoring, firewall, load balancing...)
+              │  northbound API: REST, gRPC, libraries
+     ┌────────┴────────┐
+     │   controller    │ ── east-west API: between controllers (redundancy, federation)
+     └────────┬────────┘
+              │  southbound API: OpenFlow, OVSDB, NETCONF, P4Runtime
+     switch   switch   switch    (data plane)
+```
+
+- The **southbound API** connects the controller to the devices. **OpenFlow** programs the flow
+  tables; **OVSDB** (RFC 7047) configures Open vSwitch itself (bridges, ports, VLANs); **NETCONF**
+  and its YANG models configure classic devices.
+- The **northbound API** is the one the controller offers to the applications: very often a **REST**
+  API (HTTP + JSON), sometimes a library in the controller's language.
+- The network connecting the controller to the switches is the **control network**. It is often
+  **out-of-band**: a separate management network, which does not depend on the flows it programs.
+
+Two ways of filling the tables:
+
+| mode | principle | advantages / drawbacks |
+|------|-----------|------------------------|
+| **reactive** | a packet that matches no entry is sent to the controller, which decides and installs an entry for the rest of the flow | adapts to the traffic; the first packet of each flow is slow, the controller is under heavy load and losing it blocks the new flows |
+| **proactive** | the controller installs all the necessary entries in advance | no latency on the first packet, the network survives a controller failure; the tables must anticipate everything |
+""",
+        "OpenFlow": "OpenFlow",
+        "Tables et entrées de flux": "Flow tables and flow entries",
+        """
+
+**OpenFlow** (Open Networking Foundation) est le premier protocole sud du SDN. Un switch OpenFlow a une
+ou plusieurs **tables de flux** (*flow tables*), numérotées à partir de 0. Une **entrée** (*flow
+entry*) contient :
+
+| champ | rôle |
+|-------|------|
+| *match* | les champs à comparer : port d'entrée, adresses MAC, type Ethernet, VLAN, adresses IP, protocole, ports TCP/UDP... ; un champ absent est un joker |
+| *priority* | 0 à 65535 ; si plusieurs entrées correspondent, **la plus prioritaire gagne** (à priorité égale, le comportement n'est pas défini) |
+| *instructions* | les actions à appliquer (*apply-actions*), aller à une autre table (*goto-table*), passer par un compteur de débit (*meter*) |
+| *counters* | paquets et octets qui ont correspondu, durée de vie |
+| *timeouts* | *idle_timeout* (supprimée après N secondes sans paquet), *hard_timeout* (après N secondes quoi qu'il arrive) ; 0 = jamais |
+| *cookie* | une valeur choisie par le contrôleur pour retrouver ses entrées |
+
+Un paquet entre dans la table 0, prend l'entrée qui correspond avec la plus forte priorité, exécute
+ses instructions ; un *goto-table* le fait continuer dans une table de numéro supérieur (un
+**pipeline**). Un paquet qui ne correspond à rien est **jeté**, sauf s'il existe une entrée **table-miss** :
+priorité 0, aucun champ, qui l'envoie en général au contrôleur.
+
+Les actions les plus courantes :
+
+| action | effet |
+|--------|-------|
+| `output:N` | émettre sur le port OpenFlow numéro N |
+| aucune action (`drop`) | jeter |
+| `push_vlan` / `set_field:vlan_vid` / `pop_vlan` | ajouter, modifier, retirer une étiquette 802.1Q |
+| `set_field:...` | réécrire un champ (adresse MAC, IP, port TCP...) |
+| `group:N` | passer par un groupe (voir plus bas) |
+
+Les ports **réservés** : `CONTROLLER` (au contrôleur, dans un PACKET_IN), `FLOOD` (tous les ports
+sauf celui d'entrée), `ALL`, `IN_PORT` (renvoyer par le port d'entrée), `LOCAL` (la pile réseau
+du switch lui-même) et `NORMAL` (le traitement d'un switch classique, avec apprentissage MAC : une
+extension que propose Open vSwitch). Chaque port a un **numéro OpenFlow** (*ofport*) choisi par le
+switch, différent du nom de l'interface.
+
+Les champs se combinent avec des **prérequis** : on ne peut comparer une adresse IP que si le type
+Ethernet est IPv4 (`eth_type=0x0800`), un port TCP que si le protocole IP est TCP (`ip_proto=6`).
+""": """
+
+**OpenFlow** (Open Networking Foundation) is the first southbound protocol of SDN. An OpenFlow switch has
+one or more **flow tables**, numbered from 0. An **entry** (*flow entry*) contains:
+
+| field | role |
+|-------|------|
+| *match* | the fields to compare: input port, MAC addresses, Ethernet type, VLAN, IP addresses, protocol, TCP/UDP ports...; a missing field is a wildcard |
+| *priority* | 0 to 65535; if several entries match, **the highest priority wins** (at equal priority, the behaviour is undefined) |
+| *instructions* | the actions to apply (*apply-actions*), go to another table (*goto-table*), go through a *meter* |
+| *counters* | packets and bytes that matched, lifetime |
+| *timeouts* | *idle_timeout* (removed after N seconds without a packet), *hard_timeout* (after N seconds whatever happens); 0 = never |
+| *cookie* | a value chosen by the controller to find its entries again |
+
+A packet enters table 0, takes the matching entry with the highest priority and executes its
+instructions; a *goto-table* makes it continue in a higher-numbered table (a **pipeline**). A packet
+that matches nothing is **dropped**, unless there is a **table-miss** entry: priority 0, no field,
+which usually sends it to the controller.
+
+The most common actions:
+
+| action | effect |
+|--------|--------|
+| `output:N` | send out on OpenFlow port number N |
+| no action (`drop`) | drop |
+| `push_vlan` / `set_field:vlan_vid` / `pop_vlan` | add, modify, remove an 802.1Q tag |
+| `set_field:...` | rewrite a field (MAC address, IP, TCP port...) |
+| `group:N` | go through a group (see below) |
+
+The **reserved** ports: `CONTROLLER` (to the controller, in a PACKET_IN), `FLOOD` (all the ports
+except the input one), `ALL`, `IN_PORT` (send back through the input port), `LOCAL` (the network stack
+of the switch itself) and `NORMAL` (the processing of a classic switch, with MAC learning: an extension
+offered by Open vSwitch). Each port has an **OpenFlow number** (*ofport*) chosen by the switch,
+different from the name of the interface.
+
+Fields combine with **prerequisites**: an IP address can be matched only if the Ethernet type is IPv4
+(`eth_type=0x0800`), a TCP port only if the IP protocol is TCP (`ip_proto=6`).
+""",
+        "Les messages": "The messages",
+        """
+
+Le switch ouvre une connexion **TCP vers le contrôleur, port 6653** (6633 dans les anciennes
+versions), éventuellement chiffrée en TLS. Les messages principaux :
+
+| message | sens | rôle |
+|---------|------|------|
+| HELLO | les deux | ouverture ; chacun annonce les versions qu'il parle, la plus haute commune est retenue |
+| FEATURES_REQUEST / FEATURES_REPLY | contrôleur → switch → | le switch donne son **identifiant de datapath** (*datapath ID*, **dpid**, 64 bits), son nombre de tables, ses capacités |
+| ECHO_REQUEST / ECHO_REPLY | les deux | maintien de la connexion |
+| **PACKET_IN** | switch → contrôleur | un paquet envoyé au contrôleur (table-miss ou action `output:CONTROLLER`), avec son port d'entrée |
+| **FLOW_MOD** | contrôleur → switch | ajouter, modifier ou supprimer des entrées de flux |
+| **PACKET_OUT** | contrôleur → switch | émettre un paquet donné par le contrôleur, avec des actions |
+| FLOW_REMOVED | switch → contrôleur | une entrée a expiré (si demandé) |
+| PORT_STATUS | switch → contrôleur | un port est apparu, a disparu, a changé d'état |
+| MULTIPART_REQUEST / REPLY | les deux | statistiques : flux, ports, tables, compteurs de débit, description |
+| BARRIER_REQUEST / REPLY | les deux | attendre que les messages précédents soient appliqués |
+| ERROR | switch → contrôleur | un message refusé (champ inconnu, prérequis manquant, table pleine...) |
+
+Le champ *version* de l'en-tête vaut `0x01` pour OpenFlow 1.0, `0x04` pour 1.3, `0x06` pour 1.5.
+**OpenFlow 1.3** est la version la plus déployée : plusieurs tables, groupes, compteurs de débit,
+IPv6, champs extensibles (OXM). Wireshark / tshark décodent OpenFlow (`openflow_v4` pour la 1.3).
+""": """
+
+The switch opens a **TCP connection to the controller, port 6653** (6633 in older versions), possibly
+encrypted with TLS. The main messages:
+
+| message | direction | role |
+|---------|-----------|------|
+| HELLO | both | opening; each side announces the versions it speaks, the highest common one is kept |
+| FEATURES_REQUEST / FEATURES_REPLY | controller → switch → | the switch gives its **datapath ID** (**dpid**, 64 bits), its number of tables, its capabilities |
+| ECHO_REQUEST / ECHO_REPLY | both | keeping the connection alive |
+| **PACKET_IN** | switch → controller | a packet sent to the controller (table-miss or `output:CONTROLLER` action), with its input port |
+| **FLOW_MOD** | controller → switch | add, modify or delete flow entries |
+| **PACKET_OUT** | controller → switch | send out a packet given by the controller, with actions |
+| FLOW_REMOVED | switch → controller | an entry has expired (if requested) |
+| PORT_STATUS | switch → controller | a port has appeared, disappeared, changed state |
+| MULTIPART_REQUEST / REPLY | both | statistics: flows, ports, tables, meters, description |
+| BARRIER_REQUEST / REPLY | both | wait until the previous messages are applied |
+| ERROR | switch → controller | a refused message (unknown field, missing prerequisite, full table...) |
+
+The *version* field of the header is `0x01` for OpenFlow 1.0, `0x04` for 1.3, `0x06` for 1.5.
+**OpenFlow 1.3** is the most widely deployed version: several tables, groups, meters, IPv6, extensible
+fields (OXM). Wireshark / tshark decode OpenFlow (`openflow_v4` for 1.3).
+""",
+        "Groupes et compteurs de débit": "Groups and meters",
+        """
+
+- Un **groupe** est une liste de *buckets* d'actions. Types : `all` (chaque bucket reçoit une copie :
+  diffusion, miroir), `select` (un bucket choisi par hachage : répartition de charge), `indirect` (un
+  seul bucket, partagé par plusieurs entrées), `fast-failover` (le premier bucket dont le port est
+  vivant : secours sans attendre le contrôleur).
+- Un **compteur de débit** (*meter*) mesure le débit des paquets qui passent par lui et applique une
+  **bande** au-delà d'un seuil : `drop` (jeter : limitation de débit, *policing*) ou `dscp_remark`
+  (déclasser). Débit en kbit/s (`kbps`) ou en paquets par seconde (`pktps`). Une entrée de flux y fait
+  passer ses paquets par l'instruction `meter:N`, avant ses actions.
+""": """
+
+- A **group** is a list of action *buckets*. Types: `all` (each bucket receives a copy: broadcast,
+  mirroring), `select` (one bucket chosen by hashing: load balancing), `indirect` (a single bucket,
+  shared by several entries), `fast-failover` (the first bucket whose port is alive: backup without
+  waiting for the controller).
+- A **meter** measures the rate of the packets going through it and applies a **band** above a
+  threshold: `drop` (rate limiting, *policing*) or `dscp_remark` (lower the class). Rate in kbit/s
+  (`kbps`) or in packets per second (`pktps`). A flow entry sends its packets through it with the
+  `meter:N` instruction, before its actions.
+""",
+        "Open vSwitch": "Open vSwitch",
+        "Architecture": "Architecture",
+        """
+
+**Open vSwitch** (OVS) est un switch logiciel libre, utilisé dans les hyperviseurs, OpenStack,
+Kubernetes et la plupart des laboratoires SDN. Trois composants :
+
+| composant | rôle |
+|-----------|------|
+| `ovsdb-server` | la base de configuration (`/etc/openvswitch/conf.db`) : ponts, ports, interfaces, VLAN, contrôleurs ; protocole OVSDB, port TCP **6640** quand il écoute sur le réseau |
+| `ovs-vswitchd` | le démon qui fait le switch : il lit la base, parle **OpenFlow** avec les contrôleurs, tient les tables de flux et programme le datapath |
+| le **datapath** | le module `openvswitch` du noyau Linux : le chemin rapide ; il garde un cache des décisions récentes et remonte à `ovs-vswitchd` le premier paquet de chaque nouvelle combinaison (*upcall*) |
+
+Un **pont** (*bridge*) OVS est un switch indépendant avec sa propre table de flux et son propre dpid
+(tiré par défaut de l'adresse MAC du pont, fixé par `other-config:datapath-id`). Il a toujours un port
+interne du même nom que lui (`LOCAL`).
+""": """
+
+**Open vSwitch** (OVS) is a free software switch, used in hypervisors, OpenStack, Kubernetes and most
+SDN labs. Three components:
+
+| component | role |
+|-----------|------|
+| `ovsdb-server` | the configuration database (`/etc/openvswitch/conf.db`): bridges, ports, interfaces, VLANs, controllers; OVSDB protocol, TCP port **6640** when it listens on the network |
+| `ovs-vswitchd` | the daemon that does the switching: it reads the database, speaks **OpenFlow** with the controllers, holds the flow tables and programs the datapath |
+| the **datapath** | the `openvswitch` module of the Linux kernel: the fast path; it keeps a cache of the recent decisions and passes the first packet of each new combination up to `ovs-vswitchd` (*upcall*) |
+
+An OVS **bridge** is an independent switch with its own flow table and its own dpid (derived by default
+from the MAC address of the bridge, set with `other-config:datapath-id`). It always has an internal port
+with the same name as itself (`LOCAL`).
+""",
+        "Les outils": "The tools",
+        """
+
+| commande | usage |
+|----------|-------|
+| `ovs-vsctl show` | la configuration : ponts, ports, contrôleurs (connectés ou non) |
+| `ovs-vsctl add-br br0` / `del-br br0` | créer / supprimer un pont |
+| `ovs-vsctl add-port br0 eth1` / `del-port br0 eth1` | ajouter / retirer un port |
+| `ovs-vsctl set port eth1 tag=10` | port d'**accès** dans le VLAN 10 (`trunks=10,20` : port de trunk limité à ces VLAN) |
+| `ovs-vsctl set-controller br0 tcp:192.0.2.1:6653` / `del-controller br0` | contrôleur du pont |
+| `ovs-vsctl set-fail-mode br0 secure` | mode de défaillance (voir plus bas) |
+| `ovs-vsctl set bridge br0 protocols=OpenFlow13` | versions d'OpenFlow acceptées |
+| `ovs-vsctl list interface eth1` | une ligne de la base (ici, `ofport` donne le numéro OpenFlow) |
+| `ovs-ofctl -O OpenFlow13 show br0` | dpid et ports avec leurs numéros OpenFlow |
+| `ovs-ofctl -O OpenFlow13 dump-flows br0` | les entrées de flux avec leurs compteurs |
+| `ovs-ofctl -O OpenFlow13 add-flow br0 "<entrée>"` | ajouter une entrée (`add-flows br0 fichier` : une par ligne) |
+| `ovs-ofctl -O OpenFlow13 del-flows br0 ["<match>"]` | supprimer (toutes, ou celles qui correspondent) |
+| `ovs-ofctl -O OpenFlow13 replace-flows br0 fichier` | remplacer la table par le contenu d'un fichier |
+| `ovs-ofctl -O OpenFlow13 dump-meters br0` | les compteurs de débit |
+| `ovs-appctl ofproto/trace br0 "<paquet>"` | **simuler** un paquet : quelles entrées il traverse, ce qu'il devient |
+| `ovs-appctl fdb/show br0` | la table MAC apprise par l'action `NORMAL` |
+| `ovs-dpctl dump-flows` | le cache du datapath (le chemin rapide) |
+
+`-O OpenFlow13` choisit la version que parle `ovs-ofctl` : elle doit être acceptée par le pont, sinon
+la négociation échoue (`version negotiation failed`).
+""": """
+
+| command | usage |
+|---------|-------|
+| `ovs-vsctl show` | the configuration: bridges, ports, controllers (connected or not) |
+| `ovs-vsctl add-br br0` / `del-br br0` | create / delete a bridge |
+| `ovs-vsctl add-port br0 eth1` / `del-port br0 eth1` | add / remove a port |
+| `ovs-vsctl set port eth1 tag=10` | **access** port in VLAN 10 (`trunks=10,20`: trunk port restricted to these VLANs) |
+| `ovs-vsctl set-controller br0 tcp:192.0.2.1:6653` / `del-controller br0` | controller of the bridge |
+| `ovs-vsctl set-fail-mode br0 secure` | fail mode (see below) |
+| `ovs-vsctl set bridge br0 protocols=OpenFlow13` | accepted OpenFlow versions |
+| `ovs-vsctl list interface eth1` | one row of the database (here, `ofport` gives the OpenFlow number) |
+| `ovs-ofctl -O OpenFlow13 show br0` | dpid and ports with their OpenFlow numbers |
+| `ovs-ofctl -O OpenFlow13 dump-flows br0` | the flow entries with their counters |
+| `ovs-ofctl -O OpenFlow13 add-flow br0 "<entry>"` | add an entry (`add-flows br0 file`: one per line) |
+| `ovs-ofctl -O OpenFlow13 del-flows br0 ["<match>"]` | delete (all of them, or the matching ones) |
+| `ovs-ofctl -O OpenFlow13 replace-flows br0 file` | replace the table with the contents of a file |
+| `ovs-ofctl -O OpenFlow13 dump-meters br0` | the meters |
+| `ovs-appctl ofproto/trace br0 "<packet>"` | **simulate** a packet: which entries it goes through, what becomes of it |
+| `ovs-appctl fdb/show br0` | the MAC table learned by the `NORMAL` action |
+| `ovs-dpctl dump-flows` | the datapath cache (the fast path) |
+
+`-O OpenFlow13` chooses the version `ovs-ofctl` speaks: the bridge must accept it, otherwise the
+negotiation fails (`version negotiation failed`).
+""",
+        "La syntaxe des entrées": "Entry syntax",
+        """
+
+Une entrée s'écrit `champ=valeur,champ=valeur,...,actions=action,action`. Exemples :
+
+```
+priority=100,in_port=1,actions=output:2
+priority=200,arp,actions=NORMAL
+priority=300,tcp,nw_src=192.0.2.10,nw_dst=192.0.2.20,tp_dst=80,actions=output:3
+priority=300,icmp,nw_src=192.0.2.10,icmp_type=8,actions=NORMAL
+priority=150,in_port=4,dl_dst=02:00:00:00:00:01,actions=mod_vlan_vid:10,output:1
+priority=0,actions=drop
+```
+
+| écriture | sens |
+|----------|------|
+| `in_port=N` | port d'entrée (numéro OpenFlow) |
+| `dl_src`, `dl_dst`, `dl_type`, `dl_vlan` | adresses MAC, type Ethernet, VLAN |
+| `arp`, `ip`, `icmp`, `tcp`, `udp` | raccourcis : `arp` = `dl_type=0x0806`, `tcp` = `dl_type=0x0800,nw_proto=6`... |
+| `nw_src`, `nw_dst` | adresses IPv4 (préfixe possible : `nw_src=192.0.2.0/24`) |
+| `tp_src`, `tp_dst` | ports TCP / UDP (après `tcp` ou `udp`) |
+| `icmp_type` | type ICMP (8 : demande d'écho, 0 : réponse) |
+| `priority=N` | priorité (32768 si absente) |
+| `idle_timeout=N`, `hard_timeout=N`, `cookie=N` | voir plus haut |
+| `actions=output:N`, `NORMAL`, `CONTROLLER`, `FLOOD`, `drop` | actions ; plusieurs, séparées par des virgules, s'appliquent dans l'ordre |
+| `actions=meter:1,output:2` | passer par le compteur de débit 1 puis émettre |
+
+**Un filtrage sans état doit autoriser les réponses** : une entrée `tcp,nw_src=A,nw_dst=B,tp_dst=80`
+laisse passer la requête, il en faut une autre pour la réponse (`tcp,nw_src=B,nw_dst=A,tp_src=80`).
+Et sans ARP autorisé, aucune machine ne trouve l'adresse MAC de l'autre. (OVS sait aussi filtrer
+**avec état** grâce au suivi de connexions du noyau : actions `ct(...)`, champ `ct_state`.)
+
+Pour vérifier une politique sans générer de trafic :
+
+```
+ovs-appctl ofproto/trace br0 'in_port=1,tcp,dl_src=02:00:00:00:00:01,dl_dst=02:00:00:00:00:02,nw_src=192.0.2.10,nw_dst=192.0.2.20,tcp_dst=80'
+```
+
+La dernière ligne, `Datapath actions:`, donne le verdict : `drop`, ou les ports de sortie. Dans
+`ofproto/trace`, écrivez les ports avec `tcp_dst` / `udp_dst` : `tp_dst` n'y est accepté qu'après
+`tcp`.
+""": """
+
+An entry is written `field=value,field=value,...,actions=action,action`. Examples:
+
+```
+priority=100,in_port=1,actions=output:2
+priority=200,arp,actions=NORMAL
+priority=300,tcp,nw_src=192.0.2.10,nw_dst=192.0.2.20,tp_dst=80,actions=output:3
+priority=300,icmp,nw_src=192.0.2.10,icmp_type=8,actions=NORMAL
+priority=150,in_port=4,dl_dst=02:00:00:00:00:01,actions=mod_vlan_vid:10,output:1
+priority=0,actions=drop
+```
+
+| notation | meaning |
+|----------|---------|
+| `in_port=N` | input port (OpenFlow number) |
+| `dl_src`, `dl_dst`, `dl_type`, `dl_vlan` | MAC addresses, Ethernet type, VLAN |
+| `arp`, `ip`, `icmp`, `tcp`, `udp` | shortcuts: `arp` = `dl_type=0x0806`, `tcp` = `dl_type=0x0800,nw_proto=6`... |
+| `nw_src`, `nw_dst` | IPv4 addresses (a prefix is allowed: `nw_src=192.0.2.0/24`) |
+| `tp_src`, `tp_dst` | TCP / UDP ports (after `tcp` or `udp`) |
+| `icmp_type` | ICMP type (8: echo request, 0: reply) |
+| `priority=N` | priority (32768 if absent) |
+| `idle_timeout=N`, `hard_timeout=N`, `cookie=N` | see above |
+| `actions=output:N`, `NORMAL`, `CONTROLLER`, `FLOOD`, `drop` | actions; several of them, separated by commas, apply in order |
+| `actions=meter:1,output:2` | go through meter 1, then send out |
+
+**Stateless filtering must allow the replies**: an entry `tcp,nw_src=A,nw_dst=B,tp_dst=80` lets the
+request through, another one is needed for the reply (`tcp,nw_src=B,nw_dst=A,tp_src=80`). And without
+ARP allowed, no machine finds the MAC address of the other. (OVS can also filter **statefully** thanks
+to the connection tracking of the kernel: `ct(...)` actions, `ct_state` field.)
+
+To check a policy without generating traffic:
+
+```
+ovs-appctl ofproto/trace br0 'in_port=1,tcp,dl_src=02:00:00:00:00:01,dl_dst=02:00:00:00:00:02,nw_src=192.0.2.10,nw_dst=192.0.2.20,tcp_dst=80'
+```
+
+The last line, `Datapath actions:`, gives the verdict: `drop`, or the output ports. In
+`ofproto/trace`, write the ports with `tcp_dst` / `udp_dst`: `tp_dst` is accepted there only after
+`tcp`.
+""",
+        "Les modes de défaillance": "Fail modes",
+        """
+
+Que fait un pont qui n'a pas (ou plus) de contrôleur ?
+
+| `fail-mode` | sans contrôleur |
+|-------------|-----------------|
+| `standalone` (par défaut) | après quelques secondes sans contrôleur, OVS se comporte en **switch classique** : il ajoute une entrée `NORMAL` (apprentissage MAC) ; un pont neuf sans contrôleur a donc une seule entrée, `priority=0 actions=NORMAL` |
+| `secure` | OVS **n'ajoute rien** : seules les entrées installées (par le contrôleur ou à la main) s'appliquent ; elles restent jusqu'à leur expiration, aucun nouveau flux n'est appris |
+
+Le mode `secure` est celui d'un réseau dont le contrôleur décide de tout : une panne du contrôleur
+ne doit pas ouvrir le réseau. C'est aussi le mode d'un pont dont on écrit soi-même la table de flux.
+""": """
+
+What does a bridge do when it has no controller (or no longer has one)?
+
+| `fail-mode` | without a controller |
+|-------------|----------------------|
+| `standalone` (default) | after a few seconds without a controller, OVS behaves as a **classic switch**: it adds a `NORMAL` entry (MAC learning); a new bridge without a controller therefore has a single entry, `priority=0 actions=NORMAL` |
+| `secure` | OVS **adds nothing**: only the installed entries (by the controller or by hand) apply; they stay until they expire, no new flow is learned |
+
+The `secure` mode is the one of a network whose controller decides everything: a controller failure
+must not open the network. It is also the mode of a bridge whose flow table you write yourself.
+""",
+        "Les contrôleurs": "Controllers",
+        "Panorama": "Overview",
+        """
+
+| contrôleur | langage | remarques |
+|------------|---------|-----------|
+| NOX / POX | C++ / Python | les premiers, pédagogiques |
+| **Ryu** → **OS-Ken** | Python | bibliothèque complète d'OpenFlow 1.0 à 1.5 ; Ryu n'est plus maintenu, OpenStack le continue sous le nom OS-Ken (utilisé par Neutron, le réseau d'OpenStack) |
+| ONOS | Java | pour les opérateurs : répartition, haute disponibilité, intentions (*intents*) |
+| OpenDaylight | Java | projet de la Linux Foundation, nombreux protocoles sud (OpenFlow, NETCONF, BGP-LS...) |
+| Faucet | Python (sur Ryu) | switch de production configuré par un fichier YAML |
+
+Dans ce TP, le contrôleur est **OS-Ken**. `osken-manager` charge des applications (des modules
+Python) et écoute les switchs sur le port 6653 :
+
+```
+osken-manager --log-file /var/log/osken-manager.log os_ken.app.simple_switch_13 &
+```
+
+- `os_ken.app.simple_switch_13` : un switch à apprentissage réactif (ci-dessous) ;
+- `os_ken.app.ofctl_rest` : une API REST qui traduit des documents JSON en messages OpenFlow
+  (port 8080).
+
+(Ces deux applications, présentes dans Ryu, ont été réécrites pour l'image de ce TP : OS-Ken ne les
+fournit plus. Leurs URL et leurs documents sont ceux de Ryu.)
+""": """
+
+| controller | language | remarks |
+|------------|----------|---------|
+| NOX / POX | C++ / Python | the first ones, educational |
+| **Ryu** → **OS-Ken** | Python | complete library from OpenFlow 1.0 to 1.5; Ryu is no longer maintained, OpenStack continues it under the name OS-Ken (used by Neutron, the networking service of OpenStack) |
+| ONOS | Java | for operators: distribution, high availability, *intents* |
+| OpenDaylight | Java | a Linux Foundation project, many southbound protocols (OpenFlow, NETCONF, BGP-LS...) |
+| Faucet | Python (on Ryu) | production switch configured by a YAML file |
+
+In this lab, the controller is **OS-Ken**. `osken-manager` loads applications (Python modules) and
+listens for the switches on port 6653:
+
+```
+osken-manager --log-file /var/log/osken-manager.log os_ken.app.simple_switch_13 &
+```
+
+- `os_ken.app.simple_switch_13`: a reactive learning switch (below);
+- `os_ken.app.ofctl_rest`: a REST API that translates JSON documents into OpenFlow messages
+  (port 8080).
+
+(These two applications, present in Ryu, were rewritten for the image of this lab: OS-Ken no longer
+provides them. Their URLs and their documents are those of Ryu.)
+""",
+        "Le switch à apprentissage réactif": "The reactive learning switch",
+        """
+
+L'application `simple_switch_13` fait, par logiciel, ce que fait un switch Ethernet :
+
+1. à la connexion d'un switch (FEATURES_REPLY), elle installe l'entrée **table-miss** : priorité 0,
+   aucun champ, action `output:CONTROLLER` ;
+2. un paquet inconnu arrive au contrôleur dans un **PACKET_IN** ; l'application apprend
+   « adresse MAC source → port d'entrée » pour ce switch ;
+3. si l'adresse MAC de destination est connue, elle installe par un **FLOW_MOD** une entrée de
+   priorité 1 (`in_port`, `eth_src`, `eth_dst` → `output:port`, expiration après 300 s d'inactivité) :
+   les paquets suivants ne passent plus par le contrôleur ;
+4. elle renvoie le paquet lui-même par un **PACKET_OUT**, vers le port appris ou en `FLOOD`.
+
+Le contrôleur voit donc passer le premier paquet de chaque conversation, puis plus rien.
+""": """
+
+The `simple_switch_13` application does in software what an Ethernet switch does:
+
+1. when a switch connects (FEATURES_REPLY), it installs the **table-miss** entry: priority 0,
+   no field, action `output:CONTROLLER`;
+2. an unknown packet reaches the controller in a **PACKET_IN**; the application learns
+   "source MAC address → input port" for this switch;
+3. if the destination MAC address is known, it installs with a **FLOW_MOD** an entry of
+   priority 1 (`in_port`, `eth_src`, `eth_dst` → `output:port`, expiry after 300 s of inactivity):
+   the following packets no longer go through the controller;
+4. it sends the packet itself back out with a **PACKET_OUT**, to the learned port or as `FLOOD`.
+
+The controller therefore sees the first packet of each conversation, then nothing more.
+""",
+        "L'API REST de ofctl_rest": "The REST API of ofctl_rest",
+        """
+
+| requête | effet |
+|---------|-------|
+| `GET /stats/switches` | les dpid des switchs connectés (en **décimal**) |
+| `GET /stats/desc/<dpid>` | la description du switch |
+| `GET /stats/portdesc/<dpid>` | ses ports : numéro OpenFlow (`port_no`), nom, adresse MAC, état |
+| `GET /stats/flow/<dpid>` | ses entrées de flux, avec leurs compteurs |
+| `POST /stats/flowentry/add` | ajouter une entrée (document JSON ci-dessous) |
+| `POST /stats/flowentry/delete` / `delete_strict` | supprimer les entrées qui correspondent / exactement celle-ci |
+| `DELETE /stats/flowentry/clear/<dpid>` | vider toutes les tables du switch |
+| `POST /stats/meterentry/add` / `modify` / `delete` | les compteurs de débit |
+| `GET /stats/meterconfig/<dpid>` | les compteurs de débit du switch |
+| `GET /stats/errors/<dpid>` | (propre à ce TP) les derniers messages ERROR du switch |
+
+Le **dpid s'écrit en décimal** dans l'URL et dans le champ `dpid` (le dpid `00000000000000a1` d'OVS est
+`161`). Une entrée de flux en JSON utilise les noms d'OpenFlow 1.3 :
+
+```
+curl -X POST -d '{"dpid": 161, "priority": 100,
+                  "match": {"in_port": 1, "eth_type": 2048, "ipv4_dst": "192.0.2.20"},
+                  "actions": [{"type": "OUTPUT", "port": 2}]}' \\
+     http://controller:8080/stats/flowentry/add
+```
+
+| champ JSON | sens |
+|------------|------|
+| `in_port`, `eth_src`, `eth_dst`, `eth_type` | port d'entrée, adresses MAC, type Ethernet (2048 = IPv4, 2054 = ARP) |
+| `vlan_vid` | VLAN (un entier décimal : le bit « étiquette présente » est ajouté) |
+| `ipv4_src`, `ipv4_dst`, `ip_proto` | adresses IPv4, protocole (1 ICMP, 6 TCP, 17 UDP) |
+| `tcp_src`, `tcp_dst`, `udp_src`, `udp_dst` | ports |
+
+| action JSON | effet |
+|-------------|-------|
+| `{"type": "OUTPUT", "port": 2}` | émettre (`"port": "NORMAL"`, `"CONTROLLER"`, `"FLOOD"`... aussi) |
+| `{"type": "PUSH_VLAN", "ethertype": 33024}` | ajouter une étiquette 802.1Q (0x8100) |
+| `{"type": "SET_FIELD", "field": "vlan_vid", "value": 4106}` | VLAN 10 (4096 + 10 : le bit « présent » à écrire soi-même ici) |
+| `{"type": "POP_VLAN"}` | retirer l'étiquette |
+| `{"type": "METER", "meter_id": 1}` | passer par le compteur de débit 1 |
+| liste vide | jeter |
+
+Un compteur de débit : `{"dpid": 161, "meter_id": 1, "flags": "KBPS", "bands": [{"type": "DROP",
+"rate": 1000}]}` sur `/stats/meterentry/add` (1000 kbit/s).
+
+**La requête réussit même si le switch refuse l'entrée** (un prérequis manquant : `ipv4_dst` sans
+`eth_type`, `tcp_dst` sans `ip_proto`...) : l'erreur arrive plus tard, du switch, dans un message
+ERROR. Vérifiez avec `GET /stats/flow/<dpid>` et `GET /stats/errors/<dpid>`.
+""": """
+
+| request | effect |
+|---------|--------|
+| `GET /stats/switches` | the dpids of the connected switches (in **decimal**) |
+| `GET /stats/desc/<dpid>` | the description of the switch |
+| `GET /stats/portdesc/<dpid>` | its ports: OpenFlow number (`port_no`), name, MAC address, state |
+| `GET /stats/flow/<dpid>` | its flow entries, with their counters |
+| `POST /stats/flowentry/add` | add an entry (JSON document below) |
+| `POST /stats/flowentry/delete` / `delete_strict` | delete the matching entries / exactly this one |
+| `DELETE /stats/flowentry/clear/<dpid>` | empty all the tables of the switch |
+| `POST /stats/meterentry/add` / `modify` / `delete` | the meters |
+| `GET /stats/meterconfig/<dpid>` | the meters of the switch |
+| `GET /stats/errors/<dpid>` | (specific to this lab) the latest ERROR messages of the switch |
+
+The **dpid is written in decimal** in the URL and in the `dpid` field (the dpid `00000000000000a1` of
+OVS is `161`). A flow entry in JSON uses the OpenFlow 1.3 names:
+
+```
+curl -X POST -d '{"dpid": 161, "priority": 100,
+                  "match": {"in_port": 1, "eth_type": 2048, "ipv4_dst": "192.0.2.20"},
+                  "actions": [{"type": "OUTPUT", "port": 2}]}' \\
+     http://controller:8080/stats/flowentry/add
+```
+
+| JSON field | meaning |
+|------------|---------|
+| `in_port`, `eth_src`, `eth_dst`, `eth_type` | input port, MAC addresses, Ethernet type (2048 = IPv4, 2054 = ARP) |
+| `vlan_vid` | VLAN (a decimal integer: the "tag present" bit is added) |
+| `ipv4_src`, `ipv4_dst`, `ip_proto` | IPv4 addresses, protocol (1 ICMP, 6 TCP, 17 UDP) |
+| `tcp_src`, `tcp_dst`, `udp_src`, `udp_dst` | ports |
+
+| JSON action | effect |
+|-------------|--------|
+| `{"type": "OUTPUT", "port": 2}` | send out (`"port": "NORMAL"`, `"CONTROLLER"`, `"FLOOD"`... as well) |
+| `{"type": "PUSH_VLAN", "ethertype": 33024}` | add an 802.1Q tag (0x8100) |
+| `{"type": "SET_FIELD", "field": "vlan_vid", "value": 4106}` | VLAN 10 (4096 + 10: here the "present" bit must be written by hand) |
+| `{"type": "POP_VLAN"}` | remove the tag |
+| `{"type": "METER", "meter_id": 1}` | go through meter 1 |
+| empty list | drop |
+
+A meter: `{"dpid": 161, "meter_id": 1, "flags": "KBPS", "bands": [{"type": "DROP",
+"rate": 1000}]}` on `/stats/meterentry/add` (1000 kbit/s).
+
+**The request succeeds even if the switch refuses the entry** (a missing prerequisite: `ipv4_dst`
+without `eth_type`, `tcp_dst` without `ip_proto`...): the error comes later, from the switch, in an
+ERROR message. Check with `GET /stats/flow/<dpid>` and `GET /stats/errors/<dpid>`.
+""",
+        "Au-delà d'OpenFlow": "Beyond OpenFlow",
+        """
+
+- **NETCONF / YANG** (RFC 6241, RFC 7950) : configurer et lire l'état des équipements classiques avec
+  des modèles de données standard ; **RESTCONF** en est la version HTTP ; **gNMI** (gRPC) sert aussi à la
+  télémétrie en continu (*streaming telemetry*).
+- **P4** : un langage pour décrire le plan de données lui-même (quels en-têtes analyser, quelles
+  tables) ; **P4Runtime** remplit ses tables. OpenFlow fixe les champs, P4 les laisse définir.
+- **Réseaux de data centres et de cloud** : les mêmes idées, avec des tunnels VXLAN entre les
+  hyperviseurs ; OpenStack Neutron programme les Open vSwitch des hyperviseurs avec OS-Ken.
+- **Réseaux d'intention** (*intent-based networking*) : l'administrateur décrit le résultat voulu, le
+  contrôleur en déduit les configurations et vérifie qu'il est atteint.
+- **SD-WAN** : les principes du SDN (contrôle centralisé, politiques par application) appliqués aux
+  liaisons entre les sites d'une entreprise.
+""": """
+
+- **NETCONF / YANG** (RFC 6241, RFC 7950): configuring and reading the state of classic devices with
+  standard data models; **RESTCONF** is its HTTP version; **gNMI** (gRPC) is also used for continuous
+  telemetry (*streaming telemetry*).
+- **P4**: a language to describe the data plane itself (which headers to parse, which tables);
+  **P4Runtime** fills its tables. OpenFlow fixes the fields, P4 lets you define them.
+- **Data centre and cloud networks**: the same ideas, with VXLAN tunnels between the hypervisors;
+  OpenStack Neutron programs the Open vSwitch instances of the hypervisors with OS-Ken.
+- **Intent-based networking**: the administrator describes the desired result, the controller derives
+  the configurations from it and checks that it is reached.
+- **SD-WAN**: the principles of SDN (centralised control, per-application policies) applied to the
+  links between the sites of a company.
+""",
+        "Dans ce TP": "In this lab",
+        """
+
+- Les switchs sont des conteneurs où tournent `ovsdb-server` et `ovs-vswitchd` (démarrés pour vous).
+  Leur datapath est le module `openvswitch` du noyau de la machine hôte, partagé par tous les switchs
+  (`ovs-dpctl show` montre celui du conteneur). Ne relancez pas Open vSwitch : si c'est nécessaire,
+  `/usr/share/openvswitch/scripts/ovs-ctl restart`.
+- Les interfaces `ethN` d'un switch n'ont pas d'adresse IP : ce sont ses ports.
+- Pour capturer OpenFlow : `tcpdump -n -i eth0 tcp port 6653`, ou décodé :
+  `tshark -i eth0 -f "tcp port 6653" -O openflow_v4` (`-Y openflow_v4.type==10` pour ne garder que les
+  PACKET_IN ; les types : 0 HELLO, 5 FEATURES_REQUEST, 6 FEATURES_REPLY, 10 PACKET_IN, 13 PACKET_OUT,
+  14 FLOW_MOD).
+- Un contrôleur lancé dans un terminal s'arrête avec ce terminal : lancez-le en arrière-plan
+  (`setsid -f osken-manager ...`, ou `nohup ... &`).
+""": """
+
+- The switches are containers running `ovsdb-server` and `ovs-vswitchd` (started for you). Their
+  datapath is the `openvswitch` module of the kernel of the host machine, shared by all the switches
+  (`ovs-dpctl show` shows the one of the container). Do not start Open vSwitch again by hand: if it is
+  needed, `/usr/share/openvswitch/scripts/ovs-ctl restart`.
+- The `ethN` interfaces of a switch have no IP address: they are its ports.
+- To capture OpenFlow: `tcpdump -n -i eth0 tcp port 6653`, or decoded:
+  `tshark -i eth0 -f "tcp port 6653" -O openflow_v4` (`-Y openflow_v4.type==10` to keep only the
+  PACKET_IN messages; the types: 0 HELLO, 5 FEATURES_REQUEST, 6 FEATURES_REPLY, 10 PACKET_IN,
+  13 PACKET_OUT, 14 FLOW_MOD).
+- A controller started in a terminal stops with that terminal: start it in the background
+  (`setsid -f osken-manager ...`, or `nohup ... &`).
+""",
+        "Partie 1 : solution (le pont de sw1 et ses VLAN)": "Part 1: solution (the bridge of sw1 and its VLANs)",
+        "Partie 2 : solution (la table de flux de sw2)": "Part 2: solution (the flow table of sw2)",
+        "Partie 3 : solution (contrôleur réactif sur ctl3, sw3 relié)": "Part 3: solution (reactive controller on ctl3, sw3 connected to it)",
+        "Partie 4 : solution (les flux des deux locataires par l'API REST)": "Part 4: solution (the flows of the two tenants through the REST API)",
+        "Bonus : solution (compteur de débit de guest4)": "Bonus: solution (meter of guest4)",
+        "Solution de référence : toutes les parties et le bonus, formulaires remplis.": "Reference solution: every part and the bonus, forms filled.",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente le SDN, OpenFlow, Open vSwitch et les contrôleurs. Le TP a
+quatre parties indépendantes, chacune sur son propre site ; un bonus termine la quatrième.
+
+**Les sites et les machines** (tous les noms sont dans `/etc/hosts` ; les ports des switchs n'ont pas
+d'adresse IP).
+
+| partie | switch(s) | machines (adresse, adresse MAC) |
+|--------|-----------|---------------------------------|
+| 1 | `sw1` : Open vSwitch démarré, aucun pont | `h11` {h11} {m_h11} (sur `eth0` de `sw1`) ; `h12` {h12} {m_h12} (`eth1`) ; `h13` {h13} {m_h13} (`eth2`) |
+| 2 | `sw2` : pont `br0`, mode `secure`, sans contrôleur, table vide | `client2` {client2} {m_client2} (`eth0`) ; `web2` {web2} {m_web2} (`eth1`) ; `db2` {db2} {m_db2} (`eth2`) ; `admin2` {admin2} {m_admin2} (`eth3`) |
+| 3 | `sw3` : pont `br0` en mode `standalone` ; réseau de contrôle `ctrl3` ({ctrl3}) : `sw3` {sw3}, contrôleur `ctl3` {ctl3} | `h31` {h31} (`eth1` de `sw3`) ; `h32` {h32} (`eth2`) |
+| 4 | `sw4a`, `sw4b` : ponts `br0` en mode `secure`, reliés au contrôleur `ctl4` ; pas de terminal | `red1` {red1} {m_red1} et `blue1` {blue1} {m_blue1} sur `sw4a` ; `red2` {red2} {m_red2} et `blue2` {blue2} {m_blue2} sur `sw4b` ; `sw4a` et `sw4b` reliés par `trunk` |
+| 4 | réseau de contrôle `ctrl4` ({ctrl4}) | `ctl4` {ctl4} (OS-Ken avec `ofctl_rest`, port {rest}, pas de terminal) ; `ops` {ops}, votre poste d'administration (`curl`, `jq`) |
+| bonus | `sw4a` | `guest4` {guest4} et `srv4` {srv4} (serveur iperf3) |
+
+Les machines d'une partie sont sur le même réseau IP : elles se joignent directement, à travers le
+switch.
+
+Le travail et le comportement de vos machines sont évalués automatiquement (bouton d'évaluation) :
+l'évaluation lit la configuration et les tables des switchs, fait passer du trafic entre les machines
+(ping, requêtes TCP, iperf3) et simule sur `sw2` les paquets que la partie 2 doit refuser
+(`ovs-appctl ofproto/trace`).
+""": """
+Read the **Informations** tab: it presents SDN, OpenFlow, Open vSwitch and the controllers. The lab has
+four independent parts, each on its own site; a bonus completes the fourth one.
+
+**The sites and the machines** (all the names are in `/etc/hosts`; the ports of the switches have no
+IP address).
+
+| part | switch(es) | machines (address, MAC address) |
+|------|------------|---------------------------------|
+| 1 | `sw1`: Open vSwitch started, no bridge | `h11` {h11} {m_h11} (on `eth0` of `sw1`); `h12` {h12} {m_h12} (`eth1`); `h13` {h13} {m_h13} (`eth2`) |
+| 2 | `sw2`: bridge `br0`, `secure` mode, no controller, empty table | `client2` {client2} {m_client2} (`eth0`); `web2` {web2} {m_web2} (`eth1`); `db2` {db2} {m_db2} (`eth2`); `admin2` {admin2} {m_admin2} (`eth3`) |
+| 3 | `sw3`: bridge `br0` in `standalone` mode; control network `ctrl3` ({ctrl3}): `sw3` {sw3}, controller `ctl3` {ctl3} | `h31` {h31} (`eth1` of `sw3`); `h32` {h32} (`eth2`) |
+| 4 | `sw4a`, `sw4b`: bridges `br0` in `secure` mode, connected to the controller `ctl4`; no terminal | `red1` {red1} {m_red1} and `blue1` {blue1} {m_blue1} on `sw4a`; `red2` {red2} {m_red2} and `blue2` {blue2} {m_blue2} on `sw4b`; `sw4a` and `sw4b` linked by `trunk` |
+| 4 | control network `ctrl4` ({ctrl4}) | `ctl4` {ctl4} (OS-Ken with `ofctl_rest`, port {rest}, no terminal); `ops` {ops}, your administration host (`curl`, `jq`) |
+| bonus | `sw4a` | `guest4` {guest4} and `srv4` {srv4} (iperf3 server) |
+
+The machines of a part are on the same IP network: they reach each other directly, through the
+switch.
+
+Your work and the behaviour of your machines are evaluated automatically (evaluation button): the
+evaluation reads the configuration and the tables of the switches, sends traffic between the machines
+(ping, TCP requests, iperf3) and simulates on `sw2` the packets that part 2 must refuse
+(`ovs-appctl ofproto/trace`).
+""",
+        "Partie 1 — Un premier pont Open vSwitch": "Part 1 — A first Open vSwitch bridge",
+        "Créer un pont, ses ports et ses VLAN": "Create a bridge, its ports and its VLANs",
+        """
+Sections @@ref:ovsarch@@ et @@ref:ovstools@@. Sur `sw1`, Open vSwitch tourne mais n'a aucun pont.
+
+1. Regardez les démons qui tournent (`ps ax | grep ovs`) et la configuration vide (`ovs-vsctl show`).
+2. Créez le pont `br0` et ajoutez-lui les trois interfaces `eth0`, `eth1`, `eth2` de `sw1`.
+3. Mettez `h11` et `h12` dans le VLAN **{vlan_a}**, `h13` dans le VLAN **{vlan_b}** (ports d'accès).
+   `h11` et `h12` doivent se joindre ; `h13` ne doit joindre ni l'un ni l'autre, bien qu'il soit dans
+   le même réseau IP.
+4. Regardez la table de flux du pont (`ovs-ofctl -O OpenFlow13 dump-flows br0`) et son identifiant
+   (`ovs-ofctl -O OpenFlow13 show br0`).
+""": """
+Sections @@ref:ovsarch@@ and @@ref:ovstools@@. On `sw1`, Open vSwitch is running but has no bridge.
+
+1. Look at the running daemons (`ps ax | grep ovs`) and at the empty configuration (`ovs-vsctl show`).
+2. Create the bridge `br0` and add the three interfaces `eth0`, `eth1`, `eth2` of `sw1` to it.
+3. Put `h11` and `h12` in VLAN **{vlan_a}**, `h13` in VLAN **{vlan_b}** (access ports).
+   `h11` and `h12` must reach each other; `h13` must reach neither of them, although it is in the
+   same IP network.
+4. Look at the flow table of the bridge (`ovs-ofctl -O OpenFlow13 dump-flows br0`) and at its identifier
+   (`ovs-ofctl -O OpenFlow13 show br0`).
+""",
+        "un pont de sw1 a les trois ports eth0, eth1, eth2": "a bridge of sw1 has the three ports eth0, eth1, eth2",
+        "les ports d'accès sont dans les bons VLAN": "the access ports are in the right VLANs",
+        "h11 et h12 se joignent, h13 ne joint aucun des deux": "h11 and h12 reach each other, h13 reaches neither of them",
+        "Les composants d'Open vSwitch": "The components of Open vSwitch",
+        """
+Section @@ref:ovsarch@@ et @@ref:failmode@@.
+
+- l'identifiant de datapath (dpid) de votre pont `br0` : @@{dpid:.+}@@
+- le programme qui garde la configuration (ponts, ports, VLAN) : @@{config:>ovs-vswitchd>>>vswitchd|ovsdb-server>>>ovsdb|le module openvswitch du noyau>>>kernel|ovs-ofctl>>>ofctl}@@
+- le programme qui parle OpenFlow et tient les tables de flux : @@{switching:>ovsdb-server>>>ovsdb|ovs-vswitchd>>>vswitchd|le module openvswitch du noyau>>>kernel|ovs-vsctl>>>vsctl}@@
+- l'action de la seule entrée de la table d'un pont neuf sans contrôleur : @@{action:>drop>>>drop|CONTROLLER>>>controller|NORMAL>>>normal|FLOOD>>>flood}@@
+""": """
+Sections @@ref:ovsarch@@ and @@ref:failmode@@.
+
+- the datapath identifier (dpid) of your bridge `br0`: @@{dpid:.+}@@
+- the program that keeps the configuration (bridges, ports, VLANs): @@{config:>ovs-vswitchd>>>vswitchd|ovsdb-server>>>ovsdb|the openvswitch kernel module>>>kernel|ovs-ofctl>>>ofctl}@@
+- the program that speaks OpenFlow and holds the flow tables: @@{switching:>ovsdb-server>>>ovsdb|ovs-vswitchd>>>vswitchd|the openvswitch kernel module>>>kernel|ovs-vsctl>>>vsctl}@@
+- the action of the only entry in the table of a new bridge without a controller: @@{action:>drop>>>drop|CONTROLLER>>>controller|NORMAL>>>normal|FLOOD>>>flood}@@
+""",
+        "le dpid de br0": "the dpid of br0",
+        "le démon de configuration": "the configuration daemon",
+        "le démon OpenFlow": "the OpenFlow daemon",
+        "l'action NORMAL": "the NORMAL action",
+        "Partie 2 — Une liste d'accès en OpenFlow": "Part 2 — An access list in OpenFlow",
+        "Écrire la table de flux de sw2": "Write the flow table of sw2",
+        """
+Sections @@ref:flowtable@@, @@ref:ovsflows@@ et @@ref:failmode@@. Le pont `br0` de `sw2` est en mode
+`secure`, sans contrôleur et sans aucune entrée : rien ne passe. Écrivez vous-même sa table avec
+`ovs-ofctl -O OpenFlow13` pour appliquer cette politique :
+
+| de | vers | autorisé |
+|----|------|----------|
+| toutes les machines | toutes les machines | ARP |
+| `client2` | `web2` | TCP {web} (le site web) |
+| `web2` | `db2` | TCP {db} (la base de données) |
+| `admin2` | toutes les machines | TCP {ssh} (SSH) et ping (demande d'écho) |
+
+Tout le reste est jeté, y compris les réponses aux requêtes qui ne sont pas autorisées. Les serveurs
+écoutent déjà (un serveur d'écho HTTP : `curl http://web2:{web}/` répond qui il est et qui vous êtes).
+
+1. Trouvez le numéro OpenFlow de chaque port (`ovs-ofctl -O OpenFlow13 show br0`) : ce ne sont pas
+   1, 2, 3, 4.
+2. Écrivez les entrées (un fichier et `ovs-ofctl -O OpenFlow13 add-flows br0 fichier` est plus
+   commode), sans oublier les réponses.
+3. Vérifiez avec du vrai trafic et avec `ovs-appctl ofproto/trace`, et regardez les compteurs des
+   entrées (`dump-flows`).
+""": """
+Sections @@ref:flowtable@@, @@ref:ovsflows@@ and @@ref:failmode@@. The bridge `br0` of `sw2` is in
+`secure` mode, without a controller and without any entry: nothing gets through. Write its table
+yourself with `ovs-ofctl -O OpenFlow13` to apply this policy:
+
+| from | to | allowed |
+|------|----|---------|
+| all the machines | all the machines | ARP |
+| `client2` | `web2` | TCP {web} (the web site) |
+| `web2` | `db2` | TCP {db} (the database) |
+| `admin2` | all the machines | TCP {ssh} (SSH) and ping (echo request) |
+
+Everything else is dropped, including the replies to the requests that are not allowed. The servers are
+already listening (an HTTP echo server: `curl http://web2:{web}/` answers who it is and who you are).
+
+1. Find the OpenFlow number of each port (`ovs-ofctl -O OpenFlow13 show br0`): they are not
+   1, 2, 3, 4.
+2. Write the entries (a file and `ovs-ofctl -O OpenFlow13 add-flows br0 file` is more
+   convenient), without forgetting the replies.
+3. Check with real traffic and with `ovs-appctl ofproto/trace`, and look at the counters of the
+   entries (`dump-flows`).
+""",
+        "client2 atteint le site web de web2, pas son SSH": "client2 reaches the web site of web2, not its SSH",
+        "web2 atteint la base de db2 ; client2 ne l'atteint pas": "web2 reaches the database of db2; client2 does not reach it",
+        "admin2 atteint le SSH de tous et les pingue ; les autres non": "admin2 reaches the SSH of every machine and pings them; the others do not",
+        "le reste est jeté, sw2 toujours en mode secure sans contrôleur": "the rest is dropped, sw2 still in secure mode without a controller",
+        "Numéros de port et priorités": "Port numbers and priorities",
+        """
+Section @@ref:flowtable@@.
+
+- le numéro OpenFlow du port de `sw2` relié à `db2` : @@{ofport:[0-9]+}@@
+- la priorité d'une entrée écrite sans `priority=` : @@{priority:[0-9]+}@@
+- deux entrées de même priorité correspondent à un paquet ; laquelle s'applique ? @@{tie:>la plus ancienne>>>oldest|la plus récente>>>newest|ce n'est pas défini : à éviter>>>undefined|les deux, l'une après l'autre>>>both}@@
+""": """
+Section @@ref:flowtable@@.
+
+- the OpenFlow number of the port of `sw2` connected to `db2`: @@{ofport:[0-9]+}@@
+- the priority of an entry written without `priority=`: @@{priority:[0-9]+}@@
+- two entries of the same priority match a packet; which one applies? @@{tie:>the oldest one>>>oldest|the most recent one>>>newest|it is undefined: to be avoided>>>undefined|both, one after the other>>>both}@@
+""",
+        "le numéro OpenFlow du port de db2": "the OpenFlow number of the port of db2",
+        "la priorité par défaut": "the default priority",
+        "deux entrées de même priorité": "two entries of the same priority",
+        "Partie 3 — Un contrôleur réactif": "Part 3 — A reactive controller",
+        "Confier sw3 au contrôleur ctl3": "Hand sw3 over to the controller ctl3",
+        """
+Sections @@ref:messages@@, @@ref:failmode@@ et @@ref:learning@@. Le pont `br0` de `sw3` se comporte pour
+l'instant en switch classique (mode `standalone`, action `NORMAL`). Vous allez le confier au contrôleur
+OS-Ken de `ctl3`, joint par le réseau de contrôle hors bande `ctrl3`.
+
+1. Sur `ctl3`, lancez en arrière-plan le contrôleur avec l'application `os_ken.app.simple_switch_13`,
+   son journal dans `/var/log/osken-manager.log`.
+2. Sur `ctl3`, lancez une capture d'OpenFlow sur `eth0` (section @@ref:lab@@).
+3. Sur `sw3` : OpenFlow 1.3 seulement, mode `secure`, contrôleur `tcp:{ctl3}:{port}`. Vérifiez avec
+   `ovs-vsctl show` (`is_connected: true`).
+4. Pinguez `h32` depuis `h31` ; suivez la capture, le journal du contrôleur et la table de `sw3`
+   (`dump-flows`) : qui installe quelle entrée, et quand ?
+5. Arrêtez le contrôleur un instant : un nouveau flux passe-t-il encore ? (Relancez-le ensuite.)
+""": """
+Sections @@ref:messages@@, @@ref:failmode@@ and @@ref:learning@@. For now the bridge `br0` of `sw3`
+behaves as a classic switch (`standalone` mode, `NORMAL` action). You are going to hand it over to the
+OS-Ken controller of `ctl3`, reached through the out-of-band control network `ctrl3`.
+
+1. On `ctl3`, start the controller in the background with the application `os_ken.app.simple_switch_13`,
+   its log in `/var/log/osken-manager.log`.
+2. On `ctl3`, start a capture of OpenFlow on `eth0` (section @@ref:lab@@).
+3. On `sw3`: OpenFlow 1.3 only, `secure` mode, controller `tcp:{ctl3}:{port}`. Check with
+   `ovs-vsctl show` (`is_connected: true`).
+4. Ping `h32` from `h31`; follow the capture, the log of the controller and the table of `sw3`
+   (`dump-flows`): who installs which entry, and when?
+5. Stop the controller for a moment: does a new flow still get through? (Start it again afterwards.)
+""",
+        "sw3 est connecté au contrôleur de ctl3": "sw3 is connected to the controller of ctl3",
+        "sw3 est en mode secure": "sw3 is in secure mode",
+        "l'entrée table-miss envoie au contrôleur": "the table-miss entry sends to the controller",
+        "le contrôleur a installé des entrées apprises": "the controller has installed learned entries",
+        "h31 et h32 se joignent à travers le contrôleur": "h31 and h32 reach each other through the controller",
+        "Ce que montre la capture": "What the capture shows",
+        """
+Sections @@ref:messages@@ et @@ref:failmode@@.
+
+- le message par lequel `sw3` envoie au contrôleur un paquet qu'aucune entrée n'a pris : @@{{miss:>{messages}}}@@
+- le message par lequel le contrôleur installe une entrée : @@{{install:>{messages}}}@@
+- le message par lequel le contrôleur fait émettre un paquet : @@{{send:>{messages}}}@@
+- le dpid que `sw3` annonce dans son FEATURES_REPLY (16 chiffres hexadécimaux) : @@{{dpid:.+}}@@
+- contrôleur arrêté, `sw3` en mode `secure` : @@{{loss:>sw3 redevient un switch classique>>>standalone|les entrées déjà installées restent, aucun nouveau flux n'est appris>>>known|toutes les entrées sont effacées aussitôt>>>flush|sw3 diffuse tout sur tous ses ports>>>flood}}@@
+""": """
+Sections @@ref:messages@@ and @@ref:failmode@@.
+
+- the message by which `sw3` sends the controller a packet that no entry matched: @@{{miss:>{messages}}}@@
+- the message by which the controller installs an entry: @@{{install:>{messages}}}@@
+- the message by which the controller has a packet sent out: @@{{send:>{messages}}}@@
+- the dpid that `sw3` announces in its FEATURES_REPLY (16 hexadecimal digits): @@{{dpid:.+}}@@
+- controller stopped, `sw3` in `secure` mode: @@{{loss:>sw3 becomes a classic switch again>>>standalone|the entries already installed stay, no new flow is learned>>>known|all the entries are erased at once>>>flush|sw3 floods everything on all its ports>>>flood}}@@
+""",
+        "PACKET_IN": "PACKET_IN",
+        "FLOW_MOD": "FLOW_MOD",
+        "PACKET_OUT": "PACKET_OUT",
+        "le mode secure sans contrôleur": "secure mode without a controller",
+        "le dpid de sw3": "the dpid of sw3",
+        "Partie 4 — L'API nord : deux locataires": "Part 4 — The northbound API: two tenants",
+        "Isoler deux locataires par l'API REST": "Isolate two tenants through the REST API",
+        """
+Section @@ref:rest@@. `sw4a` et `sw4b` sont en mode `secure`, connectés au contrôleur `ctl4` qui n'y a
+installé aucune entrée : rien ne passe. Vous n'avez de terminal ni sur les switchs ni sur le
+contrôleur : tout se fait depuis `ops`, par l'API REST de `ofctl_rest` (`http://ctl4:{rest}/stats/...`).
+
+Deux locataires partagent le même réseau IP ({lan4}) : **rouge** (`red1` sur `sw4a`, `red2` sur `sw4b`)
+et **bleu** (`blue1` sur `sw4a`, `blue2` sur `sw4b`). `red1` et `red2` doivent se joindre, `blue1` et
+`blue2` aussi ; un rouge et un bleu ne doivent jamais se joindre (pas même l'ARP), ni sur le même
+switch ni à travers le lien `trunk` (`eth1` des deux switchs).
+
+1. Listez les switchs connectés (`curl -s http://ctl4:{rest}/stats/switches`), puis les ports de chacun
+   (`/stats/portdesc/<dpid>`, avec `jq`) : quel numéro OpenFlow pour quelle interface ?
+2. Choisissez une méthode : par adresses MAC sources (les adresses sont données dans la
+   première question), ou en étiquetant le trafic de chaque locataire sur le trunk (un VLAN par
+   locataire).
+3. Poussez les entrées (`POST /stats/flowentry/add`), vérifiez-les (`/stats/flow/<dpid>`, `/stats/errors/<dpid>`)
+   et testez.
+""": """
+Section @@ref:rest@@. `sw4a` and `sw4b` are in `secure` mode, connected to the controller `ctl4`, which
+has installed no entry on them: nothing gets through. You have no terminal on the switches or on the
+controller: everything is done from `ops`, through the REST API of `ofctl_rest` (`http://ctl4:{rest}/stats/...`).
+
+Two tenants share the same IP network ({lan4}): **red** (`red1` on `sw4a`, `red2` on `sw4b`) and
+**blue** (`blue1` on `sw4a`, `blue2` on `sw4b`). `red1` and `red2` must reach each other, `blue1` and
+`blue2` too; a red machine and a blue one must never reach each other (not even through ARP), neither
+on the same switch nor across the `trunk` link (`eth1` of both switches).
+
+1. List the connected switches (`curl -s http://ctl4:{rest}/stats/switches`), then the ports of each one
+   (`/stats/portdesc/<dpid>`, with `jq`): which OpenFlow number for which interface?
+2. Choose a method: by source MAC addresses (the addresses are given in the first question), or by
+   tagging the traffic of each tenant on the trunk (one VLAN per tenant).
+3. Push the entries (`POST /stats/flowentry/add`), check them (`/stats/flow/<dpid>`, `/stats/errors/<dpid>`)
+   and test.
+""",
+        "red1 joint red2, pas les bleus": "red1 reaches red2, not the blue machines",
+        "blue1 joint blue2 ; blue2 ne joint pas les rouges": "blue1 reaches blue2; blue2 does not reach the red machines",
+        "des entrées sur les deux switchs, un locataire au moins isolé": "entries on both switches, at least one tenant isolated",
+        "Ce que dit l'API": "What the API says",
+        """
+Section @@ref:rest@@.
+
+- le dpid de `sw4b`, tel que l'API l'écrit (en décimal) : @@{dpid:[0-9]+}@@
+- le numéro OpenFlow du port de `sw4b` relié à `blue2` : @@{ofport:[0-9]+}@@
+""": """
+Section @@ref:rest@@.
+
+- the dpid of `sw4b`, as the API writes it (in decimal): @@{dpid:[0-9]+}@@
+- the OpenFlow number of the port of `sw4b` connected to `blue2`: @@{ofport:[0-9]+}@@
+""",
+        "le dpid de sw4b en décimal": "the dpid of sw4b in decimal",
+        "le numéro OpenFlow du port de blue2": "the OpenFlow number of the port of blue2",
+        "Bonus — Limiter un invité": "Bonus — Limiting a guest",
+        "Un compteur de débit pour guest4": "A meter for guest4",
+        """
+Sections @@ref:groups@@ et @@ref:rest@@. Sur `sw4a`, `guest4` (port `eth4`) et `srv4` (port `eth5`) ne
+se joignent pas encore. Par l'API REST :
+
+1. créez sur `sw4a` le compteur de débit numéro {meter} qui jette ce qui dépasse **{rate} kbit/s** ;
+2. installez les entrées qui relient `guest4` et `srv4`, en faisant passer par ce compteur ce
+   qu'envoie `guest4` ;
+3. mesurez : `iperf3 -c srv4 -u -b {sent}k` depuis `guest4`.
+""": """
+Sections @@ref:groups@@ and @@ref:rest@@. On `sw4a`, `guest4` (port `eth4`) and `srv4` (port `eth5`)
+cannot reach each other yet. Through the REST API:
+
+1. create on `sw4a` meter number {meter}, which drops what exceeds **{rate} kbit/s**;
+2. install the entries that connect `guest4` and `srv4`, sending what `guest4` sends through this
+   meter;
+3. measure: `iperf3 -c srv4 -u -b {sent}k` from `guest4`.
+""",
+        "un compteur de débit qui jette au-delà du débit demandé": "a meter that drops above the requested rate",
+        "ce qu'envoie guest4 passe par ce compteur": "what guest4 sends goes through this meter",
+        "le débit reçu par srv4 est limité au débit demandé": "the rate received by srv4 is limited to the requested rate",
     },
 }

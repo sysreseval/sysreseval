@@ -27,7 +27,8 @@ which the students and the grader use to tell which router a request went throug
 The addressing is chosen by a startup form (``Flavor``): random private networks (default) or the
 networks of the handout; the host parts are those of the handout in both cases.  The ``final``
 state applies the reference solution.  Every question ends with its solution in an
-instructor-only block.  Texts are French (``tr()``), identifiers English.
+instructor-only block.  Texts are French (``tr()``) with their English in ``_TRANSLATIONS``,
+identifiers English.
 
 The brouter uses nftables: a *bridge* family rule in the prerouting hook rewriting the
 destination MAC to the bridge's own one and the packet type to ``host``, so that the bridge
@@ -58,7 +59,8 @@ from bridging import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("VLAN : 802.1Q, routeur « on a stick », ponts et brouter")
+title = tr("VLAN : 802.1Q, routeur « on a stick », ponts et brouter",
+           en="VLANs: 802.1Q, router on a stick, bridges and brouter")
 allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 30
@@ -123,11 +125,16 @@ class Flavor(Flavor0):
     form_size = (760, 320)
     flavor_form = (
         no_tr("# ") + title + no_tr("\n\n")
-        + tr("**Adresses IP des réseaux :**\n")
+        + tr("**Adresses IP des réseaux :**\n", en="**IP addresses of the networks:**\n")
         + tr("@@{ip_choice:>Aléatoires, propres à cette instance>>>random|"
-             "Celles du sujet : 192.168.11.0/24, 192.168.22.0/24, 10.10.10.0/24, 172.17.1.0/24>>>fixed}@@\n\n")
-        + tr("Les numéros de machine sont les mêmes dans les deux cas (`m3` = `.3`, `b1` = `.101`, `router` = `.254`...).\n\n")
-        + tr("@@{name::Démarrer le projet}@@")
+             "Celles du sujet : 192.168.11.0/24, 192.168.22.0/24, 10.10.10.0/24, 172.17.1.0/24>>>fixed}@@\n\n",
+             en="@@{ip_choice:>Random, specific to this instance>>>random|"
+                "Those of the handout: 192.168.11.0/24, 192.168.22.0/24, 10.10.10.0/24, 172.17.1.0/24>>>fixed}@@\n\n")
+        + tr("Les numéros de machine sont les mêmes dans les deux cas (`m3` = `.3`, `b1` = `.101`, `router` = `.254`...).\n\n",
+             en="The machine numbers are the same in both cases (`m3` = `.3`, `b1` = `.101`, `router` = `.254`...).\n\n")
+        # the label of the submit button alone in tr(): the translation checks read a `:Label`
+        # spec as a text field whose regex must not change
+        + no_tr("@@{name::") + tr("Démarrer le projet", en="Start the project") + no_tr("}@@")
     )
 
 
@@ -1286,4 +1293,1189 @@ décrémente pas le TTL. (b) Sur `b2` : `{ttl_rule}` : les paquets de `m3` repar
         )
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "VLAN : 802.1Q, routeur « on a stick », ponts et brouter": "VLANs: 802.1Q, router on a stick, bridges and brouter",
+    """**Adresses IP des réseaux :**
+""": """**IP addresses of the networks:**
+""",
+    """@@{ip_choice:>Aléatoires, propres à cette instance>>>random|Celles du sujet : 192.168.11.0/24, 192.168.22.0/24, 10.10.10.0/24, 172.17.1.0/24>>>fixed}@@
+
+""": """@@{ip_choice:>Random, specific to this instance>>>random|Those of the handout: 192.168.11.0/24, 192.168.22.0/24, 10.10.10.0/24, 172.17.1.0/24>>>fixed}@@
+
+""",
+    """Les numéros de machine sont les mêmes dans les deux cas (`m3` = `.3`, `b1` = `.101`, `router` = `.254`...).
+
+""": """The machine numbers are the same in both cases (`m3` = `.3`, `b1` = `.101`, `router` = `.254`...).
+
+""",
+    "Démarrer le projet": "Start the project",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "Rappels : hub, switch, domaine de diffusion": "Reminders: hub, switch, broadcast domain",
+    """
+
+Un **hub** répète chaque trame sur tous ses ports : toutes les machines voient tout le trafic.
+Un **switch** (commutateur) apprend, pour chaque port, les adresses MAC des machines qui y sont
+branchées (sa *table MAC*, ou table de commutation) et ne transmet une trame que sur le port de
+son destinataire ; les trames de diffusion (*broadcast*, `ff:ff:ff:ff:ff:ff`, par exemple les
+requêtes ARP) et celles dont le destinataire est inconnu sont envoyées sur tous les ports. Toutes
+les machines reliées par des hubs et des switchs forment un seul **domaine de diffusion** : un
+réseau IP (un préfixe, `192.168.11.0/24`) occupe normalement un domaine de diffusion. Pour
+séparer deux réseaux IP, il faut soit deux switchs physiques, soit... des VLAN.
+""": """
+
+A **hub** repeats every frame on all its ports: every machine sees all the traffic.
+A **switch** learns, for each port, the MAC addresses of the machines plugged into it (its
+*MAC table*, or switching table) and forwards a frame only on the port of its destination;
+broadcast frames (*broadcast*, `ff:ff:ff:ff:ff:ff`, for example ARP requests) and frames whose
+destination is unknown are sent on every port. All the machines connected by hubs and switches
+form a single **broadcast domain**: an IP network (a prefix, `192.168.11.0/24`) normally
+occupies one broadcast domain. To separate two IP networks, you need either two physical
+switches, or... VLANs.
+""",
+    "Les VLAN et l'étiquetage 802.1Q": "VLANs and 802.1Q tagging",
+    """
+
+Un **VLAN** (*Virtual LAN*) découpe un switch physique en plusieurs switchs logiques : chaque
+port appartient à un VLAN et une trame n'est jamais transmise d'un VLAN à un autre. Deux
+machines dans des VLAN différents ne se voient pas, même branchées côte à côte ; pour qu'elles
+communiquent il faut un **routeur** (niveau 3), exactement comme entre deux réseaux physiques.
+Les VLAN servent à séparer des populations (étudiants / administration / téléphonie), à limiter
+les domaines de diffusion, et à déplacer une machine de réseau sans toucher au câblage.
+
+Pour que deux switchs partagent les mêmes VLAN sur un seul câble, chaque trame qui transite sur
+ce câble porte une **étiquette** (*tag*) disant à quel VLAN elle appartient : c'est la norme
+**IEEE 802.1Q**. L'étiquette fait **4 octets** et s'insère dans l'en-tête Ethernet, entre
+l'adresse MAC source et le champ *type* :
+
+| champ | taille | contenu |
+|-------|--------|---------|
+| TPID (*Tag Protocol Identifier*) | 16 bits | `0x8100` : « cette trame porte une étiquette » (le vrai type suit) |
+| PCP (*Priority Code Point*) | 3 bits | priorité 802.1p (0 à 7) |
+| DEI (*Drop Eligible Indicator*) | 1 bit | trame jetable en cas de congestion |
+| VID (*VLAN Identifier*) | 12 bits | numéro du VLAN, 1 à 4094 (0 = pas de VLAN, étiquette de priorité seule ; 4095 réservé) |
+
+Une trame Ethernet étiquetée peut donc faire 1522 octets au lieu de 1518. Un port de switch est :
+
+- un **port d'accès** (*access*, *untagged*) : la machine branchée ignore les VLAN, elle émet et
+  reçoit des trames normales ; le switch affecte ses trames au VLAN du port et retire
+  l'étiquette avant de lui livrer une trame ;
+- un **port trunk** (*tagged*) : les trames y circulent **avec** leur étiquette, pour un ou
+  plusieurs VLAN ; c'est le cas entre deux switchs, ou vers un routeur ou un serveur qui
+  gère lui-même les VLAN. Les trames sans étiquette arrivant sur un trunk sont placées dans
+  le **VLAN natif** du port (sur le switch de ce TP : le VLAN 0, VLAN par défaut).
+
+Un switch **administrable** (*managed*) est un switch que l'on configure (ports, VLAN, table
+MAC...) par une console ; un switch non administrable n'a qu'un seul VLAN.
+""": """
+
+A **VLAN** (*Virtual LAN*) splits a physical switch into several logical switches: each port
+belongs to a VLAN and a frame is never forwarded from one VLAN to another. Two machines in
+different VLANs cannot see each other, even when plugged in side by side; for them to
+communicate a **router** is needed (layer 3), exactly as between two physical networks.
+VLANs are used to separate populations (students / administration / telephony), to limit
+broadcast domains, and to move a machine to another network without touching the cabling.
+
+For two switches to share the same VLANs over a single cable, every frame crossing that cable
+carries a **tag** saying which VLAN it belongs to: this is the **IEEE 802.1Q** standard. The
+tag is **4 bytes** long and is inserted in the Ethernet header, between the source MAC address
+and the *type* field:
+
+| field | size | content |
+|-------|--------|---------|
+| TPID (*Tag Protocol Identifier*) | 16 bits | `0x8100`: "this frame carries a tag" (the real type follows) |
+| PCP (*Priority Code Point*) | 3 bits | 802.1p priority (0 to 7) |
+| DEI (*Drop Eligible Indicator*) | 1 bit | frame that may be dropped under congestion |
+| VID (*VLAN Identifier*) | 12 bits | VLAN number, 1 to 4094 (0 = no VLAN, priority tag only; 4095 reserved) |
+
+A tagged Ethernet frame can therefore be 1522 bytes long instead of 1518. A switch port is:
+
+- an **access port** (*access*, *untagged*): the machine plugged into it knows nothing of
+  VLANs, it sends and receives normal frames; the switch assigns its frames to the VLAN of the
+  port and removes the tag before delivering a frame to it;
+- a **trunk port** (*tagged*): frames travel on it **with** their tag, for one or more VLANs;
+  this is the case between two switches, or towards a router or a server that handles the
+  VLANs itself. Untagged frames arriving on a trunk are placed in the **native VLAN** of the
+  port (on the switch of this lab: VLAN 0, the default VLAN).
+
+A **managed** switch is a switch you configure (ports, VLANs, MAC table...) through a console;
+an unmanaged switch has a single VLAN.
+""",
+    "Les VLAN sous Linux : sous-interfaces": "VLANs on Linux: sub-interfaces",
+    """
+
+Linux sait étiqueter et désétiqueter lui-même (module `8021q`) : une **sous-interface** VLAN
+est une interface virtuelle au-dessus d'une interface physique, qui émet des trames étiquetées
+d'un VLAN donné et ne reçoit que celles de ce VLAN, désétiquetées. Elle se configure comme une
+interface ordinaire (adresse IP, routes, pont...) :
+
+```
+ip link add link eth0 name eth0.111 type vlan id 111   # crée eth0.111 (VLAN 111 sur eth0)
+ip link set eth0.111 up
+ip address add 192.168.11.101/24 dev eth0.111
+ip -d link show eth0.111                               # vlan protocol 802.1Q id 111
+ip link del eth0.111                                   # supprime la sous-interface
+```
+
+Le nom `eth0.111` n'est qu'une convention (c'est l'option `id` qui compte). L'interface
+physique `eth0` reste utilisable pour le trafic **non étiqueté** (VLAN natif du port en face).
+
+On observe l'étiquette avec `tcpdump -e` (`-e` affiche l'en-tête Ethernet) : sur `eth0`,
+`tcpdump -e -n -i eth0` montre les trames avec `ethertype 802.1Q (0x8100), ... vlan 111, p 0,
+ethertype IPv4` ; sur `eth0.111`, les mêmes trames apparaissent sans étiquette. Dans Wireshark,
+filtre `vlan` et champ *802.1Q Virtual LAN* ; le module `vlan` de Debian permet aussi la
+configuration persistante dans `/etc/network/interfaces` (`iface eth0.111 inet static` avec
+`vlan-raw-device eth0`).
+""": """
+
+Linux can tag and untag frames itself (module `8021q`): a VLAN **sub-interface** is a virtual
+interface on top of a physical interface, which sends tagged frames of a given VLAN and
+receives only the frames of that VLAN, untagged. It is configured like an ordinary interface
+(IP address, routes, bridge...):
+
+```
+ip link add link eth0 name eth0.111 type vlan id 111   # creates eth0.111 (VLAN 111 on eth0)
+ip link set eth0.111 up
+ip address add 192.168.11.101/24 dev eth0.111
+ip -d link show eth0.111                               # vlan protocol 802.1Q id 111
+ip link del eth0.111                                   # deletes the sub-interface
+```
+
+The name `eth0.111` is only a convention (the `id` option is what counts). The physical
+interface `eth0` remains usable for **untagged** traffic (native VLAN of the port on the other
+side).
+
+You observe the tag with `tcpdump -e` (`-e` prints the Ethernet header): on `eth0`,
+`tcpdump -e -n -i eth0` shows the frames with `ethertype 802.1Q (0x8100), ... vlan 111, p 0,
+ethertype IPv4`; on `eth0.111`, the same frames appear without a tag. In Wireshark, filter
+`vlan` and field *802.1Q Virtual LAN*; Debian's `vlan` package also allows a persistent
+configuration in `/etc/network/interfaces` (`iface eth0.111 inet static` with
+`vlan-raw-device eth0`).
+""",
+    "Les ponts (*bridges*) Linux": "Linux bridges",
+    """
+
+Un **pont** Linux est un switch logiciel : une interface virtuelle `brX` à laquelle on rattache
+des **ports** (des interfaces physiques ou virtuelles). Les trames reçues sur un port sont
+commutées vers les autres selon la table MAC du pont, apprise comme sur un switch (`bridge fdb
+show`). Les ports n'ont **pas** d'adresse IP : c'est le pont lui-même qui en porte une, si la
+machine doit être joignable (le pont joue alors le rôle du switch *et* d'une machine branchée
+dessus).
+
+```
+ip link add brpair type bridge           # crée le pont
+ip link set eth2 master brpair           # eth2 devient un port du pont
+ip link set eth0.222 master brpair       # la sous-interface VLAN aussi
+ip link set brpair up                    # (et les ports doivent être up)
+bridge link                              # ports de chaque pont, état
+bridge fdb show br brpair                # table MAC du pont
+ip link set eth2 nomaster                # retire un port
+ip link del brpair
+```
+
+(`brctl addbr`, `brctl addif`, `brctl show` du paquet `bridge-utils` font la même chose.)
+
+Ponter une **sous-interface VLAN** avec une interface physique **prolonge le VLAN** : les trames
+qui entrent sans étiquette par `eth2` ressortent étiquetées 222 par `eth0`, et inversement. La
+machine Linux devient ainsi un port d'accès du VLAN 222 pour ce qui est branché sur `eth2` : un
+switch d'accès à deux ports, réalisé en logiciel. Si la machine Linux doit elle-même avoir une
+adresse dans ce VLAN, l'adresse va sur le **pont** (pas sur `eth0.222`, devenue un simple port).
+La configuration persistante (`/etc/network/interfaces`, `bridge_ports eth2 eth0.222`) est
+du ressort du paquet `bridge-utils`.
+""": """
+
+A Linux **bridge** is a software switch: a virtual interface `brX` to which **ports** are
+attached (physical or virtual interfaces). Frames received on a port are switched to the others
+according to the MAC table of the bridge, learnt as on a switch (`bridge fdb show`). The ports
+have **no** IP address: the bridge itself carries one, if the machine must be reachable (the
+bridge then plays the role of the switch *and* of a machine plugged into it).
+
+```
+ip link add brpair type bridge           # creates the bridge
+ip link set eth2 master brpair           # eth2 becomes a port of the bridge
+ip link set eth0.222 master brpair       # so does the VLAN sub-interface
+ip link set brpair up                    # (and the ports must be up)
+bridge link                              # ports of each bridge, state
+bridge fdb show br brpair                # MAC table of the bridge
+ip link set eth2 nomaster                # removes a port
+ip link del brpair
+```
+
+(`brctl addbr`, `brctl addif`, `brctl show` of the `bridge-utils` package do the same.)
+
+Bridging a **VLAN sub-interface** with a physical interface **extends the VLAN**: frames
+entering untagged through `eth2` leave tagged 222 through `eth0`, and vice versa. The Linux
+machine thus becomes an access port of VLAN 222 for whatever is plugged into `eth2`: a two-port
+access switch, made in software. If the Linux machine itself must have an address in that
+VLAN, the address goes on the **bridge** (not on `eth0.222`, which has become a mere port).
+The persistent configuration (`/etc/network/interfaces`, `bridge_ports eth2 eth0.222`) is
+handled by the `bridge-utils` package.
+""",
+    "Routage entre VLAN : le routeur « on a stick »": "Routing between VLANs: the router on a stick",
+    """
+
+Deux VLAN sont deux réseaux IP : pour qu'ils communiquent, un routeur doit avoir une interface
+(une adresse) dans chacun. Plutôt qu'un câble par VLAN, un seul port **trunk** suffit : le
+routeur crée une sous-interface par VLAN (`eth1.111`, `eth1.222`), chacune avec l'adresse qui
+sert de **passerelle par défaut** aux machines du VLAN. C'est le routeur *on a stick*
+(« sur un bâton ») : tout le trafic inter-VLAN entre et ressort par le même câble.
+
+```
+ip link add link eth1 name eth1.111 type vlan id 111 ; ip address add 192.168.11.254/24 dev eth1.111 ; ip link set eth1.111 up
+ip link add link eth1 name eth1.222 type vlan id 222 ; ip address add 192.168.22.254/24 dev eth1.222 ; ip link set eth1.222 up
+sysctl -w net.ipv4.ip_forward=1          # activer le routage (volatile ; /etc/sysctl.conf pour le rendre persistant)
+```
+
+Sans `ip_forward=1`, un hôte Linux reçoit les paquets destinés à d'autres mais ne les retransmet
+pas. Les machines des deux VLAN doivent avoir ce routeur comme route par défaut (`ip route`).
+""": """
+
+Two VLANs are two IP networks: for them to communicate, a router must have an interface (an
+address) in each. Rather than one cable per VLAN, a single **trunk** port is enough: the router
+creates one sub-interface per VLAN (`eth1.111`, `eth1.222`), each with the address that serves
+as the **default gateway** of the machines of the VLAN. This is the router *on a stick*: all
+the inter-VLAN traffic enters and leaves through the same cable.
+
+```
+ip link add link eth1 name eth1.111 type vlan id 111 ; ip address add 192.168.11.254/24 dev eth1.111 ; ip link set eth1.111 up
+ip link add link eth1 name eth1.222 type vlan id 222 ; ip address add 192.168.22.254/24 dev eth1.222 ; ip link set eth1.222 up
+sysctl -w net.ipv4.ip_forward=1          # enable routing (volatile; /etc/sysctl.conf to make it persistent)
+```
+
+Without `ip_forward=1`, a Linux host receives the packets meant for others but does not
+forward them. The machines of both VLANs must have this router as their default route
+(`ip route`).
+""",
+    "Traduction d'adresses source (NAT)": "Source address translation (NAT)",
+    """
+
+Les réseaux internes utilisent des adresses privées (RFC 1918) que l'extérieur ne sait pas
+router. Le routeur de sortie réécrit l'adresse **source** des paquets sortants avec la sienne
+(*SNAT*, *masquerade*), note la correspondance dans sa table de suivi de connexions (*conntrack*)
+et fait la réécriture inverse sur les réponses. Vu de l'extérieur, tout le trafic semble venir
+du routeur.
+
+```
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE         # iptables (nft en coulisse)
+iptables -t nat -S                                            # vérifier
+```
+
+ou, en nftables natif :
+
+```
+nft add table ip nat
+nft 'add chain ip nat postrouting { type nat hook postrouting priority 100; }'
+nft add rule ip nat postrouting oifname "eth0" masquerade
+nft list ruleset
+```
+
+Dans ce TP, chaque machine sert une page web (`curl http://ext1/`, `curl http://ext1:8080/`)
+qui affiche l'adresse du client **telle que le serveur la voit** (`CLIENT_IP=`) : derrière un
+NAT, c'est l'adresse du routeur qui apparaît, ce qui permet de savoir par quel routeur une
+requête est sortie. La page donne aussi le `TTL=` du paquet reçu (section @@ref:ttl@@).
+""": """
+
+Internal networks use private addresses (RFC 1918) that the outside world cannot route. The
+exit router rewrites the **source** address of outgoing packets with its own (*SNAT*,
+*masquerade*), records the mapping in its connection tracking table (*conntrack*) and does the
+reverse rewriting on the replies. Seen from outside, all the traffic seems to come from the
+router.
+
+```
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE         # iptables (nft behind the scenes)
+iptables -t nat -S                                            # check
+```
+
+or, in native nftables:
+
+```
+nft add table ip nat
+nft 'add chain ip nat postrouting { type nat hook postrouting priority 100; }'
+nft add rule ip nat postrouting oifname "eth0" masquerade
+nft list ruleset
+```
+
+In this lab, every machine serves a web page (`curl http://ext1/`, `curl http://ext1:8080/`)
+that shows the client address **as the server sees it** (`CLIENT_IP=`): behind a NAT, the
+address of the router appears, which tells you through which router a request went out. The
+page also gives the `TTL=` of the received packet (section @@ref:ttl@@).
+""",
+    "Le switch administrable et sa console": "The managed switch and its console",
+    """
+
+Le réseau `trunk` est un switch administrable (un `vde_switch`) : onglet **Réseaux**, bouton
+*Connecter* (ou onglet **Terminaux**) ouvre sa console. Les commandes utiles :
+
+```
+port/print                   ports utilisés : VLAN non étiqueté (untagged_vlan), machine branchée
+port/allprint                tous les ports
+vlan/print                   VLAN et leurs ports (tagged=1 : port trunk pour ce VLAN)
+port/setvlan <port> <vlan>   VLAN non étiqueté (d'accès) d'un port
+vlan/create <vlan>           crée un VLAN
+vlan/addport <vlan> <port>   ajoute un port étiqueté (trunk) à un VLAN
+vlan/delport <vlan> <port>   le retire
+hash/print                   table des adresses MAC
+help                         liste des commandes
+exit                         ferme la console
+```
+
+`port/print` décrit chaque port par la machine branchée (`kathara m7:eth0`) : le **numéro de
+port** n'est pas prévisible, lisez-le dans cette sortie. Le VLAN `0000` est le VLAN par défaut
+du switch (les ports non configurés et les trames non étiquetées des trunks).
+""": """
+
+The `trunk` network is a managed switch (a `vde_switch`): in the **Networks** tab, the
+*Connect* button (or the **Terminals** tab) opens its console. The useful commands:
+
+```
+port/print                   used ports: untagged VLAN (untagged_vlan), machine plugged in
+port/allprint                all the ports
+vlan/print                   VLANs and their ports (tagged=1: trunk port for that VLAN)
+port/setvlan <port> <vlan>   untagged (access) VLAN of a port
+vlan/create <vlan>           creates a VLAN
+vlan/addport <vlan> <port>   adds a tagged (trunk) port to a VLAN
+vlan/delport <vlan> <port>   removes it
+hash/print                   table of the MAC addresses
+help                         list of the commands
+exit                         closes the console
+```
+
+`port/print` describes each port by the machine plugged into it (`kathara m7:eth0`): the **port
+number** cannot be predicted, read it in that output. VLAN `0000` is the default VLAN of the
+switch (the unconfigured ports and the untagged frames of the trunks).
+""",
+    "Le *brouter* : ponter ou router ?": "The *brouter*: bridge or route?",
+    """
+
+Une machine qui a un pont **et** des adresses IP fait les deux : pour chaque trame reçue sur un
+port du pont, elle regarde l'adresse MAC de destination. Si c'est celle du pont (ou d'un de ses
+ports), la trame lui est destinée : elle remonte dans la pile IP, où elle est livrée localement
+ou **routée** ; sinon elle est **pontée** (commutée) vers un autre port sans que la couche IP
+ne la voie. Un *brouter* (*bridge* + *router*) est une machine qui prend cette décision **par
+règle** et non seulement d'après l'adresse MAC : telles trames sont pontées, telles autres sont
+routées. Les machines branchées derrière lui continuent de croire que leur routeur est celui
+qu'elles ont configuré, alors que leurs paquets suivent un autre chemin.
+
+Sous Linux, cette décision se prend avec la famille **bridge** de **nftables** : ses chaînes
+s'accrochent sur le trajet des trames **dans le pont**, et son hook `prerouting` est traversé
+avant que le pont ne commute la trame. Deux actions y suffisent pour détourner une trame vers
+la pile IP :
+
+- `ether daddr set <MAC du pont>` : réécrit l'adresse MAC de destination avec celle du pont
+  (lisible par `ip link show brimpair` ou `cat /sys/class/net/brimpair/address`) : le pont livre
+  alors la trame à la machine elle-même ;
+- `meta pkttype set host` : marque la trame « pour cet hôte » (sinon la pile IP la jette comme
+  adressée à quelqu'un d'autre, `PACKET_OTHERHOST`).
+
+```
+nft add table bridge brouter
+nft 'add chain bridge brouter prerouting { type filter hook prerouting priority -300; policy accept; }'
+nft add rule bridge brouter prerouting iifname "eth1" ip saddr 192.168.11.3 \\
+    meta pkttype set host ether daddr set $(cat /sys/class/net/brimpair/address)
+nft list ruleset                           # voir ; nft flush table bridge brouter pour vider
+```
+
+Les critères disponibles : `iifname` (port d'entrée), `ip saddr`, `ip daddr`, `ip protocol`,
+`tcp dport`, `udp dport`, `ether saddr`... Un paquet ainsi détourné est ensuite traité comme
+n'importe quel paquet reçu : table de routage de la machine (`ip route`), règles `iptables` /
+`nft` des familles `ip` / `inet` (il traverse la chaîne `PREROUTING` puis `FORWARD`), et le
+routage **décrémente son TTL**. Les réponses, elles, reviennent par le chemin normal (le routeur
+qui a fait le NAT connaît le VLAN de la machine) : le pont les commute sans les voir passer par
+la couche IP.
+
+Historiquement c'est le rôle de la table `broute` d'`ebtables` (chaîne `BROUTING`, cible `redirect
+--redirect-target DROP`, où « DROP » signifie « router ») ; l'`ebtables` de Debian 13 est une
+réimplémentation sur nftables : elle a bien une table `broute`, mais refuse la cible `redirect`
+(`RULE_APPEND failed`). nftables a de son côté l'action `meta broute set 1` (depuis la version
+1.0.7), qui fait remonter la trame par le port d'entrée lui-même et non par le pont : ce n'est pas
+le même mécanisme. Celui décrit ci-dessus est l'équivalent de la cible `redirect`.
+""": """
+
+A machine that has a bridge **and** IP addresses does both: for each frame received on a port
+of the bridge, it looks at the destination MAC address. If it is that of the bridge (or of one
+of its ports), the frame is meant for it: it goes up into the IP stack, where it is delivered
+locally or **routed**; otherwise it is **bridged** (switched) to another port without the IP
+layer seeing it. A *brouter* (*bridge* + *router*) is a machine that takes this decision **by
+rule** and not only from the MAC address: some frames are bridged, others are routed. The
+machines plugged in behind it keep believing that their router is the one they configured,
+while their packets follow another path.
+
+On Linux, this decision is taken with the **bridge** family of **nftables**: its chains hook
+onto the path of the frames **inside the bridge**, and its `prerouting` hook is traversed
+before the bridge switches the frame. Two actions there are enough to divert a frame to the IP
+stack:
+
+- `ether daddr set <MAC of the bridge>`: rewrites the destination MAC address with that of the
+  bridge (readable with `ip link show brimpair` or `cat /sys/class/net/brimpair/address`): the
+  bridge then delivers the frame to the machine itself;
+- `meta pkttype set host`: marks the frame "for this host" (otherwise the IP stack drops it as
+  addressed to someone else, `PACKET_OTHERHOST`).
+
+```
+nft add table bridge brouter
+nft 'add chain bridge brouter prerouting { type filter hook prerouting priority -300; policy accept; }'
+nft add rule bridge brouter prerouting iifname "eth1" ip saddr 192.168.11.3 \\
+    meta pkttype set host ether daddr set $(cat /sys/class/net/brimpair/address)
+nft list ruleset                           # view; nft flush table bridge brouter to empty it
+```
+
+The criteria available: `iifname` (input port), `ip saddr`, `ip daddr`, `ip protocol`,
+`tcp dport`, `udp dport`, `ether saddr`... A packet diverted this way is then handled like any
+received packet: the routing table of the machine (`ip route`), the `iptables` / `nft` rules
+of the `ip` / `inet` families (it goes through the `PREROUTING` chain, then `FORWARD`), and
+routing **decrements its TTL**. The replies, for their part, come back by the normal path (the
+router that did the NAT knows the VLAN of the machine): the bridge switches them without their
+going through the IP layer.
+
+Historically this is the role of the `broute` table of `ebtables` (chain `BROUTING`, target `redirect
+--redirect-target DROP`, where "DROP" means "route"); the `ebtables` of Debian 13 is a
+reimplementation on top of nftables: it does have a `broute` table, but refuses the `redirect`
+target (`RULE_APPEND failed`). nftables, for its part, has the action `meta broute set 1` (since
+version 1.0.7), which sends the frame up through the input port itself and not through the
+bridge: it is not the same mechanism. The one described above is the equivalent of the
+`redirect` target.
+""",
+    "Le TTL": "The TTL",
+    """
+
+Le champ **TTL** (*Time To Live*, 8 bits) d'un paquet IPv4 est décrémenté par **chaque routeur**
+traversé ; à zéro, le paquet est détruit et un message ICMP *Time exceeded* est renvoyé à
+l'émetteur (c'est ce qu'exploite `traceroute`). Il protège le réseau des boucles de routage. Un
+**pont** ou un switch ne le touche pas (niveau 2). Linux émet avec un TTL initial de 64
+(`sysctl net.ipv4.ip_default_ttl`, à changer par `sysctl -w` ; `sysctl -a` liste tous les
+paramètres du noyau) ; Windows 128, les routeurs Cisco 255.
+
+Sur `ext1`, on lit le TTL des paquets reçus avec `tcpdump -n -v -i eth0 tcp` (champ `ttl` de la
+première ligne de chaque paquet), `tshark -i eth0 -V` (*Time to Live*) ou Wireshark ; la page
+web des machines de ce TP l'affiche aussi (`TTL=`). Un paquet qui a traversé un routeur arrive
+avec 63, deux routeurs 62.
+
+Il est possible de réécrire le TTL dans la table `mangle` d'iptables (cible `TTL`, module
+`xt_HL`, voir `man iptables-extensions`) :
+
+```
+iptables -t mangle -A PREROUTING -s 192.168.11.3 -j TTL --ttl-inc 1    # +1 (aussi --ttl-dec N, --ttl-set N)
+iptables -t mangle -S
+```
+
+**Augmenter** le TTL est dangereux : un paquet pris dans une boucle de routage ne meurt plus
+jamais. On ne le fait que pour masquer un saut (ici, le brouter) et jamais sur un routeur
+d'Internet. (nftables sait seulement fixer une valeur : `ip ttl set 64`.)
+""": """
+
+The **TTL** field (*Time To Live*, 8 bits) of an IPv4 packet is decremented by **each router**
+it crosses; at zero, the packet is destroyed and an ICMP *Time exceeded* message is sent back to
+the sender (this is what `traceroute` exploits). It protects the network from routing loops. A
+**bridge** or a switch does not touch it (layer 2). Linux sends with an initial TTL of 64
+(`sysctl net.ipv4.ip_default_ttl`, changed with `sysctl -w`; `sysctl -a` lists all the kernel
+parameters); Windows 128, Cisco routers 255.
+
+On `ext1`, you read the TTL of the received packets with `tcpdump -n -v -i eth0 tcp` (the `ttl`
+field of the first line of each packet), `tshark -i eth0 -V` (*Time to Live*) or Wireshark; the
+web page of the machines of this lab shows it too (`TTL=`). A packet that has crossed one router
+arrives with 63, two routers 62.
+
+The TTL can be rewritten in the `mangle` table of iptables (target `TTL`, module `xt_HL`, see
+`man iptables-extensions`):
+
+```
+iptables -t mangle -A PREROUTING -s 192.168.11.3 -j TTL --ttl-inc 1    # +1 (also --ttl-dec N, --ttl-set N)
+iptables -t mangle -S
+```
+
+**Increasing** the TTL is dangerous: a packet caught in a routing loop never dies. It is done
+only to hide a hop (here, the brouter) and never on an Internet router. (nftables can only set
+a value: `ip ttl set 64`.)
+""",
+    "Aide-mémoire": "Cheat sheet",
+    """
+
+| besoin | commande |
+|--------|----------|
+| interfaces, adresses | `ip -br address`, `ip -d link show eth0.111` |
+| sous-interface VLAN | `ip link add link eth0 name eth0.111 type vlan id 111` |
+| pont | `ip link add br0 type bridge`, `ip link set ethX master br0`, `bridge link`, `bridge fdb show` |
+| routes | `ip route`, `ip route add default via A.B.C.D`, `ip route replace default via ...` |
+| routage | `sysctl -w net.ipv4.ip_forward=1` |
+| NAT | `iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE` |
+| capture | `tcpdump -e -n -i eth0`, `tcpdump -n -v -i eth0 tcp`, `tshark -i eth0 -V`, `wireshark` |
+| tester un serveur web | `curl http://ext1/`, `curl http://ext1:8080/` (ou `links`) |
+| brouter | `nft add table bridge brouter`, `nft add rule bridge brouter prerouting ...`, `nft list ruleset` |
+| TTL | `iptables -t mangle -A PREROUTING -s X -j TTL --ttl-inc 1`, `sysctl -w net.ipv4.ip_default_ttl=90` |
+| console du switch | onglet *Réseaux* → *Connecter* : `port/print`, `port/setvlan <port> <vlan>`, `vlan/print` |
+""": """
+
+| need | command |
+|--------|----------|
+| interfaces, addresses | `ip -br address`, `ip -d link show eth0.111` |
+| VLAN sub-interface | `ip link add link eth0 name eth0.111 type vlan id 111` |
+| bridge | `ip link add br0 type bridge`, `ip link set ethX master br0`, `bridge link`, `bridge fdb show` |
+| routes | `ip route`, `ip route add default via A.B.C.D`, `ip route replace default via ...` |
+| routing | `sysctl -w net.ipv4.ip_forward=1` |
+| NAT | `iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE` |
+| capture | `tcpdump -e -n -i eth0`, `tcpdump -n -v -i eth0 tcp`, `tshark -i eth0 -V`, `wireshark` |
+| testing a web server | `curl http://ext1/`, `curl http://ext1:8080/` (or `links`) |
+| brouter | `nft add table bridge brouter`, `nft add rule bridge brouter prerouting ...`, `nft list ruleset` |
+| TTL | `iptables -t mangle -A PREROUTING -s X -j TTL --ttl-inc 1`, `sysctl -w net.ipv4.ip_default_ttl=90` |
+| switch console | *Networks* tab → *Connect*: `port/print`, `port/setvlan <port> <vlan>`, `vlan/print` |
+""",
+    """
+| réseau | préfixe | machines |
+|--------|---------|----------|
+| `trunk` (switch administrable, VLAN par défaut) | `{trunk}` | `b1` eth0 (`{b1_trunk}`), `b2` eth0 (`{b2_trunk}`), `router` eth1 (`{router_trunk}`), `router2` eth1 (`{router2_trunk}`), `m7` eth0 (non configurée) |
+| VLAN {vlan_odd} (machines impaires) | `{odd}` | `m1` (`{m1}`), `m3` (`{m3}`), `m5` (`{m5}`) ; à venir : `b1` (`{b1_odd}`), `b2` (`{b2_odd}`), `router` (`{router_odd}`, passerelle), `router2` (`{router2_odd}`), `m7` (`{m7}`) |
+| VLAN {vlan_even} (machines paires) | `{even}` | `m2` (`{m2}`), `m4` (`{m4}`), `m6` (`{m6}`) ; à venir : `router` (`{router_even}`, passerelle), `router2` (`{router2_even}`) |
+| `ext` (« l'extérieur ») | `{ext}` | `ext1` (`{ext1}`), `ext2` (`{ext2}`), `router` eth0 (`{router_ext}`), `router2` eth0 (`{router2_ext}`) |
+""": """
+| network | prefix | machines |
+|--------|---------|----------|
+| `trunk` (managed switch, default VLAN) | `{trunk}` | `b1` eth0 (`{b1_trunk}`), `b2` eth0 (`{b2_trunk}`), `router` eth1 (`{router_trunk}`), `router2` eth1 (`{router2_trunk}`), `m7` eth0 (not configured) |
+| VLAN {vlan_odd} (odd machines) | `{odd}` | `m1` (`{m1}`), `m3` (`{m3}`), `m5` (`{m5}`); to come: `b1` (`{b1_odd}`), `b2` (`{b2_odd}`), `router` (`{router_odd}`, gateway), `router2` (`{router2_odd}`), `m7` (`{m7}`) |
+| VLAN {vlan_even} (even machines) | `{even}` | `m2` (`{m2}`), `m4` (`{m4}`), `m6` (`{m6}`); to come: `router` (`{router_even}`, gateway), `router2` (`{router2_even}`) |
+| `ext` ("the outside") | `{ext}` | `ext1` (`{ext1}`), `ext2` (`{ext2}`), `router` eth0 (`{router_ext}`), `router2` eth0 (`{router2_ext}`) |
+""",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente les VLAN et l'étiquetage 802.1Q, les
+sous-interfaces et les ponts Linux, le routeur « on a stick », le NAT, la console du switch,
+le brouter et le TTL.
+
+**La maquette** (onglet *Schéma*). Le switch administrable `trunk` relie les deux ponts `b1`
+et `b2` (eth0), les deux routeurs `router` et `router2` (eth1) et une machine `m7` non encore
+configurée. Ses ports vers `b1`, `b2`, `router` et `router2` sont des **trunks** : ils
+transportent les VLAN {vlan_odd} et {vlan_even} étiquetés, et les trames non étiquetées
+restent dans le VLAN par défaut du switch (le réseau `trunk` ci-dessous). `b1` est câblée
+directement à `m1` (eth1) et `m2` (eth2) ; `b2` atteint `m3` et `m5` par le switch `odd`
+(eth1), `m4` et `m6` par le switch `even` (eth2). Les machines impaires `m1`, `m3`, `m5`
+forment le réseau du VLAN {vlan_odd}, les paires `m2`, `m4`, `m6` celui du VLAN {vlan_even}.
+Les deux routeurs ont leur eth0 sur le réseau `ext`, avec les serveurs `ext1` et `ext2`.
+""": """
+Read the **Informations** tab: it presents VLANs and 802.1Q tagging, Linux sub-interfaces and
+bridges, the router on a stick, NAT, the switch console, the brouter and the TTL.
+
+**The setup** (*Schema* tab). The managed switch `trunk` connects the two bridges `b1` and `b2`
+(eth0), the two routers `router` and `router2` (eth1) and a machine `m7`, not configured yet.
+Its ports towards `b1`, `b2`, `router` and `router2` are **trunks**: they carry VLANs
+{vlan_odd} and {vlan_even} tagged, and the untagged frames stay in the default VLAN of the
+switch (the `trunk` network below). `b1` is cabled directly to `m1` (eth1) and `m2` (eth2);
+`b2` reaches `m3` and `m5` through the switch `odd` (eth1), `m4` and `m6` through the switch
+`even` (eth2). The odd machines `m1`, `m3`, `m5` form the network of VLAN {vlan_odd}, the even
+ones `m2`, `m4`, `m6` that of VLAN {vlan_even}. Both routers have their eth0 on the `ext`
+network, with the servers `ext1` and `ext2`.
+""",
+    """
+Déjà en place (ne pas modifier) : les adresses ci-dessus (sauf celles marquées *à venir*, que
+vous configurerez), la route par défaut des machines `m1` à `m6` vers `router` (`.254`, qui
+ne route pas encore), celle de `b1` et `b2` vers `router` sur `trunk`, les noms dans
+`/etc/hosts` (`m1`... `m7`, `ext1`, `ext2`, `b1_trunk`, `b2_trunk`, `router_ext`,
+`router_trunk`, `router2_ext`, `router2_trunk`). Le routage est **désactivé** partout. Il n'y a
+pas de DNS. Sur `b1` et `b2`, seule `eth0` est configurée.
+
+Sur **chaque machine** tourne un serveur web sur les ports TCP **80 et 8080** : `curl
+http://ext1/` ou `curl http://ext1:8080/` affiche `SERVER=` (qui répond), `CLIENT_IP=` (l'adresse
+du client **vue par le serveur** : derrière un NAT, celle du routeur) et `TTL=` (le TTL du
+paquet reçu). Les captures se font avec `tcpdump` (`-e` pour voir les étiquettes 802.1Q),
+`tshark` ou `wireshark`. La console du switch `trunk` est dans l'onglet **Réseaux** (bouton
+*Connecter*).
+
+**Plan du TP.**
+
+1. **Vérification** du réseau `trunk` (b1, b2, router) ;
+2. **VLAN {vlan_odd} et {vlan_even}** sur `eth0` de b1 et b2, capture sur `eth0` et `eth0.{vlan_odd}` ;
+3. **Pont `breven`** (eth2 + eth0.{vlan_even}) : m2 joint m4 et m6 ;
+4. **Pont `brodd`** (eth1 + eth0.{vlan_odd}) : m1 joint m3 et m5 ;
+5. **Routeur « on a stick »** : `router` relie les deux VLAN ;
+6. **NAT source** sur `router` : tout le monde joint ext1 et ext2 ;
+7. **Nouvelle machine `m7`** sur un port libre du switch `trunk` ;
+8. **Brouter** sur b2 : le trafic de m3 (puis certains flux) sort par `router2` ;
+9. **TTL** : effet du brouter, correction, TTL par défaut.
+
+Règles valables pour tout le TP :
+
+- les questions sont à faire **dans l'ordre** et la configuration d'une question terminée reste
+  en place (l'évaluation vérifie l'état final de tout) ;
+- toute la configuration de ce TP est volatile (`ip`, `nft`, `sysctl -w`) : elle ne survit pas au
+  redémarrage d'une machine ;
+- les noms des ponts sont imposés : **`brodd`** (VLAN {vlan_odd}, machines impaires) et
+  **`breven`** (VLAN {vlan_even}, machines paires) ; les sous-interfaces s'appellent
+  `eth0.{vlan_odd}`, `eth0.{vlan_even}` (sur `b1`, `b2`) et `eth1.{vlan_odd}`, `eth1.{vlan_even}` (sur les routeurs) ;
+- l'évaluation observe la maquette telle qu'elle tourne (`ip`, `nft`, `iptables`, la console
+  du switch, puis des `ping` et des requêtes web **depuis vos machines** vers `ext1` et `ext2`).
+""": """
+Already in place (do not modify): the addresses above (except those marked *to come*, which you
+will configure), the default route of the machines `m1` to `m6` via `router` (`.254`, which
+does not route yet), that of `b1` and `b2` via `router` on `trunk`, the names in `/etc/hosts`
+(`m1`... `m7`, `ext1`, `ext2`, `b1_trunk`, `b2_trunk`, `router_ext`, `router_trunk`,
+`router2_ext`, `router2_trunk`). Routing is **disabled** everywhere. There is no DNS. On `b1`
+and `b2`, only `eth0` is configured.
+
+A web server runs on **every machine** on TCP ports **80 and 8080**: `curl http://ext1/` or
+`curl http://ext1:8080/` shows `SERVER=` (who answers), `CLIENT_IP=` (the client address **as
+seen by the server**: behind a NAT, that of the router) and `TTL=` (the TTL of the received
+packet). Captures are done with `tcpdump` (`-e` to see the 802.1Q tags), `tshark` or
+`wireshark`. The console of the `trunk` switch is in the **Networks** tab (*Connect* button).
+
+**Plan of the lab.**
+
+1. **Check** of the `trunk` network (b1, b2, router);
+2. **VLANs {vlan_odd} and {vlan_even}** on `eth0` of b1 and b2, capture on `eth0` and `eth0.{vlan_odd}`;
+3. **Bridge `breven`** (eth2 + eth0.{vlan_even}): m2 reaches m4 and m6;
+4. **Bridge `brodd`** (eth1 + eth0.{vlan_odd}): m1 reaches m3 and m5;
+5. **Router on a stick**: `router` connects the two VLANs;
+6. **Source NAT** on `router`: everyone reaches ext1 and ext2;
+7. **New machine `m7`** on a free port of the `trunk` switch;
+8. **Brouter** on b2: the traffic of m3 (then some flows) goes out through `router2`;
+9. **TTL**: effect of the brouter, correction, default TTL.
+
+Rules for the whole lab:
+
+- the questions are to be done **in order** and the configuration of a finished question stays
+  in place (the evaluation checks the final state of everything);
+- all the configuration of this lab is volatile (`ip`, `nft`, `sysctl -w`): it does not survive
+  a restart of a machine;
+- the names of the bridges are imposed: **`brodd`** (VLAN {vlan_odd}, odd machines) and
+  **`breven`** (VLAN {vlan_even}, even machines); the sub-interfaces are called
+  `eth0.{vlan_odd}`, `eth0.{vlan_even}` (on `b1`, `b2`) and `eth1.{vlan_odd}`, `eth1.{vlan_even}` (on the routers);
+- the evaluation observes the setup as it runs (`ip`, `nft`, `iptables`, the switch console,
+  then `ping`s and web requests **from your machines** to `ext1` and `ext2`).
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
+projet. L'état `final` (onglet *Appliquer une configuration*) applique toute la solution et remplit
+les formulaires : sous-interfaces et ponts de `b1` / `b2`, sous-interfaces et NAT des deux routeurs,
+`m7` adressée et son port placé dans le VLAN {vlan_odd} (résolu par le numéro de port réel), route par
+défaut de `b2` vers `router2`, la table `bridge brouter` et ses deux règles, la règle `TTL` et le
+`ip_default_ttl` de `m5`. Il est ré-applicable (ce qu'il trouve est d'abord supprimé).
+
+L'évaluation lit `ip -d link` / `ip addr` (sous-interfaces, ponts et leurs ports, adresses),
+`ip route`, `ip_forward`, `nft list ruleset` et `iptables -t mangle -S` sur `b2`, la console du switch
+(`port/allprint`, `vlan/allprint` : VLAN du port de `m7`), puis des `ping` entre les machines et des
+`curl` vers les pages de `ext1` / `ext2` depuis `m1`... `m7` et `b2` : `CLIENT_IP` dit par quel
+routeur la requête est sortie, `TTL` combien de routeurs elle a traversés. Une évaluation dure
+une dizaine de secondes. Le brouter est en nftables (famille `bridge`), voir la section @@ref:brouter@@ des
+Informations : l'`ebtables` de l'image (1.8.11, nft) refuse la cible `redirect` de la table `broute`.
+""": """
+**For the instructor.** Each question ends with its solution, computed for the addresses of this
+project. The `final` state (*Apply Configuration* tab) applies the whole solution and fills in
+the forms: sub-interfaces and bridges of `b1` / `b2`, sub-interfaces and NAT of both routers,
+`m7` addressed and its port placed in VLAN {vlan_odd} (resolved through the real port number),
+default route of `b2` via `router2`, the `bridge brouter` table and its two rules, the `TTL` rule
+and the `ip_default_ttl` of `m5`. It can be applied again (what it finds is removed first).
+
+The evaluation reads `ip -d link` / `ip addr` (sub-interfaces, bridges and their ports,
+addresses), `ip route`, `ip_forward`, `nft list ruleset` and `iptables -t mangle -S` on `b2`, the
+switch console (`port/allprint`, `vlan/allprint`: VLAN of the port of `m7`), then `ping`s between
+the machines and `curl` requests to the pages of `ext1` / `ext2` from `m1`... `m7` and `b2`:
+`CLIENT_IP` tells through which router the request went out, `TTL` how many routers it crossed.
+An evaluation takes about ten seconds. The brouter is in nftables (`bridge` family), see section
+@@ref:brouter@@ of the Informations: the `ebtables` of the image (1.8.11, nft) refuses the
+`redirect` target of the `broute` table.
+""",
+    "Partie 1 — VLAN 802.1Q sur b1 et b2 (questions 1 et 2)": "Part 1 — 802.1Q VLANs on b1 and b2 (questions 1 and 2)",
+    "Vérification du réseau trunk": "Checking the trunk network",
+    """
+Vérifiez que `b1` (`{b1_trunk}`), `b2` (`{b2_trunk}`) et `router` (`{router_trunk}`) sont
+joignables entre elles (`ping`). Sur `b2`, capturez pendant ce temps avec `tcpdump -e -n -i eth0
+icmp` : ces trames traversent le switch `trunk` **sans étiquette** (VLAN par défaut des ports
+trunk). Ouvrez la console du switch (onglet *Réseaux*) et regardez `port/print` et `vlan/print` :
+repérez les ports de `b1`, `b2`, `router`, `router2` (étiquetés `tagged=1` dans les VLAN {vlan_odd}
+et {vlan_even}) et celui de `m7`.
+""": """
+Check that `b1` (`{b1_trunk}`), `b2` (`{b2_trunk}`) and `router` (`{router_trunk}`) can reach
+each other (`ping`). Meanwhile, capture on `b2` with `tcpdump -e -n -i eth0 icmp`: these frames
+cross the `trunk` switch **untagged** (default VLAN of the trunk ports). Open the switch console
+(*Networks* tab) and look at `port/print` and `vlan/print`: find the ports of `b1`, `b2`,
+`router`, `router2` (marked `tagged=1` in VLANs {vlan_odd} and {vlan_even}) and that of `m7`.
+""",
+    """
+**Solution.** Rien à configurer : les trois adresses sont en place à l'ouverture. `vlan/print` montre
+le VLAN `0000` (tous les ports, `tagged=0`) et les VLAN `0111` / `0222` avec les quatre ports trunk
+`tagged=1` ; `port/print` donne `untagged_vlan=0000` pour chacun, dont celui de `m7`
+(`kathara m7:eth0`). L'évaluation fait `ping` depuis `b1` vers `b2` et `router`.
+""": """
+**Solution.** Nothing to configure: the three addresses are in place when the project opens.
+`vlan/print` shows VLAN `0000` (all the ports, `tagged=0`) and VLANs `0111` / `0222` with the
+four trunk ports `tagged=1`; `port/print` gives `untagged_vlan=0000` for each of them, including
+that of `m7` (`kathara m7:eth0`). The evaluation runs `ping` from `b1` to `b2` and `router`.
+""",
+    "VLAN {odd} et {even} sur b1 et b2": "VLANs {odd} and {even} on b1 and b2",
+    """
+Sur l'interface `eth0` de `b1` et de `b2`, créez les deux sous-interfaces VLAN `eth0.{odd}` et
+`eth0.{even}` (section @@ref:subinterfaces@@ des Informations), attribuez les adresses :
+
+- `{b1_odd}` à `eth0.{odd}` sur `b1`,
+- `{b2_odd}` à `eth0.{odd}` sur `b2`.
+
+Montez toutes les interfaces et vérifiez que `b1` et `b2` se joignent **à travers le VLAN
+{odd}** (`ping {b2_odd}` depuis `b1`). Pendant ces pings, capturez sur `b1` avec `tcpdump -e -n
+-i eth0 icmp`, puis avec `tcpdump -e -n -i eth0.{odd} icmp` (ou Wireshark). Quelle différence y
+a-t-il entre les deux captures ?
+""": """
+On the `eth0` interface of `b1` and of `b2`, create the two VLAN sub-interfaces `eth0.{odd}` and
+`eth0.{even}` (section @@ref:subinterfaces@@ of the Informations), and assign the addresses:
+
+- `{b1_odd}` to `eth0.{odd}` on `b1`,
+- `{b2_odd}` to `eth0.{odd}` on `b2`.
+
+Bring all the interfaces up and check that `b1` and `b2` reach each other **through VLAN
+{odd}** (`ping {b2_odd}` from `b1`). During these pings, capture on `b1` with
+`tcpdump -e -n -i eth0 icmp`, then with `tcpdump -e -n -i eth0.{odd} icmp` (or Wireshark). What
+is the difference between the two captures?
+""",
+    """
+- différence entre les deux captures : @@{diff:>sur eth0 chaque trame porte une étiquette 802.1Q (vlan 111) entre l'adresse MAC source et le type ; sur eth0.111 les mêmes trames apparaissent sans étiquette>>>tag_on_eth0|c'est l'inverse : l'étiquette 802.1Q n'apparaît que sur eth0.111>>>tag_on_sub|aucune, les deux captures sont identiques>>>same|sur eth0 on ne voit aucune trame du ping, seulement sur eth0.111>>>nothing_on_eth0}@@
+- numéro de VLAN lu dans la capture sur `eth0` (`vlan N`) : @@{vid:[0-9]+}@@
+- taille de l'étiquette 802.1Q, en octets (comparez les longueurs des trames) : @@{tag_size:[0-9]+}@@
+""": """
+- difference between the two captures: @@{diff:>on eth0 every frame carries an 802.1Q tag (vlan 111) between the source MAC address and the type; on eth0.111 the same frames appear without a tag>>>tag_on_eth0|it is the other way round: the 802.1Q tag appears only on eth0.111>>>tag_on_sub|none, the two captures are identical>>>same|on eth0 no frame of the ping is seen, only on eth0.111>>>nothing_on_eth0}@@
+- VLAN number read in the capture on `eth0` (`vlan N`): @@{vid:[0-9]+}@@
+- size of the 802.1Q tag, in bytes (compare the lengths of the frames): @@{tag_size:[0-9]+}@@
+""",
+    """
+**Solution.** Sur `b1` (même chose sur `b2` avec `{b2_odd}`) :
+
+```
+{cmds}```
+
+`tcpdump -e -n -i eth0 icmp` montre `ethertype 802.1Q (0x8100), length 102: vlan {odd}, p 0,
+ethertype IPv4 (0x0800), ...` : sur l'interface physique, chaque trame porte l'étiquette de 4 octets
+(102 octets au lieu de 98 pour un ping de 56 octets de données) ; sur `eth0.{odd}` les mêmes trames
+sont vues sans étiquette (`ethertype IPv4 (0x0800), length 98`). Le switch `trunk` ne transmet ces
+trames qu'aux ports membres du VLAN {odd}.
+
+- Réponses : étiquette sur `eth0` seulement ; VLAN {odd} ; 4 octets.
+- L'évaluation vérifie `eth0.{odd}` / `eth0.{even}` (`ip -d link` : `vlan id`), le `ping` de `b1` vers
+  `{b2_odd}` et le formulaire.
+""": """
+**Solution.** On `b1` (the same on `b2` with `{b2_odd}`):
+
+```
+{cmds}```
+
+`tcpdump -e -n -i eth0 icmp` shows `ethertype 802.1Q (0x8100), length 102: vlan {odd}, p 0,
+ethertype IPv4 (0x0800), ...`: on the physical interface, every frame carries the 4-byte tag
+(102 bytes instead of 98 for a ping with 56 bytes of data); on `eth0.{odd}` the same frames are
+seen without a tag (`ethertype IPv4 (0x0800), length 98`). The `trunk` switch forwards these
+frames only to the ports that are members of VLAN {odd}.
+
+- Answers: tag on `eth0` only; VLAN {odd}; 4 bytes.
+- The evaluation checks `eth0.{odd}` / `eth0.{even}` (`ip -d link`: `vlan id`), the `ping` from
+  `b1` to `{b2_odd}` and the form.
+""",
+    "b1 joint b2 et router sur le réseau trunk (trames non étiquetées)": "b1 reaches b2 and router on the trunk network (untagged frames)",
+    "eth0.{odd} et eth0.{even} (type vlan, bons identifiants, up) sur b1 et sur b2": "eth0.{odd} and eth0.{even} (type vlan, right identifiers, up) on b1 and on b2",
+    "b1 joint {b2_odd} (b2) à travers le VLAN {odd}": "b1 reaches {b2_odd} (b2) through VLAN {odd}",
+    "captures sur eth0 et eth0.{odd} : numéro de VLAN, taille de l'étiquette": "captures on eth0 and eth0.{odd}: VLAN number, size of the tag",
+    "captures sur eth0 et eth0.{odd} : où est l'étiquette": "captures on eth0 and eth0.{odd}: where the tag is",
+    "Partie 2 — Ponts (questions 3 et 4)": "Part 2 — Bridges (questions 3 and 4)",
+    "Pont breven : m2 joint m4 et m6": "Bridge breven: m2 reaches m4 and m6",
+    """
+Créez sur chacune des machines `b1` et `b2` un pont nommé **`breven`** (section @@ref:bridges@@ des
+Informations), ajoutez-lui les interfaces `eth2` et `eth0.{even}`, montez toutes les interfaces
+(y compris les nouveaux ponts) et vérifiez que `m2` (`{m2}`) peut joindre `m4` (`{m4}`) et
+`m6` (`{m6}`). Observez `bridge fdb show br breven` sur `b1` après ces pings.
+
+*Remarque* : les interfaces `eth0.{even}` de `b1` et `b2` n'ont pour l'instant pas d'adresse IP,
+et n'en auront pas besoin : `b1` et `b2` ne sont que des switchs pour le VLAN {even}.
+""": """
+On each of the machines `b1` and `b2`, create a bridge named **`breven`** (section
+@@ref:bridges@@ of the Informations), add the interfaces `eth2` and `eth0.{even}` to it, bring
+all the interfaces up (including the new bridges) and check that `m2` (`{m2}`) can reach `m4`
+(`{m4}`) and `m6` (`{m6}`). Look at `bridge fdb show br breven` on `b1` after these pings.
+
+*Note*: the interfaces `eth0.{even}` of `b1` and `b2` have no IP address for now, and will not
+need one: `b1` and `b2` are only switches for VLAN {even}.
+""",
+    """
+**Solution.** Sur `b1` et sur `b2` :
+
+```
+{cmds}```
+
+Les trames de `m2` entrent sans étiquette par `eth2` de `b1`, le pont les commute vers `eth0.{even}`
+qui les étiquette {even} sur `eth0` ; le switch `trunk` les livre aux ports trunk, `b2` les
+désétiquette sur son `eth0.{even}` et son pont les commute vers `eth2`, donc vers le switch `even`
+et `m4` / `m6`. `bridge fdb show` montre les adresses MAC de `m4` et `m6` apprises sur
+`eth0.{even}`. L'évaluation vérifie les ports des deux ponts (`ip -d link` : `master breven`) et
+les `ping` de `m2` vers `m4` et `m6`.
+""": """
+**Solution.** On `b1` and on `b2`:
+
+```
+{cmds}```
+
+The frames of `m2` enter untagged through `eth2` of `b1`, the bridge switches them to
+`eth0.{even}`, which tags them {even} on `eth0`; the `trunk` switch delivers them to the trunk
+ports, `b2` untags them on its `eth0.{even}` and its bridge switches them to `eth2`, hence to the
+`even` switch and `m4` / `m6`. `bridge fdb show` shows the MAC addresses of `m4` and `m6` learnt
+on `eth0.{even}`. The evaluation checks the ports of both bridges (`ip -d link`: `master breven`)
+and the `ping`s from `m2` to `m4` and `m6`.
+""",
+    "Pont brodd : m1 joint m3 et m5": "Bridge brodd: m1 reaches m3 and m5",
+    """
+Faites la même chose avec des ponts **`brodd`** (interfaces `eth1` et `eth0.{odd}`) pour que
+`m1` (`{m1}`) puisse joindre `m3` (`{m3}`) et `m5` (`{m5}`).
+
+N'oubliez pas de **supprimer** sur `b1` et `b2` l'adresse IP de `eth0.{odd}` et de la remettre
+ensuite sur `brodd` (`{b1_odd}` sur `b1`, `{b2_odd}` sur `b2`) : une interface devenue port d'un
+pont ne doit plus porter d'adresse. Vérifiez que `b1` et `b2` se joignent toujours par le VLAN
+{odd}, et que `m1` joint `b2` (`{b2_odd}`).
+""": """
+Do the same with bridges **`brodd`** (interfaces `eth1` and `eth0.{odd}`) so that `m1` (`{m1}`)
+can reach `m3` (`{m3}`) and `m5` (`{m5}`).
+
+Do not forget to **remove** the IP address of `eth0.{odd}` on `b1` and `b2` and to put it back
+on `brodd` afterwards (`{b1_odd}` on `b1`, `{b2_odd}` on `b2`): an interface that has become a
+port of a bridge must no longer carry an address. Check that `b1` and `b2` still reach each
+other through VLAN {odd}, and that `m1` reaches `b2` (`{b2_odd}`).
+""",
+    """
+**Solution.** Sur `b1` (sur `b2` avec `{b2_odd}`) :
+
+```
+{cmds}```
+
+L'adresse sur le pont fait de `b1` à la fois un switch du VLAN {odd} et une machine de ce VLAN
+(c'est le pont qui répond aux ARP). L'évaluation vérifie les ports des ponts `brodd`, que les
+adresses `{b1_odd}` / `{b2_odd}` sont sur `brodd` (et non sur `eth0.{odd}`), le `ping` de `b1` vers `b2`
+et ceux de `m1` vers `m3` et `m5`.
+""": """
+**Solution.** On `b1` (on `b2` with `{b2_odd}`):
+
+```
+{cmds}```
+
+The address on the bridge makes `b1` both a switch of VLAN {odd} and a machine of that VLAN (the
+bridge answers the ARP requests). The evaluation checks the ports of the `brodd` bridges, that
+the addresses `{b1_odd}` / `{b2_odd}` are on `brodd` (and not on `eth0.{odd}`), the `ping` from
+`b1` to `b2` and those from `m1` to `m3` and `m5`.
+""",
+    "pont breven avec les ports eth2 et eth0.{even} sur b1 et sur b2": "bridge breven with the ports eth2 and eth0.{even} on b1 and on b2",
+    "m2 joint m4 et m6 (VLAN {even} prolongé par les ponts)": "m2 reaches m4 and m6 (VLAN {even} extended by the bridges)",
+    "pont brodd avec les ports eth1 et eth0.{odd} sur b1 et sur b2": "bridge brodd with the ports eth1 and eth0.{odd} on b1 and on b2",
+    "{b1_odd} sur brodd de b1 et {b2_odd} sur brodd de b2, plus rien sur eth0.{odd}": "{b1_odd} on brodd of b1 and {b2_odd} on brodd of b2, nothing left on eth0.{odd}",
+    "m1 joint m3 et m5 (VLAN {odd} prolongé par les ponts)": "m1 reaches m3 and m5 (VLAN {odd} extended by the bridges)",
+    "Partie 3 — Routeur « on a stick » et NAT (questions 5 et 6)": "Part 3 — Router on a stick and NAT (questions 5 and 6)",
+    "router relie les deux VLAN": "router connects the two VLANs",
+    """
+Ajoutez les VLAN {odd} et {even} sur `router` (sous-interfaces `eth1.{odd}` et `eth1.{even}` de
+son port trunk `eth1`) et donnez-lui les adresses `{router_odd}` et `{router_even}`, afin que
+`router` puisse joindre les machines `m1` à `m6`. Activez le routage sur `router` (de façon
+volatile : `sysctl -w net.ipv4.ip_forward=1`) et vérifiez que **toutes** les machines `m1` à `m6`
+sont joignables entre elles (par exemple `ping {m2}` depuis `m1`, `ping {m6}` depuis `m3`).
+Observez avec `tcpdump -e -n -i eth1` sur `router` l'aller et le retour d'un ping inter-VLAN :
+les deux trames passent par le même câble, avec des étiquettes différentes.
+""": """
+Add VLANs {odd} and {even} on `router` (sub-interfaces `eth1.{odd}` and `eth1.{even}` of its
+trunk port `eth1`) and give it the addresses `{router_odd}` and `{router_even}`, so that `router`
+can reach the machines `m1` to `m6`. Enable routing on `router` (in a volatile way:
+`sysctl -w net.ipv4.ip_forward=1`) and check that **all** the machines `m1` to `m6` can reach
+each other (for example `ping {m2}` from `m1`, `ping {m6}` from `m3`). With
+`tcpdump -e -n -i eth1` on `router`, watch the request and the reply of an inter-VLAN ping: both
+frames go through the same cable, with different tags.
+""",
+    """
+**Solution.** Sur `router` :
+
+```
+{cmds}sysctl -w net.ipv4.ip_forward=1
+```
+
+Les machines `m1` à `m6` ont déjà `{router_odd}` / `{router_even}` comme route par défaut. L'évaluation
+vérifie les sous-interfaces et leurs adresses, `ip_forward`, et des `ping` de `m1` vers `m2` et de `m3`
+vers `m6`.
+""": """
+**Solution.** On `router`:
+
+```
+{cmds}sysctl -w net.ipv4.ip_forward=1
+```
+
+The machines `m1` to `m6` already have `{router_odd}` / `{router_even}` as their default route.
+The evaluation checks the sub-interfaces and their addresses, `ip_forward`, and `ping`s from `m1`
+to `m2` and from `m3` to `m6`.
+""",
+    "NAT source sur router": "Source NAT on router",
+    """
+Mettez en place sur `router` la traduction d'adresses source (NAT source, *masquerade*, section @@ref:nat@@
+des Informations) afin que le trafic provenant des réseaux internes semble provenir de `router`
+(`{router_ext}`). Vérifiez que les machines `m1` à `m6` peuvent joindre `ext1` (`{ext1}`) et
+`ext2` (`{ext2}`) : `curl http://ext1/` depuis `m5` doit afficher `CLIENT_IP={router_ext}`.
+Pourquoi ne pouvaient-elles pas les joindre avant le NAT, alors que `router` routait déjà ?
+""": """
+Set up source address translation on `router` (source NAT, *masquerade*, section @@ref:nat@@ of
+the Informations) so that the traffic coming from the internal networks seems to come from
+`router` (`{router_ext}`). Check that the machines `m1` to `m6` can reach `ext1` (`{ext1}`) and
+`ext2` (`{ext2}`): `curl http://ext1/` from `m5` must show `CLIENT_IP={router_ext}`. Why could
+they not reach them before the NAT, although `router` was already routing?
+""",
+    """
+**Solution.** Sur `router` : `iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE` (ou
+`nft add table ip nat ; nft 'add chain ip nat postrouting {{ type nat hook postrouting priority 100; }}' ;
+nft add rule ip nat postrouting oifname "eth0" masquerade`). Sans NAT, `ext1` recevait les paquets de
+`{m5}` mais ne savait pas répondre : il n'a aucune route vers `{odd}` (et aucune route par défaut).
+L'évaluation lit `CLIENT_IP` sur `ext1` / `ext2` depuis `m5`, `m2` et `m1` : `{router_ext}`.
+""": """
+**Solution.** On `router`: `iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE` (or
+`nft add table ip nat ; nft 'add chain ip nat postrouting {{ type nat hook postrouting priority 100; }}' ;
+nft add rule ip nat postrouting oifname "eth0" masquerade`). Without NAT, `ext1` received the
+packets of `{m5}` but could not answer: it has no route to `{odd}` (and no default route). The
+evaluation reads `CLIENT_IP` on `ext1` / `ext2` from `m5`, `m2` and `m1`: `{router_ext}`.
+""",
+    "eth1.{odd} ({router_odd}) et eth1.{even} ({router_even}) sur router": "eth1.{odd} ({router_odd}) and eth1.{even} ({router_even}) on router",
+    "routage activé sur router (net.ipv4.ip_forward)": "routing enabled on router (net.ipv4.ip_forward)",
+    "m1 joint m2 et m3 joint m6 (routage entre les VLAN par router)": "m1 reaches m2 and m3 reaches m6 (routing between the VLANs by router)",
+    "ext1 et ext2 voient les requêtes de m5, m2 et m1 venir de router ({router_ext})": "ext1 and ext2 see the requests of m5, m2 and m1 come from router ({router_ext})",
+    "Partie 4 — Une nouvelle machine m7 (question 7)": "Part 4 — A new machine m7 (question 7)",
+    "m7 sur un port libre du switch trunk": "m7 on a free port of the trunk switch",
+    """
+La machine `m7` est branchée sur un port libre du switch `trunk`, dans le VLAN par défaut, et
+n'est pas configurée. Donnez-lui l'adresse `{m7}` et la passerelle par défaut de ce réseau
+(`{router_odd}`). Elle ne joint encore personne : ses trames, sans étiquette, restent dans le
+VLAN par défaut du switch.
+
+Ouvrez la console du switch `trunk` (onglet *Réseaux*), trouvez le numéro du port de `m7` avec
+`port/print` (ligne `kathara m7:eth0`) et placez ce port dans le VLAN {odd} :
+
+```
+port/setvlan <port> {odd}
+```
+
+Vérifiez avec `vlan/print` que le port est bien dans le VLAN {odd} (`tagged=0` : port d'accès),
+puis que `m7` peut joindre toutes les autres machines (`m1`, `m2` par `router`, `ext1` par le NAT).
+""": """
+The machine `m7` is plugged into a free port of the `trunk` switch, in the default VLAN, and is
+not configured. Give it the address `{m7}` and the default gateway of that network
+(`{router_odd}`). It cannot reach anyone yet: its frames, untagged, stay in the default VLAN of
+the switch.
+
+Open the console of the `trunk` switch (*Networks* tab), find the port number of `m7` with
+`port/print` (line `kathara m7:eth0`) and put that port in VLAN {odd}:
+
+```
+port/setvlan <port> {odd}
+```
+
+Check with `vlan/print` that the port is indeed in VLAN {odd} (`tagged=0`: access port), then
+that `m7` can reach all the other machines (`m1`, `m2` through `router`, `ext1` through the NAT).
+""",
+    """
+**Solution.** Sur `m7` :
+
+```
+{cmds}```
+
+puis sur la console du switch `port/setvlan N {odd}` (N lu dans `port/print` ; l'état `final` écrit
+`port/setvlan @m7 {odd}`, le numéro étant résolu par SRE). Le port devient un port d'accès du VLAN
+{odd} : le switch étiquette {odd} les trames de `m7` vers les trunks et désétiquette celles qui lui
+reviennent. L'évaluation lit le VLAN du port de `m7` sur le switch (`port/allprint`), l'adresse et
+la route de `m7`, puis des `ping` vers `m1` et `m2` et `CLIENT_IP` sur `ext1`.
+""": """
+**Solution.** On `m7`:
+
+```
+{cmds}```
+
+then on the switch console `port/setvlan N {odd}` (N read in `port/print`; the `final` state
+writes `port/setvlan @m7 {odd}`, the number being resolved by SRE). The port becomes an access
+port of VLAN {odd}: the switch tags the frames of `m7` with {odd} towards the trunks and untags
+those coming back to it. The evaluation reads the VLAN of the port of `m7` on the switch
+(`port/allprint`), the address and the route of `m7`, then `ping`s to `m1` and `m2` and
+`CLIENT_IP` on `ext1`.
+""",
+    "sur le switch trunk, le port de m7 est un port d'accès du VLAN {odd}": "on the trunk switch, the port of m7 is an access port of VLAN {odd}",
+    "m7 : adresse {m7} sur eth0, route par défaut via {router_odd}": "m7: address {m7} on eth0, default route via {router_odd}",
+    "m7 joint m1 (même VLAN), m2 (par router) et ext1 (par le NAT de router)": "m7 reaches m1 (same VLAN), m2 (through router) and ext1 (through the NAT of router)",
+    "Partie 5 — Brouter sur b2 (question 8)": "Part 5 — Brouter on b2 (question 8)",
+    "Brouter sur b2": "Brouter on b2",
+    """
+On veut changer la configuration de `b2` afin que le trafic provenant de `m3` sorte vers
+l'extérieur par `router2` et non par `router` comme celui de `m5` et des autres machines, **sans
+toucher à la configuration de `m3`** (qui garde `router` comme passerelle).
+
+**(a)** Activez le routage sur `router2` et mettez-y en place le NAT source, comme sur `router`.
+Changez la **route par défaut de `b2`** pour que le trafic émis par `b2` soit routé par
+`router2` (`{router2_trunk}`, sur le réseau `trunk`). Testez avec `curl http://ext1/` depuis `b2`
+(`CLIENT_IP={router2_ext}`) et depuis `m3` (toujours `{router_ext}`).
+
+**(b)** Configurez `router2` de la même façon que `router` : sous-interfaces `eth1.{odd}` et
+`eth1.{even}` avec les adresses `{router2_odd}` et `{router2_even}`. Vérifiez que `router2` est
+joignable depuis `m3` et depuis `m4`.
+
+**(c)** Lisez la section @@ref:brouter@@ des Informations. Activez le routage sur `b2`, puis ajoutez sur `b2`
+une règle nftables (famille `bridge`, hook `prerouting`) pour que les paquets IPv4 provenant de
+`m3` (`{m3}`) soient **routés** par `b2` au lieu d'être pontés. Vérifiez par `curl http://ext1/`
+que le trafic de `m3` sort maintenant par `router2` (`CLIENT_IP={router2_ext}`) alors que celui
+de `m5` sort toujours par `router`. Comment les réponses de `ext1` reviennent-elles à `m3` ?
+
+**(d)** Ajoutez sur `b2` une règle pour que les paquets IPv4 arrivant par l'interface `eth1`, à
+destination de `ext2` (`{ext2}`) et utilisant TCP vers le port **8080**, soient eux aussi routés
+via `router2`. Vérifiez votre configuration avec `curl` depuis `m5` et depuis `m4` vers les ports
+80 et 8080 de `ext1` et de `ext2` : seules les requêtes de `m5` vers `ext2:8080` doivent sortir
+par `router2`.
+""": """
+We want to change the configuration of `b2` so that the traffic coming from `m3` goes out to the
+outside through `router2` and not through `router` like that of `m5` and the other machines,
+**without touching the configuration of `m3`** (which keeps `router` as its gateway).
+
+**(a)** Enable routing on `router2` and set up source NAT there, as on `router`. Change the
+**default route of `b2`** so that the traffic sent by `b2` is routed through `router2`
+(`{router2_trunk}`, on the `trunk` network). Test with `curl http://ext1/` from `b2`
+(`CLIENT_IP={router2_ext}`) and from `m3` (still `{router_ext}`).
+
+**(b)** Configure `router2` the same way as `router`: sub-interfaces `eth1.{odd}` and
+`eth1.{even}` with the addresses `{router2_odd}` and `{router2_even}`. Check that `router2` can
+be reached from `m3` and from `m4`.
+
+**(c)** Read section @@ref:brouter@@ of the Informations. Enable routing on `b2`, then add on
+`b2` an nftables rule (`bridge` family, `prerouting` hook) so that the IPv4 packets coming from
+`m3` (`{m3}`) are **routed** by `b2` instead of being bridged. Check with `curl http://ext1/`
+that the traffic of `m3` now goes out through `router2` (`CLIENT_IP={router2_ext}`) while that
+of `m5` still goes out through `router`. How do the replies of `ext1` come back to `m3`?
+
+**(d)** Add on `b2` a rule so that the IPv4 packets arriving through the interface `eth1`,
+destined for `ext2` (`{ext2}`) and using TCP to port **8080**, are routed via `router2` too.
+Check your configuration with `curl` from `m5` and from `m4` to ports 80 and 8080 of `ext1` and
+of `ext2`: only the requests of `m5` to `ext2:8080` must go out through `router2`.
+""",
+    """
+**Solution.** (a) Sur `router2` : `sysctl -w net.ipv4.ip_forward=1` et
+`iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE` ; sur `b2` : `{b2_route}`.
+
+(b) Sur `router2` :
+
+```
+{router2}```
+
+(c) et (d) Sur `b2` :
+
+```
+{brouter}```
+
+La première règle réécrit l'adresse MAC de destination des trames de `m3` avec celle du pont
+`brodd` et les marque `host` : le pont les livre à la pile IP de `b2`, qui les route par sa
+route par défaut (`router2`), qui fait le NAT. Les réponses reviennent de `router2` par sa
+sous-interface `eth1.{odd}` (il connaît `{odd_net}`) : trames étiquetées {odd} vers `b2`,
+désétiquetées sur `eth0.{odd}` et pontées vers `eth1` et `m3` sans passer par la couche IP de
+`b2`. Avec la seconde règle, seules les requêtes de `m5` vers `ext2:8080` sortent par
+`router2` ; `m4` entre par `eth2` et n'est jamais concernée.
+
+L'évaluation lit `ip_forward` de `router2` et `b2`, la route par défaut de `b2`, les règles de la
+famille `bridge` dans `nft list ruleset` (une règle `meta pkttype set host` + `ether daddr set`
+couvrant `{m3}`, une autre `ip daddr {ext2} tcp dport 8080`), des `ping` de `m3` / `m4` vers
+`router2`, et `CLIENT_IP` sur `ext1` / `ext2` depuis `b2`, `m3`, `m5` (ports 80 et 8080) et `m4`.
+""": """
+**Solution.** (a) On `router2`: `sysctl -w net.ipv4.ip_forward=1` and
+`iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE`; on `b2`: `{b2_route}`.
+
+(b) On `router2`:
+
+```
+{router2}```
+
+(c) and (d) On `b2`:
+
+```
+{brouter}```
+
+The first rule rewrites the destination MAC address of the frames of `m3` with that of the bridge
+`brodd` and marks them `host`: the bridge delivers them to the IP stack of `b2`, which routes
+them through its default route (`router2`), which does the NAT. The replies come back from
+`router2` through its sub-interface `eth1.{odd}` (it knows `{odd_net}`): frames tagged {odd}
+towards `b2`, untagged on `eth0.{odd}` and bridged towards `eth1` and `m3` without going through
+the IP layer of `b2`. With the second rule, only the requests of `m5` to `ext2:8080` go out
+through `router2`; `m4` enters through `eth2` and is never concerned.
+
+The evaluation reads `ip_forward` of `router2` and `b2`, the default route of `b2`, the rules of
+the `bridge` family in `nft list ruleset` (a `meta pkttype set host` + `ether daddr set` rule
+covering `{m3}`, another one `ip daddr {ext2} tcp dport 8080`), `ping`s from `m3` / `m4` to
+`router2`, and `CLIENT_IP` on `ext1` / `ext2` from `b2`, `m3`, `m5` (ports 80 and 8080) and `m4`.
+""",
+    "router2 route et masque : ext1 voit les requêtes de b2 venir de {router2_ext}": "router2 routes and masquerades: ext1 sees the requests of b2 come from {router2_ext}",
+    "route par défaut de b2 via router2 ({router2_trunk})": "default route of b2 via router2 ({router2_trunk})",
+    "eth1.{odd} ({router2_odd}) et eth1.{even} ({router2_even}) sur router2, joignables depuis m3 et m4": "eth1.{odd} ({router2_odd}) and eth1.{even} ({router2_even}) on router2, reachable from m3 and m4",
+    "routage activé sur b2": "routing enabled on b2",
+    "ext1 voit les requêtes de m3 venir de router2 et celles de m5 de router": "ext1 sees the requests of m3 come from router2 and those of m5 from router",
+    "règles nftables de la famille bridge sur b2 : paquets de m3, paquets vers ext2 port 8080": "nftables rules of the bridge family on b2: packets from m3, packets to ext2 port 8080",
+    "depuis m5, seul ext2:8080 est joint par router2 (ext2:80 et ext1:8080 par router) ; m4 vers ext2:8080 par router": "from m5, only ext2:8080 is reached through router2 (ext2:80 and ext1:8080 through router); m4 to ext2:8080 through router",
+    "Partie 6 — TTL (question 9)": "Part 6 — TTL (question 9)",
+    "Impact du brouter sur le TTL": "Impact of the brouter on the TTL",
+    """
+**(a)** Lancez sur `ext1` une capture des paquets TCP reçus (`tcpdump -n -v -i eth0 tcp`,
+`tshark -i eth0 -V` ou Wireshark) et faites des requêtes `curl http://ext1/` depuis `m3` et
+depuis `m5` (la page affiche aussi `TTL=`). Regardez le **TTL** des paquets semblant provenir de
+`router` (requêtes de `m5`) et de `router2` (requêtes de `m3`). Que constatez-vous ?
+""": """
+**(a)** Start a capture of the received TCP packets on `ext1` (`tcpdump -n -v -i eth0 tcp`,
+`tshark -i eth0 -V` or Wireshark) and make `curl http://ext1/` requests from `m3` and from `m5`
+(the page also shows `TTL=`). Look at the **TTL** of the packets seeming to come from `router`
+(requests of `m5`) and from `router2` (requests of `m3`). What do you notice?
+""",
+    """
+- TTL des paquets de `m5` arrivant sur `ext1` : @@{ttl_m5:[0-9]+}@@
+- TTL des paquets de `m3` arrivant sur `ext1` : @@{ttl_m3:[0-9]+}@@
+- pourquoi : @@{why:>b2 route les paquets de m3 au lieu de les ponter : un routeur de plus sur le chemin, qui décrémente le TTL>>>extra_hop|router2 décrémente le TTL de 2>>>router2_twice|le pont brodd décrémente le TTL comme un routeur>>>bridge|m3 émet ses paquets avec un TTL initial plus petit>>>m3_small}@@
+""": """
+- TTL of the packets of `m5` arriving on `ext1`: @@{ttl_m5:[0-9]+}@@
+- TTL of the packets of `m3` arriving on `ext1`: @@{ttl_m3:[0-9]+}@@
+- why: @@{why:>b2 routes the packets of m3 instead of bridging them: one more router on the path, which decrements the TTL>>>extra_hop|router2 decrements the TTL by 2>>>router2_twice|the bridge brodd decrements the TTL like a router>>>bridge|m3 sends its packets with a smaller initial TTL>>>m3_small}@@
+""",
+    """
+**(b)** Sur `b2`, ajoutez avec `iptables` une règle dans la table `mangle` pour que tous les
+paquets qui transitent par `b2` et proviennent de `m3` (`{m3}`) aient leur TTL **augmenté de 1**
+(cible `TTL`, voir `man iptables-extensions` et la section @@ref:ttl@@ des Informations). Vérifiez sur
+`ext1` que les paquets provenant de `m3` et ceux provenant de `m5` ont de nouveau le même TTL.
+*Remarque* : il est dangereux en général d'augmenter le TTL ainsi (paquets tournant
+indéfiniment en cas de boucle) !
+
+**(c)** Sur `m5`, changez par `sysctl -w net.ipv4.ip_default_ttl={ttl_m5}` le TTL des paquets
+émis par défaut (`sysctl -a` affiche l'ensemble des paramètres du noyau et leurs valeurs). Quel
+est à présent le TTL des paquets arrivant sur `ext1` provenant d'une requête web de `m5` ?
+""": """
+**(b)** On `b2`, add with `iptables` a rule in the `mangle` table so that all the packets that
+transit through `b2` and come from `m3` (`{m3}`) have their TTL **increased by 1** (target `TTL`,
+see `man iptables-extensions` and section @@ref:ttl@@ of the Informations). Check on `ext1` that
+the packets coming from `m3` and those coming from `m5` have the same TTL again.
+*Note*: increasing the TTL this way is dangerous in general (packets going round forever in
+case of a loop)!
+
+**(c)** On `m5`, change the TTL of the packets sent by default with
+`sysctl -w net.ipv4.ip_default_ttl={ttl_m5}` (`sysctl -a` shows all the kernel parameters and
+their values). What is now the TTL of the packets arriving on `ext1` from a web request of `m5`?
+""",
+    """
+- TTL des paquets de `m5` arrivant sur `ext1` après ce changement : @@{ttl_m5_after:[0-9]+}@@
+""": """
+- TTL of the packets of `m5` arriving on `ext1` after this change: @@{ttl_m5_after:[0-9]+}@@
+""",
+    """
+**Solution.** (a) Les paquets de `m5` arrivent avec un TTL de {ttl_m5} (émis à {default}, décrémenté par
+`router`), ceux de `m3` avec {ttl_m3} : `b2` les **route** (un saut de plus), puis `router2`. Un pont ne
+décrémente pas le TTL. (b) Sur `b2` : `{ttl_rule}` : les paquets de `m3` repartent avec {ttl_m5}
+(la chaîne `PREROUTING` de la famille `ip` est traversée après le détournement, puis le routage retire 1).
+(c) Sur `m5` : `{default_ttl}` : ses paquets arrivent sur `ext1` avec {ttl_m5_after}.
+
+- Réponses : {ttl_m5} ; {ttl_m3} ; un routeur de plus (b2) ; {ttl_m5_after}.
+- L'évaluation lit `TTL=` sur la page de `ext1` pour les requêtes de `m3` ({ttl_m5} avec la règle) et de `m5`
+  ({ttl_m5_after}), `iptables -t mangle -S` sur `b2` (une cible `TTL --ttl-inc 1` pour `{m3}`) et
+  `net.ipv4.ip_default_ttl` sur `m5` ({ttl_m5_value}).
+""": """
+**Solution.** (a) The packets of `m5` arrive with a TTL of {ttl_m5} (sent with {default},
+decremented by `router`), those of `m3` with {ttl_m3}: `b2` **routes** them (one more hop), then
+`router2`. A bridge does not decrement the TTL. (b) On `b2`: `{ttl_rule}`: the packets of `m3`
+leave again with {ttl_m5} (the `PREROUTING` chain of the `ip` family is traversed after the
+diversion, then routing takes 1 off). (c) On `m5`: `{default_ttl}`: its packets arrive on `ext1`
+with {ttl_m5_after}.
+
+- Answers: {ttl_m5}; {ttl_m3}; one more router (b2); {ttl_m5_after}.
+- The evaluation reads `TTL=` on the page of `ext1` for the requests of `m3` ({ttl_m5} with the
+  rule) and of `m5` ({ttl_m5_after}), `iptables -t mangle -S` on `b2` (a `TTL --ttl-inc 1` target
+  for `{m3}`) and `net.ipv4.ip_default_ttl` on `m5` ({ttl_m5_value}).
+""",
+    "TTL observés sur ext1 depuis m5 et depuis m3": "TTLs observed on ext1 from m5 and from m3",
+    "explication des TTL observés sur ext1": "explanation of the TTLs observed on ext1",
+    "les paquets de m3 arrivent sur ext1 avec un TTL de {ttl} grâce à une règle TTL --ttl-inc 1 sur b2": "the packets of m3 arrive on ext1 with a TTL of {ttl} thanks to a TTL --ttl-inc 1 rule on b2",
+    "net.ipv4.ip_default_ttl = {ttl_m5} sur m5 : ses paquets arrivent sur ext1 avec un TTL de {after}": "net.ipv4.ip_default_ttl = {ttl_m5} on m5: its packets arrive on ext1 with a TTL of {after}",
+    "TTL des paquets de m5 après le changement de ip_default_ttl": "TTL of the packets of m5 after the change of ip_default_ttl",
+}}

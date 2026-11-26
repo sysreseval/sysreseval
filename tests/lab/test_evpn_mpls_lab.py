@@ -627,6 +627,19 @@ def _simulate_with_answers(lab, data, tmp_pub_dir, cheat):
 # ---------------------------------------------------------------------------
 
 
+def _instructor_literals():
+    """The French literals of the tr() calls inside instructor()."""
+    import ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 def _all_texts(grade, ns):
     texts = [('informations', _text(ns.informations))]
     for q in grade.get_questions_ordered():
@@ -686,17 +699,60 @@ class TestTexts:
         assert names == ['labels', 'overhead', 'rt', 'import', 'core', 'policy', 'labels', 'vni', 'reoriginate', 'core',
                          'multihop', 'input']
 
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """Every tr() text has its English in _TRANSLATIONS['en'] (the markup kept: checked for every lab of
+        the directory by test_draft_misc_translations.py), the eight instructor texts among them; the texts
+        evaluated at import time carry it inline, the tables of the first question are built per language."""
+        import ast
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        literals = _instructor_literals()
+        assert len(literals) == 8 and set(literals) <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 8
+        # only two table cells and two grade element descriptions read the same in English
+        assert {k for k in english if english[k] == k} == {'site 2, data centre', 'site 4, data centre', 'RFC 8212',
+                                                           'eBGP multihop'}
+        for fr, en in english.items():
+            assert set(re.findall(r'\{(\w+)', fr)) == set(re.findall(r'\{(\w+)', en)), fr[:60]
+        assert lab.title.resolve('en') == 'EVPN and MPLS: data centre interconnection'
+        for state in ('solve_stretch', 'solve_gateway', 'solve_fix', 'solve_aggregate'):
+            description = getattr(lab.NetScheme, state)._sre_state_description
+            assert description.resolve('en') == english[description.resolve('fr')], state
+        g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        first = _text(g1.get_questions_ordered()[0].description, 'en')
+        assert '| 1 — VNI stretched over an L3VPN | `st_*` | the VTEPs `st_dc1`' in first and ', gateway) |' in first
+        assert 'passerelle' not in first and 'site distant' not in first
+        # the routers of the solutions: a space before the colon in French only
+        fr_texts = [_text(q.description, 'fr') for q in g1.get_questions_ordered()]
+        en_texts = [_text(q.description, 'en') for q in g1.get_questions_ordered()]
+        for router in ('st_dc1', 'gw_border', 'fix_p', 'ag_border'):
+            assert sum(f'`{router}` :\n\n```' in t for t in fr_texts) == 1, router
+            assert sum(f'`{router}`:\n\n```' in t for t in en_texts) == 1, router
+        assert not any('` :' in t for t in en_texts)
+        for q in g1.get_questions_ordered():
+            text = _text(q.description, 'en')
+            assert "{'" not in text and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", text), _text(q.title, 'en')
+            markdown_to_html(text, show_instructor=True)
+
     def test_strip_instructor(self, lab, data, tmp_pub_dir, tmp_path):
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 8 and result.warnings == []
+        # instructor(tr(...)) and instructor(_by_language(tr(...), ...)) (the four solutions)
+        assert result.calls == len(_instructor_literals()) == 8 and result.warnings == []
+        assert source.count(b'instructor(tr(') + source.count(b'instructor(_by_language(tr(') == 8
         assert b'**Solution.**' not in result.data and b"Pour l'enseignant" not in result.data
         stripped = tmp_path / 'evpn_mpls_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('evpn_mpls_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the student texts stays, that of the instructor texts goes
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (74, 6)
 

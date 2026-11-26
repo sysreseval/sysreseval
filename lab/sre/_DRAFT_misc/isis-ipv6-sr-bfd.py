@@ -25,6 +25,7 @@ from ipaddress import IPv4Address, IPv4Interface, IPv4Network, IPv6Address, IPv6
 from typing import Dict, List
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks, random_ipv6networks
@@ -759,24 +760,26 @@ compte les destinations protégées.
             self.file(r, "/etc/frr/frr.conf", self._frr_conf(r), permissions=0o640, owner="frr:frr", step=2)
             self.cmd(r, "systemctl start frr", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (IPv6 et multi-topologie)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (IPv6 et multi-topologie)",
+                                                    en="Part 1: solution (IPv6 and multi-topology)"))
     def solve_mt(self):
         self._apply(self.solution_ipv6())
         self._apply(self.solution_topology(), step=2)
         self.cmd('mt_r1', f"sleep {CONVERGE_WAIT}", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (segment routing)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (segment routing)",
+                                                    en="Part 2: solution (segment routing)"))
     def solve_sr(self):
         self._apply(self.solution_sr())
         self.cmd('sr_r1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (BFD)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (BFD)", en="Part 3: solution (BFD)"))
     def solve_bfd(self):
         self.cmd(BRIDGE, UNCUT_CMD)
         self._apply(self.solution_bfd())
         self.cmd('bfd_r1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (TI-LFA)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (TI-LFA)", en="Bonus: solution (TI-LFA)"))
     def solve_tilfa(self):
         self._apply(self.solution_tilfa())
         self.cmd('tl_r1', f"sleep {CONVERGE_WAIT}", step=2)
@@ -828,8 +831,9 @@ def _running_config(grade: Grade0, router: str) -> Dict:
     return get_frr_running_config(grade, router, allow_error=True) or parse_frr_config("")
 
 
-def _vtysh_text(solution: Dict[str, List[str]]) -> str:
-    """The reference configuration of a part, as vtysh sessions (one block per router)."""
+def _vtysh_text(solution: Dict[str, List[str]]) -> Dict[str, str]:
+    """The reference configuration of a part, as vtysh sessions (one block per router), one text per
+    language (the French one has a space before the colon)."""
     blocks = []
     for router, cmds in solution.items():
         body, depth = ["configure terminal"], 1
@@ -841,8 +845,17 @@ def _vtysh_text(solution: Dict[str, List[str]]) -> str:
             body.append(" " * depth + c)
             if c.startswith(("router ", "interface ", "profile ")) or c == "bfd":
                 depth += 1
-        blocks.append(f"`{router}` :\n\n```\n" + "\n".join(body + ["end", "write"]) + "\n```")
-    return "\n\n".join(blocks)
+        blocks.append((router, "\n".join(body + ["end", "write"])))
+    return {lang: "\n\n".join(f"`{router}`{colon}\n\n```\n{body}\n```" for router, body in blocks)
+            for lang, colon in (('fr', " :"), ('en', ":"))}
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value (the table of the sites, the result
+    of _vtysh_text) gives one value per language."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
 
 
 def _ping_outage(output: str, interval: float = PING_INTERVAL):
@@ -938,12 +951,15 @@ class Grade(Grade0):
         tl_cfg = _running_config(self, 'tl_r1')
 
         # ---------------- texts shared by the questions ---------------------------
-        sites = [('mt', "1 — IPv6 et multi-topologie", "`mt_r1` à `mt_r4`, les hôtes `mt_h1` et `mt_h4`"),
-                 ('sr', "2 — segment routing", "`sr_r1` à `sr_r4`"),
-                 ('bfd', "3 — BFD", "`bfd_r1` à `bfd_r4`, les hôtes `bfd_h1` et `bfd_h4`, le pont `bfd_sw` (sans "
-                                    "terminal)"),
-                 ('tl', "bonus — TI-LFA", "`tl_r1` (les trois autres routeurs n'ont pas de terminal)")]
-        site_rows = "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites)
+        sites = [('mt', tr("1 — IPv6 et multi-topologie"), tr("`mt_r1` à `mt_r4`, les hôtes `mt_h1` et `mt_h4`")),
+                 ('sr', tr("2 — segment routing"), tr("`sr_r1` à `sr_r4`")),
+                 ('bfd', tr("3 — BFD"), tr("`bfd_r1` à `bfd_r4`, les hôtes `bfd_h1` et `bfd_h4`, le pont `bfd_sw` "
+                                           "(sans terminal)")),
+                 ('tl', tr("bonus — TI-LFA"), tr("`tl_r1` (les trois autres routeurs n'ont pas de terminal)"))]
+        # one table per language (its cells are tr() texts)
+        site_rows = {lang: "\n".join(f"| {part.resolve(lang)} | `{site}_*` | {machines.resolve(lang)} |"
+                                     for site, part, machines in sites)
+                     for lang in ('fr', 'en')}
         members: Dict[str, List[str]] = {n: [] for n in list(LINKS) + LANS}
         for r, nets in ROUTER_IFACES.items():
             for i, n in enumerate(nets):
@@ -973,7 +989,7 @@ class Grade(Grade0):
         self.question_dummy(
             title=tr("Organisation du TP"),
             hash="10e937b8810985ef",
-            description=tr("""
+            description=_by_language(tr("""
 Lisez l'onglet **Informations** : il rappelle IS-IS, puis présente IPv6 et la multi-topologie, le
 segment routing, BFD et TI-LFA, avec leur configuration dans FRR.
 
@@ -1021,7 +1037,7 @@ les tables de routage et de labels, et envoie du trafic. **Sur le site `bfd`, el
 `bfd_sw` pendant {cut} s** (aucune trame ne passe, les interfaces restent actives) et mesure la durée
 de la coupure vue par `bfd_h1`, qui envoie un `ping` à `bfd_h4` toutes les {step} s. Elle dure une
 quinzaine de secondes.
-""").format(site_rows=site_rows, addressing=addressing, name=ISIS_NAME, srgb=d.sr_srgb,
+"""), site_rows=site_rows, addressing=addressing, name=ISIS_NAME, srgb=d.sr_srgb,
             srgb_end=d.sr_srgb + SRGB_SIZE - 1, srgb3=d.sr_srgb_r3, srgb3_end=d.sr_srgb_r3 + SRGB_SIZE - 1, i1=i1,
             i2=i2, i3=i3, i4=i4, profile=BFD_PROFILE, interval=d.bfd_interval, mult=d.bfd_multiplier,
             cut=CUT_SECONDS, step=PING_INTERVAL)
@@ -1057,7 +1073,7 @@ qui ne transporte que IPv4 : ses interfaces n'ont pas d'IPv6 du tout (sections @
 3. Passez les quatre routeurs en **multi-topologie** IPv6, puis regardez à nouveau les routes
    IPv6 et IPv4, `show isis topology`, et le trafic entre les hôtes.
 """).format(m34=MT_L34_METRIC)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.** D'abord IPv6 dans IS-IS :
 
 {ipv6}
@@ -1079,7 +1095,7 @@ montre). En multi-topologie, `mt_l14` n'existe pas dans le graphe IPv6 : `mt_r2`
 `mt_lan4` par `mt_r3` seulement), `mt_r2_lo` (2 : de même vers `mt_r4-lo`), `mt_ipv4_kept` (2 : IPv4
 de `mt_r1` vers `mt_lan4` toujours par `mt_l14`, compté avec la multi-topologie de `mt_r1`),
 `mt_ping6` (4).
-""").format(ipv6=_vtysh_text(ns.solution_ipv6()), topology=_vtysh_text(ns.solution_topology()))),
+"""), ipv6=_vtysh_text(ns.solution_ipv6()), topology=_vtysh_text(ns.solution_topology()))),
         )
         cheat_mt = {'nlpid': '0x8e', 'mt_id': '2', 'tlv_st': '236', 'tlv_mt': '237', 'single': 'loop',
                     'nexthop': 'link_local'}
@@ -1189,7 +1205,7 @@ Les routeurs `sr_r1`, `sr_r2`, `sr_r3` et `sr_r4` forment une ligne (liens `sr_l
    interface de bouclage** (`ping -I {lo1} {lo4}`) et regardez les labels sur chaque lien
    (`tcpdump -nei eth0 mpls`).
 """).format(lo1=lo('sr_r1'), lo4=lo('sr_r4'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1204,7 +1220,7 @@ retire (`dev lo`). Avec le PHP, `sr_r3` retirait le label.
 l'échange de `sr_r3` (2), le retrait par `sr_r4` (1)), `sr_r1_push` (4 : la route de `sr_r1` vers
 `sr_r4`), `sr_ping` (4 : ping entre les interfaces de bouclage, avec des paquets étiquetés reçus par
 `sr_r2` et `sr_r3`).
-""").format(solution=_vtysh_text(ns.solution_sr()), srgb=d.sr_srgb, srgb3=d.sr_srgb_r3, i4=i4,
+"""), solution=_vtysh_text(ns.solution_sr()), srgb=d.sr_srgb, srgb3=d.sr_srgb_r3, i4=i4,
             l_r1=d.sr_srgb + i4, l_r2=d.sr_srgb_r3 + i4)),
         )
         cheat_sr = {'push4': str(d.sr_srgb + i4), 'label_l23': str(d.sr_srgb_r3 + i4), 'label_l34': str(d.sr_srgb + i4),
@@ -1312,7 +1328,7 @@ leurs LSP sans attendre : `lsp-gen-interval 1` est déjà configuré (section @@
    sur `bfd_r3`.
 """).format(backup=BFD_BACKUP_METRIC, cut=CUT_SECONDS, profile=BFD_PROFILE, interval=d.bfd_interval,
             mult=d.bfd_multiplier)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1327,7 +1343,7 @@ interface), `bfd_up` (4 : la session vue de chaque côté), `bfd_timers` (4 : in
 multiplicateur négociés, de chaque côté), `bfd_isis_neighbor` (2 : BFD actif sur l'adjacence vue par
 `bfd_r1`), `bfd_failover` (8 : coupure mesurée de moins de {max_outage:g} s, comptée avec la session
 BFD), `bfd_hello` (4 : temporisateurs de `bfd_l34`, 2 par extrémité).
-""").format(solution=_vtysh_text(ns.solution_bfd()), cut=CUT_SECONDS, mult=d.bfd_multiplier,
+"""), solution=_vtysh_text(ns.solution_bfd()), cut=CUT_SECONDS, mult=d.bfd_multiplier,
             interval=d.bfd_interval, detection=detection, max_outage=MAX_OUTAGE)),
         )
         cheat_bfd = {'port': '3784', 'detection': str(detection), 'hold': '30', 'outage': str(CUT_SECONDS),
@@ -1449,7 +1465,7 @@ de `tl_rN` est N). Seul `tl_r1` a un terminal ; il joint `tl_r3` par `tl_r2` (se
 3. Regardez à nouveau la route : par où passe le secours, avec quels labels ? `show isis
    fast-reroute summary` compte les destinations protégées.
 """).format(metrics=metrics, r3=r3)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1461,7 +1477,7 @@ noyau.
 Évaluation (bonus) : `tl_backup` (3 : une route de secours vers `tl_r3`), `tl_node` (1 : protection
 de nœud sur les deux interfaces), `tl_repair` (2 : secours par `tl_r4`, pile terminée par le
 prefix-SID de `tl_r3`).
-""").format(solution=_vtysh_text(ns.solution_tilfa()), r3=r3, eth=iface('tl_r1', 'tl_l14'))),
+"""), solution=_vtysh_text(ns.solution_tilfa()), r3=r3, eth=iface('tl_r1', 'tl_l14'))),
         )
         backups = (tl_routes.get(r3) or {}).get('backups', [])
         node = all(isis_if(tl_cfg, 'tl_r1', n).get('fast_reroute', {}).get('level-2') == 'node'
@@ -1482,4 +1498,928 @@ prefix-SID de `tl_r3`).
         )
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "IS-IS : IPv6 multi-topologie, segment routing et BFD": "IS-IS: IPv6 multi-topology, segment routing and BFD",
+    """
+**Sommaire**
+""": """
+**Contents**
+""",
+    "Rappels sur IS-IS": "IS-IS reminders",
+    """
+IS-IS est un protocole de routage à état de liens : chaque routeur (*IS*) décrit ses voisins et ses
+préfixes dans des **LSP** inondées à tout le domaine, et calcule ses routes avec l'algorithme SPF.
+Il est transporté directement dans les trames Ethernet (pas dans IP) et ses PDU sont des listes de
+**TLV** : une fonction nouvelle est un TLV de plus. Un routeur est identifié par son **NET**, par
+exemple `49.0001.0100.0003.1002.00` : l'aire `49.0001`, le **system-id** `0100.0003.1002`, le
+sélecteur `00`. Dans ce TP, tous les routeurs sont au niveau 2 d'une seule aire par site et les liens
+entre routeurs sont point à point (`isis network point-to-point`).
+
+```
+router isis CORE
+ net 49.0001.0100.0003.1002.00
+ is-type level-2-only
+interface eth1
+ ip router isis CORE
+ isis network point-to-point
+```
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `show isis neighbor [detail]` | les adjacences (avec l'état BFD dans `detail`) |
+| `show isis interface [detail]` | les interfaces : métrique, temporisateurs |
+| `show isis database [detail]` | les LSP et leur contenu (TLV) |
+| `show isis route` | les routes IPv4 et IPv6 calculées par IS-IS |
+| `show isis topology` | les arbres des plus courts chemins, par famille |
+| `show ip route`, `show ipv6 route` | les routes de zebra, avec leurs labels |
+""": """
+IS-IS is a link-state routing protocol: each router (*IS*) describes its neighbours and its
+prefixes in **LSPs** flooded to the whole domain, and computes its routes with the SPF algorithm.
+It is carried directly in Ethernet frames (not in IP) and its PDUs are lists of **TLVs**: a new
+feature is one more TLV. A router is identified by its **NET**, for example
+`49.0001.0100.0003.1002.00`: the area `49.0001`, the **system-id** `0100.0003.1002`, the
+selector `00`. In this lab, all the routers are at level 2 of a single area per site and the links
+between routers are point-to-point (`isis network point-to-point`).
+
+```
+router isis CORE
+ net 49.0001.0100.0003.1002.00
+ is-type level-2-only
+interface eth1
+ ip router isis CORE
+ isis network point-to-point
+```
+
+| command | what it shows |
+|----------|-------------------|
+| `show isis neighbor [detail]` | the adjacencies (with the BFD state in `detail`) |
+| `show isis interface [detail]` | the interfaces: metric, timers |
+| `show isis database [detail]` | the LSPs and their contents (TLVs) |
+| `show isis route` | the IPv4 and IPv6 routes computed by IS-IS |
+| `show isis topology` | the shortest-path trees, per family |
+| `show ip route`, `show ipv6 route` | the routes of zebra, with their labels |
+""",
+    "IS-IS et IPv6": "IS-IS and IPv6",
+    """
+IPv6 n'a pas demandé de nouvelle version d'IS-IS (contrairement à OSPF, remplacé par OSPFv3 pour
+IPv6) : quelques TLV de plus suffisent (RFC 5308).
+
+| TLV | contenu |
+|-----|---------|
+| 129 | protocoles supportés : NLPID `0xCC` (IPv4) et `0x8E` (IPv6) |
+| 232 | adresses IPv6 de l'interface (dans les IIH : l'adresse **lien-local**) |
+| 236 | préfixes IPv6 (*IPv6 reachability*) |
+
+- Les prochains sauts des routes IPv6 sont les adresses **lien-local** des voisins (`fe80::…`),
+  apprises dans les IIH.
+- Dans FRR, `ipv6 router isis NOM` sur chaque interface (à côté de `ip router isis NOM`) ; les
+  routeurs doivent relayer IPv6 (`net.ipv6.conf.all.forwarding=1`, déjà fait).
+- `show isis route` affiche les deux familles ; `ip -6 route` les routes IPv6 installées
+  (`proto isis`).
+""": """
+IPv6 did not require a new version of IS-IS (unlike OSPF, replaced by OSPFv3 for IPv6): a few
+more TLVs are enough (RFC 5308).
+
+| TLV | contents |
+|-----|---------|
+| 129 | supported protocols: NLPID `0xCC` (IPv4) and `0x8E` (IPv6) |
+| 232 | IPv6 addresses of the interface (in the IIHs: the **link-local** address) |
+| 236 | IPv6 prefixes (*IPv6 reachability*) |
+
+- The next hops of the IPv6 routes are the **link-local** addresses of the neighbours (`fe80::…`),
+  learnt from the IIHs.
+- In FRR, `ipv6 router isis NAME` on each interface (next to `ip router isis NAME`); the routers
+  must forward IPv6 (`net.ipv6.conf.all.forwarding=1`, already done).
+- `show isis route` shows both families; `ip -6 route` the installed IPv6 routes
+  (`proto isis`).
+""",
+    "Topologie unique et multi-topologie": "Single topology and multi-topology",
+    """
+Par défaut IS-IS est en **topologie unique** (*single topology*) : un seul graphe sert au calcul
+des routes IPv4 et IPv6. Cela suppose que **tous les liens** portent les deux protocoles. Si un lien
+ne porte que IPv4, un routeur peut choisir pour IPv6 un chemin qui passe par ce lien : le routeur
+suivant, qui ne peut pas l'emprunter, renvoie le paquet par ailleurs, parfois vers celui qui le lui
+a envoyé — une **boucle** ou un **trou noir** pour IPv6, alors qu'un autre chemin, plus long,
+aurait fonctionné.
+
+La **multi-topologie** (MT, RFC 5120) donne à chaque famille son propre graphe et son propre calcul
+SPF. Chaque topologie a un identifiant (MT ID) : 0 pour IPv4 unicast, **2 pour IPv6 unicast**. Les
+TLV changent :
+
+| TLV | contenu |
+|-----|---------|
+| 229 | topologies du routeur (dans les IIH et les LSP) |
+| 222 | voisins IS d'une topologie (*MT IS reachability*) |
+| 237 | préfixes IPv6 de la topologie IPv6 (*MT IPv6 reachability*) |
+
+Un voisin ne compte dans la topologie IPv6 que si IPv6 fonctionne avec lui sur ce lien : un lien
+sans IPv6 disparaît du graphe IPv6 et le calcul IPv6 passe par ailleurs, sans toucher aux routes
+IPv4. Dans FRR :
+
+```
+router isis CORE
+ topology ipv6-unicast
+```
+
+à faire sur **tous** les routeurs. `show isis topology` affiche alors deux arbres différents et
+`show isis database detail` les TLV `MT`.
+""": """
+By default IS-IS runs in **single topology**: one graph is used to compute both the IPv4 and the
+IPv6 routes. This assumes that **every link** carries both protocols. If a link carries IPv4 only,
+a router may choose for IPv6 a path through that link: the next router, which cannot use it, sends
+the packet on another way, sometimes back to the router that sent it — a **loop** or a **black
+hole** for IPv6, whereas another, longer path would have worked.
+
+**Multi-topology** (MT, RFC 5120) gives each family its own graph and its own SPF computation.
+Each topology has an identifier (MT ID): 0 for IPv4 unicast, **2 for IPv6 unicast**. The TLVs
+change:
+
+| TLV | contents |
+|-----|---------|
+| 229 | topologies of the router (in the IIHs and the LSPs) |
+| 222 | IS neighbours of a topology (*MT IS reachability*) |
+| 237 | IPv6 prefixes of the IPv6 topology (*MT IPv6 reachability*) |
+
+A neighbour counts in the IPv6 topology only if IPv6 works with it on that link: a link without
+IPv6 disappears from the IPv6 graph and the IPv6 computation goes another way, without affecting
+the IPv4 routes. In FRR:
+
+```
+router isis CORE
+ topology ipv6-unicast
+```
+
+to be done on **all** the routers. `show isis topology` then shows two different trees and
+`show isis database detail` the `MT` TLVs.
+""",
+    "Le segment routing avec IS-IS": "Segment routing with IS-IS",
+    """
+Le **segment routing** (RFC 8402) est un routage par la source : le routeur d'entrée écrit le
+chemin dans le paquet sous forme de **segments**, et le cœur ne garde aucun état par chemin. En
+**SR-MPLS**, un segment est un label MPLS, et il n'y a **pas de LDP** : les labels sont annoncés par
+l'IGP, ici IS-IS (RFC 8667).
+
+- Chaque routeur réserve un bloc de labels, le **SRGB** (*SR Global Block*), qu'il annonce dans le
+  TLV **242** (*Router Capability*), sous-TLV *SR-Capabilities*. FRR prend 16000 à 23999 par défaut.
+- Un **prefix-SID** désigne un préfixe, en général l'adresse de bouclage d'un routeur, par un
+  **index** unique dans le domaine, annoncé dans le sous-TLV *Prefix-SID* (**3**) du TLV 135 qui
+  porte le préfixe.
+- Le label à utiliser vers un préfixe est **le SRGB du prochain saut + l'index** : avec le même
+  SRGB partout, c'est le même label tout le long du chemin ; un routeur qui a son propre SRGB reçoit
+  des labels différents, et son voisin en amont en tient compte.
+- Le routeur d'entrée impose le label et l'envoie au prochain saut du plus court chemin ; chaque
+  routeur échange le label contre celui du routeur suivant.
+- **PHP** : l'avant-dernier routeur retire le label et le dernier n'a plus qu'une recherche IP. Avec
+  le drapeau **no-PHP** (`no-php-flag`), il l'échange contre le label du dernier routeur, qui le
+  retire lui-même ; avec `explicit-null`, contre le label 0.
+- IS-IS annonce aussi des **adjacency-SID** (un label local par voisin, pris dans le SRLB, 15000 à
+  15999 dans FRR) qui forcent le passage par un lien précis.
+
+```
+router isis CORE
+ segment-routing on
+ segment-routing global-block 17000 24999
+ segment-routing prefix 10.0.31.1/32 index 1
+```
+
+`show isis segment-routing node` affiche le SRGB de chaque routeur, `show isis database detail`
+les prefix-SID, `show mpls table` et `ip -f mpls route` les labels installés, `ip route` les labels
+imposés (`encap mpls 17004`), `tcpdump -nei ethX mpls` les labels qui passent.
+
+### @@sec:mpls-linux@@ MPLS sous Linux
+
+Le noyau commute les labels quand `net.mpls.platform_labels` (taille de la table des labels, 0 par
+défaut) est assez grand et que `net.mpls.conf.<interface>.input=1` sur les interfaces qui reçoivent
+des paquets étiquetés : c'est déjà fait sur les sites `sr` et `tl`. Un label se lit dans `ip -f mpls
+route` : `17004 as to 30004 via inet 10.0.32.6 dev eth1` est un échange, `17004 via inet …` un
+retrait vers un voisin, `17004 dev lo` un retrait avant livraison locale.
+""": """
+**Segment routing** (RFC 8402) is source routing: the ingress router writes the path into the
+packet as **segments**, and the core keeps no per-path state. In **SR-MPLS**, a segment is an MPLS
+label, and there is **no LDP**: the labels are advertised by the IGP, here IS-IS (RFC 8667).
+
+- Each router reserves a block of labels, the **SRGB** (*SR Global Block*), which it advertises in
+  TLV **242** (*Router Capability*), sub-TLV *SR-Capabilities*. FRR uses 16000 to 23999 by default.
+- A **prefix-SID** designates a prefix, usually the loopback address of a router, by an **index**
+  unique in the domain, advertised in the *Prefix-SID* sub-TLV (**3**) of the TLV 135 that carries
+  the prefix.
+- The label to use towards a prefix is **the SRGB of the next hop + the index**: with the same
+  SRGB everywhere, it is the same label all along the path; a router that has its own SRGB receives
+  different labels, and its upstream neighbour takes that into account.
+- The ingress router pushes the label and sends the packet to the next hop of the shortest path;
+  each router swaps the label for the one of the next router.
+- **PHP**: the penultimate router pops the label and the last one only has an IP lookup left. With
+  the **no-PHP** flag (`no-php-flag`), it swaps it for the label of the last router, which pops it
+  itself; with `explicit-null`, for label 0.
+- IS-IS also advertises **adjacency-SIDs** (a local label per neighbour, taken from the SRLB, 15000
+  to 15999 in FRR) that force the traffic through a given link.
+
+```
+router isis CORE
+ segment-routing on
+ segment-routing global-block 17000 24999
+ segment-routing prefix 10.0.31.1/32 index 1
+```
+
+`show isis segment-routing node` shows the SRGB of each router, `show isis database detail` the
+prefix-SIDs, `show mpls table` and `ip -f mpls route` the installed labels, `ip route` the pushed
+labels (`encap mpls 17004`), `tcpdump -nei ethX mpls` the labels going by.
+
+### @@sec:mpls-linux@@ MPLS on Linux
+
+The kernel switches labels when `net.mpls.platform_labels` (size of the label table, 0 by default)
+is large enough and `net.mpls.conf.<interface>.input=1` is set on the interfaces that receive
+labelled packets: this is already done on the `sr` and `tl` sites. A label reads in
+`ip -f mpls route`: `17004 as to 30004 via inet 10.0.32.6 dev eth1` is a swap, `17004 via inet …` a
+pop towards a neighbour, `17004 dev lo` a pop before local delivery.
+""",
+    "Détecter les pannes : temporisateurs et BFD": "Detecting failures: timers and BFD",
+    """
+Un routeur IS-IS découvre la panne d'un voisin de deux façons :
+
+- **coupure franche** (l'interface passe *down*) : il le sait immédiatement, retire l'adjacence,
+  inonde une nouvelle LSP ; tous recalculent leurs routes en moins d'une seconde ;
+- **panne silencieuse** (l'interface reste *up* mais le voisin ne répond plus : un commutateur ou
+  un équipement de transmission entre les deux, un processus bloqué) : seule l'absence d'IIH la
+  révèle, au bout du *holding time* — **30 s** par défaut dans FRR (un IIH toutes les 3 s,
+  multiplicateur 10). Pendant tout ce temps le trafic part vers un voisin qui ne répond plus.
+
+On peut réduire les temporisateurs d'IS-IS (`isis hello-interval 1` et `isis hello-multiplier 3`
+en mode interface : 3 s). Ils s'appliquent à l'émission : c'est le voisin qui en profite. Descendre
+sous la seconde avec des IIH n'est pas raisonnable : ce sont de grosses trames (remplies jusqu'à la
+MTU), traitées par le démon.
+
+Une fois la panne détectée, il faut encore inonder les LSP et recalculer les routes. FRR espace les
+générations d'une même LSP de 30 s au plus (`lsp-gen-interval`, mode `router isis`) et les calculs
+SPF d'une seconde (`spf-interval`) : un réseau qui doit converger vite règle `lsp-gen-interval 1`,
+sans quoi les routeurs voisins de la panne peuvent se renvoyer le trafic le temps que leurs LSP
+soient régénérées.
+
+### @@sec:bfd@@ BFD
+
+**BFD** (*Bidirectional Forwarding Detection*, RFC 5880 ; RFC 5881 pour un saut) est un protocole
+léger qui ne fait qu'une chose : vérifier, plusieurs fois par seconde, qu'un voisin répond.
+
+- Une **session** BFD relie deux adresses ; elle est demandée par un protocole client (ici IS-IS,
+  pour chaque adjacence), qui est prévenu dès qu'elle tombe et retire alors l'adjacence sans
+  attendre le *holding time*.
+- Les paquets de contrôle voyagent en **UDP**, port **3784** (un saut), par le même chemin que le
+  trafic.
+- Chaque extrémité annonce l'intervalle minimal auquel elle veut **recevoir** (`receive-interval`)
+  et auquel elle peut **émettre** (`transmit-interval`) ; l'intervalle réel dans un sens est le plus
+  grand des deux. La session tombe quand rien n'est arrivé pendant **multiplicateur × intervalle**
+  (*detection time*) : avec 3 × 300 ms, une panne est vue en 900 ms.
+- Le mode *echo* (des paquets que le voisin renvoie sans les traiter) permet des intervalles encore
+  plus courts ; il n'est pas utilisé ici.
+
+Dans FRR, `bfdd` (activé dans `/etc/frr/daemons`) gère les sessions, et un **profil** regroupe les
+réglages (FRR n'écrit pas dans la configuration les valeurs par défaut : multiplicateur 3,
+intervalles de 300 ms) :
+
+```
+bfd
+ profile FAST
+  detect-multiplier 3
+  receive-interval 300
+  transmit-interval 300
+ exit
+exit
+interface eth1
+ isis bfd
+ isis bfd profile FAST
+```
+
+`show bfd peers` affiche les sessions (`Status: up`) et les intervalles des deux extrémités ;
+`show isis neighbor detail` indique `BFD is active, status Up` pour chaque adjacence protégée.
+""": """
+An IS-IS router learns of the failure of a neighbour in two ways:
+
+- **clean break** (the interface goes *down*): it knows at once, removes the adjacency, floods a
+  new LSP; all the routers recompute their routes in less than a second;
+- **silent failure** (the interface stays *up* but the neighbour no longer answers: a switch or a
+  transmission device between the two, a hung process): only the absence of IIHs reveals it, after
+  the *holding time* — **30 s** by default in FRR (one IIH every 3 s, multiplier 10). During all
+  that time the traffic goes to a neighbour that no longer answers.
+
+The IS-IS timers can be reduced (`isis hello-interval 1` and `isis hello-multiplier 3` in
+interface mode: 3 s). They apply to sending: it is the neighbour that benefits. Going below one
+second with IIHs is not reasonable: they are large frames (padded up to the MTU), processed by the
+daemon.
+
+Once the failure is detected, the LSPs must still be flooded and the routes recomputed. FRR spaces
+the generations of one LSP by up to 30 s (`lsp-gen-interval`, `router isis` mode) and the SPF
+computations by one second (`spf-interval`): a network that must converge quickly sets
+`lsp-gen-interval 1`, otherwise the routers next to the failure may bounce the traffic between
+them until their LSPs are regenerated.
+
+### @@sec:bfd@@ BFD
+
+**BFD** (*Bidirectional Forwarding Detection*, RFC 5880; RFC 5881 for a single hop) is a
+lightweight protocol that does only one thing: check, several times per second, that a neighbour
+answers.
+
+- A BFD **session** links two addresses; it is requested by a client protocol (here IS-IS, for
+  each adjacency), which is notified as soon as the session goes down and then removes the
+  adjacency without waiting for the *holding time*.
+- The control packets travel over **UDP**, port **3784** (single hop), along the same path as the
+  traffic.
+- Each end announces the minimum interval at which it wants to **receive** (`receive-interval`)
+  and at which it can **transmit** (`transmit-interval`); the actual interval in one direction is
+  the larger of the two. The session goes down when nothing has arrived for **multiplier ×
+  interval** (*detection time*): with 3 × 300 ms, a failure is seen in 900 ms.
+- The *echo* mode (packets that the neighbour sends back without processing them) allows even
+  shorter intervals; it is not used here.
+
+In FRR, `bfdd` (enabled in `/etc/frr/daemons`) manages the sessions, and a **profile** groups the
+settings (FRR does not write the default values into the configuration: multiplier 3, intervals
+of 300 ms):
+
+```
+bfd
+ profile FAST
+  detect-multiplier 3
+  receive-interval 300
+  transmit-interval 300
+ exit
+exit
+interface eth1
+ isis bfd
+ isis bfd profile FAST
+```
+
+`show bfd peers` shows the sessions (`Status: up`) and the intervals of both ends;
+`show isis neighbor detail` shows `BFD is active, status Up` for each protected adjacency.
+""",
+    "Protection rapide : TI-LFA": "Fast reroute: TI-LFA",
+    """
+Après une panne, il faut la détecter, inonder les LSP et recalculer : quelques centaines de
+millisecondes au mieux. La **protection rapide** calcule d'avance un chemin de secours pour chaque
+destination et l'utilise dès que la panne est vue, avant la reconvergence.
+
+**TI-LFA** (*Topology Independent Loop-Free Alternate*) utilise le segment routing pour qu'un
+secours existe quelle que soit la topologie : le routeur protégé calcule le chemin que prendra le
+réseau **après** la panne, et pousse la pile de labels qui y mène (un ou plusieurs SID, puis le
+prefix-SID de la destination). La protection de **lien** contourne le lien en panne, la protection
+de **nœud** (`node-protection`) contourne aussi le routeur voisin. Dans FRR, sur les interfaces à
+protéger :
+
+```
+interface eth0
+ isis fast-reroute ti-lfa level-2 node-protection
+```
+
+`show ip route` (json : `backupNexthops`) affiche les prochains sauts de secours avec leurs
+labels ; zebra les garde prêts sans les installer dans le noyau. `show isis fast-reroute summary`
+compte les destinations protégées.
+""": """
+After a failure, it must be detected, the LSPs flooded and the routes recomputed: a few hundred
+milliseconds at best. **Fast reroute** computes in advance a backup path for each destination and
+uses it as soon as the failure is seen, before the reconvergence.
+
+**TI-LFA** (*Topology Independent Loop-Free Alternate*) uses segment routing so that a backup
+exists whatever the topology: the protected router computes the path the network will take
+**after** the failure, and pushes the label stack that leads there (one or more SIDs, then the
+prefix-SID of the destination). **Link** protection bypasses the failed link, **node** protection
+(`node-protection`) also bypasses the neighbouring router. In FRR, on the interfaces to
+protect:
+
+```
+interface eth0
+ isis fast-reroute ti-lfa level-2 node-protection
+```
+
+`show ip route` (json: `backupNexthops`) shows the backup next hops with their labels; zebra
+keeps them ready without installing them in the kernel. `show isis fast-reroute summary` counts
+the protected destinations.
+""",
+    "Partie 1 : solution (IPv6 et multi-topologie)": "Part 1: solution (IPv6 and multi-topology)",
+    "Partie 2 : solution (segment routing)": "Part 2: solution (segment routing)",
+    "Partie 3 : solution (BFD)": "Part 3: solution (BFD)",
+    "Bonus : solution (TI-LFA)": "Bonus: solution (TI-LFA)",
+    "1 — IPv6 et multi-topologie": "1 — IPv6 and multi-topology",
+    "`mt_r1` à `mt_r4`, les hôtes `mt_h1` et `mt_h4`": "`mt_r1` to `mt_r4`, the hosts `mt_h1` and `mt_h4`",
+    "2 — segment routing": "2 — segment routing",
+    "`sr_r1` à `sr_r4`": "`sr_r1` to `sr_r4`",
+    "3 — BFD": "3 — BFD",
+    "`bfd_r1` à `bfd_r4`, les hôtes `bfd_h1` et `bfd_h4`, le pont `bfd_sw` (sans terminal)": "`bfd_r1` to `bfd_r4`, the hosts `bfd_h1` and `bfd_h4`, the bridge `bfd_sw` (no terminal)",
+    "bonus — TI-LFA": "bonus — TI-LFA",
+    "`tl_r1` (les trois autres routeurs n'ont pas de terminal)": "`tl_r1` (the other three routers have no terminal)",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il rappelle IS-IS, puis présente IPv6 et la multi-topologie, le
+segment routing, BFD et TI-LFA, avec leur configuration dans FRR.
+
+**Le réseau.** Il est fait de **quatre sites indépendants**, un par partie. Chaque site a sa couleur
+sur le schéma :
+
+| partie | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- Les routeurs font tourner **FRRouting** (FRR) avec `isisd` (et `bfdd` sur le site `bfd`) :
+  configurez-les avec `vtysh`. **IS-IS (IPv4) fonctionne déjà partout** : niveau 2, une aire par
+  site, liens point à point, interfaces de bouclage annoncées. Le processus s'appelle **`{name}`**.
+- Toutes les adresses sont en place ; le site `mt` est en double pile IPv4 / IPv6, sauf le lien
+  `mt_l14` (IPv4 seulement). Les modules MPLS du noyau sont chargés et MPLS est activé sur les
+  interfaces des routeurs des sites `sr` et `tl`.
+- Les fichiers `/etc/hosts` contiennent les noms : `sr_r2-eth1` désigne l'adresse de l'interface
+  `eth1` de `sr_r2`, `sr_r2-lo` son adresse de bouclage.
+
+**Plan d'adressage.** Les liens entre routeurs sont des /30 (des /64 en IPv6), les réseaux des
+hôtes des /24.
+
+| réseau | préfixes | interfaces |
+|--------|----------|------------|
+{addressing}
+
+**Valeurs propres à votre instance.**
+
+- Partie 2 : SRGB de `sr_r1`, `sr_r2` et `sr_r4` : **{srgb} à {srgb_end}** ; SRGB de `sr_r3` :
+  **{srgb3} à {srgb3_end}** ; index des prefix-SID des interfaces de bouclage : `sr_r1` **{i1}**,
+  `sr_r2` **{i2}**, `sr_r3` **{i3}**, `sr_r4` **{i4}**.
+- Partie 3 : profil BFD **`{profile}`** : intervalles de réception et d'émission **{interval} ms**,
+  multiplicateur **{mult}**.
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Enregistrez la configuration de FRR (`write` dans `vtysh`).
+- Un nouveau préfixe ou un nouveau SID peut mettre jusqu'à 30 s à être annoncé (FRR espace les
+  générations d'une même LSP).
+
+**Évaluation.** Chaque évaluation lit vos réponses, la configuration et l'état d'IS-IS et de BFD,
+les tables de routage et de labels, et envoie du trafic. **Sur le site `bfd`, elle coupe le pont
+`bfd_sw` pendant {cut} s** (aucune trame ne passe, les interfaces restent actives) et mesure la durée
+de la coupure vue par `bfd_h1`, qui envoie un `ping` à `bfd_h4` toutes les {step} s. Elle dure une
+quinzaine de secondes.
+""": """
+Read the **Informations** tab: it reviews IS-IS, then presents IPv6 and multi-topology, segment
+routing, BFD and TI-LFA, with their configuration in FRR.
+
+**The network.** It is made of **four independent sites**, one per part. Each site has its own
+colour on the diagram:
+
+| part | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- The routers run **FRRouting** (FRR) with `isisd` (and `bfdd` on the `bfd` site): configure
+  them with `vtysh`. **IS-IS (IPv4) already works everywhere**: level 2, one area per site,
+  point-to-point links, loopback interfaces advertised. The process is called **`{name}`**.
+- All the addresses are in place; the `mt` site is dual-stack IPv4 / IPv6, except the link
+  `mt_l14` (IPv4 only). The MPLS modules of the kernel are loaded and MPLS is enabled on the
+  interfaces of the routers of the `sr` and `tl` sites.
+- The `/etc/hosts` files contain the names: `sr_r2-eth1` designates the address of the interface
+  `eth1` of `sr_r2`, `sr_r2-lo` its loopback address.
+
+**Addressing plan.** The links between routers are /30s (/64s in IPv6), the host networks
+/24s.
+
+| network | prefixes | interfaces |
+|--------|----------|------------|
+{addressing}
+
+**Values specific to your instance.**
+
+- Part 2: SRGB of `sr_r1`, `sr_r2` and `sr_r4`: **{srgb} to {srgb_end}**; SRGB of `sr_r3`:
+  **{srgb3} to {srgb3_end}**; prefix-SID indexes of the loopback interfaces: `sr_r1` **{i1}**,
+  `sr_r2` **{i2}**, `sr_r3` **{i3}**, `sr_r4` **{i4}**.
+- Part 3: BFD profile **`{profile}`**: receive and transmit intervals **{interval} ms**,
+  multiplier **{mult}**.
+
+**Instructions.**
+
+- The parts are **independent**: do them in any order you like. A completed part gives all its
+  points, whatever the state of the others.
+- Save the FRR configuration (`write` in `vtysh`).
+- A new prefix or a new SID may take up to 30 s to be advertised (FRR spaces the generations of
+  one LSP).
+
+**Evaluation.** Each evaluation reads your answers, the configuration and the state of IS-IS and
+BFD, the routing and label tables, and sends traffic. **On the `bfd` site, it cuts the bridge
+`bfd_sw` for {cut} s** (no frame goes through, the interfaces stay up) and measures the length of
+the outage seen by `bfd_h1`, which sends a `ping` to `bfd_h4` every {step} s. It lasts about
+fifteen seconds.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_mt`, `solve_sr`, `solve_bfd` et `solve_tilfa` (onglet *Appliquer une
+configuration*) appliquent la solution d'une seule partie et remplissent ses formulaires. L'état
+`final` les applique toutes, attend {wait} s (régénération des LSP, sessions BFD) puis remplit tous
+les formulaires : une évaluation lancée dès son retour donne tous les points, bonus compris.
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance.
+The states `solve_mt`, `solve_sr`, `solve_bfd` and `solve_tilfa` (*Apply Configuration* tab) apply
+the solution of a single part and fill in its forms. The state `final` applies them all, waits
+{wait} s (regeneration of the LSPs, BFD sessions) then fills in all the forms: an evaluation run
+as soon as it returns gives all the points, bonus included.
+""",
+    "Partie 1 — IPv6 et multi-topologie (site mt)": "Part 1 — IPv6 and multi-topology (site mt)",
+    "IPv6 et multi-topologie": "IPv6 and multi-topology",
+    """
+Les routeurs `mt_r1`, `mt_r2`, `mt_r3` et `mt_r4` forment un carré (liens `mt_l12`, `mt_l23`,
+`mt_l34` et `mt_l14`) ; l'hôte `mt_h1` est derrière `mt_r1`, l'hôte `mt_h4` derrière `mt_r4`. IS-IS
+route déjà IPv4 ; la métrique de `mt_l34` est {m34}. Le lien `mt_l14` passe par un vieil équipement
+qui ne transporte que IPv4 : ses interfaces n'ont pas d'IPv6 du tout (sections @@ref:ipv6@@ et
+@@ref:topology@@).
+
+1. Vérifiez que `mt_h1` joint `mt_h4` en IPv4 (`traceroute -n`) mais pas en IPv6.
+2. Activez IPv6 dans IS-IS sur les quatre routeurs, sur toutes les interfaces qui ont IPv6 (y
+   compris les interfaces de bouclage et les réseaux des hôtes). Regardez les routes IPv6 (`show
+   isis route`, `ip -6 route`) de chaque routeur vers `mt_lan4`, puis essayez `ping` et
+   `traceroute -n` de `mt_h1` vers l'adresse IPv6 de `mt_h4`. Expliquez ce que vous voyez.
+3. Passez les quatre routeurs en **multi-topologie** IPv6, puis regardez à nouveau les routes
+   IPv6 et IPv4, `show isis topology`, et le trafic entre les hôtes.
+""": """
+The routers `mt_r1`, `mt_r2`, `mt_r3` and `mt_r4` form a square (links `mt_l12`, `mt_l23`,
+`mt_l34` and `mt_l14`); the host `mt_h1` is behind `mt_r1`, the host `mt_h4` behind `mt_r4`. IS-IS
+already routes IPv4; the metric of `mt_l34` is {m34}. The link `mt_l14` goes through an old device
+that carries IPv4 only: its interfaces have no IPv6 at all (sections @@ref:ipv6@@ and
+@@ref:topology@@).
+
+1. Check that `mt_h1` reaches `mt_h4` over IPv4 (`traceroute -n`) but not over IPv6.
+2. Enable IPv6 in IS-IS on the four routers, on every interface that has IPv6 (loopback
+   interfaces and host networks included). Look at the IPv6 routes (`show isis route`,
+   `ip -6 route`) of each router towards `mt_lan4`, then try `ping` and `traceroute -n` from
+   `mt_h1` to the IPv6 address of `mt_h4`. Explain what you see.
+3. Switch the four routers to IPv6 **multi-topology**, then look again at the IPv6 and IPv4
+   routes, `show isis topology`, and the traffic between the hosts.
+""",
+    """
+**Solution.** D'abord IPv6 dans IS-IS :
+
+{ipv6}
+
+puis la multi-topologie, sur les quatre routeurs :
+
+{topology}
+
+En topologie unique, `mt_r2` calcule sur un graphe qui contient `mt_l14` : son meilleur chemin vers
+`mt_lan4` passe par `mt_r1` puis `mt_l14` (coût 30, contre 40 par `mt_r3`). Mais `mt_r1` ne peut pas
+envoyer d'IPv6 sur `mt_l14` (son voisin n'y a pas d'adresse IPv6) : il passe par `mt_r2`. Les paquets
+IPv6 tournent entre `mt_r1` et `mt_r2` jusqu'à épuisement de leur *hop limit* (`traceroute` le
+montre). En multi-topologie, `mt_l14` n'existe pas dans le graphe IPv6 : `mt_r2` passe par
+`mt_r3`, et IPv4 garde le lien direct.
+
+Évaluation : `mt_ipv6_ifaces` (8 : 2 par routeur, IPv6 dans IS-IS sur ses interfaces IPv6),
+`mt_prefixes` (4 : routes IPv6 d'IS-IS de `mt_r1` vers `mt_lan4` et `mt_r4-lo`, de `mt_r4` vers
+`mt_lan1`), `mt_topology` (4 : un point par routeur), `mt_r2_path` (4 : route IPv6 de `mt_r2` vers
+`mt_lan4` par `mt_r3` seulement), `mt_r2_lo` (2 : de même vers `mt_r4-lo`), `mt_ipv4_kept` (2 : IPv4
+de `mt_r1` vers `mt_lan4` toujours par `mt_l14`, compté avec la multi-topologie de `mt_r1`),
+`mt_ping6` (4).
+""": """
+**Solution.** First IPv6 in IS-IS:
+
+{ipv6}
+
+then the multi-topology, on the four routers:
+
+{topology}
+
+In single topology, `mt_r2` computes on a graph that contains `mt_l14`: its best path to `mt_lan4`
+goes through `mt_r1` then `mt_l14` (cost 30, against 40 through `mt_r3`). But `mt_r1` cannot send
+IPv6 over `mt_l14` (its neighbour has no IPv6 address there): it goes through `mt_r2`. The IPv6
+packets loop between `mt_r1` and `mt_r2` until their *hop limit* runs out (`traceroute` shows it).
+In multi-topology, `mt_l14` does not exist in the IPv6 graph: `mt_r2` goes through `mt_r3`, and
+IPv4 keeps the direct link.
+
+Evaluation: `mt_ipv6_ifaces` (8: 2 per router, IPv6 in IS-IS on its IPv6 interfaces),
+`mt_prefixes` (4: IPv6 IS-IS routes of `mt_r1` to `mt_lan4` and `mt_r4-lo`, of `mt_r4` to
+`mt_lan1`), `mt_topology` (4: one point per router), `mt_r2_path` (4: IPv6 route of `mt_r2` to
+`mt_lan4` through `mt_r3` only), `mt_r2_lo` (2: likewise to `mt_r4-lo`), `mt_ipv4_kept` (2: IPv4
+from `mt_r1` to `mt_lan4` still through `mt_l14`, counted with the multi-topology of `mt_r1`),
+`mt_ping6` (4).
+""",
+    "Observations sur le site mt": "Observations on the mt site",
+    """
+- NLPID qui annonce IPv6 dans le TLV 129 (en hexadécimal) : @@{nlpid:[0-9a-fA-Fx]+}@@
+- identifiant de la topologie IPv6 unicast (MT ID) : @@{mt_id:[0-9]+}@@
+- TLV des préfixes IPv6 en topologie unique : @@{tlv_st:[0-9]+}@@  et en multi-topologie :
+  @@{tlv_mt:[0-9]+}@@
+- en topologie unique, les paquets IPv6 de `mt_h1` vers `mt_h4` :
+  @@{single:>tournent entre mt_r1 et mt_r2>>>loop|passent par mt_l14>>>l14|passent par mt_r3>>>r3|sont jetés par mt_h4>>>dropped}@@
+- prochain saut des routes IPv6 d'IS-IS :
+  @@{nexthop:>l'adresse lien-local du voisin>>>link_local|l'adresse globale du voisin>>>global|l'adresse IPv4 du voisin>>>ipv4}@@
+""": """
+- NLPID that announces IPv6 in TLV 129 (in hexadecimal): @@{nlpid:[0-9a-fA-Fx]+}@@
+- identifier of the IPv6 unicast topology (MT ID): @@{mt_id:[0-9]+}@@
+- TLV of the IPv6 prefixes in single topology: @@{tlv_st:[0-9]+}@@  and in multi-topology:
+  @@{tlv_mt:[0-9]+}@@
+- in single topology, the IPv6 packets from `mt_h1` to `mt_h4`:
+  @@{single:>loop between mt_r1 and mt_r2>>>loop|go through mt_l14>>>l14|go through mt_r3>>>r3|are dropped by mt_h4>>>dropped}@@
+- next hop of the IPv6 routes of IS-IS:
+  @@{nexthop:>the link-local address of the neighbour>>>link_local|the global address of the neighbour>>>global|the IPv4 address of the neighbour>>>ipv4}@@
+""",
+    """
+**Solution.** **`0x8E`** ; MT ID **2** ; TLV **236** et **237** ; ils **tournent entre `mt_r1` et
+`mt_r2`** ; **l'adresse lien-local du voisin**.
+
+Évaluation : `mt_q_nlpid`, `mt_q_mt_id`, `mt_q_tlv_st`, `mt_q_tlv_mt` (1 chacun) et, pour l'enseignant
+seulement, `mt_q_single`, `mt_q_nexthop` (1 chacun).
+""": """
+**Solution.** **`0x8E`**; MT ID **2**; TLV **236** and **237**; they **loop between `mt_r1` and
+`mt_r2`**; **the link-local address of the neighbour**.
+
+Evaluation: `mt_q_nlpid`, `mt_q_mt_id`, `mt_q_tlv_st`, `mt_q_tlv_mt` (1 each) and, for the
+instructor only, `mt_q_single`, `mt_q_nexthop` (1 each).
+""",
+    "IPv6 dans IS-IS sur les interfaces IPv6": "IPv6 in IS-IS on the IPv6 interfaces",
+    "préfixes IPv6 appris par IS-IS": "IPv6 prefixes learnt by IS-IS",
+    "multi-topologie IPv6 sur les quatre routeurs": "IPv6 multi-topology on the four routers",
+    "IPv6 de mt_r2 vers mt_lan4 par mt_r3": "IPv6 from mt_r2 to mt_lan4 through mt_r3",
+    "IPv6 de mt_r2 vers mt_r4-lo par mt_r3": "IPv6 from mt_r2 to mt_r4-lo through mt_r3",
+    "IPv4 garde le lien mt_l14": "IPv4 keeps the link mt_l14",
+    "mt_h1 et mt_h4 se joignent en IPv6": "mt_h1 and mt_h4 reach each other over IPv6",
+    "NLPID d'IPv6": "NLPID of IPv6",
+    "MT ID d'IPv6": "MT ID of IPv6",
+    "TLV des préfixes IPv6": "TLV of the IPv6 prefixes",
+    "TLV des préfixes IPv6 en multi-topologie": "TLV of the IPv6 prefixes in multi-topology",
+    "effet de la topologie unique": "effect of the single topology",
+    "prochain saut IPv6": "IPv6 next hop",
+    "Partie 2 — segment routing (site sr)": "Part 2 — segment routing (site sr)",
+    """
+Les routeurs `sr_r1`, `sr_r2`, `sr_r3` et `sr_r4` forment une ligne (liens `sr_l12`, `sr_l23`,
+`sr_l34`). IS-IS fonctionne et MPLS est activé dans les noyaux ; il n'y a pas de LDP (sections
+@@ref:sr@@ et @@ref:mpls-linux@@).
+
+1. Activez le segment routing dans IS-IS sur les quatre routeurs, avec le SRGB et l'index de
+   prefix-SID donnés dans l'organisation du TP (`sr_r3` n'a pas le même SRGB que les autres).
+2. Observez `show isis segment-routing node`, `show isis database detail`, `show mpls table`,
+   `ip -f mpls route` et `ip route` sur chaque routeur. Calculez les labels utilisés de `sr_r1`
+   vers `sr_r4`, lien par lien, et comparez.
+3. `sr_r4` veut recevoir avec leur label les paquets qui lui sont destinés : annoncez son
+   prefix-SID **sans PHP**. Qu'est-ce qui change sur `sr_r3` ?
+4. Depuis `sr_r1`, faites un `ping` de l'interface de bouclage de `sr_r4` **depuis sa propre
+   interface de bouclage** (`ping -I {lo1} {lo4}`) et regardez les labels sur chaque lien
+   (`tcpdump -nei eth0 mpls`).
+""": """
+The routers `sr_r1`, `sr_r2`, `sr_r3` and `sr_r4` form a line (links `sr_l12`, `sr_l23`,
+`sr_l34`). IS-IS works and MPLS is enabled in the kernels; there is no LDP (sections
+@@ref:sr@@ and @@ref:mpls-linux@@).
+
+1. Enable segment routing in IS-IS on the four routers, with the SRGB and the prefix-SID index
+   given in the organisation of the lab (`sr_r3` does not have the same SRGB as the others).
+2. Observe `show isis segment-routing node`, `show isis database detail`, `show mpls table`,
+   `ip -f mpls route` and `ip route` on each router. Compute the labels used from `sr_r1` to
+   `sr_r4`, link by link, and compare.
+3. `sr_r4` wants to receive the packets destined to it with their label: advertise its
+   prefix-SID **without PHP**. What changes on `sr_r3`?
+4. From `sr_r1`, `ping` the loopback interface of `sr_r4` **from its own loopback interface**
+   (`ping -I {lo1} {lo4}`) and look at the labels on each link (`tcpdump -nei eth0 mpls`).
+""",
+    """
+**Solution.**
+
+{solution}
+
+Le label se calcule avec le SRGB du routeur **suivant** : `sr_r1` impose {srgb} + {i4} = **{l_r1}**
+pour joindre `sr_r4` ; `sr_r2` l'échange contre {srgb3} + {i4} = **{l_r2}** (le SRGB de `sr_r3`) ;
+sans PHP, `sr_r3` l'échange contre {srgb} + {i4} = **{l_r1}** (le SRGB de `sr_r4`), que `sr_r4`
+retire (`dev lo`). Avec le PHP, `sr_r3` retirait le label.
+
+Évaluation : `sr_enabled` (4 : un point par routeur), `sr_srgb` (4 : un point par routeur),
+`sr_index` (4 : un point par prefix-SID), `sr_r2_swap` (3 : l'échange de `sr_r2`), `sr_no_php` (3 :
+l'échange de `sr_r3` (2), le retrait par `sr_r4` (1)), `sr_r1_push` (4 : la route de `sr_r1` vers
+`sr_r4`), `sr_ping` (4 : ping entre les interfaces de bouclage, avec des paquets étiquetés reçus par
+`sr_r2` et `sr_r3`).
+""": """
+**Solution.**
+
+{solution}
+
+The label is computed with the SRGB of the **next** router: `sr_r1` pushes {srgb} + {i4} =
+**{l_r1}** to reach `sr_r4`; `sr_r2` swaps it for {srgb3} + {i4} = **{l_r2}** (the SRGB of
+`sr_r3`); without PHP, `sr_r3` swaps it for {srgb} + {i4} = **{l_r1}** (the SRGB of `sr_r4`),
+which `sr_r4` pops (`dev lo`). With PHP, `sr_r3` popped the label.
+
+Evaluation: `sr_enabled` (4: one point per router), `sr_srgb` (4: one point per router),
+`sr_index` (4: one point per prefix-SID), `sr_r2_swap` (3: the swap of `sr_r2`), `sr_no_php` (3:
+the swap of `sr_r3` (2), the pop by `sr_r4` (1)), `sr_r1_push` (4: the route of `sr_r1` to
+`sr_r4`), `sr_ping` (4: ping between the loopback interfaces, with labelled packets received by
+`sr_r2` and `sr_r3`).
+""",
+    "Les labels du segment routing": "Segment routing labels",
+    """
+Calculez-les avant de les observer :
+
+- label imposé par `sr_r1` aux paquets vers l'interface de bouclage de `sr_r4` : @@{push4:[0-9]+}@@
+- label de ces paquets sur le lien `sr_l23` (de `sr_r2` vers `sr_r3`) : @@{label_l23:[0-9]+}@@
+- label de ces paquets sur le lien `sr_l34`, une fois le PHP refusé par `sr_r4` :
+  @@{label_l34:[0-9]+}@@
+- label imposé par `sr_r1` aux paquets vers l'interface de bouclage de `sr_r3` : @@{push3:[0-9]+}@@
+- TLV dans lequel un routeur annonce son SRGB : @@{capability:[0-9]+}@@  et sous-TLV qui porte un
+  prefix-SID : @@{subtlv:[0-9]+}@@
+- sans PHP :
+  @@{no_php:>le dernier routeur reçoit un label et le retire>>>last_pops|l'avant-dernier routeur retire le label>>>penultimate_pops|le premier routeur n'impose plus de label>>>no_push|le label 3 circule jusqu'au dernier routeur>>>implicit_null}@@
+""": """
+Compute them before observing them:
+
+- label pushed by `sr_r1` onto the packets to the loopback interface of `sr_r4`: @@{push4:[0-9]+}@@
+- label of these packets on the link `sr_l23` (from `sr_r2` to `sr_r3`): @@{label_l23:[0-9]+}@@
+- label of these packets on the link `sr_l34`, once PHP is refused by `sr_r4`:
+  @@{label_l34:[0-9]+}@@
+- label pushed by `sr_r1` onto the packets to the loopback interface of `sr_r3`: @@{push3:[0-9]+}@@
+- TLV in which a router advertises its SRGB: @@{capability:[0-9]+}@@  and sub-TLV that carries a
+  prefix-SID: @@{subtlv:[0-9]+}@@
+- without PHP:
+  @@{no_php:>the last router receives a label and pops it>>>last_pops|the penultimate router pops the label>>>penultimate_pops|the first router no longer pushes a label>>>no_push|label 3 travels up to the last router>>>implicit_null}@@
+""",
+    """
+**Solution.** **{push4}**, **{label_l23}**, **{label_l34}**, **{push3}** (voir la question
+précédente) ; TLV **242** (*Router Capability*), sous-TLV **3** ; **le dernier routeur reçoit un label et
+le retire**.
+
+Évaluation : `sr_q_push4`, `sr_q_label_l23`, `sr_q_label_l34`, `sr_q_push3`, `sr_q_capability`,
+`sr_q_subtlv` (1 chacun) et, pour l'enseignant seulement, `sr_q_no_php` (1).
+""": """
+**Solution.** **{push4}**, **{label_l23}**, **{label_l34}**, **{push3}** (see the previous
+question); TLV **242** (*Router Capability*), sub-TLV **3**; **the last router receives a label
+and pops it**.
+
+Evaluation: `sr_q_push4`, `sr_q_label_l23`, `sr_q_label_l34`, `sr_q_push3`, `sr_q_capability`,
+`sr_q_subtlv` (1 each) and, for the instructor only, `sr_q_no_php` (1).
+""",
+    "segment routing actif sur les quatre routeurs": "segment routing enabled on the four routers",
+    "SRGB donnés": "given SRGBs",
+    "prefix-SID des interfaces de bouclage": "prefix-SIDs of the loopback interfaces",
+    "sr_r2 : échange vers le SRGB de sr_r3": "sr_r2: swap to the SRGB of sr_r3",
+    "pas de PHP pour sr_r4": "no PHP for sr_r4",
+    "sr_r1 : label imposé vers sr_r4": "sr_r1: label pushed towards sr_r4",
+    "ping étiqueté entre les interfaces de bouclage": "labelled ping between the loopback interfaces",
+    "valeur du segment routing": "segment routing value",
+    "effet du drapeau no-PHP": "effect of the no-PHP flag",
+    "Partie 3 — BFD (site bfd)": "Part 3 — BFD (site bfd)",
+    "Détecter les pannes avec BFD": "Detecting failures with BFD",
+    """
+Les routeurs `bfd_r1`, `bfd_r2`, `bfd_r3` et `bfd_r4` forment un carré ; l'hôte `bfd_h1` est derrière
+`bfd_r1`, l'hôte `bfd_h4` derrière `bfd_r4`. Le lien `bfd_l12` entre `bfd_r1` et `bfd_r2` passe par
+`bfd_sw`, un pont de l'opérateur (sans terminal) : quand il tombe en panne, les interfaces des
+routeurs restent actives. Les métriques ({backup} sur `bfd_l13` et `bfd_l34`) font passer le trafic
+par `bfd_l12` et `bfd_r2` ; le chemin par `bfd_r3` sert de secours. Les quatre routeurs régénèrent
+leurs LSP sans attendre : `lsp-gen-interval 1` est déjà configuré (section @@ref:detection@@).
+
+1. Lancez `ping -i 0.2 bfd_h4` depuis `bfd_h1`, puis une évaluation : elle coupe `bfd_sw` pendant
+   {cut} s. Combien de temps le trafic est-il interrompu ? Regardez `show isis neighbor` sur `bfd_r1`
+   pendant la coupure : l'adjacence avec `bfd_r2` tombe-t-elle ?
+2. Sur `bfd_r1` et `bfd_r2`, créez le profil BFD **`{profile}`** (réception et émission toutes les
+   **{interval} ms**, multiplicateur **{mult}**) et protégez avec lui l'adjacence IS-IS du lien
+   `bfd_l12` (section @@ref:bfd@@). Vérifiez la session (`show bfd peers`) et `show isis neighbor
+   detail`, puis recommencez la mesure.
+3. Pour comparer, réglez les temporisateurs d'IS-IS du lien `bfd_l34`, à ses deux extrémités : un
+   IIH par seconde, multiplicateur 3. Regardez le temps restant affiché par `show isis neighbor`
+   sur `bfd_r3`.
+""": """
+The routers `bfd_r1`, `bfd_r2`, `bfd_r3` and `bfd_r4` form a square; the host `bfd_h1` is behind
+`bfd_r1`, the host `bfd_h4` behind `bfd_r4`. The link `bfd_l12` between `bfd_r1` and `bfd_r2` goes
+through `bfd_sw`, a bridge of the operator (no terminal): when it fails, the interfaces of the
+routers stay up. The metrics ({backup} on `bfd_l13` and `bfd_l34`) send the traffic through
+`bfd_l12` and `bfd_r2`; the path through `bfd_r3` is the backup. The four routers regenerate
+their LSPs without waiting: `lsp-gen-interval 1` is already configured (section @@ref:detection@@).
+
+1. Run `ping -i 0.2 bfd_h4` from `bfd_h1`, then an evaluation: it cuts `bfd_sw` for {cut} s. How
+   long is the traffic interrupted? Look at `show isis neighbor` on `bfd_r1` during the cut: does
+   the adjacency with `bfd_r2` go down?
+2. On `bfd_r1` and `bfd_r2`, create the BFD profile **`{profile}`** (receive and transmit every
+   **{interval} ms**, multiplier **{mult}**) and protect the IS-IS adjacency of the link `bfd_l12`
+   with it (section @@ref:bfd@@). Check the session (`show bfd peers`) and
+   `show isis neighbor detail`, then repeat the measurement.
+3. For comparison, set the IS-IS timers of the link `bfd_l34`, at both its ends: one IIH per
+   second, multiplier 3. Look at the remaining time shown by `show isis neighbor` on `bfd_r3`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Sans BFD, la coupure de {cut} s est plus courte que le *holding time* (30 s) : l'adjacence ne tombe
+pas et le trafic est perdu pendant toute la coupure. Avec BFD, la session tombe au bout de
+{mult} × {interval} = {detection} ms, IS-IS retire l'adjacence et le trafic passe par `bfd_r3` en moins
+d'une seconde ; il revient par `bfd_r2` quand l'adjacence se reforme, après la coupure.
+
+Évaluation : `bfd_profile` (2 : le profil de chaque routeur), `bfd_isis` (2 : `isis bfd` sur chaque
+interface), `bfd_up` (4 : la session vue de chaque côté), `bfd_timers` (4 : intervalles et
+multiplicateur négociés, de chaque côté), `bfd_isis_neighbor` (2 : BFD actif sur l'adjacence vue par
+`bfd_r1`), `bfd_failover` (8 : coupure mesurée de moins de {max_outage:g} s, comptée avec la session
+BFD), `bfd_hello` (4 : temporisateurs de `bfd_l34`, 2 par extrémité).
+""": """
+**Solution.**
+
+{solution}
+
+Without BFD, the cut of {cut} s is shorter than the *holding time* (30 s): the adjacency does not
+go down and the traffic is lost during the whole cut. With BFD, the session goes down after
+{mult} × {interval} = {detection} ms, IS-IS removes the adjacency and the traffic goes through
+`bfd_r3` in less than a second; it comes back through `bfd_r2` when the adjacency forms again,
+after the cut.
+
+Evaluation: `bfd_profile` (2: the profile of each router), `bfd_isis` (2: `isis bfd` on each
+interface), `bfd_up` (4: the session seen from each side), `bfd_timers` (4: intervals and
+multiplier negotiated, on each side), `bfd_isis_neighbor` (2: BFD active on the adjacency seen by
+`bfd_r1`), `bfd_failover` (8: measured outage of less than {max_outage:g} s, counted with the BFD
+session), `bfd_hello` (4: timers of `bfd_l34`, 2 per end).
+""",
+    "Observations sur le site bfd": "Observations on the bfd site",
+    """
+- port UDP des paquets de contrôle BFD : @@{{port:[0-9]+}}@@
+- temps de détection d'une panne par la session BFD de `bfd_r1`, en millisecondes :
+  @@{{detection:[0-9]+}}@@
+- *holding time* par défaut d'une adjacence IS-IS dans FRR, en secondes : @@{{hold:[0-9]+}}@@
+- durée de l'interruption du trafic, en secondes, quand `bfd_sw` est coupé pendant {cut} s, sans
+  BFD : @@{{outage:[0-9]+}}@@
+- temps restant maximal de l'adjacence avec `bfd_r4` affiché par `bfd_r3`, une fois les
+  temporisateurs de `bfd_l34` réglés : @@{{fast_hold:[0-9]+}}@@
+- pendant la coupure du pont, l'interface `eth1` de `bfd_r1` est :
+  @@{{interface:>active (up)>>>up|inactive (down)>>>down|sans adresse>>>no_address}}@@
+- pendant la coupure, avec BFD, le trafic de `bfd_h1` vers `bfd_h4` passe par :
+  @@{{path:>bfd_r3>>>r3|bfd_r2>>>r2|nulle part>>>nowhere}}@@
+""": """
+- UDP port of the BFD control packets: @@{{port:[0-9]+}}@@
+- detection time of a failure by the BFD session of `bfd_r1`, in milliseconds:
+  @@{{detection:[0-9]+}}@@
+- default *holding time* of an IS-IS adjacency in FRR, in seconds: @@{{hold:[0-9]+}}@@
+- length of the traffic interruption, in seconds, when `bfd_sw` is cut for {cut} s, without
+  BFD: @@{{outage:[0-9]+}}@@
+- maximum remaining time of the adjacency with `bfd_r4` shown by `bfd_r3`, once the timers of
+  `bfd_l34` are set: @@{{fast_hold:[0-9]+}}@@
+- during the cut of the bridge, the interface `eth1` of `bfd_r1` is:
+  @@{{interface:>up (active)>>>up|down (inactive)>>>down|without an address>>>no_address}}@@
+- during the cut, with BFD, the traffic from `bfd_h1` to `bfd_h4` goes through:
+  @@{{path:>bfd_r3>>>r3|bfd_r2>>>r2|nowhere>>>nowhere}}@@
+""",
+    """
+**Solution.** **3784** ; **{detection}** ms ({mult} × {interval}) ; **30** s ; **{cut}** s (toute
+la coupure : l'adjacence ne tombe pas) ; **3** s ; **active (up)** ; **`bfd_r3`**.
+
+Évaluation : `bfd_q_port`, `bfd_q_detection`, `bfd_q_hold`, `bfd_q_outage`, `bfd_q_fast_hold` (1
+chacun) et, pour l'enseignant seulement, `bfd_q_interface`, `bfd_q_path` (1 chacun).
+""": """
+**Solution.** **3784**; **{detection}** ms ({mult} × {interval}); **30** s; **{cut}** s (the
+whole cut: the adjacency does not go down); **3** s; **up (active)**; **`bfd_r3`**.
+
+Evaluation: `bfd_q_port`, `bfd_q_detection`, `bfd_q_hold`, `bfd_q_outage`, `bfd_q_fast_hold` (1
+each) and, for the instructor only, `bfd_q_interface`, `bfd_q_path` (1 each).
+""",
+    "profil BFD": "BFD profile",
+    "BFD demandé par IS-IS sur bfd_l12": "BFD requested by IS-IS on bfd_l12",
+    "session BFD établie": "BFD session established",
+    "temporisateurs BFD": "BFD timers",
+    "IS-IS client de la session BFD": "IS-IS client of the BFD session",
+    "trafic rétabli en moins de 3 s après une panne silencieuse": "traffic restored in less than 3 s after a silent failure",
+    "temporisateurs d'IS-IS de bfd_l34": "IS-IS timers of bfd_l34",
+    "valeur de BFD ou d'IS-IS": "BFD or IS-IS value",
+    "état de l'interface pendant la panne": "state of the interface during the failure",
+    "chemin de secours": "backup path",
+    "Bonus — TI-LFA (site tl)": "Bonus — TI-LFA (site tl)",
+    "Protection TI-LFA (bonus)": "TI-LFA protection (bonus)",
+    """
+Les routeurs `tl_r1`, `tl_r2`, `tl_r3` et `tl_r4` forment un carré (métriques IS-IS : {metrics}).
+IS-IS et le segment routing y fonctionnent (SRGB par défaut, 16000 à 23999 ; l'index du prefix-SID
+de `tl_rN` est N). Seul `tl_r1` a un terminal ; il joint `tl_r3` par `tl_r2` (section @@ref:tilfa@@).
+
+1. Regardez la route de `tl_r1` vers l'interface de bouclage de `tl_r3` (`show ip route {r3}`).
+2. Activez sur les deux interfaces de `tl_r1` la protection TI-LFA **de nœud** au niveau 2 : le
+   secours doit éviter `tl_r2` tout entier.
+3. Regardez à nouveau la route : par où passe le secours, avec quels labels ? `show isis
+   fast-reroute summary` compte les destinations protégées.
+""": """
+The routers `tl_r1`, `tl_r2`, `tl_r3` and `tl_r4` form a square (IS-IS metrics: {metrics}).
+IS-IS and segment routing run there (default SRGB, 16000 to 23999; the prefix-SID index of
+`tl_rN` is N). Only `tl_r1` has a terminal; it reaches `tl_r3` through `tl_r2` (section
+@@ref:tilfa@@).
+
+1. Look at the route of `tl_r1` to the loopback interface of `tl_r3` (`show ip route {r3}`).
+2. Enable TI-LFA **node** protection at level 2 on both interfaces of `tl_r1`: the backup must
+   avoid `tl_r2` entirely.
+3. Look at the route again: which way does the backup go, with which labels?
+   `show isis fast-reroute summary` counts the protected destinations.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Le secours vers `{r3}` part vers `tl_r4` (`{eth}`) ; sa pile de labels se termine par le prefix-SID
+de `tl_r3` (16003). Le calcul est fait d'avance : zebra garde le secours prêt sans l'installer dans le
+noyau.
+
+Évaluation (bonus) : `tl_backup` (3 : une route de secours vers `tl_r3`), `tl_node` (1 : protection
+de nœud sur les deux interfaces), `tl_repair` (2 : secours par `tl_r4`, pile terminée par le
+prefix-SID de `tl_r3`).
+""": """
+**Solution.**
+
+{solution}
+
+The backup to `{r3}` leaves towards `tl_r4` (`{eth}`); its label stack ends with the prefix-SID of
+`tl_r3` (16003). The computation is done in advance: zebra keeps the backup ready without
+installing it in the kernel.
+
+Evaluation (bonus): `tl_backup` (3: a backup route to `tl_r3`), `tl_node` (1: node protection on
+both interfaces), `tl_repair` (2: backup through `tl_r4`, stack ending with the prefix-SID of
+`tl_r3`).
+""",
+    "route de secours vers tl_r3": "backup route to tl_r3",
+    "protection de nœud": "node protection",
+    "secours par tl_r4 vers le prefix-SID de tl_r3": "backup through tl_r4 to the prefix-SID of tl_r3",
+}}

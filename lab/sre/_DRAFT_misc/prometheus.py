@@ -1556,4 +1556,1363 @@ répondre `oncall`.
                                description=tr("l'alerte warning de la même instance est inhibée"))
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "Prometheus : métriques, requêtes et alertes": "Prometheus: metrics, queries and alerts",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "La supervision par métriques": "Metrics-based monitoring",
+    """
+
+Un outil comme Nagios demande régulièrement « ça marche ? » et range une réponse : OK, WARNING,
+CRITICAL. **Prometheus** collecte des **mesures** : des nombres (requêtes servies, octets reçus,
+longueur d'une file d'attente) relevés à intervalle régulier et conservés sous forme de **séries
+temporelles**. Les questions viennent ensuite, sous forme de **requêtes** : quel débit ? quelle
+proportion d'erreurs ? en combien de temps 95 % des requêtes sont-elles servies ? Une **alerte**
+n'est qu'une requête qui reste vraie un certain temps.
+
+- supervision **boîte blanche** : l'application ou le système publient eux-mêmes leurs compteurs
+  (section @@ref:exposition@@) ;
+- supervision **boîte noire** : on teste de l'extérieur ce que voit l'utilisateur (section
+  @@ref:blackbox@@).
+
+Prometheus **tire** les mesures (*pull*) : à chaque intervalle (15 secondes par défaut), il lit une
+page HTTP, en général `/metrics`, sur chacune de ses **cibles**. Une cible muette se voit donc tout de
+suite. Pour un service, on surveille d'abord les quatre « signaux d'or » : la **latence**, le
+**trafic**, les **erreurs** et la **saturation**.
+""": """
+
+A tool such as Nagios regularly asks "is it working?" and files an answer: OK, WARNING,
+CRITICAL. **Prometheus** collects **measurements**: numbers (requests served, bytes received,
+length of a queue) read at regular intervals and kept as **time series**. The questions come
+afterwards, as **queries**: what rate? what proportion of errors? within how long are 95% of the
+requests served? An **alert** is merely a query that stays true for a certain time.
+
+- **white-box** monitoring: the application or the system publish their own counters
+  (section @@ref:exposition@@);
+- **black-box** monitoring: what the user sees is tested from outside (section
+  @@ref:blackbox@@).
+
+Prometheus **pulls** the measurements (*pull*): at every interval (15 seconds by default), it reads
+an HTTP page, usually `/metrics`, on each of its **targets**. A silent target is therefore noticed
+at once. For a service, one first watches the four "golden signals": **latency**, **traffic**,
+**errors** and **saturation**.
+""",
+    "L'architecture de Prometheus": "The architecture of Prometheus",
+    """
+
+| composant | rôle | port | sous Debian |
+|-----------|------|------|-------------|
+| `prometheus` | collecte, stocke (base de séries temporelles), répond aux requêtes, évalue les règles | 9090 | service `prometheus`, `/etc/prometheus/prometheus.yml`, données dans `/var/lib/prometheus/metrics2/` |
+| node exporter | publie les mesures du système : processeur, mémoire, disques, réseau | 9100 | `prometheus-node-exporter` |
+| blackbox exporter | teste des cibles de l'extérieur : HTTP, TCP, ICMP, DNS | 9115 | `prometheus-blackbox-exporter`, `/etc/prometheus/blackbox.yml` |
+| SNMP exporter | interroge des équipements en SNMP et traduit les réponses en métriques | 9116 | `prometheus-snmp-exporter`, `/etc/prometheus/snmp.yml` |
+| Alertmanager | reçoit les alertes, les regroupe, choisit qui prévenir, envoie les notifications | 9093 | `prometheus-alertmanager`, `/etc/prometheus/alertmanager.yml` |
+
+Prometheus évalue les **règles d'alerte** et envoie les alertes actives à **Alertmanager**, qui décide
+qui prévenir et comment (courriel, messagerie, *webhook*...). Un outil de tableaux de bord comme
+Grafana ne fait que dessiner : il pose à Prometheus les mêmes requêtes que vous.
+
+Chaque démon tourne sous l'utilisateur `prometheus` et lit ses options de ligne de commande dans la
+variable `ARGS` de `/etc/default/<service>`. L'interface web de Prometheus est à l'adresse
+`http://prom:9090/`, qui mène à `/classic/graph` : requêtes en tableau ou en graphe, et menu *Status*
+(*Targets*, *Rules*, *Configuration*, *Command-Line Flags*), *Alerts*. Le paquet Debian
+d'Alertmanager n'a pas d'interface web : on utilise la commande `amtool`.
+""": """
+
+| component | role | port | on Debian |
+|-----------|------|------|-----------|
+| `prometheus` | scrapes, stores (time series database), answers queries, evaluates rules | 9090 | service `prometheus`, `/etc/prometheus/prometheus.yml`, data in `/var/lib/prometheus/metrics2/` |
+| node exporter | publishes the measurements of the system: processor, memory, disks, network | 9100 | `prometheus-node-exporter` |
+| blackbox exporter | tests targets from outside: HTTP, TCP, ICMP, DNS | 9115 | `prometheus-blackbox-exporter`, `/etc/prometheus/blackbox.yml` |
+| SNMP exporter | queries devices over SNMP and translates the answers into metrics | 9116 | `prometheus-snmp-exporter`, `/etc/prometheus/snmp.yml` |
+| Alertmanager | receives the alerts, groups them, chooses whom to notify, sends the notifications | 9093 | `prometheus-alertmanager`, `/etc/prometheus/alertmanager.yml` |
+
+Prometheus evaluates the **alerting rules** and sends the active alerts to **Alertmanager**, which
+decides whom to notify and how (email, chat, *webhook*...). A dashboard tool such as Grafana only
+draws: it asks Prometheus the same queries as you do.
+
+Each daemon runs as the user `prometheus` and reads its command-line options from the variable
+`ARGS` of `/etc/default/<service>`. The web interface of Prometheus is at `http://prom:9090/`, which
+leads to `/classic/graph`: queries as a table or as a graph, and the menus *Status* (*Targets*,
+*Rules*, *Configuration*, *Command-Line Flags*) and *Alerts*. The Debian package of Alertmanager
+has no web interface: the `amtool` command is used instead.
+""",
+    "Le modèle de données et le format d'exposition": "The data model and the exposition format",
+    """
+
+Une **série** est identifiée par un **nom de métrique** et des **étiquettes** (*labels*). Chaque
+combinaison d'étiquettes est une série distincte : une étiquette qui prendrait des milliers de
+valeurs (un identifiant d'utilisateur, une adresse) multiplierait les séries d'autant, c'est le
+problème de la **cardinalité**.
+
+Une cible publie ses mesures dans le **format d'exposition**, une page texte :
+
+```
+# HELP shop_http_requests_total Total number of HTTP requests served.
+# TYPE shop_http_requests_total counter
+shop_http_requests_total{method="GET",path="/cart",status="200"} 1543
+shop_http_requests_total{method="POST",path="/cart",status="500"} 12
+# HELP shop_queue_length Number of jobs waiting in the queue.
+# TYPE shop_queue_length gauge
+shop_queue_length{queue="orders"} 17
+```
+
+| type | ce qu'il mesure | se lit avec |
+|------|-----------------|-------------|
+| `counter` | un total qui ne fait que croître (et repart de 0 quand le programme redémarre) | `rate()`, `increase()` |
+| `gauge` | une valeur qui monte et qui descend | telle quelle, `max_over_time()`... |
+| `histogram` | la répartition de mesures (durées, tailles) dans des seaux | `histogram_quantile()` |
+| `summary` | des quantiles calculés par le programme lui-même (`quantile="0.95"`) | tels quels, non agrégeables |
+
+Un histogramme `x` produit les séries `x_bucket{le="..."}`, `x_sum` et `x_count`. L'étiquette `le`
+(*less or equal*) est la borne supérieure du seau, et les seaux sont **cumulés** :
+`x_bucket{le="0.5"}` compte toutes les mesures inférieures ou égales à 0,5 ; `x_bucket{le="+Inf"}` les
+compte toutes et vaut `x_count`.
+
+Les conventions de nommage : les unités de base (`_seconds`, `_bytes`), le suffixe `_total` pour un
+compteur, `_info` pour une série toujours égale à 1 qui porte des étiquettes descriptives (une
+version, un numéro de commit).
+""": """
+
+A **series** is identified by a **metric name** and **labels**. Each combination of labels is a
+distinct series: a label that took thousands of values (a user identifier, an address) would
+multiply the series as much; this is the **cardinality** problem.
+
+A target publishes its measurements in the **exposition format**, a text page:
+
+```
+# HELP shop_http_requests_total Total number of HTTP requests served.
+# TYPE shop_http_requests_total counter
+shop_http_requests_total{method="GET",path="/cart",status="200"} 1543
+shop_http_requests_total{method="POST",path="/cart",status="500"} 12
+# HELP shop_queue_length Number of jobs waiting in the queue.
+# TYPE shop_queue_length gauge
+shop_queue_length{queue="orders"} 17
+```
+
+| type | what it measures | read with |
+|------|------------------|-----------|
+| `counter` | a total that only grows (and starts again from 0 when the program restarts) | `rate()`, `increase()` |
+| `gauge` | a value that goes up and down | as it is, `max_over_time()`... |
+| `histogram` | the distribution of measurements (durations, sizes) in buckets | `histogram_quantile()` |
+| `summary` | quantiles computed by the program itself (`quantile="0.95"`) | as they are, cannot be aggregated |
+
+A histogram `x` produces the series `x_bucket{le="..."}`, `x_sum` and `x_count`. The label `le`
+(*less or equal*) is the upper bound of the bucket, and the buckets are **cumulative**:
+`x_bucket{le="0.5"}` counts every measurement less than or equal to 0.5; `x_bucket{le="+Inf"}`
+counts them all and equals `x_count`.
+
+The naming conventions: base units (`_seconds`, `_bytes`), the suffix `_total` for a counter,
+`_info` for a series always equal to 1 that carries descriptive labels (a version, a commit
+number).
+""",
+    "Les exporteurs : node exporter et collecteur textfile": "Exporters: the node exporter and the textfile collector",
+    """
+
+Un **exporteur** est un petit serveur HTTP qui traduit des informations en métriques. Le node
+exporter publie celles du système : `node_cpu_seconds_total`, `node_memory_MemAvailable_bytes`,
+`node_filesystem_avail_bytes`, `node_network_receive_bytes_total{device="eth0"}`, `node_load1`... Dans
+un conteneur, le processeur, la mémoire et la charge sont ceux de la machine hôte ; le réseau (`eth0`)
+est bien celui du conteneur.
+
+Son **collecteur textfile** publie des métriques écrites par vos propres scripts (taille d'une
+sauvegarde, date du dernier succès d'une tâche planifiée) : tout fichier `*.prom` du répertoire
+`/var/lib/prometheus/node-exporter/` (réglage par défaut de Debian) est relu à chaque collecte. On y
+écrit au format d'exposition, de façon **atomique** pour ne jamais publier un fichier à moitié écrit :
+
+```
+cd /var/lib/prometheus/node-exporter
+printf '# TYPE job_last_success_timestamp_seconds gauge\\njob_last_success_timestamp_seconds %s\\n' \\
+    "$(date +%s)" > job.prom.tmp && mv job.prom.tmp job.prom
+```
+
+Un fichier mal formé est signalé par la série `node_textfile_scrape_error 1`.
+""": """
+
+An **exporter** is a small HTTP server that translates information into metrics. The node
+exporter publishes those of the system: `node_cpu_seconds_total`, `node_memory_MemAvailable_bytes`,
+`node_filesystem_avail_bytes`, `node_network_receive_bytes_total{device="eth0"}`, `node_load1`... In
+a container, the processor, the memory and the load are those of the host machine; the network
+(`eth0`) really is the container's own.
+
+Its **textfile collector** publishes metrics written by your own scripts (size of a backup, time of
+the last success of a scheduled task): every `*.prom` file of the directory
+`/var/lib/prometheus/node-exporter/` (Debian's default setting) is read again at every scrape. They
+are written in the exposition format, **atomically** so as never to publish a half-written file:
+
+```
+cd /var/lib/prometheus/node-exporter
+printf '# TYPE job_last_success_timestamp_seconds gauge\\njob_last_success_timestamp_seconds %s\\n' \\
+    "$(date +%s)" > job.prom.tmp && mv job.prom.tmp job.prom
+```
+
+A malformed file is reported by the series `node_textfile_scrape_error 1`.
+""",
+    "Configurer la collecte": "Configuring the scraping",
+    """
+
+```yaml
+global:
+  scrape_interval: 15s          # fréquence de collecte par défaut
+  evaluation_interval: 15s      # fréquence d'évaluation des règles
+scrape_configs:
+  - job_name: node              # devient l'étiquette job de toutes ces séries
+    static_configs:
+      - targets: ['srv1:9100', 'srv2:9100']
+        labels:
+          site: paris            # ajoutée aux séries de ces cibles
+  - job_name: myapp
+    metrics_path: /stats/metrics     # /metrics par défaut
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['app1:8080']
+```
+
+Prometheus ajoute à chaque série les étiquettes `job` (le nom du job) et `instance` (l'adresse de la
+cible, `srv1:9100`), et crée pour chaque cible la série **`up`** : 1 si la dernière collecte a réussi,
+0 sinon. La page *Status → Targets* montre l'état de chaque cible et sa dernière erreur.
+
+### @@sec@@ Recharger ou redémarrer
+
+- vérifiez toujours avant d'appliquer : `promtool check config /etc/prometheus/prometheus.yml` ;
+- `systemctl reload prometheus` relit la configuration et les règles. **Si le fichier est faux,
+  l'ancienne configuration reste en service** et la commande ne dit rien : regardez
+  `journalctl -u prometheus` (ligne `Error reloading config`) ou la métrique
+  `prometheus_config_last_reload_successful` ;
+- une option de la ligne de commande (`ARGS` dans `/etc/default/prometheus`, par exemple
+  `--storage.tsdb.retention.time=30d` : la durée de conservation des séries, 15 jours par défaut)
+  demande un `systemctl restart prometheus` ; la page *Command-Line Flags* montre les options en
+  service ;
+- après un redémarrage, une cible retirée de la configuration reste visible quelques minutes dans
+  `up` : sa dernière valeur reste lisible pendant 5 minutes.
+""": """
+
+```yaml
+global:
+  scrape_interval: 15s          # default scrape frequency
+  evaluation_interval: 15s      # rule evaluation frequency
+scrape_configs:
+  - job_name: node              # becomes the job label of all these series
+    static_configs:
+      - targets: ['srv1:9100', 'srv2:9100']
+        labels:
+          site: paris            # added to the series of these targets
+  - job_name: myapp
+    metrics_path: /stats/metrics     # /metrics by default
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['app1:8080']
+```
+
+Prometheus adds to every series the labels `job` (the name of the job) and `instance` (the address
+of the target, `srv1:9100`), and creates for each target the series **`up`**: 1 if the last scrape
+succeeded, 0 otherwise. The *Status → Targets* page shows the state of each target and its last
+error.
+
+### @@sec@@ Reloading or restarting
+
+- always check before applying: `promtool check config /etc/prometheus/prometheus.yml`;
+- `systemctl reload prometheus` reads the configuration and the rules again. **If the file is
+  wrong, the old configuration stays in service** and the command says nothing: look at
+  `journalctl -u prometheus` (line `Error reloading config`) or at the metric
+  `prometheus_config_last_reload_successful`;
+- a command-line option (`ARGS` in `/etc/default/prometheus`, for example
+  `--storage.tsdb.retention.time=30d`: how long the series are kept, 15 days by default)
+  requires a `systemctl restart prometheus`; the *Command-Line Flags* page shows the options in
+  service;
+- after a restart, a target removed from the configuration stays visible for a few minutes in
+  `up`: its last value remains readable for 5 minutes.
+""",
+    "PromQL": "PromQL",
+    """
+
+**Sélecteurs.** `shop_http_requests_total{status=~"5..",method!="GET"}` : les séries de cette
+métrique dont les étiquettes vérifient les conditions (`=`, `!=`, `=~` et `!~` pour une expression
+régulière, toujours ancrée). Le résultat est un **vecteur instantané** : une valeur par série, la plus
+récente (jusqu'à 5 minutes en arrière). Avec une durée entre crochets, `x[5m]`, c'est un **vecteur de
+plage** : tous les points des 5 dernières minutes, que seules les fonctions savent exploiter.
+
+**Compteurs.** La valeur brute d'un compteur n'a pas de sens ; on regarde sa pente :
+
+- `rate(x[1m])` : la croissance moyenne **par seconde** sur la dernière minute, remises à zéro
+  comprises ; `irate()` ne regarde que les deux derniers points ; `increase(x[1h])` est la
+  croissance sur l'heure (`rate` multiplié par la durée) ;
+- la fenêtre doit contenir au moins quatre collectes ;
+- on calcule le `rate` **avant** d'agréger : `sum(rate(x[1m]))`, jamais `rate(sum(x))`.
+
+**Agrégation.** `sum`, `avg`, `min`, `max`, `count`, `topk(3, ...)`, `bottomk` ; `sum by (status) (...)`
+garde l'étiquette `status` (une série par valeur), `sum without (instance) (...)` retire `instance` ;
+`sum(...)` seul donne une seule série, sans étiquette.
+
+**Opérations entre vecteurs.** `a / b` associe les séries qui ont exactement les mêmes étiquettes ;
+`on(queue)` ou `ignoring(instance)` précisent l'association. Deux agrégations par les mêmes étiquettes
+se divisent donc directement : `sum by (queue) (a) / sum by (queue) (b)`. Une comparaison filtre :
+`up == 0` ne garde que les cibles en panne.
+
+**Histogrammes.** `histogram_quantile(0.95, sum by (le) (rate(x_bucket[5m])))` estime la valeur sous
+laquelle tombent 95 % des mesures, en interpolant dans le seau concerné. L'étiquette `le` doit rester
+dans l'agrégation ; toute autre étiquette conservée (la méthode HTTP, l'instance) donne un quantile
+par valeur.
+
+**Jauges dans le temps.** `max_over_time(x[1h])`, `min_over_time`, `avg_over_time` : sur les points
+d'une plage. Et `time()`, `absent(up{job="x"})`, `count(up == 1)`...
+
+On tape ses requêtes sur la page *Graph* de l'interface web, avec
+`promtool query instant http://localhost:9090 'expression'`, ou avec
+`curl -s -G http://localhost:9090/api/v1/query --data-urlencode 'query=expression'`.
+
+### @@sec@@ Exemples
+
+| question | requête |
+|----------|---------|
+| requêtes par seconde, par code de retour | `sum by (status) (rate(http_requests_total[5m]))` |
+| part des requêtes en erreur | `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))` |
+| les trois instances les plus chargées | `topk(3, sum by (instance) (rate(http_requests_total[5m])))` |
+| espace libre en pourcentage | `100 * node_filesystem_avail_bytes / node_filesystem_size_bytes` |
+| cibles en panne | `up == 0` |
+""": """
+
+**Selectors.** `shop_http_requests_total{status=~"5..",method!="GET"}`: the series of this metric
+whose labels satisfy the conditions (`=`, `!=`, `=~` and `!~` for a regular expression, always
+anchored). The result is an **instant vector**: one value per series, the most recent one (up to
+5 minutes back). With a duration in square brackets, `x[5m]`, it is a **range vector**: every
+point of the last 5 minutes, which only functions can make use of.
+
+**Counters.** The raw value of a counter is meaningless; one looks at its slope:
+
+- `rate(x[1m])`: the average growth **per second** over the last minute, counter resets
+  included; `irate()` only looks at the last two points; `increase(x[1h])` is the growth over
+  the hour (`rate` multiplied by the duration);
+- the window must contain at least four scrapes;
+- the `rate` is computed **before** aggregating: `sum(rate(x[1m]))`, never `rate(sum(x))`.
+
+**Aggregation.** `sum`, `avg`, `min`, `max`, `count`, `topk(3, ...)`, `bottomk`; `sum by (status) (...)`
+keeps the label `status` (one series per value), `sum without (instance) (...)` removes `instance`;
+`sum(...)` alone gives a single series, without labels.
+
+**Operations between vectors.** `a / b` matches the series that have exactly the same labels;
+`on(queue)` or `ignoring(instance)` specify the matching. Two aggregations by the same labels can
+therefore be divided directly: `sum by (queue) (a) / sum by (queue) (b)`. A comparison filters:
+`up == 0` keeps only the targets that are down.
+
+**Histograms.** `histogram_quantile(0.95, sum by (le) (rate(x_bucket[5m])))` estimates the value
+below which 95% of the measurements fall, by interpolating within the relevant bucket. The label
+`le` must stay in the aggregation; any other label kept (the HTTP method, the instance) gives one
+quantile per value.
+
+**Gauges over time.** `max_over_time(x[1h])`, `min_over_time`, `avg_over_time`: over the points
+of a range. And `time()`, `absent(up{job="x"})`, `count(up == 1)`...
+
+Queries are typed on the *Graph* page of the web interface, with
+`promtool query instant http://localhost:9090 'expression'`, or with
+`curl -s -G http://localhost:9090/api/v1/query --data-urlencode 'query=expression'`.
+
+### @@sec@@ Examples
+
+| question | query |
+|----------|-------|
+| requests per second, per status code | `sum by (status) (rate(http_requests_total[5m]))` |
+| share of the requests in error | `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))` |
+| the three busiest instances | `topk(3, sum by (instance) (rate(http_requests_total[5m])))` |
+| free space as a percentage | `100 * node_filesystem_avail_bytes / node_filesystem_size_bytes` |
+| targets down | `up == 0` |
+""",
+    "La supervision boîte noire : blackbox exporter": "Black-box monitoring: the blackbox exporter",
+    """
+
+Le blackbox exporter teste une cible quand on le lui demande :
+`http://prom:9115/probe?module=http_2xx&target=https://www.example.org/` répond par des métriques
+comme `probe_success` (1 ou 0), `probe_duration_seconds`, `probe_http_status_code` ; ajouter
+`&debug=true` explique un échec. Les **modules** sont décrits dans `/etc/prometheus/blackbox.yml` :
+
+```yaml
+modules:
+  http_ok:
+    prober: http                     # http, tcp, icmp, dns
+    timeout: 5s
+    http:
+      preferred_ip_protocol: ip4     # ip6 par défaut, puis ip4 en repli
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp: ['^ready']
+  icmp:
+    prober: icmp
+```
+
+Le fichier de Debian **ne se termine pas par un saut de ligne** : un `cat >>` colle la première
+ligne ajoutée à la dernière ligne du fichier. Éditez-le avec un éditeur. Après
+`systemctl reload prometheus-blackbox-exporter`, un fichier faux laisse l'ancienne liste de modules
+en service ; l'erreur n'apparaît que dans `journalctl -u prometheus-blackbox-exporter`. Les sondes
+ICMP demandent le droit d'envoyer des paquets bruts, que le paquet Debian donne au programme.
+
+Pour que Prometheus collecte une sonde, la **cible** devient le paramètre `target` de l'URL et
+l'**exporteur** devient l'adresse collectée. On l'écrit avec un *relabelling* :
+
+```yaml
+  - job_name: blackbox_web
+    metrics_path: /probe
+    params:
+      module: [http_ok]
+    static_configs:
+      - targets: ['https://www.example.org/']
+    relabel_configs:
+      - source_labels: [__address__]     # la cible écrite ci-dessus...
+        target_label: __param_target     # ... devient le paramètre target
+      - source_labels: [__param_target]
+        target_label: instance           # ... et l'étiquette instance
+      - target_label: __address__
+        replacement: localhost:9115      # on collecte l'exporteur
+```
+""": """
+
+The blackbox exporter tests a target when asked to:
+`http://prom:9115/probe?module=http_2xx&target=https://www.example.org/` answers with metrics
+such as `probe_success` (1 or 0), `probe_duration_seconds`, `probe_http_status_code`; adding
+`&debug=true` explains a failure. The **modules** are described in `/etc/prometheus/blackbox.yml`:
+
+```yaml
+modules:
+  http_ok:
+    prober: http                     # http, tcp, icmp, dns
+    timeout: 5s
+    http:
+      preferred_ip_protocol: ip4     # ip6 by default, then ip4 as a fallback
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp: ['^ready']
+  icmp:
+    prober: icmp
+```
+
+Debian's file **does not end with a newline**: a `cat >>` glues the first added line to the last
+line of the file. Edit it with an editor. After `systemctl reload prometheus-blackbox-exporter`, a
+wrong file leaves the old list of modules in service; the error only shows in
+`journalctl -u prometheus-blackbox-exporter`. ICMP probes need the right to send raw packets, which
+the Debian package grants to the program.
+
+For Prometheus to scrape a probe, the **target** becomes the `target` parameter of the URL and the
+**exporter** becomes the scraped address. This is written with *relabelling*:
+
+```yaml
+  - job_name: blackbox_web
+    metrics_path: /probe
+    params:
+      module: [http_ok]
+    static_configs:
+      - targets: ['https://www.example.org/']
+    relabel_configs:
+      - source_labels: [__address__]     # the target written above...
+        target_label: __param_target     # ... becomes the target parameter
+      - source_labels: [__param_target]
+        target_label: instance           # ... and the instance label
+      - target_label: __address__
+        replacement: localhost:9115      # the exporter is what is scraped
+```
+""",
+    "Les équipements réseau : SNMP exporter": "Network devices: the SNMP exporter",
+    """
+
+Le SNMP exporter interroge un équipement en SNMP et traduit les réponses en métriques, selon les
+**modules** de `/etc/prometheus/snmp.yml` : quels OID parcourir, quel nom et quel type donner à chaque
+valeur, quelles étiquettes (le nom d'interface `ifDescr`, par exemple). Ce fichier est normalement
+produit à partir des MIB par `prometheus-snmp-generator` ; le paquet Debian le livre vide. La
+version de SNMP et la communauté sont décrites à part, sous `auths:` (depuis la version 0.23 de
+l'exporteur) : une requête désigne une entrée par le paramètre `auth`, et prend `public_v2` sans lui.
+
+`http://prom:9116/snmp?module=if_mib&target=router` répond par exemple
+`ifHCInOctets{ifDescr="eth0",ifIndex="2"} 5295`. La collecte se configure comme pour le blackbox
+exporter, avec un *relabelling* vers `localhost:9116`. Avec une mauvaise communauté, l'agent ne répond
+pas : l'exporteur abandonne au bout de `timeout` × (`retries` + 1) secondes et la cible apparaît en
+panne (le délai de collecte de Prometheus, 10 secondes par défaut, est dépassé).
+
+Les compteurs d'octets `ifHCInOctets` / `ifHCOutOctets` font 64 bits : leur `rate` multiplié par 8
+donne un débit en bit/s.
+""": """
+
+The SNMP exporter queries a device over SNMP and translates the answers into metrics, according to
+the **modules** of `/etc/prometheus/snmp.yml`: which OIDs to walk, which name and type to give each
+value, which labels (the interface name `ifDescr`, for instance). This file is normally generated
+from the MIBs by `prometheus-snmp-generator`; the Debian package ships it empty. The SNMP version
+and the community are described separately, under `auths:` (since version 0.23 of the exporter): a
+request names an entry with the parameter `auth`, and takes `public_v2` without it.
+
+`http://prom:9116/snmp?module=if_mib&target=router` answers for example
+`ifHCInOctets{ifDescr="eth0",ifIndex="2"} 5295`. Scraping is configured as for the blackbox
+exporter, with a *relabelling* to `localhost:9116`. With a wrong community, the agent does not
+answer: the exporter gives up after `timeout` × (`retries` + 1) seconds and the target appears down
+(the scrape timeout of Prometheus, 10 seconds by default, is exceeded).
+
+The byte counters `ifHCInOctets` / `ifHCOutOctets` are 64 bits wide: their `rate` multiplied by 8
+gives a throughput in bit/s.
+""",
+    "Règles d'enregistrement et d'alerte": "Recording and alerting rules",
+    """
+
+Les règles sont dans des fichiers YAML que `prometheus.yml` désigne :
+
+```yaml
+rule_files:
+  - /etc/prometheus/rules/*.yml
+```
+
+```yaml
+groups:
+  - name: web
+    rules:
+      - record: job:http_requests:rate5m           # niveau:métrique:opérations
+        expr: sum by (job) (rate(http_requests_total[5m]))
+      - alert: TooManyErrors
+        expr: job:http_errors:ratio5m > 0.05
+        for: 10m                                   # vraie depuis 10 minutes
+        labels:
+          severity: warning
+        annotations:
+          summary: "Trop d'erreurs sur {{ $labels.job }}"
+          description: "{{ $value }} des requêtes sont en erreur."
+```
+
+- une **règle d'enregistrement** calcule une requête à chaque évaluation et range le résultat sous un
+  nouveau nom : les tableaux de bord et les alertes la relisent sans tout recalculer ;
+- une **règle d'alerte** est **inactive** tant que son expression ne donne rien, **pending** dès
+  qu'elle donne une série, **firing** quand cela dure depuis `for:` ; chaque série du résultat est
+  une alerte distincte, avec ses étiquettes. Les modèles `{{ $labels.x }}` et `{{ $value }}`
+  personnalisent les annotations. La série `ALERTS` garde la trace des alertes en cours ;
+- une alerte **Watchdog**, d'expression `vector(1)`, est toujours active : elle prouve que la chaîne
+  d'alerte fonctionne de bout en bout ;
+- `promtool check rules fichier.yml` vérifie la syntaxe ; `promtool test rules test.yml` rejoue des
+  séries inventées et vérifie les alertes produites, sans attendre (voir la documentation de
+  Prometheus, *Unit testing for rules*).
+""": """
+
+The rules are in YAML files that `prometheus.yml` points to:
+
+```yaml
+rule_files:
+  - /etc/prometheus/rules/*.yml
+```
+
+```yaml
+groups:
+  - name: web
+    rules:
+      - record: job:http_requests:rate5m           # level:metric:operations
+        expr: sum by (job) (rate(http_requests_total[5m]))
+      - alert: TooManyErrors
+        expr: job:http_errors:ratio5m > 0.05
+        for: 10m                                   # true for 10 minutes
+        labels:
+          severity: warning
+        annotations:
+          summary: "Too many errors on {{ $labels.job }}"
+          description: "{{ $value }} of the requests are failing."
+```
+
+- a **recording rule** computes a query at every evaluation and stores the result under a new
+  name: dashboards and alerts read it back without recomputing everything;
+- an **alerting rule** is **inactive** as long as its expression gives nothing, **pending** as soon
+  as it gives a series, **firing** once this has lasted for `for:`; each series of the result is a
+  distinct alert, with its labels. The templates `{{ $labels.x }}` and `{{ $value }}` customise the
+  annotations. The series `ALERTS` keeps track of the current alerts;
+- a **Watchdog** alert, with the expression `vector(1)`, is always active: it proves that the
+  alerting chain works end to end;
+- `promtool check rules file.yml` checks the syntax; `promtool test rules test.yml` replays made-up
+  series and checks the alerts produced, without waiting (see the Prometheus documentation,
+  *Unit testing for rules*).
+""",
+    "Alertmanager": "Alertmanager",
+    """
+
+Alertmanager reçoit les alertes de Prometheus, les **dédoublonne**, les **regroupe**, choisit le
+**destinataire** (*receiver*) en suivant un arbre de **routes**, applique les **inhibitions** et les
+**silences**, et envoie les notifications.
+
+```yaml
+route:                               # route racine : le destinataire par défaut
+  receiver: support
+  group_by: [alertname]              # une notification par valeur de ces étiquettes
+  group_wait: 30s                    # attente avant la première notification d'un groupe
+  group_interval: 5m                 # avant de notifier les changements d'un groupe
+  repeat_interval: 4h                # avant de répéter une notification inchangée
+  routes:                            # la première route qui correspond l'emporte
+    - matchers: ['severity = "page"']
+      receiver: pager
+inhibit_rules:
+  - source_matchers: ['severity = "page"']      # une alerte de ce type...
+    target_matchers: ['severity = "ticket"']    # ... fait taire celles-ci...
+    equal: [cluster]                            # ... si elles ont la même valeur de ces étiquettes
+receivers:
+  - name: support
+    webhook_configs:
+      - url: http://chatops.example.org:8080/hook/support
+  - name: pager
+    webhook_configs:
+      - url: http://pager.example.org/notify
+```
+
+- un *webhook* reçoit un POST JSON par notification : le destinataire, l'état (`firing` ou
+  `resolved`), les étiquettes du groupe et la liste des alertes. Une notification `resolved` part
+  quand les alertes cessent ;
+- un destinataire sans aucune intégration ne fait rien : utile pour faire taire une route ;
+- par défaut Alertmanager cherche à former une grappe avec d'autres instances (port 9094) et attend
+  qu'elle se stabilise ; pour un serveur seul : `ARGS="--cluster.listen-address="` dans
+  `/etc/default/prometheus-alertmanager` ;
+- `amtool check-config /etc/prometheus/alertmanager.yml` vérifie un fichier ;
+  `amtool config routes show` dessine l'arbre ; `amtool config routes test severity=page` donne le
+  destinataire d'une alerte ; `amtool alert query` liste les alertes ;
+  `amtool silence add instance=srv1:9100 -d 1h -c "maintenance"`, `amtool silence query`,
+  `amtool silence expire ID` gèrent les silences ;
+- chronologie d'une alerte : l'expression devient vraie (pending), `for:` s'écoule (firing),
+  Prometheus l'envoie à Alertmanager, `group_wait` s'écoule, la notification part ; quand
+  l'expression redevient fausse, une notification `resolved` suit.
+""": """
+
+Alertmanager receives the alerts from Prometheus, **deduplicates** them, **groups** them, chooses
+the **receiver** by following a tree of **routes**, applies the **inhibitions** and the
+**silences**, and sends the notifications.
+
+```yaml
+route:                               # root route: the default receiver
+  receiver: support
+  group_by: [alertname]              # one notification per value of these labels
+  group_wait: 30s                    # wait before the first notification of a group
+  group_interval: 5m                 # before notifying the changes of a group
+  repeat_interval: 4h                # before repeating an unchanged notification
+  routes:                            # the first matching route wins
+    - matchers: ['severity = "page"']
+      receiver: pager
+inhibit_rules:
+  - source_matchers: ['severity = "page"']      # an alert of this kind...
+    target_matchers: ['severity = "ticket"']    # ... silences these ones...
+    equal: [cluster]                            # ... if they have the same value of these labels
+receivers:
+  - name: support
+    webhook_configs:
+      - url: http://chatops.example.org:8080/hook/support
+  - name: pager
+    webhook_configs:
+      - url: http://pager.example.org/notify
+```
+
+- a *webhook* receives one JSON POST per notification: the receiver, the status (`firing` or
+  `resolved`), the labels of the group and the list of the alerts. A `resolved` notification is
+  sent when the alerts stop;
+- a receiver without any integration does nothing: useful to silence a route;
+- by default Alertmanager tries to form a cluster with other instances (port 9094) and waits for it
+  to settle; for a single server: `ARGS="--cluster.listen-address="` in
+  `/etc/default/prometheus-alertmanager`;
+- `amtool check-config /etc/prometheus/alertmanager.yml` checks a file;
+  `amtool config routes show` draws the tree; `amtool config routes test severity=page` gives the
+  receiver of an alert; `amtool alert query` lists the alerts;
+  `amtool silence add instance=srv1:9100 -d 1h -c "maintenance"`, `amtool silence query`,
+  `amtool silence expire ID` manage the silences;
+- the timeline of an alert: the expression becomes true (pending), `for:` elapses (firing),
+  Prometheus sends it to Alertmanager, `group_wait` elapses, the notification is sent; when the
+  expression becomes false again, a `resolved` notification follows.
+""",
+    "Bonnes pratiques": "Good practices",
+    """
+
+- méthode **USE** pour les ressources (utilisation, saturation, erreurs) et **RED** pour les services
+  (débit de requêtes, erreurs, durées) ;
+- alerter sur les **symptômes** que subissent les utilisateurs (erreurs, latence), garder les causes
+  (charge, mémoire) pour les tableaux de bord ;
+- une alerte doit appeler une action ; une alerte qui sonne pour rien finit par être ignorée ;
+- surveiller la cardinalité des étiquettes ; choisir la durée de conservation selon l'espace disque ;
+- pour la haute disponibilité : deux serveurs Prometheus identiques et une grappe d'Alertmanager.
+""": """
+
+- the **USE** method for resources (utilisation, saturation, errors) and **RED** for services
+  (rate of requests, errors, durations);
+- alert on the **symptoms** the users suffer (errors, latency), keep the causes (load, memory) for
+  the dashboards;
+- an alert must call for an action; an alert that goes off for nothing ends up being ignored;
+- watch the cardinality of the labels; choose the retention period according to the disk space;
+- for high availability: two identical Prometheus servers and an Alertmanager cluster.
+""",
+    "Aide-mémoire": "Cheat sheet",
+    """
+
+| quoi | où, comment |
+|------|-------------|
+| configuration de la collecte | `/etc/prometheus/prometheus.yml`, `promtool check config`, `systemctl reload prometheus` |
+| options du serveur | `ARGS` dans `/etc/default/prometheus`, `systemctl restart prometheus` |
+| règles | `/etc/prometheus/rules/*.yml`, `promtool check rules`, `promtool test rules` |
+| modules du blackbox exporter | `/etc/prometheus/blackbox.yml`, `systemctl reload prometheus-blackbox-exporter` |
+| modules du SNMP exporter | `/etc/prometheus/snmp.yml`, `systemctl reload prometheus-snmp-exporter` |
+| Alertmanager | `/etc/prometheus/alertmanager.yml`, `amtool check-config`, `/etc/default/prometheus-alertmanager` |
+| métriques textfile | `/var/lib/prometheus/node-exporter/*.prom` |
+| une requête | page *Graph*, `promtool query instant http://localhost:9090 'expression'` |
+| l'API | `curl -s http://localhost:9090/api/v1/targets`, `.../api/v1/rules`, `.../api/v1/status/flags` |
+| les alertes | page *Alerts*, `amtool alert query`, `amtool silence ...` |
+| les journaux | `journalctl -u prometheus`, `-u prometheus-alertmanager`, ... |
+""": """
+
+| what | where, how |
+|------|------------|
+| scrape configuration | `/etc/prometheus/prometheus.yml`, `promtool check config`, `systemctl reload prometheus` |
+| server options | `ARGS` in `/etc/default/prometheus`, `systemctl restart prometheus` |
+| rules | `/etc/prometheus/rules/*.yml`, `promtool check rules`, `promtool test rules` |
+| modules of the blackbox exporter | `/etc/prometheus/blackbox.yml`, `systemctl reload prometheus-blackbox-exporter` |
+| modules of the SNMP exporter | `/etc/prometheus/snmp.yml`, `systemctl reload prometheus-snmp-exporter` |
+| Alertmanager | `/etc/prometheus/alertmanager.yml`, `amtool check-config`, `/etc/default/prometheus-alertmanager` |
+| textfile metrics | `/var/lib/prometheus/node-exporter/*.prom` |
+| a query | *Graph* page, `promtool query instant http://localhost:9090 'expression'` |
+| the API | `curl -s http://localhost:9090/api/v1/targets`, `.../api/v1/rules`, `.../api/v1/status/flags` |
+| the alerts | *Alerts* page, `amtool alert query`, `amtool silence ...` |
+| the logs | `journalctl -u prometheus`, `-u prometheus-alertmanager`, ... |
+""",
+    "Panne 1 : l'exporteur de db1 ne répond plus (appliquez « repair » avant une évaluation)": "Incident 1: the exporter of db1 stops answering (apply 'repair' before an evaluation)",
+    "Panne 2 : la file « orders » de la boutique ne se vide plus": "Incident 2: the orders queue of the shop stops draining",
+    "Réparation : fin des pannes, application et récepteur relancés": "Repair: end of the incidents, application and receiver restarted",
+    "Solution de référence : exporteurs, collecte, règles, Alertmanager, formulaires remplis (l'historique de Prometheus et les silences sont effacés ; une minute et demie).": "Reference solution: exporters, scraping, rules, Alertmanager, forms filled (the history of Prometheus and the silences are erased; a minute and a half).",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente Prometheus, ses métriques, PromQL, les exporteurs, les
+règles et Alertmanager. Vous installez la supervision d'une boutique en ligne depuis **`prom`**.
+
+**Les machines.**
+
+| machine | adresse | rôle |
+|---------|---------|------|
+| `prom` | {prom} | le serveur de supervision : Prometheus (démarré avec la configuration de Debian), Alertmanager, les exporteurs blackbox et SNMP (arrêtés) |
+| `pc` | {pc} | un poste de travail : `firefox http://prom:9090/ &` |
+| `chat` | {chat} | la messagerie de l'équipe : un récepteur de *webhooks* sur le port 8080 ; chaque notification reçue est ajoutée à `{sink_log}` (`tail -f`) et résumée sur `http://chat:8080/` |
+| `router` | {router_lan} (lan), {router_dmz} (dmz, nom `router-dmz`) | le routeur, un équipement fermé : son agent SNMP répond à la communauté `{community}` |
+| `web1` | {web1} | la boutique : un service `shop` sur le port {app_port}, ses métriques sur `{metrics_path}` ; le node exporter est installé, arrêté |
+| `db1` | {db1} | le serveur de base de données ; le node exporter est installé, arrêté |
+
+Les noms `prom`, `pc`, `chat`, `router`, `router-dmz`, `web1`, `db1` sont connus de toutes les
+machines (domaine `{domain}`). Sur `prom` comme ailleurs, vous êtes `root` ; les fichiers sont ceux de
+Debian (section @@ref:architecture@@ de l'onglet Informations).
+
+**Les valeurs de votre instance.**
+
+| quoi | partie | valeur |
+|------|--------|--------|
+| taille de la dernière sauvegarde, en octets | 1 | `{backup}` |
+| durée de conservation des séries | 2 | {retention} jours |
+| communauté SNMP du routeur | 5 | `{community}` |
+| seuil d'alerte de la file `orders` | 6 | {threshold} |
+
+**Les noms imposés** (ils sont évalués) : les jobs `{node_job}`, `{app_job}`, `{bb_http}`, `{bb_icmp}`,
+`{snmp_job}` ; le module `{http_module}` ; le fichier de règles `{rules_file}` et ses règles
+`{record}`, `Watchdog`, `InstanceDown`, `QueueTooLong` ; les destinataires d'Alertmanager `blackhole`,
+`oncall`, `team`.
+
+## Plan du TP
+
+1. le format d'exposition ; le node exporter et une métrique à soi ;
+2. la configuration de la collecte ;
+3. PromQL ;
+4. la supervision boîte noire (blackbox exporter) ;
+5. le routeur en SNMP (SNMP exporter) ;
+6. les règles d'enregistrement et d'alerte ;
+7. Alertmanager.
+
+Les réponses et l'état de vos services sont évalués automatiquement (bouton d'évaluation). Chaque
+évaluation **envoie quatre alertes de test** à votre Alertmanager (`SreProbeCritical-…`,
+`SreProbeWarning-…`, étiquette `source="sre-evaluation"`) et attend leurs notifications sur `chat` :
+elles apparaissent dans le journal de `chat`, puis comme résolues 90 secondes plus tard, c'est normal.
+Après un redémarrage de Prometheus, attendez une minute avant d'évaluer : les débits se calculent sur
+la dernière minute.
+""": """
+Read the **Informations** tab: it presents Prometheus, its metrics, PromQL, the exporters, the rules
+and Alertmanager. You set up the monitoring of an online shop from **`prom`**.
+
+**The machines.**
+
+| machine | address | role |
+|---------|---------|------|
+| `prom` | {prom} | the monitoring server: Prometheus (started with Debian's configuration), Alertmanager, the blackbox and SNMP exporters (stopped) |
+| `pc` | {pc} | a workstation: `firefox http://prom:9090/ &` |
+| `chat` | {chat} | the team chat: a *webhook* receiver on port 8080; each notification received is appended to `{sink_log}` (`tail -f`) and summarised on `http://chat:8080/` |
+| `router` | {router_lan} (lan), {router_dmz} (dmz, name `router-dmz`) | the router, a closed appliance: its SNMP agent answers the community `{community}` |
+| `web1` | {web1} | the shop: a `shop` service on port {app_port}, its metrics on `{metrics_path}`; the node exporter is installed, stopped |
+| `db1` | {db1} | the database server; the node exporter is installed, stopped |
+
+The names `prom`, `pc`, `chat`, `router`, `router-dmz`, `web1`, `db1` are known to every machine
+(domain `{domain}`). On `prom` as elsewhere, you are `root`; the files are Debian's (section
+@@ref:architecture@@ of the Informations tab).
+
+**The values of your instance.**
+
+| what | part | value |
+|------|------|-------|
+| size of the last backup, in bytes | 1 | `{backup}` |
+| retention period of the series | 2 | {retention} days |
+| SNMP community of the router | 5 | `{community}` |
+| alert threshold of the `orders` queue | 6 | {threshold} |
+
+**The required names** (they are graded): the jobs `{node_job}`, `{app_job}`, `{bb_http}`,
+`{bb_icmp}`, `{snmp_job}`; the module `{http_module}`; the rule file `{rules_file}` and its rules
+`{record}`, `Watchdog`, `InstanceDown`, `QueueTooLong`; the Alertmanager receivers `blackhole`,
+`oncall`, `team`.
+
+## Outline of the lab
+
+1. the exposition format; the node exporter and a metric of your own;
+2. the scrape configuration;
+3. PromQL;
+4. black-box monitoring (blackbox exporter);
+5. the router over SNMP (SNMP exporter);
+6. recording and alerting rules;
+7. Alertmanager.
+
+The answers and the state of your services are graded automatically (evaluation button). Each
+evaluation **sends four test alerts** to your Alertmanager (`SreProbeCritical-…`,
+`SreProbeWarning-…`, label `source="sre-evaluation"`) and waits for their notifications on `chat`:
+they appear in the log of `chat`, then as resolved 90 seconds later; this is normal.
+After a restart of Prometheus, wait for a minute before evaluating: the rates are computed over the
+last minute.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les valeurs de ce
+projet.
+
+- L'état `final` démarre les node exporters, écrit la métrique textfile, puis sur `prom` arrête tout,
+  **efface l'historique** (`{tsdb}`, `{am_data}`), écrit `prometheus.yml`, les règles, `blackbox.yml`,
+  `snmp.yml`, `alertmanager.yml` et les deux fichiers de `/etc/default`, démarre Alertmanager et les
+  exporteurs, puis Prometheus, et attend une minute de données (environ 90 secondes) ; il remplit les
+  formulaires.
+- L'évaluation lit l'API de Prometheus (cibles, règles, options), évalue chaque expression tapée et sa
+  référence **au même instant** (`/usr/local/sbin/sre_prom_probe.py` sur `prom`), passe le fichier
+  de règles de l'étudiant à `promtool test rules` avec des séries inventées, interroge directement
+  les exporteurs, lit la configuration en service d'Alertmanager (`amtool config routes test`), et
+  lance depuis `chat` un test de bout en bout : quatre alertes postées avec un nonce, leurs
+  notifications attendues sur le récepteur, leur inhibition relue dans Alertmanager.
+- Une expression tapée doit employer les métriques demandées (une constante n'est pas une réponse) et
+  donner le même résultat qu'une référence non vide : mêmes séries (les étiquettes de l'une incluses
+  dans celles de l'autre), valeurs à 5 % près.
+""": """
+**For the instructor.** Each question ends with its solution, computed for the values of this
+project.
+
+- The `final` state starts the node exporters, writes the textfile metric, then on `prom` stops
+  everything, **erases the history** (`{tsdb}`, `{am_data}`), writes `prometheus.yml`, the rules,
+  `blackbox.yml`, `snmp.yml`, `alertmanager.yml` and the two files of `/etc/default`, starts
+  Alertmanager and the exporters, then Prometheus, and waits for a minute of data (about 90
+  seconds); it fills in the forms.
+- The evaluation reads the Prometheus API (targets, rules, options), evaluates each typed
+  expression and its reference **at the same instant** (`/usr/local/sbin/sre_prom_probe.py` on
+  `prom`), runs the student's rule file through `promtool test rules` with made-up series, queries
+  the exporters directly, reads the running configuration of Alertmanager
+  (`amtool config routes test`), and runs an end-to-end test from `chat`: four alerts posted with a
+  nonce, their notifications awaited on the receiver, their inhibition read back in Alertmanager.
+- A typed expression must use the requested metrics (a constant is not an answer) and give the
+  same result as a non-empty reference: same series (the labels of one included in those of the
+  other), values within 5%.
+""",
+    "Partie 1 — Le format d'exposition, les exporteurs": "Part 1 — The exposition format, the exporters",
+    "Lire des métriques, démarrer les node exporters, publier une métrique": "Reading metrics, starting the node exporters, publishing a metric",
+    """
+Sections @@ref:exposition@@ et @@ref:node@@ de l'onglet Informations.
+
+1. Sur `prom`, lisez les métriques de la boutique : `curl -s http://web1:{port}{path}`. Repérez les
+   lignes `# TYPE`, les séries de chaque métrique et leurs étiquettes.
+2. Sur `web1` et sur `db1`, démarrez le node exporter et faites en sorte qu'il démarre avec la
+   machine (service `prometheus-node-exporter`). Depuis `prom`, vérifiez :
+   `curl -s http://web1:9100/metrics | grep '^node_load'`.
+3. Sur `db1`, publiez avec le collecteur textfile une jauge `{metric}` portant l'étiquette
+   `db="shop"`, de valeur la taille de la dernière sauvegarde donnée dans l'organisation du TP, dans le
+   fichier `{backup_file}`, avec ses lignes `# HELP` et `# TYPE`. Vérifiez qu'elle apparaît dans
+   `curl -s http://db1:9100/metrics`.
+""": """
+Sections @@ref:exposition@@ and @@ref:node@@ of the Informations tab.
+
+1. On `prom`, read the metrics of the shop: `curl -s http://web1:{port}{path}`. Spot the
+   `# TYPE` lines, the series of each metric and their labels.
+2. On `web1` and on `db1`, start the node exporter and make it start with the machine (service
+   `prometheus-node-exporter`). From `prom`, check:
+   `curl -s http://web1:9100/metrics | grep '^node_load'`.
+3. On `db1`, publish with the textfile collector a gauge `{metric}` carrying the label
+   `db="shop"`, whose value is the size of the last backup given in the organisation of the lab, in
+   the file `{backup_file}`, with its `# HELP` and `# TYPE` lines. Check that it appears in
+   `curl -s http://db1:9100/metrics`.
+""",
+    """
+**Solution.** Sur `web1` et `db1` : `systemctl enable --now prometheus-node-exporter`. Sur `db1` :
+
+```
+{metric}```
+
+écrit dans `{backup_file}` (par exemple dans `{backup_file}.tmp`, puis `mv`). Dans les métriques de la
+boutique : `shop_http_requests_total` est un `counter`, `shop_queue_length` une `gauge`,
+`shop_http_request_duration_seconds` un `histogram` ; la version est l'étiquette `version` de
+`shop_build_info` ; `shop_http_requests_total` a une série par ligne (méthode, chemin, code).
+""": """
+**Solution.** On `web1` and `db1`: `systemctl enable --now prometheus-node-exporter`. On `db1`:
+
+```
+{metric}```
+
+written to `{backup_file}` (for example to `{backup_file}.tmp`, then `mv`). In the metrics of the
+shop: `shop_http_requests_total` is a `counter`, `shop_queue_length` a `gauge`,
+`shop_http_request_duration_seconds` a `histogram`; the version is the label `version` of
+`shop_build_info`; `shop_http_requests_total` has one series per row (method, path, code).
+""",
+    """
+**Questions** (sur les métriques de la boutique).
+
+- type de `shop_http_requests_total` : @@{type_requests:>counter|gauge|histogram|summary}@@
+- type de `shop_queue_length` : @@{type_queue:>counter|gauge|histogram|summary}@@
+- type de `shop_http_request_duration_seconds` : @@{type_duration:>counter|gauge|histogram|summary}@@
+- version de l'application (métrique `shop_build_info`) : @@{app_version:[0-9.]+}@@
+- nombre de séries de la métrique `shop_http_requests_total` : @@{series_count:[0-9]+}@@
+""": """
+**Questions** (on the metrics of the shop).
+
+- type of `shop_http_requests_total`: @@{type_requests:>counter|gauge|histogram|summary}@@
+- type of `shop_queue_length`: @@{type_queue:>counter|gauge|histogram|summary}@@
+- type of `shop_http_request_duration_seconds`: @@{type_duration:>counter|gauge|histogram|summary}@@
+- version of the application (metric `shop_build_info`): @@{app_version:[0-9.]+}@@
+- number of series of the metric `shop_http_requests_total`: @@{series_count:[0-9]+}@@
+""",
+    """
+**Réponses.** {type_requests} ; {type_queue} ; {type_duration} ; `{app_version}` ; {series_count}.
+""": """
+**Answers.** {type_requests}; {type_queue}; {type_duration}; `{app_version}`; {series_count}.
+""",
+    "type d'un compteur": "type of a counter",
+    "type d'une jauge": "type of a gauge",
+    "type d'un histogramme": "type of a histogram",
+    "version de l'application": "version of the application",
+    "nombre de séries": "number of series",
+    "le node exporter de {m} répond": "the node exporter of {m} answers",
+    "la métrique textfile a la bonne valeur": "the textfile metric has the right value",
+    "une jauge, sans erreur de lecture": "a gauge, without read error",
+    "Partie 2 — La configuration de la collecte": "Part 2 — The scrape configuration",
+    """
+Section @@ref:scrape@@. Dans `/etc/prometheus/prometheus.yml` sur `prom` :
+
+1. le job `{node_job}` collecte les node exporters de `web1` et de `db1` (port 9100), à la place de
+   `localhost:9100` ; la cible de `web1` porte l'étiquette `role="web"`, celle de `db1` l'étiquette
+   `role="db"` ;
+2. un job `{app_job}` collecte la boutique : `web1`, port {port}, chemin `{path}`, **toutes les 5
+   secondes** ;
+3. les séries sont conservées **{retention} jours** (option `--storage.tsdb.retention.time`).
+
+Vérifiez le fichier avec `promtool check config`, appliquez, et contrôlez sur la page *Status →
+Targets* (ou `curl -s http://localhost:9090/api/v1/targets`) que les trois cibles sont `UP`.
+""": """
+Section @@ref:scrape@@. In `/etc/prometheus/prometheus.yml` on `prom`:
+
+1. the job `{node_job}` scrapes the node exporters of `web1` and `db1` (port 9100), instead of
+   `localhost:9100`; the target of `web1` carries the label `role="web"`, that of `db1` the label
+   `role="db"`;
+2. a job `{app_job}` scrapes the shop: `web1`, port {port}, path `{path}`, **every 5
+   seconds**;
+3. the series are kept for **{retention} days** (option `--storage.tsdb.retention.time`).
+
+Check the file with `promtool check config`, apply, and check on the *Status → Targets* page (or
+with `curl -s http://localhost:9090/api/v1/targets`) that the three targets are `UP`.
+""",
+    """
+**Solution.** Les jobs `{node_job}` et `{app_job}` de `prometheus.yml` (le fichier complet de la
+solution est dans la question de la partie 5) :
+
+```yaml
+{jobs}```
+
+puis `systemctl reload prometheus`. Dans `/etc/default/prometheus` :
+`ARGS="--storage.tsdb.retention.time={retention}d"`, puis `systemctl restart prometheus` (une
+option de la ligne de commande ne se recharge pas).
+""": """
+**Solution.** The jobs `{node_job}` and `{app_job}` of `prometheus.yml` (the full file of the
+solution is in the question of part 5):
+
+```yaml
+{jobs}```
+
+then `systemctl reload prometheus`. In `/etc/default/prometheus`:
+`ARGS="--storage.tsdb.retention.time={retention}d"`, then `systemctl restart prometheus` (a
+command-line option is not reloaded).
+""",
+    "le job node collecte web1 et db1": "the node job scrapes web1 and db1",
+    "les deux cibles répondent": "both targets answer",
+    "les étiquettes role": "the role labels",
+    "le job app collecte les métriques de la boutique": "the app job scrapes the metrics of the shop",
+    "toutes les 5 secondes": "every 5 seconds",
+    "la cible répond": "the target answers",
+    "la durée de conservation": "the retention period",
+    "Partie 3 — PromQL": "Part 3 — PromQL",
+    "Interroger Prometheus": "Querying Prometheus",
+    """
+Section @@ref:promql@@. Écrivez les requêtes suivantes et mettez-les au point sur la page *Graph* de
+l'interface web (ou avec `promtool query instant`). Utilisez les séries du job `app` (et du job
+`node` pour la dernière), et des fenêtres d'**une minute** pour les débits. L'évaluation compare le
+résultat de chaque requête à celui de la solution, **au même instant** : mêmes séries, mêmes valeurs à
+5 % près.
+""": """
+Section @@ref:promql@@. Write the following queries and fine-tune them on the *Graph* page of the
+web interface (or with `promtool query instant`). Use the series of the job `app` (and of the job
+`node` for the last one), and windows of **one minute** for the rates. The evaluation compares the
+result of each query with that of the solution, **at the same instant**: same series, same values
+within 5%.
+""",
+    """
+- le nombre de requêtes servies **par seconde**, avec une série par code de retour (étiquette `status`) :
+
+  @@{q_status:.+}@@
+- la part des requêtes en erreur (code 5xx) parmi toutes les requêtes, en **un seul nombre** :
+
+  @@{q_errors:.+}@@
+- la durée sous laquelle sont servies 95 % des requêtes, toutes méthodes confondues, en **un seul
+  nombre** (métrique `shop_http_request_duration_seconds`) :
+
+  @@{q_p95:.+}@@
+- le chemin (`path`) le plus demandé, avec son nombre de requêtes par seconde (**une seule série**,
+  étiquette `path`) :
+
+  @@{q_top:.+}@@
+- le taux de remplissage de chaque file (longueur divisée par capacité), une série par file :
+
+  @@{q_fill:.+}@@
+- le débit reçu en octets par seconde sur l'interface `eth0` de chaque machine du job `node` :
+
+  @@{q_rx:.+}@@
+- la plus grande longueur atteinte par la file `orders` pendant les 10 dernières minutes :
+
+  @@{q_maxqueue:.+}@@
+""": """
+- the number of requests served **per second**, with one series per status code (label `status`):
+
+  @@{q_status:.+}@@
+- the share of the requests in error (code 5xx) among all the requests, as **a single number**:
+
+  @@{q_errors:.+}@@
+- the duration within which 95% of the requests are served, all methods together, as **a single
+  number** (metric `shop_http_request_duration_seconds`):
+
+  @@{q_p95:.+}@@
+- the most requested path (`path`), with its number of requests per second (**a single series**,
+  label `path`):
+
+  @@{q_top:.+}@@
+- the fill ratio of each queue (length divided by capacity), one series per queue:
+
+  @@{q_fill:.+}@@
+- the receive rate in bytes per second on the interface `eth0` of each machine of the job `node`:
+
+  @@{q_rx:.+}@@
+- the greatest length reached by the queue `orders` during the last 10 minutes:
+
+  @@{q_maxqueue:.+}@@
+""",
+    """
+**Solution.**
+
+| question | requête |
+|----------|---------|
+| débit par code | `{q_status}` |
+| part d'erreurs | `{q_errors}` |
+| 95e centile | `{q_p95}` |
+| chemin le plus demandé | `{q_top}` |
+| remplissage | `{q_fill}` |
+| débit reçu | `{q_rx}` |
+| file maximale | `{q_maxqueue}` |
+
+Valeurs attendues pour ce projet : débit total {total} requêtes/s ; part d'erreurs {errors:.3f} ;
+chemin le plus demandé `{top}`. Une agrégation oubliée (`histogram_quantile` sans `sum by (le)` : une
+série par méthode) ou une jauge sans `_over_time` donne d'autres séries ; `irate` au lieu de `rate`
+peut s'écarter de plus de 5 %.
+""": """
+**Solution.**
+
+| question | query |
+|----------|-------|
+| rate per code | `{q_status}` |
+| share of errors | `{q_errors}` |
+| 95th percentile | `{q_p95}` |
+| most requested path | `{q_top}` |
+| fill ratio | `{q_fill}` |
+| receive rate | `{q_rx}` |
+| longest queue | `{q_maxqueue}` |
+
+Expected values for this project: total rate {total} requests/s; share of errors {errors:.3f};
+most requested path `{top}`. A forgotten aggregation (`histogram_quantile` without `sum by (le)`:
+one series per method) or a gauge without `_over_time` gives other series; `irate` instead of
+`rate` may differ by more than 5%.
+""",
+    "débit par code de retour": "rate per status code",
+    "part des erreurs": "share of errors",
+    "95e centile des durées": "95th percentile of the durations",
+    "chemin le plus demandé": "most requested path",
+    "remplissage des files": "fill ratio of the queues",
+    "débit reçu par machine": "receive rate per machine",
+    "longueur maximale de la file": "maximum length of the queue",
+    "Partie 4 — La supervision boîte noire": "Part 4 — Black-box monitoring",
+    "Sonder la boutique et le routeur de l'extérieur": "Probing the shop and the router from outside",
+    """
+Section @@ref:blackbox@@. Sur `prom` :
+
+1. ajoutez au blackbox exporter un module **`{module}`** : une requête HTTP en IPv4, réussie seulement
+   si le code est 200 **et** si le corps de la page commence par `OK` ; démarrez l'exporteur (service
+   `prometheus-blackbox-exporter`, au démarrage aussi) ; essayez-le :
+   `curl -s 'http://localhost:9115/probe?module={module}&target={health}'`, puis sur la page d'accueil
+   `http://web1:{port}/`, qui doit échouer ;
+2. un job **`{bb_http}`** sonde `{health}` avec ce module ;
+3. un job **`{bb_icmp}`** sonde en ICMP (module `icmp` de Debian) l'adresse dmz du routeur
+   (`router-dmz`) ;
+4. chaque job collecte l'exporteur (`localhost:9115`), la sonde gardant pour étiquette `instance`
+   l'adresse sondée.
+""": """
+Section @@ref:blackbox@@. On `prom`:
+
+1. add to the blackbox exporter a module **`{module}`**: an HTTP request over IPv4, successful only
+   if the code is 200 **and** the body of the page starts with `OK`; start the exporter (service
+   `prometheus-blackbox-exporter`, at boot too); try it:
+   `curl -s 'http://localhost:9115/probe?module={module}&target={health}'`, then on the home page
+   `http://web1:{port}/`, which must fail;
+2. a job **`{bb_http}`** probes `{health}` with this module;
+3. a job **`{bb_icmp}`** probes over ICMP (Debian's `icmp` module) the dmz address of the router
+   (`router-dmz`);
+4. each job scrapes the exporter (`localhost:9115`), the probe keeping the probed address as its
+   `instance` label.
+""",
+    """
+**Solution.** Dans `{blackbox_yml}` (avec un éditeur : le fichier de Debian n'a pas de saut de ligne
+final), sous `modules:` :
+
+```yaml
+{module}```
+
+`systemctl enable --now prometheus-blackbox-exporter` (ou `reload` s'il tourne déjà). Dans
+`prometheus.yml` :
+
+```yaml
+{jobs}```
+
+puis `systemctl reload prometheus`.
+""": """
+**Solution.** In `{blackbox_yml}` (with an editor: Debian's file has no final newline), under
+`modules:`:
+
+```yaml
+{module}```
+
+`systemctl enable --now prometheus-blackbox-exporter` (or `reload` if it is already running). In
+`prometheus.yml`:
+
+```yaml
+{jobs}```
+
+then `systemctl reload prometheus`.
+""",
+    "le module réussit sur /health": "the module succeeds on /health",
+    "il échoue sur une page qui ne commence pas par OK": "it fails on a page that does not start with OK",
+    "le job blackbox_http et son relabelling": "the blackbox_http job and its relabelling",
+    "la sonde HTTP réussit": "the HTTP probe succeeds",
+    "le job blackbox_icmp vise le routeur": "the blackbox_icmp job targets the router",
+    "la sonde ICMP réussit": "the ICMP probe succeeds",
+    "Partie 5 — Le routeur en SNMP": "Part 5 — The router over SNMP",
+    "Superviser le routeur avec le SNMP exporter": "Monitoring the router with the SNMP exporter",
+    """
+Section @@ref:snmp@@. Sur `prom`, `{snmp_yml}` contient déjà un module `{module}` écrit pour le TP
+(les compteurs d'octets des interfaces, leur état, `sysUpTime`), mais avec la communauté d'exemple
+`public`.
+
+1. mettez-y la communauté du routeur (voir l'organisation du TP), démarrez l'exporteur (service
+   `prometheus-snmp-exporter`, au démarrage aussi) et essayez-le :
+   `curl -s 'http://localhost:9116/snmp?module={module}&target={router}'` ;
+2. un job **`{snmp_job}`** collecte le routeur, à l'adresse **{router}**, par l'exporteur
+   (`localhost:9116`), avec le module `{module}` et le même *relabelling* que pour le blackbox
+   exporter ;
+3. écrivez la requête qui donne le débit reçu par le routeur sur son interface dmz
+   (`{dmz_if}`), en **bits** par seconde, sur une minute.
+""": """
+Section @@ref:snmp@@. On `prom`, `{snmp_yml}` already contains a module `{module}` written for the
+lab (the byte counters of the interfaces, their status, `sysUpTime`), but with the example
+community `public`.
+
+1. put the community of the router in it (see the organisation of the lab), start the exporter
+   (service `prometheus-snmp-exporter`, at boot too) and try it:
+   `curl -s 'http://localhost:9116/snmp?module={module}&target={router}'`;
+2. a job **`{snmp_job}`** scrapes the router, at the address **{router}**, through the exporter
+   (`localhost:9116`), with the module `{module}` and the same *relabelling* as for the blackbox
+   exporter;
+3. write the query that gives the receive rate of the router on its dmz interface (`{dmz_if}`), in
+   **bits** per second, over one minute.
+""",
+    """
+Débit reçu sur l'interface dmz, en bit/s : @@{q_bitrate:.+}@@
+""": """
+Receive rate on the dmz interface, in bit/s: @@{q_bitrate:.+}@@
+""",
+    """
+**Solution.** Dans `{snmp_yml}`, `community: {community}` ; `systemctl enable --now
+prometheus-snmp-exporter` (ou `reload`). Le fichier `prometheus.yml` complet de la solution :
+
+```yaml
+{prometheus_yml}```
+
+Requête : `{bitrate}`.
+""": """
+**Solution.** In `{snmp_yml}`, `community: {community}`; `systemctl enable --now
+prometheus-snmp-exporter` (or `reload`). The full `prometheus.yml` file of the solution:
+
+```yaml
+{prometheus_yml}```
+
+Query: `{bitrate}`.
+""",
+    "l'exporteur interroge le routeur avec la bonne communauté": "the exporter queries the router with the right community",
+    "le job snmp et son relabelling": "the snmp job and its relabelling",
+    "les compteurs du routeur sont collectés": "the counters of the router are scraped",
+    "la requête du débit en bit/s": "the query of the rate in bit/s",
+    "Partie 6 — Les règles d'enregistrement et d'alerte": "Part 6 — Recording and alerting rules",
+    "Écrire des règles": "Writing rules",
+    """
+Section @@ref:rules@@. Écrivez sur `prom` le fichier **`{rules_file}`**, un groupe `shop`, chargé par
+`prometheus.yml` (`rule_files`), avec :
+
+1. une règle d'enregistrement **`{record}`** : le débit de requêtes par seconde sur une minute, une
+   série par code de retour (étiquette `status` seule), comme la première requête de la partie 3 ;
+2. une alerte **`Watchdog`**, toujours active, d'étiquette `severity="none"` ;
+3. une alerte **`InstanceDown`** : une cible du job `{node_job}` ne répond plus **depuis une minute** ;
+   étiquette `severity="critical"` ; un résumé (`summary`) qui nomme la cible avec
+   `{{{{ $labels.instance }}}}` ;
+4. une alerte **`QueueTooLong`** : la file `orders` dépasse **strictement** {threshold} commandes
+   **depuis 30 secondes** ; étiquette `severity="warning"` ; une description qui donne la valeur avec
+   `{{{{ $value }}}}`.
+
+Vérifiez avec `promtool check rules`, rechargez Prometheus, regardez les pages *Rules* et *Alerts*.
+L'évaluation fait jouer vos règles par `promtool test rules` sur des séries inventées : une cible qui
+tombe, une file qui monte, des compteurs de requêtes.
+""": """
+Section @@ref:rules@@. Write on `prom` the file **`{rules_file}`**, a group `shop`, loaded by
+`prometheus.yml` (`rule_files`), with:
+
+1. a recording rule **`{record}`**: the rate of requests per second over one minute, one series
+   per status code (label `status` alone), like the first query of part 3;
+2. an alert **`Watchdog`**, always active, with the label `severity="none"`;
+3. an alert **`InstanceDown`**: a target of the job `{node_job}` has not answered **for one
+   minute**; label `severity="critical"`; a summary (`summary`) that names the target with
+   `{{{{ $labels.instance }}}}`;
+4. an alert **`QueueTooLong`**: the `orders` queue has been **strictly** above {threshold} orders
+   **for 30 seconds**; label `severity="warning"`; a description that gives the value with
+   `{{{{ $value }}}}`.
+
+Check with `promtool check rules`, reload Prometheus, look at the *Rules* and *Alerts* pages. The
+evaluation runs your rules through `promtool test rules` on made-up series: a target that goes
+down, a queue that grows, request counters.
+""",
+    """
+**Solution.** `mkdir -p {rules_dir}`, puis `{rules_file}` :
+
+```yaml
+{rules}```
+
+et dans `prometheus.yml` :
+
+```yaml
+rule_files:
+  - {rules_dir}/*.yml
+```
+
+`promtool check rules {rules_file}`, `systemctl reload prometheus`. Les tests de l'évaluation
+acceptent un `for:` entre 46 et 75 secondes pour `InstanceDown`, et vérifient que la file à
+exactement {threshold} ne déclenche rien.
+""": """
+**Solution.** `mkdir -p {rules_dir}`, then `{rules_file}`:
+
+```yaml
+{rules}```
+
+and in `prometheus.yml`:
+
+```yaml
+rule_files:
+  - {rules_dir}/*.yml
+```
+
+`promtool check rules {rules_file}`, `systemctl reload prometheus`. The tests of the evaluation
+accept a `for:` between 46 and 75 seconds for `InstanceDown`, and check that the queue at exactly
+{threshold} triggers nothing.
+""",
+    "les quatre règles sont chargées": "the four rules are loaded",
+    "la règle d'enregistrement": "the recording rule",
+    "elle donne le débit par code": "it gives the rate per code",
+    "l'alerte InstanceDown": "the InstanceDown alert",
+    "son résumé nomme la cible": "its summary names the target",
+    "l'alerte QueueTooLong": "the QueueTooLong alert",
+    "sa description donne la valeur": "its description gives the value",
+    "l'alerte Watchdog": "the Watchdog alert",
+    "Partie 7 — Alertmanager": "Part 7 — Alertmanager",
+    "Router les alertes": "Routing the alerts",
+    """
+Section @@ref:alertmanager@@. Sur `prom` :
+
+1. Alertmanager fonctionne **seul**, sans grappe (`/etc/default/prometheus-alertmanager`) ; il démarre
+   avec la machine ;
+2. dans `/etc/prometheus/alertmanager.yml` (remplacez l'exemple de Debian) : trois destinataires,
+   `blackhole` (aucune intégration), `oncall` (*webhook* `http://chat:8080/hook/oncall`) et `team`
+   (*webhook* `http://chat:8080/hook/team`) ;
+3. la route racine envoie à `team`, regroupe les alertes **par nom d'alerte** et attend **10
+   secondes** avant la première notification d'un groupe ; deux sous-routes, dans cet ordre :
+   l'alerte `Watchdog` va à `blackhole`, les alertes `severity="critical"` vont à `oncall` ;
+4. une inhibition : une alerte `critical` fait taire les alertes `warning` qui ont la même étiquette
+   `instance`.
+
+Vérifiez avec `amtool check-config`, `amtool config routes show` et `amtool config routes test`.
+Prometheus envoie déjà ses alertes à `localhost:9093` (configuration de Debian). Regardez arriver les
+notifications sur `chat` (`tail -f /var/log/webhook.log`).
+
+**Pour vous entraîner** (non évalué) : appliquez l'état `incident_node` (onglet *Apply
+Configuration*), suivez `InstanceDown` sur la page *Alerts* (inactive, pending, firing) et sur `chat` ;
+posez un silence (`amtool silence add instance=db1:9100 -d 1h -c maintenance`), regardez
+`amtool alert query`, levez le silence ; essayez `incident_queue` ; appliquez `repair` avant
+d'évaluer.
+""": """
+Section @@ref:alertmanager@@. On `prom`:
+
+1. Alertmanager runs **alone**, without a cluster (`/etc/default/prometheus-alertmanager`); it
+   starts with the machine;
+2. in `/etc/prometheus/alertmanager.yml` (replace Debian's example): three receivers,
+   `blackhole` (no integration), `oncall` (*webhook* `http://chat:8080/hook/oncall`) and `team`
+   (*webhook* `http://chat:8080/hook/team`);
+3. the root route sends to `team`, groups the alerts **by alert name** and waits **10
+   seconds** before the first notification of a group; two sub-routes, in this order: the
+   `Watchdog` alert goes to `blackhole`, the `severity="critical"` alerts go to `oncall`;
+4. an inhibition: a `critical` alert silences the `warning` alerts that have the same `instance`
+   label.
+
+Check with `amtool check-config`, `amtool config routes show` and `amtool config routes test`.
+Prometheus already sends its alerts to `localhost:9093` (Debian's configuration). Watch the
+notifications arrive on `chat` (`tail -f /var/log/webhook.log`).
+
+**To practise** (not graded): apply the state `incident_node` (the *Apply Configuration* tab),
+follow `InstanceDown` on the *Alerts* page (inactive, pending, firing) and on `chat`; set a silence
+(`amtool silence add instance=db1:9100 -d 1h -c maintenance`), look at `amtool alert query`, lift
+the silence; try `incident_queue`; apply `repair` before evaluating.
+""",
+    """
+**Solution.** `/etc/default/prometheus-alertmanager` : `ARGS="--cluster.listen-address="`.
+`{am_yml}` :
+
+```yaml
+{alertmanager_yml}```
+
+`amtool check-config {am_yml}`, `systemctl enable prometheus-alertmanager`,
+`systemctl restart prometheus-alertmanager` ; `amtool config routes test severity=critical` doit
+répondre `oncall`.
+""": """
+**Solution.** `/etc/default/prometheus-alertmanager`: `ARGS="--cluster.listen-address="`.
+`{am_yml}`:
+
+```yaml
+{alertmanager_yml}```
+
+`amtool check-config {am_yml}`, `systemctl enable prometheus-alertmanager`,
+`systemctl restart prometheus-alertmanager`; `amtool config routes test severity=critical` must
+answer `oncall`.
+""",
+    "Alertmanager fonctionne seul": "Alertmanager runs alone",
+    "le fichier est valide, les trois destinataires existent": "the file is valid, the three receivers exist",
+    "l'alerte Watchdog de Prometheus arrive à Alertmanager": "the Watchdog alert of Prometheus reaches Alertmanager",
+    "critical va à oncall": "critical goes to oncall",
+    "le reste va à team": "the rest goes to team",
+    "Watchdog va à blackhole": "Watchdog goes to blackhole",
+    "regroupement par nom, 10 secondes d'attente": "grouping by name, 10 seconds of wait",
+    "une alerte critical notifiée sur /hook/oncall": "a critical alert notified on /hook/oncall",
+    "deux alertes warning en une notification sur /hook/team": "two warning alerts in one notification on /hook/team",
+    "l'alerte warning de la même instance est inhibée": "the warning alert of the same instance is inhibited",
+}}

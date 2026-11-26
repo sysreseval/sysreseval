@@ -11,6 +11,7 @@ the state ops, the two-pass grading contract (nothing done: 0; everything: 100 +
 **each part alone gives exactly its points and everything but one part the rest**; variants) and
 the texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -746,6 +747,18 @@ def _all_texts(grade, ns):
     return texts
 
 
+def _instructor_literals():
+    """The literals of the tr() calls inside instructor() calls of the lab file."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 class TestTexts:
     def test_hashes_and_fragments(self, lab, data, tmp_pub_dir):
         g0, ns0 = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)
@@ -814,6 +827,32 @@ class TestTexts:
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 6)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())
+        # the English of the instructor texts goes with them, the other entries stay
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals()) and b'For the instructor' not in result.data
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py)."""
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        literals = _instructor_literals()
+        assert len(literals) == 11 and set(literals) <= set(english)
+        assert lab.title.resolve('en') == "IP multicast: IGMP, PIM and MSDP"
+        assert lab.NetScheme.solve_fix._sre_state_description.resolve('en') == "Part 7: solution (troubleshooting)"
+        g1, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert fr != en, _text(q.title)
+            assert "{'" not in en and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", en), _text(q.title)
+            markdown_to_html(en, show_instructor=True)
+        # the addressing table labels the second address of ssm_src in the language of the text
+        first = g1.get_questions_ordered()[0].description
+        assert f"(2e adresse `{data.ips.ssm_src2.ip}`)" in _text(first, 'fr')
+        assert f"(2nd address `{data.ips.ssm_src2.ip}`)" in _text(first, 'en')
 
     def test_english_identifiers(self, lab, data):
         """Machines, networks, states, data fields, grade elements, part keys and form fields are English."""

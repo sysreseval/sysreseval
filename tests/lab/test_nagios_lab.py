@@ -2,8 +2,8 @@
 state ops (`initial`, the incidents and `repair`, the whole solution of `final`, every command on
 one line), the multi-pass grading contract with synthetic outputs (nothing done: 0, everything
 done: 100, the solution stopped after each part earns the parts done and nothing else, a few
-scoring details), the instructor texts, the numbered course, the stripped lab file and the English
-identifiers.
+scoring details), the instructor texts, the numbered course, the English translations, the stripped
+lab file and the English identifiers.
 
 No Docker: a small model of Nagios (object files resolved like Nagios does — templates, groups,
 services expanded per host —, the states of the forced checks, the NRPE agents and the plugin of
@@ -94,6 +94,19 @@ def _running_name():
 
 def _text(t, lang='fr'):
     return t.resolve(lang) if hasattr(t, 'resolve') else str(t)
+
+
+def _instructor_literals():
+    """The literals of the tr() calls inside instructor(...) calls of the lab file."""
+    import ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 def _state_ops(ns, name):
@@ -934,6 +947,25 @@ class TestTexts:
                               'command_file', 'user1', 'interval_seconds', 'syslocation', 'syscontact', 'unreachable'}
         assert kinds['unreachable']['choices'] == ['up', 'down', 'unreachable', 'pending']
 
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py)."""
+        import ast
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+        assert all(value and value != key for key, value in english.items())
+        literals = _instructor_literals()
+        assert len(literals) == 12 and set(literals) <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 9
+        assert lab.title.resolve('en') == "Nagios: supervising hosts and services"
+        assert lab.NetScheme.incident_db._sre_state_description.resolve('en').startswith('Incident 1:')
+        g1, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert has_instructor(en) and fr != en, _text(q.title)
+
     def test_strip_instructor(self, lab, data, tmp_pub_dir, tmp_path):
         from strip_instructor import strip_source
         result = strip_source(_LAB_PATH.read_bytes())
@@ -944,6 +976,9 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('nagios_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=True, module=module)
         assert _totals(grade) == (100, 100)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())

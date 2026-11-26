@@ -3,7 +3,7 @@ with the hidden mirror, topology, the ops of the states (echo servers everywhere
 the multi-pass grading contract with synthetic outputs (nothing done: 0, questions 1 to 9 alone:
 100, the reference solution: 140 and the bonus, each later question adding its own points and
 costing none of the earlier ones, rule order, variants of the syntax, partial and wrong answers),
-texts, instructor fragments, English identifiers.
+texts, instructor fragments, the English translations, English identifiers.
 
 No Docker.  A ruleset of m1 is a list of named rules per chain (`Ruleset`): its `nft -j list
 ruleset` is built from the generated data in the JSON shape of nftables 1.0.6, and the probes are
@@ -1020,7 +1020,20 @@ def test_cheat_answers_fill_every_form(lab, data, tmp_pub_dir):
                 assert re.fullmatch(field['regex'], answers[field['name']]), (field['name'], answers[field['name']])
 
 
-def test_stripped_lab_file(lab):
+def _instructor_literals():
+    """The French texts of the tr() calls inside instructor() calls."""
+    import ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
+def test_stripped_lab_file(lab, tmp_path):
     source = _LAB_PATH.read_bytes()
     result = strip_instructor.strip_source(source)
     stripped = result.data if hasattr(result, 'data') else result[0]
@@ -1028,10 +1041,33 @@ def test_stripped_lab_file(lab):
     assert b'instructor(' not in stripped and not warnings, warnings
     compile(stripped, 'nftables_filter1_stripped', 'exec')
     assert source.count(b'instructor(tr(') == 15
+    # the English of the instructor texts goes with them, the rest of the dictionary stays
+    path = tmp_path / 'nftables_filter1_stripped.py'
+    path.write_bytes(stripped)
+    spec = importlib.util.spec_from_file_location('nftables_filter1_stripped', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    kept = module._TRANSLATIONS['en']
+    instructor_literals = set(_instructor_literals())
+    assert len(instructor_literals) == 15 and not set(kept) & instructor_literals
+    assert len(kept) == len(lab._TRANSLATIONS['en']) - len(instructor_literals)
+
+
+def test_translations(lab):
+    """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+    every lab of the directory by test_draft_misc_translations.py)."""
+    import ast
+    import check_sre_translations as cst
+    assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+    english = lab._TRANSLATIONS['en']
+    assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+    assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 15
+    assert lab.title.resolve('en') == "nftables: a host firewall"
 
 
 def test_english_identifiers(lab, data):
-    """Machines, networks, states, data fields, grade elements and part keys are English (tr() texts are French)."""
+    """Machines, networks, states, data fields, grade elements and part keys are English (tr() texts are French,
+    with their English in _TRANSLATIONS)."""
     french = re.compile(r'(routeur|pont|reseau|serveur|sonde|panne|exemple|reponse|commutateur|passerelle|'
                         r'machine_|_machine|exterieur|filtre|regle|journal|parefeu|invite|ensemble|liste)', re.I)
     names = list(lab.NetScheme._machine_specs) + list(lab._TOPOLOGY) + list(lab.NetScheme._network_specs)

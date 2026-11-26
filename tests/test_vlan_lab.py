@@ -336,8 +336,46 @@ def test_topology_and_machines(lab, data):
     assert set(trunk.vlans) == {'b1', 'b2', 'router', 'router2'} and all(v == [111, 222] for v in trunk.vlans.values())
     assert ns.get_network('odd').mode == 'switch' and ns.get_network('ext').mode == 'switch'
     assert ns.get_network('link1').mode == params.default_network_mode
-    assert lab.allow_user_states and lab.export_kathara_project and lab._TRANSLATIONS == {}
+    assert lab.allow_user_states and lab.export_kathara_project
     assert not getattr(lab, 'allow_save_restore', False)
+
+
+def _instructor_literals():
+    """The French literals of the tr() calls inside instructor(...)."""
+    import ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
+def test_translations(lab, data, tmp_pub_dir):
+    """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+    every lab of the directory by test_draft_misc_translations.py); the import-time texts carry their
+    English inline."""
+    import ast
+    import check_sre_translations as cst
+    assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+    english = lab._TRANSLATIONS['en']
+    assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+    literals = _instructor_literals()
+    assert len(literals) == 10 and set(literals) <= set(english)
+    assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 10
+    assert lab.title.resolve('en') == "VLANs: 802.1Q, router on a stick, bridges and brouter"
+    form_en = _text(lab.Flavor.flavor_form, 'en')
+    assert '>>>random|' in form_en and '>>>fixed}@@' in form_en and '@@{name::Start the project}@@' in form_en
+    assert _text(lab.Flavor.flavor_form).count('@@{name::Démarrer le projet}@@') == 1
+    grade, ns = _simulate(lab, data, tmp_pub_dir, _synthetic, instructor_mode=True)
+    for q in grade.get_questions_ordered():
+        fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+        assert has_instructor(fr) and has_instructor(en) and fr != en, _text(q.title)
+        assert "{'" not in en and not re.search(r"(?<![{%$])\{[a-z_][a-z_0-9]*\}(?!\})", en), en[:80]
+    for e in grade.get_grade_list():
+        assert _text(e.description, 'en') != _text(e.description, 'fr'), _text(e.description)
 
 
 # ---------------------------------------------------------------------------
@@ -507,13 +545,23 @@ def test_cheat_answers_fill_every_form(lab, data, tmp_pub_dir):
                 assert answers[field['name']] in field['choices'], (field['name'], answers[field['name']])
 
 
-def test_stripped_lab_file(lab):
+def test_stripped_lab_file(lab, tmp_path):
     source = _LAB_PATH.read_bytes()
     result = strip_instructor.strip_source(source)
     stripped = result.data if hasattr(result, 'data') else result[0]
     warnings = result.warnings if hasattr(result, 'warnings') else result[1]
     assert b'instructor(' not in stripped and not warnings, warnings
     compile(stripped, 'vlan_stripped', 'exec')
+    # the English of the instructor texts goes with them, every other entry stays
+    stripped_path = tmp_path / 'vlan_stripped.py'
+    stripped_path.write_bytes(stripped)
+    spec = importlib.util.spec_from_file_location('vlan_lab_stripped', stripped_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    kept = module._TRANSLATIONS['en']
+    instructor_literals = set(_instructor_literals())
+    assert not set(kept) & instructor_literals
+    assert len(kept) == len(lab._TRANSLATIONS['en']) - len(instructor_literals)
 
 
 def test_english_identifiers(lab, data):

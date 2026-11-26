@@ -394,6 +394,18 @@ class TestLab:
 # ---------------------------------------------------------------------------
 
 
+def _instructor_literals():
+    """The tr() literals inside instructor() calls (15 calls, 23 literals)."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 def _texts(lab, data):
     name = _running_name()
     marker = Path(params.instructor_mode_marker_filename(name))
@@ -422,11 +434,23 @@ class TestTexts:
             assert value not in text, value
 
     def test_instructor_translations(self, lab):
+        """Every tr() text is translated (the instructor ones and the others): the markup is checked for every
+        lab of the directory by test_draft_misc_translations.py."""
         tree = ast.parse(_LAB_PATH.read_text())
         tr_strings = check_sre_translations.get_tr_strings(tree)
         english = lab._TRANSLATIONS['en']
-        assert set(english) <= set(tr_strings) and None not in english.values() and len(english) == 23
-        assert all(english[k] != k for k in english)
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        assert set(english) == set(tr_strings) and all(english.values())
+        # only the two section titles that are names read the same in English
+        assert {k for k in english if english[k] == k} == {'Zeek', 'Cowrie'}
+        literals = set(_instructor_literals())
+        assert len(literals) == 23 and literals <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution', '**For the instructor.**')) for v in english.values()) == 15
+        assert lab.title.resolve('en') == "Network security monitoring and forensics: Zeek, a pcap investigation, Cowrie"
+        for state in ALONE:
+            description = getattr(lab.NetScheme, state)._sre_state_description
+            assert description.resolve('en').startswith(('Part ', 'Bonus alone')), state
+        assert lab.NetScheme.final._sre_state_description.resolve('en').startswith('Complete reference solution')
 
     def test_fragments_in_both_languages(self, lab, data, tmp_pub_dir):
         _, _, grade = _texts(lab, data)
@@ -456,7 +480,7 @@ class TestTexts:
             assert unwrap_instructor(fr) != unwrap_instructor(en), _text(q.title)
             assert form_spec.form_fields(fr) == form_spec.form_fields(en)
 
-    def test_stripped_lab_file(self, tmp_path):
+    def test_stripped_lab_file(self, lab, tmp_path):
         result = strip_tool.strip_source(_LAB_PATH.read_bytes())
         assert b'instructor(' not in result.data and not result.warnings, result.warnings
         assert result.calls == 15 and result.translations == 23
@@ -467,6 +491,10 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('nsm_forensics_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the other texts stays
+        kept = module._TRANSLATIONS['en']
+        literals = set(_instructor_literals())
+        assert not set(kept) & literals and len(kept) == len(lab._TRANSLATIONS['en']) - len(literals)
         assert _totals(_replay(module, _evaluation('final2'), answers='final')) == (100, 100, 6)
 
     def test_question_hashes_are_pinned(self):

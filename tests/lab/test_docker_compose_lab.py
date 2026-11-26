@@ -392,14 +392,23 @@ class TestTexts:
                       data.redis_password, data.config_version, data.config_color + '\n', 'Partie 1'):
             assert value not in text, value
 
-    def test_instructor_translations(self, lab):
+    def test_translations(self, lab):
+        """Every tr() text has its English in _TRANSLATIONS['en'] (the markup kept: checked for every lab of
+        the directory by test_draft_misc_translations.py), the 14 instructor texts among them."""
         tree = check_sre_translations.ast.parse(_LAB_PATH.read_text())
         tr_strings = check_sre_translations.get_tr_strings(tree)
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
         english = lab._TRANSLATIONS['en']
-        assert set(english) <= set(tr_strings) and None not in english.values() and len(english) == 14
-        assert all(english[k] != k for k in english)
+        assert set(english) == set(tr_strings) and all(english.values())
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 14
+        # the same in both languages: a section title, a Compose key and a variable assignment
+        assert {k for k in english if english[k] == k} == {"Volumes", "restart: unless-stopped", "REDIS_HOST=redis"}
         for fr, en in english.items():
             assert set(re.findall(r'\{(\w+)\}', fr)) == set(re.findall(r'\{(\w+)\}', en)), fr[:60]
+        assert lab.title.resolve('en') == "Docker Compose: multi-container applications"
+        for state in ('restore_docker', 'solve_hello', 'solve_remote', 'final'):
+            description = getattr(lab.NetScheme, state)._sre_state_description
+            assert description.resolve('en') != description.resolve('fr'), state
 
     def test_fragments_in_both_languages(self, lab, data, tmp_pub_dir):
         _, _, grade = _texts(lab, data, tmp_pub_dir)
@@ -439,5 +448,7 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('docker_compose_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the instructor texts goes with them, the other texts keep theirs
+        assert len(module._TRANSLATIONS['en']) == len(lab._TRANSLATIONS['en']) - 14
         grade = _replay(module, _evaluation('final'), answers='final')
         assert _totals(grade) == (TOTAL, TOTAL, 6)

@@ -788,31 +788,45 @@ chrony sait aussi utiliser l'horodatage matériel des cartes (`hwtimestamp`).
         self.restart("border")
         self.cmd("border", WAITSYNC, step=2, timeout=60)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (formulaire seulement)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 1 : solution (formulaire seulement)",
+                              en="Part 1: solution (form only)"))
     def solve_part1(self):
         pass
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (border et les serveurs publics)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 2 : solution (border et les serveurs publics)",
+                              en="Part 2: solution (border and the public servers)"))
     def solve_part2(self):
         self._solve_part2()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (ts1, pc1, pc2)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 3 : solution (ts1, pc1, pc2)",
+                              en="Part 3: solution (ts1, pc1, pc2)"))
     def solve_part3(self):
         self._solve_part3()
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (clé symétrique ts2 / cam1)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 4 : solution (clé symétrique ts2 / cam1)",
+                              en="Part 4: solution (symmetric key ts2 / cam1)"))
     def solve_part4(self):
         self._solve_part4()
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (NTS ts3 / web1)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 5 : solution (NTS ts3 / web1)",
+                              en="Part 5: solution (NTS ts3 / web1)"))
     def solve_part5(self):
         self._solve_part5()
 
-    @sre_state(user_allowed=False, description=tr("Partie 6 : solution (dépannage de legacy)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 6 : solution (dépannage de legacy)",
+                              en="Part 6: solution (troubleshooting legacy)"))
     def solve_part6(self):
         self._solve_part6()
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (border sert Internet, débit limité)"))
+    @sre_state(user_allowed=False,
+               description=tr("Bonus : solution (border sert Internet, débit limité)",
+                              en="Bonus: solution (border serves the Internet, rate limited)"))
     def solve_bonus(self):
         self._solve_bonus()
 
@@ -1378,4 +1392,1138 @@ def _fault_explanations(faults: List[str]):
     return result
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "NTP et chrony : synchronisation du temps": "NTP and chrony: time synchronisation",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "Pourquoi synchroniser les horloges": "Why synchronise clocks",
+    """
+
+Chaque machine compte le temps avec un oscillateur à quartz. Aucun n'est parfait : une **dérive**
+de 20 ppm (parties par million), banale, fait près de deux secondes d'écart par jour. Or beaucoup de
+mécanismes supposent des horloges d'accord :
+
+- **corréler des journaux** de plusieurs machines (qui a fait quoi, dans quel ordre) ;
+- **Kerberos** refuse un ticket si les horloges diffèrent de plus de 5 minutes ;
+- **TLS** vérifie les dates de validité des certificats ; les codes **TOTP** changent toutes les 30 s ;
+- les systèmes répartis (bases de données, fichiers partagés, `make` sur NFS), la facturation, les
+  preuves légales.
+
+Le système garde l'heure en **UTC** ; le fuseau horaire n'est qu'une affaire d'affichage. Au
+démarrage, il lit l'horloge matérielle (RTC), puis un démon de synchronisation la corrige en
+continu : **NTP** (*Network Time Protocol*, RFC 5905) donne une précision de l'ordre de la
+milliseconde sur Internet, de quelques dizaines de microsecondes sur un réseau local.
+""": """
+
+Every machine counts time with a quartz oscillator. None is perfect: a **drift** of 20 ppm (parts
+per million), quite ordinary, amounts to almost two seconds of difference per day. Yet many
+mechanisms assume that the clocks agree:
+
+- **correlating the logs** of several machines (who did what, in which order);
+- **Kerberos** refuses a ticket if the clocks differ by more than 5 minutes;
+- **TLS** checks the validity dates of certificates; **TOTP** codes change every 30 s;
+- distributed systems (databases, shared files, `make` over NFS), billing, legal
+  evidence.
+
+The system keeps the time in **UTC**; the time zone is only a matter of display. At boot, it reads
+the hardware clock (RTC), then a synchronisation daemon corrects it continuously: **NTP** (*Network
+Time Protocol*, RFC 5905) gives a precision of the order of a millisecond over the Internet, of a
+few tens of microseconds on a local network.
+""",
+    "La hiérarchie NTP": "The NTP hierarchy",
+    """
+
+Les serveurs NTP forment une hiérarchie de **strates** (*stratum*) :
+
+| strate | ce que c'est |
+|--------|--------------|
+| 0 | une horloge de référence : récepteur GPS, horloge atomique, émetteur radio (DCF77) ; pas sur le réseau |
+| 1 | un serveur directement relié à une horloge de référence (serveur *primaire*) |
+| 2 | un serveur synchronisé sur un serveur de strate 1 |
+| *n* + 1 | un serveur synchronisé sur un serveur de strate *n* |
+| 16 | non synchronisé |
+
+La strate dit la distance à la référence, pas la qualité : un serveur de strate 3 proche peut être
+meilleur qu'un serveur de strate 1 lointain. Le **pool** `pool.ntp.org` regroupe des milliers de
+serveurs bénévoles derrière des noms DNS tournants.
+
+Chaque serveur annonce un **identifiant de référence** (*refid*) : pour la strate 1, un code ASCII de
+4 lettres qui dit la nature de l'horloge (`GPS`, `PPS`, `DCF`...) ; au-delà, l'adresse IPv4 du serveur
+sur lequel il est synchronisé (ce qui permet de détecter les boucles).
+
+NTP utilise **UDP, port 123**, des deux côtés. Le champ *mode* dit le rôle du paquet : 3 pour une
+requête de client, 4 pour la réponse d'un serveur, 1 et 2 entre pairs (mode symétrique), 5 en
+diffusion.
+""": """
+
+NTP servers form a hierarchy of **strata** (*stratum*):
+
+| stratum | what it is |
+|--------|--------------|
+| 0 | a reference clock: GPS receiver, atomic clock, radio transmitter (DCF77); not on the network |
+| 1 | a server directly connected to a reference clock (*primary* server) |
+| 2 | a server synchronised to a stratum 1 server |
+| *n* + 1 | a server synchronised to a stratum *n* server |
+| 16 | unsynchronised |
+
+The stratum tells the distance to the reference, not the quality: a nearby stratum 3 server may be
+better than a distant stratum 1 server. The **pool** `pool.ntp.org` gathers thousands of volunteer
+servers behind rotating DNS names.
+
+Each server announces a **reference identifier** (*refid*): for stratum 1, a 4-letter ASCII code
+telling the kind of clock (`GPS`, `PPS`, `DCF`...); beyond that, the IPv4 address of the server it
+is synchronised to (which makes it possible to detect loops).
+
+NTP uses **UDP, port 123**, on both sides. The *mode* field tells the role of the packet: 3 for a
+client request, 4 for a server's reply, 1 and 2 between peers (symmetric mode), 5 for
+broadcast.
+""",
+    "Le paquet et les quatre horodatages": "The packet and the four timestamps",
+    """
+
+| champ | rôle |
+|-------|------|
+| LI (*leap indicator*, 2 bits) | 0 : normal ; 1 / 2 : seconde intercalaire à ajouter / retirer ce soir ; **3 : non synchronisé** |
+| VN, mode | version (4) ; mode (3 client, 4 serveur...) |
+| stratum | strate de l'émetteur |
+| poll | intervalle entre deux requêtes, en log₂ secondes (6 = 64 s) |
+| precision | précision de l'horloge de l'émetteur, en log₂ secondes (-20 ≈ 1 µs) |
+| root delay, root dispersion | aller-retour et erreur accumulés jusqu'à la référence |
+| reference ID | refid (voir plus haut) |
+| reference timestamp | dernière mise à jour de l'horloge de l'émetteur |
+| origin, receive, transmit | les horodatages de l'échange |
+
+Un horodatage NTP fait 64 bits : 32 bits de secondes depuis le **1er janvier 1900** et 32 bits de
+fraction (233 picosecondes). Le compteur de secondes repassera par zéro en 2036 (changement d'ère).
+
+Un échange donne quatre instants : **T1** le client envoie, **T2** le serveur reçoit, **T3** le
+serveur répond, **T4** le client reçoit. T1 et T4 sont lus sur l'horloge du client, T2 et T3 sur
+celle du serveur ; la réponse porte T1 (origin), T2 (receive) et T3 (transmit). Le serveur se
+contente de recopier le champ *transmit* de la requête dans le champ *origin* de sa réponse : chrony y
+met une valeur aléatoire (il ne révèle pas son heure, et une réponse qui ne recopie pas cette valeur
+est rejetée).
+
+```
+client   T1 ──────────────┐                      ┌──────────────▶ T4
+                           ╲                    ╱
+serveur                     └──▶ T2 ...... T3 ──┘
+```
+
+- le **délai** aller-retour, sans le temps passé dans le serveur : **δ = (T4 − T1) − (T3 − T2)** ;
+- le **décalage** (*offset*) de l'horloge du serveur par rapport à celle du client :
+  **θ = ((T2 − T1) + (T3 − T4)) / 2**.
+
+Le calcul suppose l'aller et le retour de même durée ; une asymétrie fausse θ d'au plus δ / 2. Par
+exemple T1 = 10:00:00.000, T2 = 10:00:00.040, T3 = 10:00:00.043, T4 = 10:00:00.033 donnent
+δ = 33 − 3 = 30 ms et θ = (40 + 10) / 2 = 25 ms : le serveur est en avance de 25 ms (le client reçoit
+la réponse à 33 ms sur son horloge, quand celle du serveur marquait déjà 43 ms).
+""": """
+
+| field | role |
+|-------|------|
+| LI (*leap indicator*, 2 bits) | 0: normal; 1 / 2: leap second to add / remove tonight; **3: unsynchronised** |
+| VN, mode | version (4); mode (3 client, 4 server...) |
+| stratum | stratum of the sender |
+| poll | interval between two requests, in log₂ seconds (6 = 64 s) |
+| precision | precision of the sender's clock, in log₂ seconds (-20 ≈ 1 µs) |
+| root delay, root dispersion | round trip and error accumulated up to the reference |
+| reference ID | refid (see above) |
+| reference timestamp | last update of the sender's clock |
+| origin, receive, transmit | the timestamps of the exchange |
+
+An NTP timestamp is 64 bits long: 32 bits of seconds since **1 January 1900** and 32 bits of
+fraction (233 picoseconds). The seconds counter will wrap around to zero in 2036 (change of era).
+
+An exchange gives four instants: **T1** the client sends, **T2** the server receives, **T3** the
+server replies, **T4** the client receives. T1 and T4 are read on the client's clock, T2 and T3 on
+the server's; the reply carries T1 (origin), T2 (receive) and T3 (transmit). The server merely
+copies the *transmit* field of the request into the *origin* field of its reply: chrony puts a
+random value there (it does not reveal its time, and a reply that does not copy this value back
+is rejected).
+
+```
+client   T1 ──────────────┐                      ┌──────────────▶ T4
+                           ╲                    ╱
+server                      └──▶ T2 ...... T3 ──┘
+```
+
+- the round-trip **delay**, without the time spent in the server: **δ = (T4 − T1) − (T3 − T2)**;
+- the **offset** of the server's clock relative to the client's:
+  **θ = ((T2 − T1) + (T3 − T4)) / 2**.
+
+The calculation assumes that the outward and return trips take the same time; an asymmetry skews θ
+by at most δ / 2. For example T1 = 10:00:00.000, T2 = 10:00:00.040, T3 = 10:00:00.043,
+T4 = 10:00:00.033 give δ = 33 − 3 = 30 ms and θ = (40 + 10) / 2 = 25 ms: the server is 25 ms ahead
+(the client receives the reply at 33 ms on its clock, when the server's already showed 43 ms).
+""",
+    "Choisir parmi plusieurs sources": "Choosing among several sources",
+    """
+
+Un client interroge plusieurs serveurs. Pour chacun il garde les meilleurs échantillons (les délais
+les plus courts) et en déduit un intervalle où se trouve sûrement l'heure vraie : le décalage, plus
+ou moins la **distance à la racine** (moitié du délai total jusqu'à la référence, plus les
+dispersions). L'algorithme d'**intersection** (de Marzullo) cherche le plus grand groupe de sources
+dont les intervalles se recouvrent : ce sont les *truechimers* ; les autres sont des **faux-tickers**
+(*falsetickers*), écartés, même si leur strate est meilleure.
+
+Il faut une **majorité** : avec deux sources en désaccord, rien ne permet de savoir laquelle ment.
+D'où la règle : **au moins trois sources, quatre de préférence** (une peut mentir pendant qu'une
+autre est injoignable). Parmi les sources retenues, le client choisit la meilleure (la plus petite
+distance) et combine les autres avec elle.
+
+Une source est aussi écartée si elle se dit non synchronisée (LI = 3, strate 16), si sa distance à la
+racine dépasse `maxdistance` (3 s par défaut), ou si elle ne répond pas.
+""": """
+
+A client queries several servers. For each one it keeps the best samples (the shortest delays) and
+derives from them an interval that surely contains the true time: the offset, plus or minus the
+**root distance** (half the total delay up to the reference, plus the dispersions). The
+**intersection** algorithm (Marzullo's) looks for the largest group of sources whose intervals
+overlap: these are the *truechimers*; the others are **falsetickers**, discarded, even if their
+stratum is better.
+
+A **majority** is needed: with two sources that disagree, nothing tells which one is lying. Hence
+the rule: **at least three sources, preferably four** (one may lie while another one is
+unreachable). Among the sources kept, the client chooses the best one (the smallest distance) and
+combines the others with it.
+
+A source is also discarded if it says it is unsynchronised (LI = 3, stratum 16), if its root
+distance exceeds `maxdistance` (3 s by default), or if it does not answer.
+""",
+    "chrony": "chrony",
+    """
+
+**chrony** est l'implémentation de NTP par défaut de Debian, Red Hat ou Ubuntu : le démon
+**`chronyd`** (client et serveur) et l'outil **`chronyc`** qui l'interroge et le pilote. (Les autres :
+`ntpd` / NTPsec, historiques ; `systemd-timesyncd`, simple client SNTP qui ne sert pas l'heure.)
+
+Sur Debian :
+
+| fichier | rôle |
+|---------|------|
+| `/etc/chrony/chrony.conf` | la configuration ; elle lit aussi les deux répertoires suivants |
+| `/etc/chrony/conf.d/*.conf` | des directives quelconques, lues dans l'ordre alphabétique |
+| `/etc/chrony/sources.d/*.sources` | des lignes `server`, `pool` ou `peer` seulement |
+| `/etc/chrony/chrony.keys` | les clés symétriques (`keyfile`) |
+| `/etc/default/chrony` | les options de la ligne de commande de `chronyd` (`DAEMON_OPTS`) |
+
+```
+server ntp1.example.org iburst            # une source
+server 192.0.2.10 iburst prefer           # préférée à égalité
+server 192.0.2.11 iburst noselect         # mesurée, jamais choisie
+pool pool.ntp.org iburst maxsources 4     # plusieurs adresses derrière un nom
+makestep 1 3                              # sauter si l'écart dépasse 1 s, aux 3 premières mises à jour
+driftfile /var/lib/chrony/chrony.drift    # la dérive mesurée, gardée d'un démarrage à l'autre
+minsources 2                              # ne rien corriger sans 2 sources d'accord
+```
+
+`iburst` envoie quatre requêtes rapprochées au démarrage : la première synchronisation prend
+quelques secondes au lieu de plusieurs minutes. Ensuite l'intervalle varie entre `minpoll` et
+`maxpoll` (64 s à 1024 s par défaut). Pour corriger l'horloge, chrony la **ralentit ou l'accélère**
+(*slew*, sans jamais revenir en arrière) ; il ne la fait **sauter** (*step*) que dans les cas prévus
+par `makestep`.
+
+On applique une modification avec `systemctl restart chrony` (ou `service chrony restart`) ;
+`chronyc reload sources` relit seulement `sources.d`. Après un redémarrage, attendez une dizaine de
+secondes avant de juger : les premières mesures arrivent pendant ce temps.
+""": """
+
+**chrony** is the default NTP implementation of Debian, Red Hat or Ubuntu: the daemon
+**`chronyd`** (client and server) and the tool **`chronyc`**, which queries and controls it. (The
+others: `ntpd` / NTPsec, historical; `systemd-timesyncd`, a simple SNTP client that does not serve
+the time.)
+
+On Debian:
+
+| file | role |
+|---------|------|
+| `/etc/chrony/chrony.conf` | the configuration; it also reads the next two directories |
+| `/etc/chrony/conf.d/*.conf` | any directives, read in alphabetical order |
+| `/etc/chrony/sources.d/*.sources` | `server`, `pool` or `peer` lines only |
+| `/etc/chrony/chrony.keys` | the symmetric keys (`keyfile`) |
+| `/etc/default/chrony` | the command-line options of `chronyd` (`DAEMON_OPTS`) |
+
+```
+server ntp1.example.org iburst            # a source
+server 192.0.2.10 iburst prefer           # preferred when equal
+server 192.0.2.11 iburst noselect         # measured, never chosen
+pool pool.ntp.org iburst maxsources 4     # several addresses behind one name
+makestep 1 3                              # step if the error exceeds 1 s, during the first 3 updates
+driftfile /var/lib/chrony/chrony.drift    # the measured drift, kept from one start to the next
+minsources 2                              # correct nothing without 2 sources that agree
+```
+
+`iburst` sends four requests in quick succession at start-up: the first synchronisation takes a few
+seconds instead of several minutes. Then the interval varies between `minpoll` and `maxpoll` (64 s
+to 1024 s by default). To correct the clock, chrony **slows it down or speeds it up** (*slew*,
+never going backwards); it only makes it **jump** (*step*) in the cases provided for by
+`makestep`.
+
+A change is applied with `systemctl restart chrony` (or `service chrony restart`);
+`chronyc reload sources` only rereads `sources.d`. After a restart, wait about ten seconds before
+judging: the first measurements arrive during that time.
+""",
+    "chrony dans un conteneur": "chrony in a container",
+    """
+
+Les machines de ce TP sont des conteneurs : leur horloge est **celle de la machine hôte**, que le
+noyau ne sépare pas entre conteneurs. Changer l'heure demande la capacité `CAP_SYS_TIME`, que les
+conteneurs n'ont pas. Sans précaution, `chronyd` refuse de démarrer :
+
+```
+Fatal error : adjtimex(0x8001) failed : Operation not permitted
+```
+
+L'option **`-x`** lui dit de ne pas toucher à l'horloge : il mesure ses sources, les sélectionne,
+calcule la correction qu'il appliquerait, et sert l'heure, exactement comme ailleurs. Elle est dans
+`/etc/default/chrony` : `DAEMON_OPTS="{opts}"`. L'option `-l` envoie les messages de `chronyd` dans
+**`{log}`** (aucun démon syslog ne tourne ici) : c'est là qu'on lit les erreurs.
+
+Conséquence : toutes les machines ont exactement la même heure, les décalages mesurés entre elles
+sont de quelques microsecondes. Les serveurs dont l'horloge est fausse dans ce TP le sont
+volontairement (ils annoncent une heure fausse).
+
+Deux commandes utiles pour le diagnostic :
+
+- **`chronyd -p`** affiche la configuration telle que `chronyd` la lit, fichiers inclus compris (une
+  directive inconnue n'est signalée qu'au démarrage, dans le journal : `Invalid directive at line ...`) ;
+- **`chronyd -Q 'server X iburst'`** interroge un serveur avec cette seule configuration et affiche le
+  décalage mesuré (`System clock wrong by ... seconds (ignored)`), sans rien changer.
+""": """
+
+The machines of this lab are containers: their clock is **that of the host machine**, which the
+kernel does not separate between containers. Changing the time requires the capability
+`CAP_SYS_TIME`, which the containers do not have. Without precautions, `chronyd` refuses to start:
+
+```
+Fatal error : adjtimex(0x8001) failed : Operation not permitted
+```
+
+The option **`-x`** tells it not to touch the clock: it measures its sources, selects them,
+computes the correction it would apply, and serves the time, exactly as anywhere else. It is in
+`/etc/default/chrony`: `DAEMON_OPTS="{opts}"`. The option `-l` sends the messages of `chronyd` to
+**`{log}`** (no syslog daemon runs here): that is where the errors are read.
+
+Consequence: all the machines have exactly the same time, and the offsets measured between them are
+a few microseconds. The servers whose clock is wrong in this lab are wrong on purpose (they
+announce a wrong time).
+
+Two useful commands for the diagnosis:
+
+- **`chronyd -p`** prints the configuration as `chronyd` reads it, with the included files (an
+  unknown directive is only reported at start-up, in the log: `Invalid directive at line ...`);
+- **`chronyd -Q 'server X iburst'`** queries a server with this configuration only and prints the
+  measured offset (`System clock wrong by ... seconds (ignored)`), without changing anything.
+""",
+    "Observer : chronyc": "Observing: chronyc",
+    """
+
+```
+$ chronyc sources -v
+MS Name/IP address         Stratum Poll Reach LastRx Last sample
+===============================================================================
+^* 192.0.2.10                    1   6    17     9   +966ns[+1588ns] +/-  510us
+^- 192.0.2.11                    2   6    17     9  -6584ns[-5983ns] +/-   26ms
+^x 192.0.2.12                    2   6    17     9  -137.2s[-137.2s] +/-   20ms
+^? 192.0.2.13                    0   6     0     -     +0ns[   +0ns] +/-    0ns
+```
+
+- **M** : `^` serveur, `=` pair, `#` horloge de référence locale ;
+- **S** : `*` la source choisie, `+` combinée avec elle, `-` acceptable mais non combinée, **`x`
+  faux-ticker**, `~` trop instable, `?` inutilisable (injoignable, non synchronisée, trop loin) ;
+- **Reach** : registre (en octal) des 8 dernières requêtes ; 377 = toutes ont eu une réponse, 0 =
+  aucune ;
+- **Last sample** : décalage de l'**horloge locale** par rapport à la source (négatif : l'horloge
+  locale retarde, donc la source avance), puis la marge d'erreur.
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `chronyc tracking` | la source choisie (*Reference ID*), la strate obtenue, le décalage, *Leap status* (`Normal` ou `Not synchronised`) |
+| `chronyc sourcestats` | les statistiques de chaque source (dérive, écart type) |
+| `chronyc ntpdata <adresse>` | le dernier paquet d'une source : strate, refid, précision, **Offset** (de la source par rapport à l'horloge locale), *Authenticated* |
+| `chronyc authdata` | l'authentification de chaque source (mode `SK`, `NTS` ou `-`) |
+| `chronyc clients` / `serverstats` | côté serveur : qui interroge, combien de paquets reçus et jetés |
+| `chronyc waitsync 30 0 0 1` | attendre (30 essais d'une seconde) d'être synchronisé |
+
+Enfin, `tcpdump -v -n udp port 123` décode les paquets NTP (strate, précision, refid, horodatages).
+""": """
+
+```
+$ chronyc sources -v
+MS Name/IP address         Stratum Poll Reach LastRx Last sample
+===============================================================================
+^* 192.0.2.10                    1   6    17     9   +966ns[+1588ns] +/-  510us
+^- 192.0.2.11                    2   6    17     9  -6584ns[-5983ns] +/-   26ms
+^x 192.0.2.12                    2   6    17     9  -137.2s[-137.2s] +/-   20ms
+^? 192.0.2.13                    0   6     0     -     +0ns[   +0ns] +/-    0ns
+```
+
+- **M**: `^` server, `=` peer, `#` local reference clock;
+- **S**: `*` the selected source, `+` combined with it, `-` acceptable but not combined, **`x`
+  falseticker**, `~` too variable, `?` unusable (unreachable, unsynchronised, too far);
+- **Reach**: register (in octal) of the last 8 requests; 377 = all of them got a reply, 0 =
+  none;
+- **Last sample**: offset of the **local clock** relative to the source (negative: the local clock
+  is behind, so the source is ahead), then the error margin.
+
+| command | what it shows |
+|----------|-------------------|
+| `chronyc tracking` | the selected source (*Reference ID*), the stratum obtained, the offset, *Leap status* (`Normal` or `Not synchronised`) |
+| `chronyc sourcestats` | the statistics of each source (drift, standard deviation) |
+| `chronyc ntpdata <address>` | the last packet of a source: stratum, refid, precision, **Offset** (of the source relative to the local clock), *Authenticated* |
+| `chronyc authdata` | the authentication of each source (mode `SK`, `NTS` or `-`) |
+| `chronyc clients` / `serverstats` | server side: who queries, how many packets were received and dropped |
+| `chronyc waitsync 30 0 0 1` | wait (30 tries of one second) to be synchronised |
+
+Finally, `tcpdump -v -n udp port 123` decodes the NTP packets (stratum, precision, refid, timestamps).
+""",
+    "Servir l'heure": "Serving the time",
+    """
+
+Par défaut `chronyd` ne sert personne : il faut lister les clients autorisés.
+
+```
+allow 192.168.10.0/24       # ce réseau peut interroger
+allow 192.168.20.0/24
+deny 192.168.10.66          # sauf cette machine (le sous-réseau le plus précis l'emporte)
+local stratum 10 orphan     # servir sa propre horloge en l'absence de source
+```
+
+Un client non autorisé ne reçoit **aucune réponse**. Un serveur autorisé mais lui-même non
+synchronisé répond avec LI = 3 : ses clients l'écartent. La directive **`local`** permet de continuer
+à servir quand toutes les sources ont disparu (réseau isolé, coupure d'Internet) : le serveur
+annonce sa propre horloge, avec une strate élevée (10) pour que toute vraie source passe avant lui ;
+son refid est alors `127.127.1.1` (`LOCL`). Avec `orphan`, plusieurs serveurs ainsi configurés et pairs
+entre eux s'accordent sur l'un d'eux au lieu de diverger.
+
+Côté client, rien de neuf : une ligne `server` vers le serveur de l'entreprise, que l'on vérifie avec
+`chronyc sources` puis, côté serveur, avec `chronyc clients`. Un serveur qui démarre pour la première
+fois ne connaît pas encore la dérive de son horloge (pas de fichier `driftfile`) : il se déclare très
+incertain (sa *root dispersion* grandit vite) jusqu'à ce que quelques mesures l'aient estimée, et ses
+clients l'écartent pendant ce temps. Ici, le fichier `/var/lib/chrony/chrony.drift` est déjà rempli.
+""": """
+
+By default `chronyd` serves nobody: the authorised clients must be listed.
+
+```
+allow 192.168.10.0/24       # this network may query
+allow 192.168.20.0/24
+deny 192.168.10.66          # except this machine (the most specific subnet wins)
+local stratum 10 orphan     # serve its own clock when there is no source
+```
+
+An unauthorised client gets **no reply**. An authorised server that is itself unsynchronised
+replies with LI = 3: its clients discard it. The **`local`** directive makes it possible to keep
+serving when all the sources have disappeared (isolated network, Internet outage): the server
+announces its own clock, with a high stratum (10) so that any real source comes before it; its
+refid is then `127.127.1.1` (`LOCL`). With `orphan`, several servers configured this way and peers
+of each other agree on one of them instead of drifting apart.
+
+On the client side, nothing new: a `server` line towards the company's server, checked with
+`chronyc sources` then, on the server side, with `chronyc clients`. A server that starts for the
+first time does not know the drift of its clock yet (no `driftfile` file): it declares itself very
+uncertain (its *root dispersion* grows quickly) until a few measurements have estimated it, and its
+clients discard it during that time. Here, the file `/var/lib/chrony/chrony.drift` is already filled in.
+""",
+    "Authentifier par clé symétrique": "Authenticating with a symmetric key",
+    """
+
+Rien n'empêche une machine de se faire passer pour un serveur NTP. La forme la plus ancienne de
+protection est une **clé secrète partagée** : chaque paquet porte un code d'authentification (MAC)
+calculé avec la clé. Le fichier `/etc/chrony/chrony.keys` (propriétaire `root:_chrony`, mode 640)
+contient une ligne par clé :
+
+```
+10 SHA256 HEX:6B0F1A...           # numéro, fonction de hachage, valeur
+```
+
+`chronyc keygen 10 SHA256 256` produit une telle ligne. Les deux côtés connaissent la même clé :
+
+- le **serveur** a la clé dans son fichier : il répond à une requête signée par une réponse signée ;
+- le **client** l'utilise sur sa source : `server ts.example.org iburst key 10`. Il rejette toute
+  réponse non signée ou mal signée : la source reste à `?`.
+
+`chronyc authdata` montre le mode `SK` et le numéro de la clé ; `chronyc ntpdata` affiche
+`Authenticated : Yes`. La limite est la distribution des clés : un secret à installer sur chaque
+appareil, et à changer partout s'il fuit.
+""": """
+
+Nothing prevents a machine from impersonating an NTP server. The oldest form of protection is a
+**shared secret key**: every packet carries an authentication code (MAC) computed with the key. The
+file `/etc/chrony/chrony.keys` (owner `root:_chrony`, mode 640) contains one line per key:
+
+```
+10 SHA256 HEX:6B0F1A...           # number, hash function, value
+```
+
+`chronyc keygen 10 SHA256 256` produces such a line. Both sides know the same key:
+
+- the **server** has the key in its file: it answers a signed request with a signed reply;
+- the **client** uses it on its source: `server ts.example.org iburst key 10`. It rejects any
+  unsigned or wrongly signed reply: the source stays at `?`.
+
+`chronyc authdata` shows the mode `SK` and the key number; `chronyc ntpdata` prints
+`Authenticated : Yes`. The limit is the distribution of the keys: a secret to install on every
+device, and to change everywhere if it leaks.
+""",
+    "NTS : Network Time Security": "NTS: Network Time Security",
+    """
+
+**NTS** (RFC 8915) apporte à NTP ce que TLS apporte au web, sans secret partagé :
+
+1. **NTS-KE** (*key establishment*) : le client ouvre une connexion **TLS 1.3 sur le port TCP
+   {ke}** ; il vérifie le certificat du serveur, puis tous deux dérivent des clés et le serveur lui
+   donne 8 **cookies** ;
+2. ensuite les requêtes NTP (UDP 123) portent un cookie et sont authentifiées par ces clés (AEAD
+   AES-SIV) ; chaque réponse fournit un nouveau cookie. Le serveur ne garde aucun état par client :
+   les cookies sont chiffrés avec sa propre clé.
+
+Côté serveur chrony :
+
+```
+ntsservercert /etc/chrony/nts/serveur.crt
+ntsserverkey  /etc/chrony/nts/serveur.key
+```
+
+La clé privée doit être lisible par l'utilisateur **`_chrony`** : `chronyd` abandonne les droits de
+root après son démarrage, et ses processus NTS-KE tournent sous cet utilisateur (sinon
+l'établissement TLS échoue ; le journal le dit).
+
+Côté client : `server ts.example.org iburst nts`, avec `ntstrustedcerts /chemin/ca.crt` si
+l'autorité qui a signé le certificat n'est pas dans le magasin du système. Le client vérifie que le
+certificat porte le **nom** utilisé dans la ligne `server` : on vise le serveur par son nom.
+`chronyc authdata` montre le mode `NTS` et le nombre de cookies.
+""": """
+
+**NTS** (RFC 8915) brings to NTP what TLS brings to the web, without a shared secret:
+
+1. **NTS-KE** (*key establishment*): the client opens a **TLS 1.3 connection on TCP port
+   {ke}**; it checks the server's certificate, then both derive keys and the server gives it 8
+   **cookies**;
+2. then the NTP requests (UDP 123) carry a cookie and are authenticated with these keys (AEAD
+   AES-SIV); every reply provides a new cookie. The server keeps no per-client state: the cookies
+   are encrypted with its own key.
+
+On the chrony server side:
+
+```
+ntsservercert /etc/chrony/nts/server.crt
+ntsserverkey  /etc/chrony/nts/server.key
+```
+
+The private key must be readable by the user **`_chrony`**: `chronyd` drops the root privileges
+after starting, and its NTS-KE processes run as that user (otherwise the TLS establishment fails;
+the log says so).
+
+On the client side: `server ts.example.org iburst nts`, with `ntstrustedcerts /path/ca.crt` if the
+authority that signed the certificate is not in the system's store. The client checks that the
+certificate carries the **name** used in the `server` line: the server is given by its name.
+`chronyc authdata` shows the mode `NTS` and the number of cookies.
+""",
+    "Sécurité d'un serveur public": "Security of a public server",
+    """
+
+- **Amplification** : un attaquant envoie de petites requêtes avec l'adresse de sa victime en source ;
+  un serveur qui répond beaucoup plus gros inonde la victime (la commande `monlist` de l'ancien `ntpd`
+  multipliait le trafic par plusieurs centaines). chrony n'a pas de telles commandes sur le réseau :
+  son port de commande (UDP 323) n'écoute que `localhost` par défaut (`cmdallow` pour l'ouvrir).
+- **Limitation du débit** : `ratelimit interval 1 burst 8` limite chaque client à une réponse toutes
+  les 2¹ = 2 s en moyenne, avec des rafales de 8 ; au-delà, chrony ne répond plus qu'à une requête sur
+  2^`leak` (4 par défaut). Avec l'option `kod`, il envoie des paquets **Kiss-o'-Death** (KoD, code
+  `RATE`) qui demandent au client de ralentir. `chronyc serverstats` compte les paquets jetés.
+- Un attaquant placé sur le chemin peut **retarder** les paquets dans un seul sens : aucune
+  cryptographie ne l'empêche ; plusieurs sources par des chemins différents limitent le risque.
+""": """
+
+- **Amplification**: an attacker sends small requests with the address of the victim as the source;
+  a server that answers with much larger replies floods the victim (the `monlist` command of the old
+  `ntpd` multiplied the traffic by several hundred). chrony has no such commands on the network:
+  its command port (UDP 323) only listens on `localhost` by default (`cmdallow` to open it).
+- **Rate limiting**: `ratelimit interval 1 burst 8` limits each client to one reply every
+  2¹ = 2 s on average, with bursts of 8; beyond that, chrony only answers one request in
+  2^`leak` (4 by default). With the option `kod`, it sends **Kiss-o'-Death** packets (KoD, code
+  `RATE`) that ask the client to slow down. `chronyc serverstats` counts the dropped packets.
+- An attacker placed on the path can **delay** the packets in one direction only: no
+  cryptography prevents it; several sources over different paths limit the risk.
+""",
+    "Secondes intercalaires et PTP": "Leap seconds and PTP",
+    """
+
+Une **seconde intercalaire** est ajoutée de temps en temps à UTC pour suivre la rotation de la Terre
+(la dernière fin 2016 ; leur suppression est prévue d'ici 2035). Les serveurs l'annoncent par le
+champ LI ; chrony connaît aussi la liste officielle (`leapseclist`). Plutôt qu'une minute de 61
+secondes, beaucoup préfèrent étaler la seconde sur plusieurs heures (*leap smearing* :
+`leapsecmode slew`, `smoothtime`) ; les serveurs qui étalent ne doivent pas être mélangés aux autres.
+
+Pour la microseconde ou mieux, on utilise **PTP** (IEEE 1588, `linuxptp`) : horodatage par les cartes
+réseau elles-mêmes, commutateurs qui corrigent le temps de traversée, sur un réseau local seulement.
+chrony sait aussi utiliser l'horodatage matériel des cartes (`hwtimestamp`).
+""": """
+
+A **leap second** is added to UTC from time to time to follow the rotation of the Earth (the last
+one at the end of 2016; their abolition is planned by 2035). The servers announce it with the LI
+field; chrony also knows the official list (`leapseclist`). Rather than a minute of 61 seconds,
+many prefer to spread the second over several hours (*leap smearing*: `leapsecmode slew`,
+`smoothtime`); servers that smear must not be mixed with the others.
+
+For a microsecond or better, **PTP** is used (IEEE 1588, `linuxptp`): timestamping by the network
+cards themselves, switches that correct the transit time, on a local network only. chrony can also
+use the hardware timestamping of the cards (`hwtimestamp`).
+""",
+    "Aide-mémoire": "Cheat sheet",
+    """
+
+| quoi | commande |
+|------|----------|
+| état et source choisie | `chronyc tracking`, `chronyc sources -v` |
+| détail d'une source | `chronyc ntpdata <adresse>` |
+| appliquer la configuration | `systemctl restart chrony` |
+| la configuration lue | `chronyd -p` |
+| les erreurs de chronyd | `tail {log}` |
+| mesurer sans configurer | `chronyd -Q 'server <hôte> iburst'` |
+| attendre la synchronisation | `chronyc waitsync 30 0 0 1` |
+| voir les paquets | `tcpdump -v -n udp port 123` |
+| clients d'un serveur | `chronyc clients`, `chronyc serverstats` |
+| authentification | `chronyc authdata` |
+| une clé | `chronyc keygen 10 SHA256 256` |
+| un certificat | `openssl x509 -in fichier.crt -noout -subject -issuer -dates` |
+""": """
+
+| what | command |
+|------|----------|
+| state and selected source | `chronyc tracking`, `chronyc sources -v` |
+| details of a source | `chronyc ntpdata <address>` |
+| apply the configuration | `systemctl restart chrony` |
+| the configuration as read | `chronyd -p` |
+| the errors of chronyd | `tail {log}` |
+| measure without configuring | `chronyd -Q 'server <host> iburst'` |
+| wait for the synchronisation | `chronyc waitsync 30 0 0 1` |
+| see the packets | `tcpdump -v -n udp port 123` |
+| clients of a server | `chronyc clients`, `chronyc serverstats` |
+| authentication | `chronyc authdata` |
+| a key | `chronyc keygen 10 SHA256 256` |
+| a certificate | `openssl x509 -in file.crt -noout -subject -issuer -dates` |
+""",
+    "Partie 1 : solution (formulaire seulement)": "Part 1: solution (form only)",
+    "Partie 2 : solution (border et les serveurs publics)": "Part 2: solution (border and the public servers)",
+    "Partie 3 : solution (ts1, pc1, pc2)": "Part 3: solution (ts1, pc1, pc2)",
+    "Partie 4 : solution (clé symétrique ts2 / cam1)": "Part 4: solution (symmetric key ts2 / cam1)",
+    "Partie 5 : solution (NTS ts3 / web1)": "Part 5: solution (NTS ts3 / web1)",
+    "Partie 6 : solution (dépannage de legacy)": "Part 6: solution (troubleshooting legacy)",
+    "Bonus : solution (border sert Internet, débit limité)": "Bonus: solution (border serves the Internet, rate limited)",
+    "Solution de référence : toutes les parties et le bonus, formulaires remplis.": "Reference solution: every part and the bonus, forms filled.",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente NTP, la sélection des sources, chrony, l'authentification
+et NTS. Vous organisez la distribution de l'heure dans l'entreprise `{domain}`.
+
+**Les réseaux et les machines** (les noms courts et complets sont connus de toutes, dans `/etc/hosts` ;
+le routeur `edge` relie les cinq réseaux, chaque machine a sa route par défaut vers lui).
+
+| réseau | adresse | machines |
+|--------|---------|----------|
+| `wan` (Internet) | {wan} | `internet` : quatre serveurs NTP publics (ci-dessous) ; pas de terminal |
+| `srv` (serveurs) | {srv} | `gps` ({gps}) : une horloge GPS de strate 1, sans terminal ; `border` ({border}), `ts1` ({ts1}) |
+| `lan` (bureaux) | {lan} | `pc1`, `pc2`, `legacy` |
+| `iot` (caméras) | {iot} | `ts2` ({ts2}), `cam1` |
+| `dmz` (serveurs publics) | {dmz} | `ts3` ({ts3}), `web1` |
+
+**Les serveurs publics**, accessibles par `edge` :
+
+| nom | adresse |
+|-----|---------|
+| `ntp1.{pub}` | {ntp1} |
+| `ntp2.{pub}` | {ntp2} |
+| `ntp3.{pub}` | {ntp3} |
+| `ntp4.{pub}` | {ntp4} |
+
+**Votre instance.** La caméra `cam1` partage avec son serveur la clé numéro **{key_id}**, de type
+`{hash}`, de valeur :
+
+```
+HEX:{secret}
+```
+
+Sur chaque machine, chrony est installé avec la configuration de Debian, sans sa ligne `pool` (pas
+d'accès à Internet ici) ; `chronyd` tourne sans aucune source. Il est lancé avec l'option `-x` et
+écrit ses messages dans `{log}` (section @@ref:container@@). Écrivez vos réglages dans un fichier de
+`/etc/chrony/conf.d/` (par exemple `lab.conf`), appliquez avec `systemctl restart chrony`, et attendez
+une dizaine de secondes avant de regarder `chronyc sources` ou de lancer l'évaluation.
+
+Les réponses et le comportement de vos machines sont évalués automatiquement (bouton d'évaluation) :
+l'évaluation lit `chronyc` sur les clients et les serveurs, et interroge les serveurs depuis une machine
+cachée, qui a une adresse dans `lan`, `srv`, `iot`, `dmz` et deux dans `wan`.
+""": """
+Read the **Informations** tab: it presents NTP, the selection of sources, chrony, authentication
+and NTS. You organise the distribution of the time in the company `{domain}`.
+
+**The networks and the machines** (the short and full names are known to all of them, in
+`/etc/hosts`; the router `edge` joins the five networks, every machine has its default route
+towards it).
+
+| network | address | machines |
+|--------|---------|----------|
+| `wan` (Internet) | {wan} | `internet`: four public NTP servers (below); no terminal |
+| `srv` (servers) | {srv} | `gps` ({gps}): a stratum 1 GPS clock, without a terminal; `border` ({border}), `ts1` ({ts1}) |
+| `lan` (offices) | {lan} | `pc1`, `pc2`, `legacy` |
+| `iot` (cameras) | {iot} | `ts2` ({ts2}), `cam1` |
+| `dmz` (public servers) | {dmz} | `ts3` ({ts3}), `web1` |
+
+**The public servers**, reachable through `edge`:
+
+| name | address |
+|-----|---------|
+| `ntp1.{pub}` | {ntp1} |
+| `ntp2.{pub}` | {ntp2} |
+| `ntp3.{pub}` | {ntp3} |
+| `ntp4.{pub}` | {ntp4} |
+
+**Your instance.** The camera `cam1` shares with its server the key number **{key_id}**, of type
+`{hash}`, whose value is:
+
+```
+HEX:{secret}
+```
+
+On every machine, chrony is installed with Debian's configuration, without its `pool` line (no
+Internet access here); `chronyd` runs without any source. It is started with the option `-x` and
+writes its messages to `{log}` (section @@ref:container@@). Write your settings in a file of
+`/etc/chrony/conf.d/` (for example `lab.conf`), apply them with `systemctl restart chrony`, and wait
+about ten seconds before looking at `chronyc sources` or starting the evaluation.
+
+The answers and the behaviour of your machines are graded automatically (evaluation button): the
+evaluation reads `chronyc` on the clients and the servers, and queries the servers from a hidden
+machine, which has an address in `lan`, `srv`, `iot`, `dmz` and two in `wan`.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les valeurs de ce
+projet. Les états `solve_part1` à `solve_part6` et `solve_bonus` appliquent la solution d'une partie,
+`final` toutes (environ 20 s : il attend la synchronisation des serveurs puis de leurs clients) ; ils
+remplissent les formulaires.
+
+- Rôles des serveurs publics : `{gps_role}` strate 1 (GPS), `{secondary}` strate 2, `{false}`
+  faux-ticker ({offset:+d} s), `{unsync}` non synchronisé (LI = 3, strate 16). Ce sont, comme `gps`,
+  des serveurs factices (`ntp_probe.py serve`).
+- Pannes de `legacy` : {faults}.
+- L'évaluation, en une étape : `chronyc -c -n tracking / sources / authdata` sur `border`, `ts1`
+  (et `chronyd -p`), `pc1`, `pc2`, `cam1`, `web1`, `legacy` ; depuis la machine cachée, des requêtes NTP
+  vers `ts1` (depuis `lan`, `srv`, `dmz`) et `border` (depuis `wan`), `chronyd -Q` vers `ts2` avec la
+  bonne clé et une mauvaise, vers `ts3` en NTS, et une rafale de {burst} requêtes vers `border` depuis
+  une seconde adresse de `wan`.
+""": """
+**For the instructor.** Each question ends with its solution, computed for the values of this
+project. The states `solve_part1` to `solve_part6` and `solve_bonus` apply the solution of one part,
+`final` all of them (about 20 s: it waits for the servers, then their clients, to synchronise); they
+fill in the forms.
+
+- Roles of the public servers: `{gps_role}` stratum 1 (GPS), `{secondary}` stratum 2, `{false}`
+  falseticker ({offset:+d} s), `{unsync}` unsynchronised (LI = 3, stratum 16). Like `gps`, they are
+  fake servers (`ntp_probe.py serve`).
+- Faults of `legacy`: {faults}.
+- The evaluation, in one step: `chronyc -c -n tracking / sources / authdata` on `border`, `ts1`
+  (and `chronyd -p`), `pc1`, `pc2`, `cam1`, `web1`, `legacy`; from the hidden machine, NTP requests
+  to `ts1` (from `lan`, `srv`, `dmz`) and `border` (from `wan`), `chronyd -Q` to `ts2` with the
+  right key and a wrong one, to `ts3` with NTS, and a burst of {burst} requests to `border` from
+  a second address in `wan`.
+""",
+    "Partie 1 — L'échange NTP": "Part 1 — The NTP exchange",
+    "Les quatre horodatages, la strate, la précision": "The four timestamps, the stratum, the precision",
+    """
+Sections @@ref:hierarchy@@ et @@ref:packet@@.
+
+1. Un client a relevé cet échange avec un serveur (T1 et T4 sur l'horloge du client, T2 et T3 sur
+   celle du serveur) :
+
+   | T1 | T2 | T3 | T4 |
+   |----|----|----|----|
+   | {t1} | {t2} | {t3} | {t4} |
+
+   Calculez le délai aller-retour et le décalage de l'horloge du serveur par rapport à celle du
+   client, en millisecondes (positif si le serveur est en avance).
+2. Sur `pc1`, capturez les paquets NTP (`tcpdump -v -n udp port 123`) pendant que vous interrogez
+   l'horloge GPS sans rien configurer : `chronyd -Q 'server gps.{domain} iburst'`. Lisez la précision
+   que `gps` annonce.
+""": """
+Sections @@ref:hierarchy@@ and @@ref:packet@@.
+
+1. A client recorded this exchange with a server (T1 and T4 on the client's clock, T2 and T3 on
+   the server's):
+
+   | T1 | T2 | T3 | T4 |
+   |----|----|----|----|
+   | {t1} | {t2} | {t3} | {t4} |
+
+   Compute the round-trip delay and the offset of the server's clock relative to the client's, in
+   milliseconds (positive if the server is ahead).
+2. On `pc1`, capture the NTP packets (`tcpdump -v -n udp port 123`) while you query the GPS clock
+   without configuring anything: `chronyd -Q 'server gps.{domain} iburst'`. Read the precision
+   that `gps` announces.
+""",
+    """
+**Solution.** δ = (T4 − T1) − (T3 − T2) = {rtt} − {proc} = **{delay} ms** ;
+θ = ((T2 − T1) + (T3 − T4)) / 2 = ({a} + {b}) / 2 = **{offset} ms**. La précision se lit dans la
+réponse de `gps` (`precision {precision}`), ou avec `chronyc ntpdata`.
+""": """
+**Solution.** δ = (T4 − T1) − (T3 − T2) = {rtt} − {proc} = **{delay} ms**;
+θ = ((T2 − T1) + (T3 − T4)) / 2 = ({a} + {b}) / 2 = **{offset} ms**. The precision is read in the
+reply of `gps` (`precision {precision}`), or with `chronyc ntpdata`.
+""",
+    """
+**Questions.**
+
+- délai aller-retour (ms) : @@{delay:-?[0-9]+}@@
+- décalage du serveur (ms, négatif s'il est en retard) : @@{offset:[-−]?[0-9]+}@@
+- strate d'un serveur synchronisé sur un serveur de strate 2 : @@{stratum:[0-9]+}@@
+- port UDP de NTP : @@{port:[0-9]+}@@
+- année de l'origine des horodatages NTP : @@{epoch:[0-9]+}@@
+- précision annoncée par `gps` (l'exposant, un entier négatif) : @@{precision:[-−]?[0-9]+}@@
+""": """
+**Questions.**
+
+- round-trip delay (ms): @@{delay:-?[0-9]+}@@
+- offset of the server (ms, negative if it is behind): @@{offset:[-−]?[0-9]+}@@
+- stratum of a server synchronised to a stratum 2 server: @@{stratum:[0-9]+}@@
+- UDP port of NTP: @@{port:[0-9]+}@@
+- year of the origin of NTP timestamps: @@{epoch:[0-9]+}@@
+- precision announced by `gps` (the exponent, a negative integer): @@{precision:[-−]?[0-9]+}@@
+""",
+    """
+**Réponses.** {delay} ; {offset} ; 3 ; 123 ; 1900 ; {precision}.
+""": """
+**Answers.** {delay}; {offset}; 3; 123; 1900; {precision}.
+""",
+    "calcul du décalage": "offset calculation",
+    "calcul du délai": "delay calculation",
+    "strate": "stratum",
+    "port de NTP": "NTP port",
+    "origine des horodatages": "origin of the timestamps",
+    "précision de gps": "precision of gps",
+    "Partie 2 — Plusieurs sources, un faux-ticker": "Part 2 — Several sources, one falseticker",
+    "Synchroniser border sur les serveurs publics": "Synchronising border to the public servers",
+    """
+Sections @@ref:selection@@ à @@ref:chronyc@@. `border` est le seul serveur de l'entreprise autorisé à
+interroger Internet.
+
+1. Configurez `border` pour qu'il utilise **les quatre serveurs publics** `ntp1.{pub}` à
+   `ntp4.{pub}` (et eux seuls), avec démarrage rapide ;
+2. observez la sélection : `chronyc sources -v`, `chronyc ntpdata`, `chronyc tracking`. Un des
+   serveurs donne une heure fausse, un autre n'est pas synchronisé : `border` doit les écarter
+   d'eux-mêmes et se synchroniser sur un des deux autres.
+""": """
+Sections @@ref:selection@@ to @@ref:chronyc@@. `border` is the only server of the company allowed
+to query the Internet.
+
+1. Configure `border` so that it uses **the four public servers** `ntp1.{pub}` to `ntp4.{pub}`
+   (and only them), with a fast start;
+2. observe the selection: `chronyc sources -v`, `chronyc ntpdata`, `chronyc tracking`. One of the
+   servers gives a wrong time, another one is not synchronised: `border` must discard them by
+   itself and synchronise to one of the other two.
+""",
+    """
+**Solution.** `/etc/chrony/conf.d/sources.conf` sur `border` :
+
+```
+{conf}```
+
+puis `systemctl restart chrony`. `chronyc sources` montre `{false}` en `x`, `{unsync}` en `?`
+(Reach 0, strate 0), la source choisie en `*`. Le « Last sample » de `{false}` vaut {neg:+d} s : c'est
+le décalage de l'horloge de `border` par rapport à lui, de signe opposé ; `chronyc ntpdata` donne
+l'offset de la source elle-même, {offset:+d} s.
+""": """
+**Solution.** `/etc/chrony/conf.d/sources.conf` on `border`:
+
+```
+{conf}```
+
+then `systemctl restart chrony`. `chronyc sources` shows `{false}` as `x`, `{unsync}` as `?`
+(Reach 0, stratum 0), the selected source as `*`. The "Last sample" of `{false}` is {neg:+d} s: it
+is the offset of the clock of `border` relative to it, with the opposite sign; `chronyc ntpdata`
+gives the offset of the source itself, {offset:+d} s.
+""",
+    """
+**Questions.**
+
+- serveur dont l'heure est fausse : @@{false_server:.+}@@
+- de combien de secondes son horloge avance-t-elle sur la bonne heure (négatif si elle retarde,
+  à une seconde près) : @@{false_offset:[-−]?[0-9.,]+}@@
+- serveur qui n'est pas synchronisé : @@{unsync_server:.+}@@
+""": """
+**Questions.**
+
+- server whose time is wrong: @@{false_server:.+}@@
+- by how many seconds is its clock ahead of the right time (negative if it is behind, to within
+  one second): @@{false_offset:[-−]?[0-9.,]+}@@
+- server that is not synchronised: @@{unsync_server:.+}@@
+""",
+    "les quatre serveurs publics sont des sources de border": "the four public servers are sources of border",
+    "border est synchronisé sur un bon serveur": "border is synchronised to a good server",
+    "le faux-ticker est écarté": "the falseticker is discarded",
+    "le serveur à l'heure fausse": "the server with the wrong time",
+    "son avance (signe compris)": "how far it is ahead (sign included)",
+    "le serveur non synchronisé": "the unsynchronised server",
+    "Partie 3 — Le serveur de l'entreprise": "Part 3 — The company's server",
+    "ts1 sert l'heure aux bureaux": "ts1 serves the time to the offices",
+    """
+Section @@ref:serve@@.
+
+1. Sur `ts1`, utilisez l'horloge `gps.{domain}` comme source ;
+2. servez l'heure aux réseaux **`srv`** ({srv}) et **`lan`** ({lan}), et à eux seuls ;
+3. si l'horloge GPS tombe en panne, `ts1` doit continuer à servir sa propre heure, en strate
+   **{local}** ;
+4. sur `pc1` et `pc2`, utilisez `ts1.{domain}`.
+
+Vérifiez sur `ts1` avec `chronyc clients`.
+""": """
+Section @@ref:serve@@.
+
+1. On `ts1`, use the clock `gps.{domain}` as a source;
+2. serve the time to the networks **`srv`** ({srv}) and **`lan`** ({lan}), and to them only;
+3. if the GPS clock fails, `ts1` must keep serving its own time, at stratum
+   **{local}**;
+4. on `pc1` and `pc2`, use `ts1.{domain}`.
+
+Check on `ts1` with `chronyc clients`.
+""",
+    """
+**Solution.** `/etc/chrony/conf.d/lab.conf` sur `ts1` :
+
+```
+{ts1}```
+
+sur `pc1` et `pc2` :
+
+```
+{pc}```
+
+puis `systemctl restart chrony` (sur `ts1` d'abord : un client qui démarre avant que son serveur soit
+synchronisé reçoit des réponses LI = 3 et ne réessaie qu'au bout de 64 s).
+""": """
+**Solution.** `/etc/chrony/conf.d/lab.conf` on `ts1`:
+
+```
+{ts1}```
+
+on `pc1` and `pc2`:
+
+```
+{pc}```
+
+then `systemctl restart chrony` (on `ts1` first: a client that starts before its server is
+synchronised receives LI = 3 replies and only tries again after 64 s).
+""",
+    "ts1 est synchronisé sur gps": "ts1 is synchronised to gps",
+    "ts1 sert le réseau lan": "ts1 serves the lan network",
+    "ts1 sert le réseau srv": "ts1 serves the srv network",
+    "ts1 ne répond pas aux autres réseaux": "ts1 does not answer the other networks",
+    "ts1 sert sa propre horloge en strate 10 sans source": "ts1 serves its own clock at stratum 10 without a source",
+    "{m} est synchronisé sur ts1": "{m} is synchronised to ts1",
+    "Partie 4 — Authentifier par clé symétrique": "Part 4 — Authenticating with a symmetric key",
+    "ts2 et la caméra cam1": "ts2 and the camera cam1",
+    """
+Section @@ref:keys@@. La caméra `cam1` n'accepte que l'heure d'un serveur qui connaît sa clé (numéro
+{key_id}, donnée dans l'organisation du TP).
+
+1. Sur `ts2`, utilisez `gps.{domain}` comme source, servez le réseau `iot` ({iot}), et installez la clé ;
+2. sur `cam1`, utilisez `ts2.{domain}` **en exigeant la clé**.
+
+Vérifiez sur `cam1` avec `chronyc authdata` et `chronyc ntpdata`. Que montre `chronyc sources` si les
+deux valeurs de la clé diffèrent ?
+""": """
+Section @@ref:keys@@. The camera `cam1` only accepts the time from a server that knows its key
+(number {key_id}, given in the organisation of the lab).
+
+1. On `ts2`, use `gps.{domain}` as a source, serve the network `iot` ({iot}), and install the key;
+2. on `cam1`, use `ts2.{domain}` **requiring the key**.
+
+Check on `cam1` with `chronyc authdata` and `chronyc ntpdata`. What does `chronyc sources` show if
+the two values of the key differ?
+""",
+    """
+**Solution.** Sur `ts2` et sur `cam1`, `/etc/chrony/chrony.keys` (propriétaire `root:_chrony`, mode
+640) :
+
+```
+{keys}```
+
+`/etc/chrony/conf.d/lab.conf` sur `ts2` :
+
+```
+{ts2}```
+
+et sur `cam1` :
+
+```
+{cam1}```
+
+puis `systemctl restart chrony`, `ts2` d'abord. Avec une valeur différente, la source reste à `?`
+(Reach 0) : `cam1` rejette les réponses dont le code d'authentification est faux.
+""": """
+**Solution.** On `ts2` and on `cam1`, `/etc/chrony/chrony.keys` (owner `root:_chrony`, mode
+640):
+
+```
+{keys}```
+
+`/etc/chrony/conf.d/lab.conf` on `ts2`:
+
+```
+{ts2}```
+
+and on `cam1`:
+
+```
+{cam1}```
+
+then `systemctl restart chrony`, `ts2` first. With a different value, the source stays at `?`
+(Reach 0): `cam1` rejects the replies whose authentication code is wrong.
+""",
+    "ts2 répond aux requêtes signées avec la clé": "ts2 answers the requests signed with the key",
+    "une autre valeur de la clé est rejetée": "another value of the key is rejected",
+    "cam1 est synchronisé sur ts2 avec la clé": "cam1 is synchronised to ts2 with the key",
+    "Partie 5 — NTS": "Part 5 — NTS",
+    "ts3 et web1 en NTS": "ts3 and web1 with NTS",
+    """
+Section @@ref:nts@@. Le certificat de `ts3`, au nom `ts3.{domain}`, et sa clé sont dans `{cert}` et
+`{key}` ; le certificat de l'autorité de l'entreprise est sur `web1` dans `{ca}`.
+
+1. Sur `ts3`, utilisez `gps.{domain}` comme source, servez le réseau `dmz` ({dmz}), et activez le
+   serveur NTS ;
+2. sur `web1`, utilisez `ts3.{domain}` **en NTS**.
+
+Vérifiez sur `web1` avec `chronyc authdata` ; en cas d'échec, lisez `{log}` sur les deux machines.
+""": """
+Section @@ref:nts@@. The certificate of `ts3`, in the name `ts3.{domain}`, and its key are in `{cert}` and
+`{key}`; the certificate of the company's authority is on `web1` in `{ca}`.
+
+1. On `ts3`, use `gps.{domain}` as a source, serve the network `dmz` ({dmz}), and enable the
+   NTS server;
+2. on `web1`, use `ts3.{domain}` **with NTS**.
+
+Check on `web1` with `chronyc authdata`; if it fails, read `{log}` on both machines.
+""",
+    """
+**Solution.** Sur `ts3` : `chgrp _chrony {key} && chmod 640 {key}` (la clé était lisible par root
+seulement : l'établissement TLS échouait), et `/etc/chrony/conf.d/lab.conf` :
+
+```
+{ts3}```
+
+sur `web1` :
+
+```
+{web1}```
+
+puis `systemctl restart chrony`, `ts3` d'abord. `chronyc authdata` sur `web1` : mode `NTS`, 8 cookies
+(`Cook`).
+""": """
+**Solution.** On `ts3`: `chgrp _chrony {key} && chmod 640 {key}` (the key was readable by root
+only: the TLS establishment failed), and `/etc/chrony/conf.d/lab.conf`:
+
+```
+{ts3}```
+
+on `web1`:
+
+```
+{web1}```
+
+then `systemctl restart chrony`, `ts3` first. `chronyc authdata` on `web1`: mode `NTS`, 8 cookies
+(`Cook`).
+""",
+    """
+Port TCP de l'établissement des clés NTS (NTS-KE) : @@{nts_port:[0-9]+}@@
+""": """
+TCP port of the NTS key establishment (NTS-KE): @@{nts_port:[0-9]+}@@
+""",
+    "ts3 sert l'heure en NTS": "ts3 serves the time with NTS",
+    "web1 est synchronisé sur ts3 en NTS": "web1 is synchronised to ts3 with NTS",
+    "port de NTS-KE": "NTS-KE port",
+    "Partie 6 — Dépannage": "Part 6 — Troubleshooting",
+    "Réparer legacy": "Repairing legacy",
+    """
+Sections @@ref:container@@ et @@ref:chronyc@@. `legacy`, une vieille machine du réseau `lan`, doit se
+synchroniser directement sur l'horloge `gps.{domain}`. Son ancien administrateur a laissé **trois
+erreurs** : une qui empêche `chronyd` de fonctionner, une qui empêche les paquets d'arriver, une qui
+empêche de choisir la source. Trouvez-les et corrigez-les, sans réinstaller.
+
+Pistes : `{log}`, `chronyd -p`, `chronyc sources`, `chronyc ntpdata`, `nft list ruleset`,
+`tcpdump -n udp port 123`.
+""": """
+Sections @@ref:container@@ and @@ref:chronyc@@. `legacy`, an old machine of the network `lan`, must
+synchronise directly to the clock `gps.{domain}`. Its former administrator left **three
+errors**: one that prevents `chronyd` from working, one that prevents the packets from arriving, one
+that prevents the source from being chosen. Find them and fix them, without reinstalling.
+
+Hints: `{log}`, `chronyd -p`, `chronyc sources`, `chronyc ntpdata`, `nft list ruleset`,
+`tcpdump -n udp port 123`.
+""",
+    """
+**Solution.** Les erreurs de ce projet :
+
+""": """
+**Solution.** The errors of this project:
+
+""",
+    """
+Une solution complète : `DAEMON_OPTS="{opts}"` dans `{defaults}`, `server gps.{domain} iburst` seul dans
+`{sources}`, `rm {conf}`, `nft delete table inet filter` (et `/etc/nftables.conf`), puis
+`systemctl restart chrony`.
+""": """
+A complete solution: `DAEMON_OPTS="{opts}"` in `{defaults}`, `server gps.{domain} iburst` alone in
+`{sources}`, `rm {conf}`, `nft delete table inet filter` (and `/etc/nftables.conf`), then
+`systemctl restart chrony`.
+""",
+    "chronyd fonctionne sur legacy": "chronyd is running on legacy",
+    "gps répond à legacy": "gps answers legacy",
+    "legacy est synchronisé sur gps": "legacy is synchronised to gps",
+    "Bonus — Un serveur public": "Bonus — A public server",
+    "border sert Internet, avec une limite de débit": "border serves the Internet, with a rate limit",
+    """
+Section @@ref:security@@. L'entreprise participe au pool public : `border` sert aussi le réseau `wan`
+({wan}). Pour ne pas servir d'arme d'amplification, limitez chaque client à une réponse toutes les
+{every} s en moyenne (`interval {interval}`), avec des rafales de **{burst}** au plus. La partie 2 doit
+rester valable.
+
+Vérifiez avec `chronyc serverstats` (l'évaluation envoie une rafale de {count} requêtes).
+""": """
+Section @@ref:security@@. The company takes part in the public pool: `border` also serves the
+network `wan` ({wan}). So as not to become an amplification weapon, limit each client to one reply
+every {every} s on average (`interval {interval}`), with bursts of **{burst}** at most. Part 2 must
+remain valid.
+
+Check with `chronyc serverstats` (the evaluation sends a burst of {count} requests).
+""",
+    """
+**Solution.** `/etc/chrony/conf.d/public.conf` sur `border` :
+
+```
+{conf}```
+
+puis `systemctl restart chrony`. Sans limite, les {count} requêtes ont toutes une réponse ; avec, une
+dizaine. Réponse : Kiss-o'-Death (KoD).
+""": """
+**Solution.** `/etc/chrony/conf.d/public.conf` on `border`:
+
+```
+{conf}```
+
+then `systemctl restart chrony`. Without a limit, the {count} requests all get a reply; with it,
+about ten. Answer: Kiss-o'-Death (KoD).
+""",
+    """
+Nom du paquet par lequel un serveur NTP demande à un client de ralentir : @@{kod:.+}@@
+""": """
+Name of the packet by which an NTP server asks a client to slow down: @@{kod:.+}@@
+""",
+    "border répond au réseau wan": "border answers the wan network",
+    "une rafale de requêtes est limitée": "a burst of requests is limited",
+    "le paquet KoD": "the KoD packet",
+    "- `nox` : `-x` manque dans `DAEMON_OPTS` (`{defaults}`) ; `chronyd` s'arrête au démarrage (`adjtimex(0x8001) failed : Operation not permitted` dans `{log}`).": "- `nox`: `-x` is missing from `DAEMON_OPTS` (`{defaults}`); `chronyd` stops at start-up (`adjtimex(0x8001) failed : Operation not permitted` in `{log}`).",
+    "- `syntax` : `{conf}` contient la directive inconnue `serveur` ; `chronyd` refuse de démarrer (`Fatal error : Invalid directive at line 2` dans `{log}`).": "- `syntax`: `{conf}` contains the unknown directive `serveur`; `chronyd` refuses to start (`Fatal error : Invalid directive at line 2` in `{log}`).",
+    "- `port` : la ligne de `{sources}` vise le port {port} : aucune réponse (Reach 0).": "- `port`: the line of `{sources}` targets port {port}: no reply (Reach 0).",
+    "- `nft` : la table `inet filter` (chargée depuis `/etc/nftables.conf`) jette les paquets UDP vers le port 123 en sortie : aucune réponse (Reach 0).": "- `nft`: the table `inet filter` (loaded from `/etc/nftables.conf`) drops the outgoing UDP packets to port 123: no reply (Reach 0).",
+    "- `noselect` : l'option de la ligne de `{sources}` interdit de choisir la source (`?`).": "- `noselect`: the option of the line of `{sources}` forbids choosing the source (`?`).",
+    "- `minsources` : `minsources 2` dans `{conf}`, avec une seule source : jamais de synchronisation (`-`).": "- `minsources`: `minsources 2` in `{conf}`, with a single source: never any synchronisation (`-`).",
+    "- `maxdistance` : `maxdistance 0.00001` dans `{conf}` : la source est trop « loin » (`?`).": "- `maxdistance`: `maxdistance 0.00001` in `{conf}`: the source is too \"far\" (`?`).",
+}}

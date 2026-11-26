@@ -29,6 +29,7 @@ from ipaddress import IPv4Address, IPv4Interface, IPv4Network
 from typing import Dict, List
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks
@@ -851,32 +852,36 @@ Le chemin d'une route d'un site à l'autre, étape par étape :
             self.file(r, "/etc/frr/frr.conf", self._frr_conf(r), permissions=0o640, owner="frr:frr")
             self.cmd(r, "systemctl start frr", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (L3VPN)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (L3VPN)", en="Part 1: solution (L3VPN)"))
     def solve_l3(self):
         self._apply_mixed(self.solution_l3())
         self.cmd('l3_pe1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (eBGP entre PE et CE)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (eBGP entre PE et CE)",
+                                                 en="Part 2: solution (eBGP between PE and CE)"))
     def solve_ce(self):
         self._apply(self.solution_ce())
         self.cmd('ce_pe1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (extranet)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (extranet)", en="Part 3: solution (extranet)"))
     def solve_ex(self):
         self._apply(self.solution_ex())
         self.cmd('ex_pe1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (ingénierie de trafic)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (ingénierie de trafic)",
+                                                 en="Part 4: solution (traffic engineering)"))
     def solve_te(self):
         self._apply(self.solution_te())
         self.cmd('te_pe1', "sleep 3", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (dépannage)"))
+    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (dépannage)",
+                                                 en="Part 5: solution (troubleshooting)"))
     def solve_fix(self):
         self._apply_fix()
         self.cmd('fix_pe1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 6 : solution (VPN sur segment routing, bonus)"))
+    @sre_state(user_allowed=False, description=tr("Partie 6 : solution (VPN sur segment routing, bonus)",
+                                                 en="Part 6: solution (VPN over segment routing, bonus)"))
     def solve_sv(self):
         self._apply(self.solution_sv())
         self.cmd('sv_pe1', f"sleep {CONVERGE_WAIT}", step=2)
@@ -918,23 +923,46 @@ def _rts(s) -> List[str]:
     return sorted(set(re.findall(r'\d+:\d+', str(s or ''))))
 
 
-def _vtysh_text(solution: Dict[str, List[str]]) -> str:
+def _colon(lang: str) -> str:
+    """The colon after the name of a router in a solution (French typography in French)."""
+    return " :" if lang == 'fr' else ":"
+
+
+def _vtysh_text(solution: Dict[str, List[str]], lang: str = 'fr') -> str:
     blocks = []
     for router, cmds in solution.items():
         body = "\n".join(["configure terminal"] + [f" {c}" for c in cmds] + ["end", "write"])
-        blocks.append(f"`{router}` :\n\n```\n{body}\n```")
+        blocks.append(f"`{router}`{_colon(lang)}\n\n```\n{body}\n```")
     return "\n\n".join(blocks)
 
 
-def _mixed_text(solution: Dict[str, Dict[str, List[str]]]) -> str:
+def _mixed_text(solution: Dict[str, Dict[str, List[str]]], lang: str = 'fr') -> str:
     blocks = []
     for router, parts in solution.items():
-        text = f"`{router}` :\n\n"
+        text = f"`{router}`{_colon(lang)}\n\n"
         if parts['sh']:
             text += "```\n" + "\n".join(parts['sh']) + "\n```\n\n"
         text += "```\n" + "\n".join(["configure terminal"] + [f" {c}" for c in parts['vtysh']] + ["end", "write"]) + "\n```"
         blocks.append(text)
     return "\n\n".join(blocks)
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value gives one value per language (the rows
+    of the sites table, the solutions)."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
+
+
+def _per_language(make) -> Dict[str, str]:
+    """One value per language of the lab: ``make(lang)`` for French and English."""
+    return {lang: make(lang) for lang in (default_language, 'en')}
+
+
+def _in_language(text, lang: str) -> str:
+    """A tr() text (or a plain string) in *lang*."""
+    return TranslatedText.from_value(text).resolve(lang)
 
 
 def _route_via(routes: Dict[str, Dict], prefix, labels: List[int], gateway) -> bool:
@@ -1018,15 +1046,20 @@ class Grade(Grade0):
         sv_ping = self._ping('sv_a1', ip('sv_a2'))
 
         # ---------------- texts shared by the questions ---------------------------
-        sites = [('l3', "1 — L3VPN", "`l3_pe1`, `l3_p`, `l3_pe2`, les hôtes `l3_a1`, `l3_a2` (client A), `l3_b1`, "
-                                     "`l3_b2` (client B)"),
-                 ('ce', "2 — eBGP entre PE et CE", "`ce_pe1`, `ce_p`, `ce_pe2`, les CE `ce_c1` et `ce_c2` (sans terminal)"),
-                 ('ex', "3 — extranet", "`ex_pe1`, `ex_pe2`, les hôtes `ex_a`, `ex_b`, `ex_s`"),
-                 ('te', "4 — ingénierie de trafic", "`te_pe1`, `te_r2`, `te_r3`, `te_r4`, `te_pe5`, les hôtes `te_h1`, "
-                                                    "`te_h5`"),
-                 ('fix', "5 — dépannage", "`fix_pe1`, `fix_p`, `fix_pe2`, les hôtes `fix_a1`, `fix_a2`"),
-                 ('sv', "6 — VPN sur segment routing (bonus)", "`sv_pe1`, `sv_p`, `sv_pe2`, les hôtes `sv_a1`, `sv_a2`")]
-        site_rows = "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites)
+        sites = [('l3', no_tr("1 — L3VPN"), tr("`l3_pe1`, `l3_p`, `l3_pe2`, les hôtes `l3_a1`, `l3_a2` (client A), "
+                                               "`l3_b1`, `l3_b2` (client B)")),
+                 ('ce', tr("2 — eBGP entre PE et CE"),
+                  tr("`ce_pe1`, `ce_p`, `ce_pe2`, les CE `ce_c1` et `ce_c2` (sans terminal)")),
+                 ('ex', no_tr("3 — extranet"), tr("`ex_pe1`, `ex_pe2`, les hôtes `ex_a`, `ex_b`, `ex_s`")),
+                 ('te', tr("4 — ingénierie de trafic"),
+                  tr("`te_pe1`, `te_r2`, `te_r3`, `te_r4`, `te_pe5`, les hôtes `te_h1`, `te_h5`")),
+                 ('fix', tr("5 — dépannage"), tr("`fix_pe1`, `fix_p`, `fix_pe2`, les hôtes `fix_a1`, `fix_a2`")),
+                 ('sv', tr("6 — VPN sur segment routing (bonus)"),
+                  tr("`sv_pe1`, `sv_p`, `sv_pe2`, les hôtes `sv_a1`, `sv_a2`"))]
+        # one table per language (the part names and the machine lists are translated)
+        site_rows = _per_language(lambda lang: "\n".join(
+            f"| {_in_language(part, lang)} | `{site}_*` | {_in_language(machines, lang)} |"
+            for site, part, machines in sites))
         members: Dict[str, List[str]] = {n: [] for n in list(LINKS) + list(CE_LINKS) + LANS}
         for r, nets in ROUTER_IFACES.items():
             for i, n in enumerate(nets):
@@ -1047,7 +1080,7 @@ class Grade(Grade0):
         self.question_dummy(
             title=tr("Organisation du TP"),
             hash="9255c04097daaa37",
-            description=tr("""
+            description=_by_language(tr("""
 Lisez l'onglet **Informations** : il présente les VPN BGP/MPLS et l'ingénierie de trafic avec le
 segment routing, et leur mise en œuvre avec Linux et FRR. Le TP suppose connus MPLS, LDP et le
 segment routing (TP « MPLS : commutation de labels, LDP et segment routing »).
@@ -1096,7 +1129,7 @@ clients A et B du site `l3` utilisent **les mêmes préfixes**.
 **Évaluation.** Chaque évaluation lit vos réponses, les VRF, l'état de BGP (VPNv4, VRF), les tables
 des VRF et du noyau, puis envoie des `ping` en comptant les paquets étiquetés reçus par certains
 routeurs. Elle dure une quinzaine de secondes.
-""").format(site_rows=site_rows, addressing=addressing, pas=PROVIDER_AS, cas=CUSTOMER_AS, rt_a=rt(d.rt_a),
+"""), site_rows=site_rows, addressing=addressing, pas=PROVIDER_AS, cas=CUSTOMER_AS, rt_a=rt(d.rt_a),
             rt_b=rt(d.rt_b), rt_c=rt(d.rt_c), rt_s=rt(d.rt_s), te_costs=te_costs, te_idx=te_idx, sv_idx=sv_idx)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
@@ -1140,7 +1173,7 @@ interfaces vers des clients : `eth0` vers le client **A** (`l3_a1`, `l3_a2`), `e
    l'adresse de `l3_b2`. Regardez la table VPNv4 (`show bgp ipv4 vpn`), la table de chaque VRF, et
    les labels sur `l3_p` (`tcpdump -nei eth0 mpls`).
 """).format(site1=site1, site2=site2)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1154,7 +1187,7 @@ session VPNv4), `l3_export` (4 : un point par VRF et par PE dont la route arrive
 son RD), `l3_vrf_routes` (4 : un point par VRF et par PE dont le noyau a la route du site distant
 avec deux labels), `l3_ping` (4 : 2 par client), `l3_isolation` (2 : `l3_a1` ne joint pas `l3_b2`) ;
 `l3_q_stack` (1) ; pour l'enseignant seulement : `l3_q_rd`, `l3_q_rt` (1 chacun).
-""").format(solution=_mixed_text(ns.solution_l3()))),
+"""), solution=_per_language(lambda lang: _mixed_text(ns.solution_l3(), lang)))),
         )
         cheat_l3 = {'stack': '2', 'rd': 'rd', 'rt': 'rt'}
         q1 = self.question_form(
@@ -1243,7 +1276,7 @@ session VPNv4 entre les PE sont en place (section @@ref:pe-ce@@).
    chez `ce_c2` ? Pourquoi (`show bgp neighbors` sur le PE, *AS path*) ?
 3. Corrigez sur les PE, sans toucher aux CE, pour que les deux sites se joignent.
 """).format(s1=ce_site1, s2=ce_site2, cas=CUSTOMER_AS)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1254,7 +1287,8 @@ voit son propre AS et la rejette. Avec, l'AS path devient `{pas} {pas}`.
 Évaluation : `ce_sessions` (6 : 3 par session eBGP établie dans la VRF), `ce_routes` (4 : 2 par CE
 qui a la route de l'autre site avec l'AS path `{pas} {pas}`), `ce_ping` (4) ; `ce_q_aspath` (2) ;
 pour l'enseignant seulement : `ce_q_loop`, `ce_q_core` (1 chacun).
-""").format(solution=_vtysh_text(ns.solution_ce()), pas=PROVIDER_AS, cas=CUSTOMER_AS)),
+"""), solution=_per_language(lambda lang: _vtysh_text(ns.solution_ce(), lang)), pas=PROVIDER_AS,
+                cas=CUSTOMER_AS)),
         )
         cheat_ce = {'aspath': f"{PROVIDER_AS} {PROVIDER_AS}", 'loop': 'own_as', 'core': 'none'}
         q2 = self.question_form(
@@ -1324,7 +1358,7 @@ VRF `SERVICES` (le serveur `ex_s`). Chaque VRF exporte et importe pour l'instant
 2. Regardez la table de chaque VRF. Pourquoi `CUST_A` ne reçoit-elle pas les routes de `CUST_B` par
    l'intermédiaire de `SERVICES` ?
 """).format(a=rt(d.rt_a), b=rt(d.rt_b), s=rt(d.rt_s))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1336,7 +1370,7 @@ ne fait pas de pont entre eux.
 `SERVICES` a les deux clients), `ex_ping` (6 : `ex_a` et `ex_b` joignent `ex_s`, puis `ex_a` ne joint
 pas `ex_b`) ; `ex_q_services`, `ex_q_cust_a` (2 chacun) ; pour l'enseignant seulement :
 `ex_q_reexport`, `ex_q_hub` (1 chacun).
-""").format(solution=_vtysh_text(ns.solution_ex()))),
+"""), solution=_per_language(lambda lang: _vtysh_text(ns.solution_ex(), lang)))),
         )
         cheat_ex = {'services': f"{rt(d.rt_s)} {rt(d.rt_a)} {rt(d.rt_b)}", 'cust_a': f"{rt(d.rt_a)} {rt(d.rt_s)}",
                     'reexport': 'no', 'hub': 'hub'}
@@ -1414,7 +1448,7 @@ et index dans l'organisation du TP) ; les réseaux des hôtes sont annoncés dan
    pile la plus courte possible.
 4. Vérifiez avec `tcpdump -nei ethX mpls` sur `te_r3` et `te_r2`.
 """)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1426,7 +1460,7 @@ de `te_pe5` : il suffit de lui envoyer le paquet avec le node-SID de `te_pe1` ({
 Évaluation : `te_out` (4 : la route de `te_pe1`), `te_back` (4 : la route de `te_pe5`), `te_ping`
 (2 : ping entre les hôtes, la route d'aller en place), `te_waypoint` (6 : 3 par sens, des paquets
 étiquetés reçus par `te_r3` pendant le ping) ; `te_q_out` (2), `te_q_back`, `te_q_l34` (1 chacun).
-""").format(solution=_vtysh_text(ns.solution_te()), back=back[0])),
+"""), solution=_per_language(lambda lang: _vtysh_text(ns.solution_te(), lang)), back=back[0])),
         )
         cheat_te = {'out': "/".join(str(x) for x in out), 'back': str(back[0]), 'l34': str(out[1])}
         q4 = self.question_form(
@@ -1496,7 +1530,7 @@ configuration des PE (section @@ref:l3vpn-debug@@).
 Trouvez et corrigez chaque panne sans tout reconfigurer : suivez le chemin d'une route d'un site à
 l'autre, dans les deux sens.
 """).format(a=rt(d.rt_a))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1505,7 +1539,7 @@ l'autre, dans les deux sens.
 `fix_activate` (3 : session VPNv4 activée et établie sur `fix_pe2`), `fix_interface` (3 : `eth0` de
 `fix_pe2` dans la VRF), `fix_ping` (4), `fix_labelled` (2 : `fix_p` reçoit des paquets étiquetés
 pendant le ping) ; pour l'enseignant seulement : `fix_q_label`, `fix_q_interface` (1 chacun).
-""").format(solution=_mixed_text(ns.solution_fix()))),
+"""), solution=_per_language(lambda lang: _mixed_text(ns.solution_fix(), lang)))),
         )
         cheat_fix = {'label': 'not_exported', 'interface': 'main_table'}
         q5 = self.question_form(
@@ -1579,7 +1613,7 @@ pas `sv_a2` (section @@ref:vpn-over-sr@@).
 2. Activez le segment routing dans OSPF sur les trois routeurs (SRGB 16000 à 23999, index donnés
    dans l'organisation du TP), sans toucher à BGP. Regardez à nouveau la route.
 """)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1589,7 +1623,8 @@ deux labels, le node-SID de `sv_pe2` ({sid}) au sommet.
 
 Évaluation (bonus) : `sv_sr` (2 : segment routing sur les trois routeurs, avec les index donnés),
 `sv_stack` (2 : deux labels, le node-SID de `sv_pe2` au sommet), `sv_ping` (2).
-""").format(solution=_vtysh_text(ns.solution_sv()), sid=SRGB_BASE + d.sv_index('sv_pe2'))),
+"""), solution=_per_language(lambda lang: _vtysh_text(ns.solution_sv(), lang)),
+                sid=SRGB_BASE + d.sv_index('sv_pe2'))),
         )
         sr_ok = all(((sv_db[r].get(str(lo(r))) or {}).get('prefixes', {}).get(f"{lo(r)}/32") or {}).get('index')
                     == d.sv_index(r) for r in sv)
@@ -1609,4 +1644,1025 @@ deux labels, le node-SID de `sv_pe2` ({sid}) au sommet.
         )
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "MPLS : VPN BGP/MPLS et ingénierie de trafic segment routing": "MPLS: BGP/MPLS VPNs and segment routing traffic engineering",
+    """
+**Sommaire**
+""": """
+**Contents**
+""",
+    "Le modèle des VPN BGP/MPLS": "The BGP/MPLS VPN model",
+    """
+Un opérateur vend à ses clients un réseau privé entre leurs sites : chaque client croit avoir ses
+propres liaisons, alors que tous partagent le même cœur. Le modèle **BGP/MPLS IP VPN** (RFC 4364,
+« L3VPN ») le réalise ainsi :
+
+- le routeur du client, **CE** (*Customer Edge*), est relié à un routeur de bordure de l'opérateur,
+  **PE** (*Provider Edge*) ; les routeurs du cœur, **P**, ne relient que des routeurs de l'opérateur ;
+- chaque PE range les routes de chaque client dans une **VRF** (*Virtual Routing and Forwarding*) :
+  une table de routage séparée, à laquelle sont attachées les interfaces vers ce client. Deux
+  clients peuvent donc utiliser les mêmes adresses ;
+- les PE s'échangent les routes des VRF par **MP-BGP**, dans la famille **VPNv4** ;
+- les paquets traversent le cœur avec **deux labels** : celui du sommet les mène au PE de sortie
+  (LDP ou segment routing), celui du dessous désigne la VRF de destination.
+
+Les routeurs P ne connaissent ni les clients ni BGP : ils commutent des labels vers les interfaces
+de bouclage des PE (un cœur **sans BGP**). Seuls les PE concernés par un client connaissent ses
+routes.
+""": """
+A provider sells its customers a private network between their sites: each customer believes it has
+its own links, while all of them share the same core. The **BGP/MPLS IP VPN** model (RFC 4364,
+"L3VPN") achieves this as follows:
+
+- the customer's router, the **CE** (*Customer Edge*), is connected to an edge router of the provider,
+  the **PE** (*Provider Edge*); the core routers, **P**, only connect routers of the provider;
+- each PE stores the routes of each customer in a **VRF** (*Virtual Routing and Forwarding*): a
+  separate routing table, to which the interfaces towards that customer are attached. Two
+  customers can therefore use the same addresses;
+- the PEs exchange the routes of the VRFs over **MP-BGP**, in the **VPNv4** family;
+- packets cross the core with **two labels**: the top one takes them to the egress PE (LDP or
+  segment routing), the one underneath designates the destination VRF.
+
+The P routers know neither the customers nor BGP: they switch labels towards the loopback interfaces
+of the PEs (a **BGP-free** core). Only the PEs concerned by a customer know its routes.
+""",
+    "Les VRF sous Linux": "VRFs on Linux",
+    """
+Linux réalise une VRF avec une interface de type `vrf` liée à une table de routage ; les interfaces
+qu'on lui attache (`master`) y mettent leurs routes connectées :
+
+```
+ip link add CUST_A type vrf table 10
+ip link set CUST_A up
+ip link set eth0 master CUST_A
+
+ip -br link show type vrf
+ip route show vrf CUST_A
+ping -I CUST_A 192.168.1.10
+ip vrf exec CUST_A ping 192.168.1.10
+```
+
+Une adresse déjà configurée sur `eth0` est gardée : sa route passe dans la table de la VRF. Une
+interface laissée hors de la VRF reste dans la table principale, que la VRF ignore. FRR découvre
+les VRF du noyau tout seul (`show vrf`) ; il ne les crée pas.
+""": """
+Linux implements a VRF with an interface of type `vrf` bound to a routing table; the interfaces
+attached to it (`master`) put their connected routes there:
+
+```
+ip link add CUST_A type vrf table 10
+ip link set CUST_A up
+ip link set eth0 master CUST_A
+
+ip -br link show type vrf
+ip route show vrf CUST_A
+ping -I CUST_A 192.168.1.10
+ip vrf exec CUST_A ping 192.168.1.10
+```
+
+An address already configured on `eth0` is kept: its route moves into the table of the VRF. An
+interface left outside the VRF stays in the main table, which the VRF ignores. FRR discovers the
+kernel's VRFs by itself (`show vrf`); it does not create them.
+""",
+    "Route distinguisher et route target": "Route distinguisher and route target",
+    """
+Deux attributs, souvent confondus, servent à des choses différentes :
+
+- le **RD** (*Route Distinguisher*, 8 octets, écrit `AS:nombre` ou `adresse:nombre`) est collé
+  devant chaque préfixe exporté : `65000:1:192.168.1.0/24`. Deux clients peuvent ainsi annoncer
+  le même préfixe sans que BGP les confonde. Il **ne dit rien** de la VRF qui importera la route ;
+- la **RT** (*Route Target*) est une communauté étendue : la VRF qui exporte une route lui en
+  attache (ses RT d'**export**), et chaque VRF importe les routes qui portent une de ses RT
+  d'**import**. Les RT décrivent donc la topologie du VPN.
+
+Dans le cas simple (un VPN complet entre les sites d'un client), import et export valent la même
+RT. Les autres topologies (section @@ref:vpn-topologies@@) jouent sur des listes différentes.
+""": """
+Two attributes, often confused, serve different purposes:
+
+- the **RD** (*Route Distinguisher*, 8 bytes, written `AS:number` or `address:number`) is prepended
+  to each exported prefix: `65000:1:192.168.1.0/24`. Two customers can thus announce the same
+  prefix without BGP mixing them up. It **says nothing** about the VRF that will import the route;
+- the **RT** (*Route Target*) is an extended community: the VRF that exports a route attaches some
+  to it (its **export** RTs), and each VRF imports the routes that carry one of its **import** RTs.
+  The RTs therefore describe the topology of the VPN.
+
+In the simple case (a full-mesh VPN between the sites of one customer), import and export are the
+same RT. The other topologies (section @@ref:vpn-topologies@@) use different lists.
+""",
+    "MP-BGP et la famille VPNv4": "MP-BGP and the VPNv4 family",
+    """
+BGP multiprotocole (RFC 4760) transporte d'autres familles qu'IPv4 : une famille est désignée par
+un couple AFI / SAFI, et VPNv4 est **AFI 1 / SAFI 128**. Une route VPNv4 contient le RD, le
+préfixe, le **label VPN** choisi par le PE qui l'annonce et ses RT.
+
+- Les PE forment des sessions **iBGP entre leurs interfaces de bouclage** (`update-source lo`),
+  activées dans la famille VPNv4 ; dans un grand réseau, des *route reflectors* évitent le maillage
+  complet.
+- Le **prochain saut** d'une route VPNv4 est l'interface de bouclage du PE qui l'annonce : pour
+  l'utiliser, un PE doit avoir un **LSP** vers cette adresse (LDP ou segment routing).
+- Un PE n'importe dans une VRF que les routes dont les RT correspondent ; il peut écarter les
+  autres dès la réception.
+""": """
+Multiprotocol BGP (RFC 4760) carries families other than IPv4: a family is identified by an
+AFI / SAFI pair, and VPNv4 is **AFI 1 / SAFI 128**. A VPNv4 route contains the RD, the prefix, the
+**VPN label** chosen by the PE that announces it, and its RTs.
+
+- The PEs form **iBGP sessions between their loopback interfaces** (`update-source lo`), activated
+  in the VPNv4 family; in a large network, *route reflectors* avoid the full mesh.
+- The **next hop** of a VPNv4 route is the loopback interface of the PE that announces it: to use
+  it, a PE must have an **LSP** to that address (LDP or segment routing).
+- A PE only imports into a VRF the routes whose RTs match; it can discard the others as soon as
+  they are received.
+""",
+    "La pile de labels": "The label stack",
+    """
+Un paquet d'un site A1 vers un site A2 du même client :
+
+1. le PE d'entrée cherche la destination dans la VRF de A1 : la route VPN donne le PE de sortie
+   (prochain saut BGP) et le **label VPN** annoncé par ce PE ;
+2. il impose deux labels : en dessous le label VPN, au sommet le **label de transport** vers
+   l'interface de bouclage du PE de sortie (le label LDP de son prochain saut, ou le node-SID) ;
+3. les routeurs P commutent le label de transport ; l'avant-dernier le retire (PHP) ;
+4. le PE de sortie reçoit le label VPN, le retire et cherche la destination dans la VRF qu'il
+   désigne.
+
+Un PE peut allouer un label VPN par préfixe, ou **un seul par VRF** (le PE de sortie fait alors une
+recherche IP dans la VRF) : c'est ce que fait `label vpn export auto` dans FRR. Sous Linux, ce label
+apparaît dans `ip -f mpls route` sous la forme `80 dev CUST_A`, et la route de la VRF du PE
+d'entrée sous la forme `encap mpls 16/80`.
+
+Sans LSP vers le PE de sortie, la route VPN peut quand même être installée avec le seul label
+VPN : le premier routeur P reçoit alors un label qu'il ne connaît pas et jette le paquet.
+""": """
+A packet from a site A1 to a site A2 of the same customer:
+
+1. the ingress PE looks up the destination in the VRF of A1: the VPN route gives the egress PE
+   (BGP next hop) and the **VPN label** announced by that PE;
+2. it pushes two labels: the VPN label at the bottom, and on top the **transport label** towards
+   the loopback interface of the egress PE (the LDP label of its next hop, or the node-SID);
+3. the P routers switch the transport label; the penultimate one pops it (PHP);
+4. the egress PE receives the VPN label, pops it and looks up the destination in the VRF the label
+   designates.
+
+A PE can allocate one VPN label per prefix, or **a single one per VRF** (the egress PE then does an
+IP lookup in the VRF): this is what `label vpn export auto` does in FRR. On Linux, this label
+appears in `ip -f mpls route` as `80 dev CUST_A`, and the route in the VRF of the ingress PE as
+`encap mpls 16/80`.
+
+Without an LSP to the egress PE, the VPN route may still be installed with the VPN label alone: the
+first P router then receives a label it does not know and drops the packet.
+""",
+    "L3VPN avec FRR": "L3VPN with FRR",
+    """
+Sur chaque PE, après avoir créé les VRF dans le noyau :
+
+```
+configure terminal
+router bgp 65000
+ bgp router-id 10.0.15.1
+ no bgp default ipv4-unicast
+ neighbor 10.0.15.3 remote-as 65000
+ neighbor 10.0.15.3 update-source lo
+ address-family ipv4 vpn
+  neighbor 10.0.15.3 activate
+ exit-address-family
+exit
+router bgp 65000 vrf CUST_A
+ address-family ipv4 unicast
+  redistribute connected
+  label vpn export auto
+  rd vpn export 65000:1
+  rt vpn both 65000:1
+  export vpn
+  import vpn
+ exit-address-family
+exit
+end
+write
+```
+
+- `router bgp 65000` : l'instance principale, qui porte la session VPNv4 ;
+- `router bgp 65000 vrf X` : l'instance de la VRF ; `redistribute connected` (ou des sessions
+  avec les CE) remplit sa table BGP ;
+- `label vpn export auto` (sans label, rien n'est exporté), `rd vpn export`, `rt vpn both`
+  (ou `rt vpn import ...` et `rt vpn export ...`, chacun avec une liste), `export vpn` (de la VRF
+  vers VPNv4), `import vpn` (de VPNv4 vers la VRF).
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `show bgp ipv4 vpn summary` | les sessions VPNv4 |
+| `show bgp ipv4 vpn` | la table VPNv4, rangée par RD |
+| `show bgp vrf X ipv4 unicast` | la table BGP de la VRF |
+| `show ip route vrf X` | la table de la VRF vue par zebra, avec les labels |
+| `ip route show vrf X`, `ip -f mpls route` | ce que le noyau a vraiment |
+""": """
+On each PE, after creating the VRFs in the kernel:
+
+```
+configure terminal
+router bgp 65000
+ bgp router-id 10.0.15.1
+ no bgp default ipv4-unicast
+ neighbor 10.0.15.3 remote-as 65000
+ neighbor 10.0.15.3 update-source lo
+ address-family ipv4 vpn
+  neighbor 10.0.15.3 activate
+ exit-address-family
+exit
+router bgp 65000 vrf CUST_A
+ address-family ipv4 unicast
+  redistribute connected
+  label vpn export auto
+  rd vpn export 65000:1
+  rt vpn both 65000:1
+  export vpn
+  import vpn
+ exit-address-family
+exit
+end
+write
+```
+
+- `router bgp 65000`: the main instance, which carries the VPNv4 session;
+- `router bgp 65000 vrf X`: the instance of the VRF; `redistribute connected` (or sessions with the
+  CEs) fills its BGP table;
+- `label vpn export auto` (without a label, nothing is exported), `rd vpn export`, `rt vpn both`
+  (or `rt vpn import ...` and `rt vpn export ...`, each with a list), `export vpn` (from the VRF to
+  VPNv4), `import vpn` (from VPNv4 to the VRF).
+
+| command | what it shows |
+|---------|---------------|
+| `show bgp ipv4 vpn summary` | the VPNv4 sessions |
+| `show bgp ipv4 vpn` | the VPNv4 table, sorted by RD |
+| `show bgp vrf X ipv4 unicast` | the BGP table of the VRF |
+| `show ip route vrf X` | the table of the VRF as zebra sees it, with the labels |
+| `ip route show vrf X`, `ip -f mpls route` | what the kernel really has |
+""",
+    "Le routage entre PE et CE": "Routing between PE and CE",
+    """
+Le PE apprend les réseaux d'un site par des routes statiques, les réseaux connectés ou un
+protocole de routage avec le CE ; **eBGP** est le plus courant : le client a son propre numéro
+d'AS. Sur le PE, la session est déclarée **dans l'instance de la VRF**
+(`router bgp 65000 vrf X`, `neighbor <CE> remote-as <AS du client>`).
+
+Souvent, tous les sites d'un client ont le **même AS**. Une route du site 1 arrive au site 2 avec
+l'AS path `65000 65101` : le CE du site 2 y voit son propre AS et **refuse** la route (détection
+de boucle de BGP). Deux remèdes :
+
+- `neighbor <CE> as-override` sur le PE : il remplace l'AS du client par le sien dans l'AS path
+  annoncé (`65000 65000`) ;
+- `neighbor <PE> allowas-in` sur le CE : il accepte son propre AS.
+
+Quand un site est relié à deux PE, l'as-override peut créer des boucles : la communauté **SoO**
+(*Site of Origin*) marque les routes d'un site pour ne jamais les lui renvoyer. Comme pour toute
+session eBGP, FRR n'échange rien sans politique d'entrée et de sortie (RFC 8212 : des route-maps).
+""": """
+The PE learns the networks of a site through static routes, connected networks or a routing
+protocol with the CE; **eBGP** is the most common: the customer has its own AS number. On the PE,
+the session is declared **in the instance of the VRF** (`router bgp 65000 vrf X`,
+`neighbor <CE> remote-as <customer AS>`).
+
+Often, all the sites of a customer have the **same AS**. A route from site 1 reaches site 2 with the
+AS path `65000 65101`: the CE of site 2 sees its own AS in it and **rejects** the route (BGP loop
+detection). Two remedies:
+
+- `neighbor <CE> as-override` on the PE: it replaces the customer's AS with its own in the announced
+  AS path (`65000 65000`);
+- `neighbor <PE> allowas-in` on the CE: it accepts its own AS.
+
+When a site is connected to two PEs, as-override can create loops: the **SoO** community (*Site of
+Origin*) marks the routes of a site so that they are never sent back to it. As with any eBGP
+session, FRR exchanges nothing without an inbound and an outbound policy (RFC 8212: route-maps).
+""",
+    "Topologies de VPN": "VPN topologies",
+    """
+Les RT d'import et d'export d'une VRF n'ont pas à être égales ; elles dessinent la topologie :
+
+- **VPN complet** : chaque VRF exporte et importe la RT du client ;
+- **extranet** (services partagés) : une VRF de services exporte sa propre RT, que les VRF des
+  clients importent en plus de la leur ; elle importe les RT des clients. Chaque client joint les
+  services, mais pas les autres clients : une route importée dans une VRF n'est **pas ré-exportée**,
+  la VRF de services ne fait donc pas de pont entre eux ;
+- **hub-and-spoke** : les sites (*spokes*) exportent une RT que seul le site central (*hub*)
+  importe, et importent celle du hub : tout le trafic entre sites passe par le hub (un pare-feu,
+  par exemple).
+""": """
+The import and export RTs of a VRF need not be equal; they shape the topology:
+
+- **full-mesh VPN**: each VRF exports and imports the customer's RT;
+- **extranet** (shared services): a services VRF exports its own RT, which the customers' VRFs
+  import in addition to their own; it imports the customers' RTs. Each customer reaches the
+  services, but not the other customers: a route imported into a VRF is **not re-exported**, so the
+  services VRF does not bridge them;
+- **hub-and-spoke**: the sites (*spokes*) export an RT that only the central site (*hub*) imports,
+  and import the hub's: all the traffic between sites goes through the hub (a firewall, for
+  example).
+""",
+    "Ingénierie de trafic avec le segment routing": "Traffic engineering with segment routing",
+    """
+Avec le segment routing, le routeur d'entrée choisit un chemin en imposant une **liste de
+segments** : par exemple le node-SID d'un routeur de passage (*waypoint*), puis le node-SID de la
+destination. Le paquet suit le plus court chemin jusqu'au premier, qui le retire, puis le plus court
+chemin jusqu'au second. Le cœur ne garde aucun état.
+
+- Chaque label se calcule avec le SRGB (base + index) du routeur qui le lira. Avec le même SRGB
+  partout, c'est simplement base + index.
+- Le premier label est lu par le **voisin** auquel on envoie le paquet : on n'impose pas le node-SID
+  d'un voisin direct, que celui-ci retirerait aussitôt (PHP) ; il suffit de l'envoyer vers lui.
+- L'avant-dernier routeur de chaque segment retire son label (PHP) : le dernier routeur reçoit le
+  paquet IP.
+
+Avec FRR, une route statique peut imposer une pile de labels (`staticd`) ; avec le noyau, `ip route
+... encap mpls 16003/16005` :
+
+```
+configure terminal
+ip route 10.1.5.0/24 10.0.0.6 label 16003/16005
+end
+write
+```
+
+À plus grande échelle, des **politiques SR-TE** (démon `pathd` de FRR) calculent ces listes et y
+dirigent le trafic, par exemple selon une couleur portée par les routes BGP.
+""": """
+With segment routing, the ingress router chooses a path by pushing a **segment list**: for example
+the node-SID of a router to pass through (*waypoint*), then the node-SID of the destination. The
+packet follows the shortest path to the first one, which pops it, then the shortest path to the
+second. The core keeps no state.
+
+- Each label is computed with the SRGB (base + index) of the router that will read it. With the
+  same SRGB everywhere, it is simply base + index.
+- The first label is read by the **neighbour** the packet is sent to: you do not push the node-SID
+  of a direct neighbour, which would pop it at once (PHP); sending the packet to it is enough.
+- The penultimate router of each segment pops its label (PHP): the last router receives the IP
+  packet.
+
+With FRR, a static route can push a label stack (`staticd`); with the kernel, `ip route
+... encap mpls 16003/16005`:
+
+```
+configure terminal
+ip route 10.1.5.0/24 10.0.0.6 label 16003/16005
+end
+write
+```
+
+On a larger scale, **SR-TE policies** (FRR's `pathd` daemon) compute these lists and steer the
+traffic into them, for example according to a colour carried by the BGP routes.
+""",
+    "Un VPN sur un cœur segment routing": "A VPN over a segment routing core",
+    """
+Le label de transport d'un L3VPN peut venir du segment routing au lieu de LDP : c'est le
+**node-SID** du PE de sortie. Il suffit d'activer le segment routing dans l'IGP du cœur, avec un
+prefix-SID sur l'interface de bouclage de chaque PE ; aucune ligne de la configuration BGP ne
+change : le PE d'entrée prend le label de la route vers le prochain saut BGP, quelle que soit son
+origine. Le cœur n'a plus besoin de LDP.
+""": """
+The transport label of an L3VPN can come from segment routing instead of LDP: it is the
+**node-SID** of the egress PE. Enabling segment routing in the IGP of the core is enough, with a
+prefix-SID on the loopback interface of each PE; not a single line of the BGP configuration
+changes: the ingress PE takes the label of the route to the BGP next hop, whatever its origin. The
+core no longer needs LDP.
+""",
+    "Dépannage d'un L3VPN": "Troubleshooting an L3VPN",
+    """
+Le chemin d'une route d'un site à l'autre, étape par étape :
+
+1. la VRF du PE de départ contient-elle le réseau du site (interface attachée à la VRF, réseau
+   connecté ou appris du CE) ? (`ip -br link show master X`, `show ip route vrf X`)
+2. la route est-elle exportée en VPNv4, avec un label, le bon RD et la bonne RT ? (`show bgp ipv4
+   vpn`, `label vpn export`, `export vpn`)
+3. la session VPNv4 est-elle établie **et activée** dans la famille ? (`show bgp ipv4 vpn summary`)
+4. le PE d'arrivée l'importe-t-il dans la VRF (RT d'import, `import vpn`) ? (`show bgp vrf X ipv4
+   unicast`)
+5. a-t-il un LSP vers le prochain saut BGP (label de transport) ? (`show ip route vrf X`,
+   `ip route show vrf X` : deux labels)
+6. dans l'autre sens, les mêmes questions.
+
+| symptôme | cause probable |
+|----------|----------------|
+| aucune route dans `show bgp ipv4 vpn summary` | voisin non activé dans la famille VPNv4 |
+| le PE reçoit la route VPNv4 mais la VRF ne l'a pas | RT d'import différente de la RT d'export |
+| la route du site n'apparaît pas dans la table VPNv4 | pas de `label vpn export`, pas d'`export vpn`, ou réseau absent de la VRF |
+| un seul label dans `ip route show vrf X` | pas de LSP vers le PE de sortie |
+""": """
+The path of a route from one site to the other, step by step:
+
+1. does the VRF of the source PE contain the network of the site (interface attached to the VRF,
+   network connected or learnt from the CE)? (`ip -br link show master X`, `show ip route vrf X`)
+2. is the route exported into VPNv4, with a label, the right RD and the right RT? (`show bgp ipv4
+   vpn`, `label vpn export`, `export vpn`)
+3. is the VPNv4 session established **and activated** in the family? (`show bgp ipv4 vpn summary`)
+4. does the destination PE import it into the VRF (import RT, `import vpn`)? (`show bgp vrf X ipv4
+   unicast`)
+5. does it have an LSP to the BGP next hop (transport label)? (`show ip route vrf X`,
+   `ip route show vrf X`: two labels)
+6. in the other direction, the same questions.
+
+| symptom | likely cause |
+|---------|--------------|
+| no route in `show bgp ipv4 vpn summary` | neighbour not activated in the VPNv4 family |
+| the PE receives the VPNv4 route but the VRF does not have it | import RT different from the export RT |
+| the route of the site does not appear in the VPNv4 table | no `label vpn export`, no `export vpn`, or network missing from the VRF |
+| a single label in `ip route show vrf X` | no LSP to the egress PE |
+""",
+    "Partie 1 : solution (L3VPN)": "Part 1: solution (L3VPN)",
+    "Partie 2 : solution (eBGP entre PE et CE)": "Part 2: solution (eBGP between PE and CE)",
+    "Partie 3 : solution (extranet)": "Part 3: solution (extranet)",
+    "Partie 4 : solution (ingénierie de trafic)": "Part 4: solution (traffic engineering)",
+    "Partie 5 : solution (dépannage)": "Part 5: solution (troubleshooting)",
+    "Partie 6 : solution (VPN sur segment routing, bonus)": "Part 6: solution (VPN over segment routing, bonus)",
+    "`l3_pe1`, `l3_p`, `l3_pe2`, les hôtes `l3_a1`, `l3_a2` (client A), `l3_b1`, `l3_b2` (client B)": "`l3_pe1`, `l3_p`, `l3_pe2`, the hosts `l3_a1`, `l3_a2` (customer A), `l3_b1`, `l3_b2` (customer B)",
+    "2 — eBGP entre PE et CE": "2 — eBGP between PE and CE",
+    "`ce_pe1`, `ce_p`, `ce_pe2`, les CE `ce_c1` et `ce_c2` (sans terminal)": "`ce_pe1`, `ce_p`, `ce_pe2`, the CEs `ce_c1` and `ce_c2` (no terminal)",
+    "`ex_pe1`, `ex_pe2`, les hôtes `ex_a`, `ex_b`, `ex_s`": "`ex_pe1`, `ex_pe2`, the hosts `ex_a`, `ex_b`, `ex_s`",
+    "4 — ingénierie de trafic": "4 — traffic engineering",
+    "`te_pe1`, `te_r2`, `te_r3`, `te_r4`, `te_pe5`, les hôtes `te_h1`, `te_h5`": "`te_pe1`, `te_r2`, `te_r3`, `te_r4`, `te_pe5`, the hosts `te_h1`, `te_h5`",
+    "5 — dépannage": "5 — troubleshooting",
+    "`fix_pe1`, `fix_p`, `fix_pe2`, les hôtes `fix_a1`, `fix_a2`": "`fix_pe1`, `fix_p`, `fix_pe2`, the hosts `fix_a1`, `fix_a2`",
+    "6 — VPN sur segment routing (bonus)": "6 — VPN over segment routing (bonus)",
+    "`sv_pe1`, `sv_p`, `sv_pe2`, les hôtes `sv_a1`, `sv_a2`": "`sv_pe1`, `sv_p`, `sv_pe2`, the hosts `sv_a1`, `sv_a2`",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente les VPN BGP/MPLS et l'ingénierie de trafic avec le
+segment routing, et leur mise en œuvre avec Linux et FRR. Le TP suppose connus MPLS, LDP et le
+segment routing (TP « MPLS : commutation de labels, LDP et segment routing »).
+
+**Le réseau.** Il est fait de **six sites indépendants**, un par partie. L'opérateur est l'AS
+**{pas}** ; chaque site a sa couleur sur le schéma :
+
+| partie | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- Les routeurs font tourner **FRRouting** (FRR) : configurez-les avec `vtysh`. Dans chaque site,
+  **OSPF fonctionne** entre les routeurs de l'opérateur (interfaces de bouclage annoncées), ainsi
+  que **LDP** sur les sites `l3`, `ce`, `ex` et `fix` ; `bgpd` est activé sur les PE et les CE.
+- MPLS est activé dans les noyaux des routeurs de l'opérateur (table des labels et entrée MPLS des
+  interfaces du cœur).
+- Les VRF des sites `ce`, `ex`, `fix` et `sv` existent déjà, avec leur session VPNv4 ; celles du
+  site `l3` sont à créer. Les CE `ce_c1` et `ce_c2` (AS **{cas}**) sont configurés et n'ont pas de
+  terminal.
+- Les fichiers `/etc/hosts` contiennent les noms : `l3_p-eth1` désigne l'adresse de l'interface
+  `eth1` de `l3_p`, `l3_pe2-lo` l'adresse de bouclage de `l3_pe2`.
+
+**Plan d'adressage.** Les liens de l'opérateur sont des /30, les réseaux des clients des /24 ; les
+clients A et B du site `l3` utilisent **les mêmes préfixes**.
+
+| réseau | préfixe | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Valeurs propres à votre instance.**
+
+- VRF et RD / RT (RD = RT) : `CUST_A` **{rt_a}** (table 10), `CUST_B` **{rt_b}** (table 20),
+  `CUST_C` **{rt_c}** (table 30), `SERVICES` **{rt_s}** (table 40).
+- Partie 4 : coûts OSPF {te_costs} ; SRGB 16000 à 23999 ; index des prefix-SID : {te_idx}.
+- Partie 6 : index des prefix-SID : {sv_idx}.
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Enregistrez la configuration de FRR (`write` dans `vtysh`). Les commandes `ip` ne sont pas
+  enregistrées : ne redémarrez pas les machines.
+- Une session BGP s'établit en quelques secondes ; une route VPN met quelques secondes de plus à
+  arriver dans la VRF distante.
+
+**Évaluation.** Chaque évaluation lit vos réponses, les VRF, l'état de BGP (VPNv4, VRF), les tables
+des VRF et du noyau, puis envoie des `ping` en comptant les paquets étiquetés reçus par certains
+routeurs. Elle dure une quinzaine de secondes.
+""": """
+Read the **Informations** tab: it presents BGP/MPLS VPNs and traffic engineering with segment
+routing, and how they are implemented with Linux and FRR. The lab assumes that you know MPLS, LDP
+and segment routing (lab "MPLS: label switching, LDP and segment routing").
+
+**The network.** It is made of **six independent sites**, one per part. The provider is AS
+**{pas}**; each site has its own colour in the *Schema* tab:
+
+| part | site | machines |
+|------|------|----------|
+{site_rows}
+
+- The routers run **FRRouting** (FRR): configure them with `vtysh`. In each site, **OSPF is
+  running** between the provider's routers (loopback interfaces announced), as well as **LDP** on
+  the sites `l3`, `ce`, `ex` and `fix`; `bgpd` is enabled on the PEs and the CEs.
+- MPLS is enabled in the kernels of the provider's routers (label table and MPLS input on the core
+  interfaces).
+- The VRFs of the sites `ce`, `ex`, `fix` and `sv` already exist, with their VPNv4 session; those of
+  the site `l3` are yours to create. The CEs `ce_c1` and `ce_c2` (AS **{cas}**) are configured and
+  have no terminal.
+- The `/etc/hosts` files contain the names: `l3_p-eth1` designates the address of the interface
+  `eth1` of `l3_p`, `l3_pe2-lo` the loopback address of `l3_pe2`.
+
+**Addressing plan.** The provider's links are /30s, the customers' networks /24s; customers A and B
+of the site `l3` use **the same prefixes**.
+
+| network | prefix | interfaces |
+|---------|--------|------------|
+{addressing}
+
+**Values specific to your instance.**
+
+- VRFs and RD / RT (RD = RT): `CUST_A` **{rt_a}** (table 10), `CUST_B` **{rt_b}** (table 20),
+  `CUST_C` **{rt_c}** (table 30), `SERVICES` **{rt_s}** (table 40).
+- Part 4: OSPF costs {te_costs}; SRGB 16000 to 23999; prefix-SID indexes: {te_idx}.
+- Part 6: prefix-SID indexes: {sv_idx}.
+
+**Instructions.**
+
+- The parts are **independent**: do them in any order you like. A completed part gives all its
+  points, whatever the state of the others.
+- Save the FRR configuration (`write` in `vtysh`). The `ip` commands are not saved: do not restart
+  the machines.
+- A BGP session comes up in a few seconds; a VPN route takes a few more seconds to reach the remote
+  VRF.
+
+**Evaluation.** Each evaluation reads your answers, the VRFs, the state of BGP (VPNv4, VRFs), the
+tables of the VRFs and of the kernel, then sends `ping`s while counting the labelled packets received
+by some routers. It takes about fifteen seconds.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_l3`, `solve_ce`, `solve_ex`, `solve_te`, `solve_fix` et `solve_sv`
+(onglet *Appliquer une configuration*) appliquent la solution d'une seule partie et remplissent ses
+formulaires. L'état `final` les applique toutes, attend {wait} s (sessions BGP, routes VPN) puis
+remplit tous les formulaires : une évaluation lancée dès son retour donne tous les points, bonus
+compris.
+
+Les pannes du site `fix` : RT d'import de `CUST_A` sur `fix_pe2` égale à {wrong} au lieu de
+{rt_a}, pas de `label vpn export` dans `CUST_A` sur `fix_pe1` (ses routes ne sont pas exportées),
+voisin `fix_pe1` non activé dans la famille VPNv4 sur `fix_pe2`, `eth0` de `fix_pe2` hors de la VRF
+`CUST_A`. Sur le site `sv`, sans LDP, la route VPN est installée avec le seul label VPN : `sv_p`
+jette les paquets.
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance. The
+states `solve_l3`, `solve_ce`, `solve_ex`, `solve_te`, `solve_fix` and `solve_sv` (*Apply
+Configuration* tab) apply the solution of a single part and fill in its forms. The state `final`
+applies all of them, waits {wait} s (BGP sessions, VPN routes) then fills in all the forms: an
+evaluation run as soon as it returns gives all the points, bonus included.
+
+The faults of the site `fix`: import RT of `CUST_A` on `fix_pe2` equal to {wrong} instead of
+{rt_a}, no `label vpn export` in `CUST_A` on `fix_pe1` (its routes are not exported), neighbour
+`fix_pe1` not activated in the VPNv4 family on `fix_pe2`, `eth0` of `fix_pe2` outside the VRF
+`CUST_A`. On the site `sv`, without LDP, the VPN route is installed with the VPN label alone: `sv_p`
+drops the packets.
+""",
+    "Partie 1 — un L3VPN pour deux clients (site l3)": "Part 1 — an L3VPN for two customers (site l3)",
+    "Un L3VPN pour deux clients": "An L3VPN for two customers",
+    """
+`l3_pe1` et `l3_pe2` sont reliés par `l3_p` ; OSPF et LDP y fonctionnent. Chaque PE a deux
+interfaces vers des clients : `eth0` vers le client **A** (`l3_a1`, `l3_a2`), `eth1` vers le client
+**B** (`l3_b1`, `l3_b2`). Les deux clients utilisent les mêmes préfixes : `{site1}` pour leur site
+1, `{site2}` pour leur site 2 ; les adresses sont déjà en place (sections @@ref:l3vpn@@ à
+@@ref:l3vpn-frr@@).
+
+1. Sur chaque PE, créez les VRF `CUST_A` (table 10, `eth0`) et `CUST_B` (table 20, `eth1`).
+   Regardez `ip route show vrf CUST_A` : où sont passées les routes connectées ?
+2. Établissez la session iBGP entre `l3_pe1` et `l3_pe2`, entre leurs interfaces de bouclage, dans
+   la seule famille VPNv4.
+3. Dans chaque VRF, exportez les réseaux connectés en VPNv4 et importez ceux de l'autre PE, avec
+   le RD et la RT donnés (section @@ref:rd-rt@@).
+4. Vérifiez que `l3_a1` joint `l3_a2` et que `l3_b1` joint `l3_b2`, mais que `l3_a1` ne joint pas
+   l'adresse de `l3_b2`. Regardez la table VPNv4 (`show bgp ipv4 vpn`), la table de chaque VRF, et
+   les labels sur `l3_p` (`tcpdump -nei eth0 mpls`).
+""": """
+`l3_pe1` and `l3_pe2` are connected through `l3_p`; OSPF and LDP run there. Each PE has two
+interfaces towards customers: `eth0` towards customer **A** (`l3_a1`, `l3_a2`), `eth1` towards
+customer **B** (`l3_b1`, `l3_b2`). Both customers use the same prefixes: `{site1}` for their site
+1, `{site2}` for their site 2; the addresses are already in place (sections @@ref:l3vpn@@ to
+@@ref:l3vpn-frr@@).
+
+1. On each PE, create the VRFs `CUST_A` (table 10, `eth0`) and `CUST_B` (table 20, `eth1`).
+   Look at `ip route show vrf CUST_A`: where have the connected routes gone?
+2. Establish the iBGP session between `l3_pe1` and `l3_pe2`, between their loopback interfaces, in
+   the VPNv4 family only.
+3. In each VRF, export the connected networks into VPNv4 and import those of the other PE, with the
+   given RD and RT (section @@ref:rd-rt@@).
+4. Check that `l3_a1` reaches `l3_a2` and that `l3_b1` reaches `l3_b2`, but that `l3_a1` does not
+   reach the address of `l3_b2`. Look at the VPNv4 table (`show bgp ipv4 vpn`), the table of each
+   VRF, and the labels on `l3_p` (`tcpdump -nei eth0 mpls`).
+""",
+    """
+**Solution.**
+
+{solution}
+
+La table VPNv4 contient deux fois chaque préfixe, sous deux RD. La route du site distant, dans la
+VRF, impose deux labels : le label LDP du prochain saut vers l'interface de bouclage de l'autre PE
+et le label VPN de la VRF (`encap mpls X/Y`) ; sur `l3_p`, les paquets portent les deux labels.
+
+Évaluation : `l3_vrfs` (4 : un point par VRF et par PE, interface attachée), `l3_vpnv4` (3 : la
+session VPNv4), `l3_export` (4 : un point par VRF et par PE dont la route arrive à l'autre PE sous
+son RD), `l3_vrf_routes` (4 : un point par VRF et par PE dont le noyau a la route du site distant
+avec deux labels), `l3_ping` (4 : 2 par client), `l3_isolation` (2 : `l3_a1` ne joint pas `l3_b2`) ;
+`l3_q_stack` (1) ; pour l'enseignant seulement : `l3_q_rd`, `l3_q_rt` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+The VPNv4 table contains each prefix twice, under two RDs. The route of the remote site, in the
+VRF, pushes two labels: the LDP label of the next hop towards the loopback interface of the other PE
+and the VPN label of the VRF (`encap mpls X/Y`); on `l3_p`, the packets carry both labels.
+
+Evaluation: `l3_vrfs` (4: one point per VRF and per PE, interface attached), `l3_vpnv4` (3: the
+VPNv4 session), `l3_export` (4: one point per VRF and per PE whose route reaches the other PE under
+its RD), `l3_vrf_routes` (4: one point per VRF and per PE whose kernel has the route of the remote
+site with two labels), `l3_ping` (4: 2 per customer), `l3_isolation` (2: `l3_a1` does not reach
+`l3_b2`); `l3_q_stack` (1); for the instructor only: `l3_q_rd`, `l3_q_rt` (1 each).
+""",
+    "Observations sur le site l3": "Observations on the site l3",
+    """
+- nombre de labels portés par les paquets de `l3_a1` vers `l3_a2` sur le lien `l3_l1` :
+  @@{stack:[0-9]+}@@
+- ce qui distingue, dans la table VPNv4, les préfixes identiques des deux clients :
+  @@{rd:>le route distinguisher>>>rd|la route target>>>rt|le label VPN>>>label|le prochain saut>>>nexthop}@@
+- ce qui décide dans quelle VRF une route VPNv4 est importée :
+  @@{rt:>la route target>>>rt|le route distinguisher>>>rd|le label VPN>>>label|le nom de la VRF>>>name}@@
+""": """
+- number of labels carried by the packets from `l3_a1` to `l3_a2` on the link `l3_l1`:
+  @@{stack:[0-9]+}@@
+- what distinguishes, in the VPNv4 table, the identical prefixes of the two customers:
+  @@{rd:>the route distinguisher>>>rd|the route target>>>rt|the VPN label>>>label|the next hop>>>nexthop}@@
+- what decides into which VRF a VPNv4 route is imported:
+  @@{rt:>the route target>>>rt|the route distinguisher>>>rd|the VPN label>>>label|the name of the VRF>>>name}@@
+""",
+    """
+**Solution.** **2** (transport puis VPN) ; le **RD** ; la **RT**.
+
+Évaluation : `l3_q_stack` (1) ; pour l'enseignant seulement : `l3_q_rd`, `l3_q_rt` (1 chacun).
+""": """
+**Solution.** **2** (transport then VPN); the **RD**; the **RT**.
+
+Evaluation: `l3_q_stack` (1); for the instructor only: `l3_q_rd`, `l3_q_rt` (1 each).
+""",
+    "VRF des deux clients sur les deux PE": "VRFs of both customers on both PEs",
+    "session VPNv4 entre les PE": "VPNv4 session between the PEs",
+    "routes des VRF échangées en VPNv4 sous leur RD": "routes of the VRFs exchanged in VPNv4 under their RD",
+    "routes du site distant avec deux labels": "routes of the remote site with two labels",
+    "chaque client joint son autre site": "each customer reaches its other site",
+    "le client A ne joint pas le client B": "customer A does not reach customer B",
+    "profondeur de la pile": "depth of the stack",
+    "rôle du RD": "role of the RD",
+    "rôle de la RT": "role of the RT",
+    "Partie 2 — eBGP entre PE et CE (site ce)": "Part 2 — eBGP between PE and CE (site ce)",
+    "eBGP entre PE et CE": "eBGP between PE and CE",
+    """
+Le client C a deux sites : `ce_c1` (réseau `{s1}`) derrière `ce_pe1`, `ce_c2` (réseau `{s2}`)
+derrière `ce_pe2`. Les deux CE sont dans l'AS **{cas}** ; chacun annonce son réseau en eBGP à son PE
+(déjà configuré de son côté, avec des route-maps qui laissent tout passer). La VRF `CUST_C` et la
+session VPNv4 entre les PE sont en place (section @@ref:pe-ce@@).
+
+1. Sur chaque PE, établissez la session eBGP avec son CE dans l'instance BGP de la VRF `CUST_C`,
+   avec une politique d'entrée et de sortie qui laisse tout passer.
+2. Regardez la table BGP de la VRF, puis la table VPNv4 de l'autre PE. Le réseau du site 1 arrive-t-il
+   chez `ce_c2` ? Pourquoi (`show bgp neighbors` sur le PE, *AS path*) ?
+3. Corrigez sur les PE, sans toucher aux CE, pour que les deux sites se joignent.
+""": """
+Customer C has two sites: `ce_c1` (network `{s1}`) behind `ce_pe1`, `ce_c2` (network `{s2}`) behind
+`ce_pe2`. Both CEs are in AS **{cas}**; each one announces its network over eBGP to its PE (already
+configured on its side, with route-maps that let everything through). The VRF `CUST_C` and the
+VPNv4 session between the PEs are in place (section @@ref:pe-ce@@).
+
+1. On each PE, establish the eBGP session with its CE in the BGP instance of the VRF `CUST_C`,
+   with an inbound and an outbound policy that let everything through.
+2. Look at the BGP table of the VRF, then at the VPNv4 table of the other PE. Does the network of
+   site 1 reach `ce_c2`? Why (`show bgp neighbors` on the PE, *AS path*)?
+3. Fix it on the PEs, without touching the CEs, so that the two sites reach each other.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Sans `as-override`, la route du site 1 arrive à `ce_c2` avec l'AS path `{pas} {cas}` : `ce_c2` y
+voit son propre AS et la rejette. Avec, l'AS path devient `{pas} {pas}`.
+
+Évaluation : `ce_sessions` (6 : 3 par session eBGP établie dans la VRF), `ce_routes` (4 : 2 par CE
+qui a la route de l'autre site avec l'AS path `{pas} {pas}`), `ce_ping` (4) ; `ce_q_aspath` (2) ;
+pour l'enseignant seulement : `ce_q_loop`, `ce_q_core` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+Without `as-override`, the route of site 1 reaches `ce_c2` with the AS path `{pas} {cas}`: `ce_c2`
+sees its own AS in it and rejects it. With it, the AS path becomes `{pas} {pas}`.
+
+Evaluation: `ce_sessions` (6: 3 per eBGP session established in the VRF), `ce_routes` (4: 2 per CE
+that has the route of the other site with the AS path `{pas} {pas}`), `ce_ping` (4); `ce_q_aspath`
+(2); for the instructor only: `ce_q_loop`, `ce_q_core` (1 each).
+""",
+    "Observations sur le site ce": "Observations on the site ce",
+    """
+- AS path de la route du réseau du site 1 dans la table BGP de `ce_c2` : @@{aspath:[0-9 ]+}@@
+- sans correction, `ce_c2` refuse cette route parce que :
+  @@{loop:>son propre AS est dans l'AS path>>>own_as|le prochain saut est injoignable>>>nexthop|elle n'a pas de RT>>>no_rt|la session n'a pas de politique>>>policy}@@
+- ce que `ce_p` sait des réseaux du client C :
+  @@{core:>rien : il ne commute que des labels vers les PE>>>none|il les apprend par OSPF>>>ospf|il les apprend par BGP>>>bgp|il les apprend par LDP>>>ldp}@@
+""": """
+- AS path of the route to the network of site 1 in the BGP table of `ce_c2`: @@{aspath:[0-9 ]+}@@
+- without the fix, `ce_c2` rejects this route because:
+  @@{loop:>its own AS is in the AS path>>>own_as|the next hop is unreachable>>>nexthop|it has no RT>>>no_rt|the session has no policy>>>policy}@@
+- what `ce_p` knows about the networks of customer C:
+  @@{core:>nothing: it only switches labels towards the PEs>>>none|it learns them through OSPF>>>ospf|it learns them through BGP>>>bgp|it learns them through LDP>>>ldp}@@
+""",
+    """
+**Solution.** **`{aspath}`** ; son propre AS est dans l'AS path ; rien : le cœur est sans BGP.
+
+Évaluation : `ce_q_aspath` (2) ; pour l'enseignant seulement : `ce_q_loop`, `ce_q_core` (1 chacun).
+""": """
+**Solution.** **`{aspath}`**; its own AS is in the AS path; nothing: the core is BGP-free.
+
+Evaluation: `ce_q_aspath` (2); for the instructor only: `ce_q_loop`, `ce_q_core` (1 each).
+""",
+    "sessions eBGP PE - CE dans la VRF": "PE - CE eBGP sessions in the VRF",
+    "chaque CE a la route de l'autre site": "each CE has the route of the other site",
+    "les deux sites du client C se joignent": "the two sites of customer C reach each other",
+    "AS path vu par ce_c2": "AS path seen by ce_c2",
+    "détection de boucle": "loop detection",
+    "cœur sans BGP": "BGP-free core",
+    "Partie 3 — un extranet (site ex)": "Part 3 — an extranet (site ex)",
+    "Des services partagés entre deux clients": "Services shared between two customers",
+    """
+Sur `ex_pe1`, la VRF `CUST_A` (l'hôte `ex_a`) et la VRF `CUST_B` (l'hôte `ex_b`) ; sur `ex_pe2`, la
+VRF `SERVICES` (le serveur `ex_s`). Chaque VRF exporte et importe pour l'instant sa seule RT :
+`CUST_A` **{a}**, `CUST_B` **{b}**, `SERVICES` **{s}** ; personne ne joint personne (section
+@@ref:vpn-topologies@@).
+
+1. Modifiez les RT **d'import** pour que `ex_a` et `ex_b` joignent tous deux `ex_s`, sans se
+   joindre entre eux. Ne changez ni les RD ni les RT d'export.
+2. Regardez la table de chaque VRF. Pourquoi `CUST_A` ne reçoit-elle pas les routes de `CUST_B` par
+   l'intermédiaire de `SERVICES` ?
+""": """
+On `ex_pe1`, the VRF `CUST_A` (the host `ex_a`) and the VRF `CUST_B` (the host `ex_b`); on
+`ex_pe2`, the VRF `SERVICES` (the server `ex_s`). For now, each VRF exports and imports only its own
+RT: `CUST_A` **{a}**, `CUST_B` **{b}**, `SERVICES` **{s}**; nobody reaches anybody (section
+@@ref:vpn-topologies@@).
+
+1. Change the **import** RTs so that `ex_a` and `ex_b` both reach `ex_s`, without reaching each
+   other. Change neither the RDs nor the export RTs.
+2. Look at the table of each VRF. Why does `CUST_A` not receive the routes of `CUST_B` by way of
+   `SERVICES`?
+""",
+    """
+**Solution.**
+
+{solution}
+
+Une route importée dans une VRF n'est pas ré-exportée : `SERVICES` connaît les deux clients, mais
+ne fait pas de pont entre eux.
+
+Évaluation : `ex_routes` (6 : `CUST_A` a `SERVICES`, puis n'a pas `CUST_B` ; de même pour `CUST_B` ;
+`SERVICES` a les deux clients), `ex_ping` (6 : `ex_a` et `ex_b` joignent `ex_s`, puis `ex_a` ne joint
+pas `ex_b`) ; `ex_q_services`, `ex_q_cust_a` (2 chacun) ; pour l'enseignant seulement :
+`ex_q_reexport`, `ex_q_hub` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+A route imported into a VRF is not re-exported: `SERVICES` knows both customers, but does not
+bridge them.
+
+Evaluation: `ex_routes` (6: `CUST_A` has `SERVICES`, then does not have `CUST_B`; likewise for
+`CUST_B`; `SERVICES` has both customers), `ex_ping` (6: `ex_a` and `ex_b` reach `ex_s`, then `ex_a`
+does not reach `ex_b`); `ex_q_services`, `ex_q_cust_a` (2 each); for the instructor only:
+`ex_q_reexport`, `ex_q_hub` (1 each).
+""",
+    "Les route targets de l'extranet": "The route targets of the extranet",
+    """
+- RT importées par la VRF `SERVICES` (séparées par des espaces) : @@{services:[0-9: ]+}@@
+- RT importées par la VRF `CUST_A` : @@{cust_a:[0-9: ]+}@@
+- une route importée dans une VRF est-elle exportée à nouveau vers les autres PE ?
+  @@{reexport:>non>>>no|oui, avec la RT de la VRF qui l'importe>>>yes|oui, avec sa RT d'origine>>>origin}@@
+- la topologie où tous les sites ne joignent qu'un site central :
+  @@{hub:>hub-and-spoke>>>hub|extranet>>>extranet|VPN complet>>>full|VPN de niveau 2>>>l2}@@
+""": """
+- RTs imported by the VRF `SERVICES` (separated by spaces): @@{services:[0-9: ]+}@@
+- RTs imported by the VRF `CUST_A`: @@{cust_a:[0-9: ]+}@@
+- is a route imported into a VRF exported again to the other PEs?
+  @@{reexport:>no>>>no|yes, with the RT of the VRF that imports it>>>yes|yes, with its original RT>>>origin}@@
+- the topology where all the sites reach only a central site:
+  @@{hub:>hub-and-spoke>>>hub|extranet>>>extranet|full-mesh VPN>>>full|layer 2 VPN>>>l2}@@
+""",
+    """
+**Solution.** **`{services}`** ; **`{cust_a}`** (dans n'importe quel ordre) ; non ; hub-and-spoke.
+
+Évaluation : `ex_q_services`, `ex_q_cust_a` (2 chacun) ; pour l'enseignant seulement :
+`ex_q_reexport`, `ex_q_hub` (1 chacun).
+""": """
+**Solution.** **`{services}`**; **`{cust_a}`** (in any order); no; hub-and-spoke.
+
+Evaluation: `ex_q_services`, `ex_q_cust_a` (2 each); for the instructor only: `ex_q_reexport`,
+`ex_q_hub` (1 each).
+""",
+    "tables des trois VRF": "tables of the three VRFs",
+    "les clients joignent les services, pas l'autre client": "the customers reach the services, not the other customer",
+    "RT de SERVICES": "RTs of SERVICES",
+    "RT de CUST_A": "RTs of CUST_A",
+    "pas de ré-export": "no re-export",
+    "hub-and-spoke": "hub-and-spoke",
+    "Partie 4 — ingénierie de trafic avec le segment routing (site te)": "Part 4 — traffic engineering with segment routing (site te)",
+    "Faire passer le trafic par un routeur choisi": "Steering the traffic through a chosen router",
+    """
+Le site `te` forme deux chemins entre `te_pe1` (l'hôte `te_h1`) et `te_pe5` (l'hôte `te_h5`) : par
+`te_r2`, le plus court, et par `te_r4` puis `te_r3`. OSPF et le segment routing y fonctionnent (coûts
+et index dans l'organisation du TP) ; les réseaux des hôtes sont annoncés dans OSPF, sans SID
+(section @@ref:sr-te@@).
+
+1. Vérifiez le chemin actuel entre les hôtes (`traceroute`, les tables).
+2. Sur `te_pe1`, faites passer le trafic vers le réseau de `te_h5` par **`te_r3`** avec une pile
+   de labels : le node-SID de `te_r3`, puis celui de `te_pe5`. Vers quel voisin l'envoyer ? Que se
+   passerait-il avec le seul node-SID de `te_pe5` envoyé vers `te_r4` ?
+3. Sur `te_pe5`, faites passer le retour vers le réseau de `te_h1` par `te_r3` lui aussi, avec la
+   pile la plus courte possible.
+4. Vérifiez avec `tcpdump -nei ethX mpls` sur `te_r3` et `te_r2`.
+""": """
+The site `te` forms two paths between `te_pe1` (the host `te_h1`) and `te_pe5` (the host `te_h5`):
+through `te_r2`, the shortest, and through `te_r4` then `te_r3`. OSPF and segment routing run there
+(costs and indexes in *Organisation of the lab*); the networks of the hosts are announced in OSPF,
+without a SID (section @@ref:sr-te@@).
+
+1. Check the current path between the hosts (`traceroute`, the tables).
+2. On `te_pe1`, steer the traffic towards the network of `te_h5` through **`te_r3`** with a label
+   stack: the node-SID of `te_r3`, then that of `te_pe5`. To which neighbour should it be sent? What
+   would happen with the node-SID of `te_pe5` alone, sent towards `te_r4`?
+3. On `te_pe5`, steer the return traffic towards the network of `te_h1` through `te_r3` as well,
+   with the shortest possible stack.
+4. Check with `tcpdump -nei ethX mpls` on `te_r3` and `te_r2`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Envoyé vers `te_r4` avec le seul node-SID de `te_pe5`, le paquet repartirait par `te_pe1` (le plus
+court chemin de `te_r4` vers `te_pe5` passe par `te_pe1` et `te_r2`). Au retour, `te_r3` est voisin
+de `te_pe5` : il suffit de lui envoyer le paquet avec le node-SID de `te_pe1` ({back}).
+
+Évaluation : `te_out` (4 : la route de `te_pe1`), `te_back` (4 : la route de `te_pe5`), `te_ping`
+(2 : ping entre les hôtes, la route d'aller en place), `te_waypoint` (6 : 3 par sens, des paquets
+étiquetés reçus par `te_r3` pendant le ping) ; `te_q_out` (2), `te_q_back`, `te_q_l34` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+Sent towards `te_r4` with the node-SID of `te_pe5` alone, the packet would go back through `te_pe1`
+(the shortest path from `te_r4` to `te_pe5` goes through `te_pe1` and `te_r2`). On the way back,
+`te_r3` is a neighbour of `te_pe5`: sending it the packet with the node-SID of `te_pe1` ({back}) is
+enough.
+
+Evaluation: `te_out` (4: the route of `te_pe1`), `te_back` (4: the route of `te_pe5`), `te_ping`
+(2: ping between the hosts, with the outbound route in place), `te_waypoint` (6: 3 per direction,
+labelled packets received by `te_r3` during the ping); `te_q_out` (2), `te_q_back`, `te_q_l34`
+(1 each).
+""",
+    "Les labels du chemin choisi": "The labels of the chosen path",
+    """
+- pile de labels imposée par `te_pe1` vers le réseau de `te_h5` (sommet d'abord, séparés par
+  `/`) : @@{out:[0-9/ ]+}@@
+- label imposé par `te_pe5` vers le réseau de `te_h1` : @@{back:[0-9]+}@@
+- label des paquets de `te_h1` vers `te_h5` sur le lien `te_l34` : @@{l34:[0-9]+}@@
+""": """
+- label stack pushed by `te_pe1` towards the network of `te_h5` (top first, separated by
+  `/`): @@{out:[0-9/ ]+}@@
+- label pushed by `te_pe5` towards the network of `te_h1`: @@{back:[0-9]+}@@
+- label of the packets from `te_h1` to `te_h5` on the link `te_l34`: @@{l34:[0-9]+}@@
+""",
+    """
+**Solution.** **`{out}`** ; **{back}** ; **{l34}** (`te_r4` a retiré le node-SID de `te_r3`, son
+voisin : PHP).
+
+Évaluation : `te_q_out` (2), `te_q_back`, `te_q_l34` (1 chacun).
+""": """
+**Solution.** **`{out}`**; **{back}**; **{l34}** (`te_r4` has popped the node-SID of `te_r3`, its
+neighbour: PHP).
+
+Evaluation: `te_q_out` (2), `te_q_back`, `te_q_l34` (1 each).
+""",
+    "te_pe1 : pile de labels par te_r3": "te_pe1: label stack through te_r3",
+    "te_pe5 : retour par te_r3": "te_pe5: return through te_r3",
+    "les hôtes se joignent par le chemin choisi": "the hosts reach each other through the chosen path",
+    "te_r3 reçoit le trafic dans les deux sens": "te_r3 receives the traffic in both directions",
+    "pile de te_pe1": "stack of te_pe1",
+    "label de te_pe5": "label of te_pe5",
+    "label sur te_l34": "label on te_l34",
+    "Partie 5 — dépannage d'un L3VPN (site fix)": "Part 5 — troubleshooting an L3VPN (site fix)",
+    "Un L3VPN en panne": "A broken L3VPN",
+    """
+Le site `fix` est un L3VPN pour un client A : `fix_a1` derrière `fix_pe1`, `fix_a2` derrière
+`fix_pe2`, `fix_p` au cœur ; OSPF, LDP, la VRF `CUST_A` (RD et RT {a}) et la session VPNv4 sont
+configurés. Pourtant `fix_a1` ne joint pas `fix_a2` : **quatre pannes** ont été glissées dans la
+configuration des PE (section @@ref:l3vpn-debug@@).
+
+Trouvez et corrigez chaque panne sans tout reconfigurer : suivez le chemin d'une route d'un site à
+l'autre, dans les deux sens.
+""": """
+The site `fix` is an L3VPN for a customer A: `fix_a1` behind `fix_pe1`, `fix_a2` behind
+`fix_pe2`, `fix_p` in the core; OSPF, LDP, the VRF `CUST_A` (RD and RT {a}) and the VPNv4 session
+are configured. Yet `fix_a1` does not reach `fix_a2`: **four faults** have been slipped into the
+configuration of the PEs (section @@ref:l3vpn-debug@@).
+
+Find and fix each fault without reconfiguring everything: follow the path of a route from one site
+to the other, in both directions.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Évaluation : `fix_rt` (3 : RT d'import de `fix_pe2`), `fix_label` (3 : label VPN sur `fix_pe1`),
+`fix_activate` (3 : session VPNv4 activée et établie sur `fix_pe2`), `fix_interface` (3 : `eth0` de
+`fix_pe2` dans la VRF), `fix_ping` (4), `fix_labelled` (2 : `fix_p` reçoit des paquets étiquetés
+pendant le ping) ; pour l'enseignant seulement : `fix_q_label`, `fix_q_interface` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+Evaluation: `fix_rt` (3: import RT of `fix_pe2`), `fix_label` (3: VPN label on `fix_pe1`),
+`fix_activate` (3: VPNv4 session activated and established on `fix_pe2`), `fix_interface` (3: `eth0`
+of `fix_pe2` in the VRF), `fix_ping` (4), `fix_labelled` (2: `fix_p` receives labelled packets
+during the ping); for the instructor only: `fix_q_label`, `fix_q_interface` (1 each).
+""",
+    "Ce que montraient les pannes": "What the faults showed",
+    """
+- sans `label vpn export`, FRR :
+  @@{label:>n'exporte pas les routes de la VRF>>>not_exported|les exporte avec le label 3>>>implicit|les exporte avec le label de transport>>>transport|les exporte sans RT>>>no_rt}@@
+- le réseau d'une interface laissée hors de la VRF est :
+  @@{interface:>dans la table principale du PE, que la VRF ignore>>>main_table|dans la VRF, sans label>>>no_label|annoncé en VPNv4 sous le RD 0:0>>>rd_zero|perdu>>>lost}@@
+""": """
+- without `label vpn export`, FRR:
+  @@{label:>does not export the routes of the VRF>>>not_exported|exports them with label 3>>>implicit|exports them with the transport label>>>transport|exports them without an RT>>>no_rt}@@
+- the network of an interface left outside the VRF is:
+  @@{interface:>in the main table of the PE, which the VRF ignores>>>main_table|in the VRF, without a label>>>no_label|announced in VPNv4 under the RD 0:0>>>rd_zero|lost>>>lost}@@
+""",
+    """
+**Solution.** Il n'exporte pas les routes de la VRF ; dans la table principale du PE, que la VRF
+ignore.
+
+Évaluation, pour l'enseignant seulement : `fix_q_label`, `fix_q_interface` (1 chacun).
+""": """
+**Solution.** It does not export the routes of the VRF; in the main table of the PE, which the VRF
+ignores.
+
+Evaluation, for the instructor only: `fix_q_label`, `fix_q_interface` (1 each).
+""",
+    "RT d'import de fix_pe2": "import RT of fix_pe2",
+    "label VPN exporté par fix_pe1": "VPN label exported by fix_pe1",
+    "session VPNv4 de fix_pe2": "VPNv4 session of fix_pe2",
+    "eth0 de fix_pe2 dans la VRF": "eth0 of fix_pe2 in the VRF",
+    "fix_a1 joint fix_a2": "fix_a1 reaches fix_a2",
+    "trafic étiqueté dans le cœur": "labelled traffic in the core",
+    "routes sans label VPN": "routes without a VPN label",
+    "interface hors de la VRF": "interface outside the VRF",
+    "Partie 6 — un VPN sur segment routing (site sv, bonus)": "Part 6 — a VPN over segment routing (site sv, bonus)",
+    "Un VPN sur un cœur segment routing (bonus)": "A VPN over a segment routing core (bonus)",
+    """
+Le site `sv` est un L3VPN déjà configuré (`sv_a1` derrière `sv_pe1`, `sv_a2` derrière `sv_pe2`,
+`sv_p` au cœur, VRF `CUST_A`, session VPNv4), mais son cœur n'a **pas de LDP** : `sv_a1` ne joint
+pas `sv_a2` (section @@ref:vpn-over-sr@@).
+
+1. Regardez la route de `sv_a2` dans la VRF de `sv_pe1` (`ip route show vrf CUST_A`) : combien de
+   labels ? Que fait `sv_p` du paquet ?
+2. Activez le segment routing dans OSPF sur les trois routeurs (SRGB 16000 à 23999, index donnés
+   dans l'organisation du TP), sans toucher à BGP. Regardez à nouveau la route.
+""": """
+The site `sv` is an L3VPN that is already configured (`sv_a1` behind `sv_pe1`, `sv_a2` behind
+`sv_pe2`, `sv_p` in the core, VRF `CUST_A`, VPNv4 session), but its core has **no LDP**: `sv_a1`
+does not reach `sv_a2` (section @@ref:vpn-over-sr@@).
+
+1. Look at the route to `sv_a2` in the VRF of `sv_pe1` (`ip route show vrf CUST_A`): how many
+   labels? What does `sv_p` do with the packet?
+2. Enable segment routing in OSPF on the three routers (SRGB 16000 to 23999, indexes given in
+   *Organisation of the lab*), without touching BGP. Look at the route again.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Avant : la route impose le seul label VPN, que `sv_p` ne connaît pas (il jette le paquet). Après :
+deux labels, le node-SID de `sv_pe2` ({sid}) au sommet.
+
+Évaluation (bonus) : `sv_sr` (2 : segment routing sur les trois routeurs, avec les index donnés),
+`sv_stack` (2 : deux labels, le node-SID de `sv_pe2` au sommet), `sv_ping` (2).
+""": """
+**Solution.**
+
+{solution}
+
+Before: the route pushes the VPN label alone, which `sv_p` does not know (it drops the packet).
+After: two labels, with the node-SID of `sv_pe2` ({sid}) on top.
+
+Evaluation (bonus): `sv_sr` (2: segment routing on the three routers, with the given indexes),
+`sv_stack` (2: two labels, the node-SID of `sv_pe2` on top), `sv_ping` (2).
+""",
+    "segment routing dans le cœur": "segment routing in the core",
+    "label de transport du segment routing": "segment routing transport label",
+    "sv_a1 joint sv_a2": "sv_a1 reaches sv_a2",
+}}

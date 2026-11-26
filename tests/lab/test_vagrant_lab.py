@@ -12,6 +12,7 @@ topology, the states, the two-pass grading contract (nothing done: 0; everything
 points; **each part alone gives exactly its points and everything but one part the rest**) and the
 texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -78,6 +79,23 @@ def _running_name():
 
 def _text(t, lang='fr'):
     return t.resolve(lang) if hasattr(t, 'resolve') else str(t)
+
+
+def _tr_literals():
+    import check_sre_translations
+    return check_sre_translations.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+
+
+def _instructor_literals():
+    """The literals of the tr() calls inside instructor() calls (also through _by_language)."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 def _state_ops(ns, name):
@@ -535,17 +553,56 @@ class TestTexts:
         assert names == ['box_version', 'stop', 'reread', 'delete', 'everywhere', 'after_restart', 'rerun', 'inventory',
                          'local', 'why']
 
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """Every tr() text has its English in _TRANSLATIONS['en'] (the markup kept: checked for every lab of
+        the directory by test_draft_misc_translations.py); the instructor texts read in both languages and
+        the dropdowns of the English forms show English labels over the values of the French ones."""
+        from SRE import form_spec
+        english = lab._TRANSLATIONS['en']
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        assert set(english) == _tr_literals() and set(_instructor_literals()) <= set(english)
+        assert all(english.values()) and [k for k, v in english.items() if v == k] == ['Architecture']
+        assert _text(lab.title, 'en') == "Vagrant: reproducible environments"
+        assert _text(lab.NetScheme.solve_fleet._sre_state_description, 'en') == \
+            "Bonus 3: solution (YAML-driven Vagrantfile)"
+        grade, _ = _simulate(lab, data, instructor_mode=True)
+        labels = {}
+        for q in grade.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert fr != en and "{'" not in en and not re.search(r'(?<!#)\{[a-z_]+\}', en), _text(q.title)
+            assert form_spec.form_fields(fr) == form_spec.form_fields(en), _text(q.title)
+            assert has_instructor(en) == has_instructor(fr)
+            assert not has_instructor(en) or '**Solution.**' in en or '**For the instructor.**' in en
+            for lang, text in (('fr', fr), ('en', en)):
+                for chunk in form_spec.field_chunks(form_spec.parse_form_description(text)):
+                    if chunk.kind == 'select':
+                        labels[chunk.name, lang] = chunk.labels
+        for name in ('after_restart', 'local', 'why'):
+            assert labels[name, 'en'] != labels[name, 'fr']
+            assert not any(re.search(r'[éèêàùçô]', label) for label in labels[name, 'en']), labels[name, 'en']
+        assert labels['why', 'en'][0] == "macvlan isolates the parent interface from its sub-interfaces"
+        # the French values of a solution built in code have their English (the reference files stay French)
+        text = "\n".join(_text(q.description, 'en') for q in grade.get_questions_ordered())
+        assert 'machine started' in text and 'machine démarrée' not in text and '<sha256 of base-' in text
+        assert 't.info = "machine démarrée"' in lab.NetScheme(data=data, running_lab_name=_running_name()).vf_triggers()
+
     def test_strip_instructor(self, lab, data, tmp_pub_dir, tmp_path):
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 15 and result.warnings == []
+        assert result.calls == source.count(b'instructor(') == len(_instructor_literals()) == 15
+        assert result.warnings == []
         assert b'**Solution' not in result.data and b"Pour l'enseignant" not in result.data
+        assert b'For the instructor' not in result.data
         stripped = tmp_path / 'vagrant_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('vagrant_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the instructor texts goes with them, every other entry stays
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(module, data, instructor_mode=True)
         assert _totals(grade) == (87, 12)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())

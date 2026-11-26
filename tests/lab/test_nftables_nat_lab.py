@@ -4,12 +4,14 @@ private LANs on the Internet hosts, except on their hidden clones), the ops of t
 r2 / r5 / r6, test servers, the six reference files of `final`), the multi-pass grading contract with
 synthetic outputs (nothing done: 0, the reference solution: 100, each part alone, each part missing, one
 mistake at a time), the forms and their cheat answers, the numbered course, the questions and their
-instructor fragments, the HTML of every text, the stripped lab file and the English identifiers.
+instructor fragments, the HTML of every text, the stripped lab file, the English translations and the English
+identifiers.
 
 No Docker: a model of the six routers answers the probes as the test HTTP servers / bash / ping do, from one
 flag per piece of work.  The lab gives each part its own router so that the parts are independent:
 test_parts_are_independent is the check of that requirement.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -63,6 +65,18 @@ def _text(t):
 
 def _ip(obj):
     return str(obj.ip)
+
+
+def _instructor_literals():
+    """The French texts of the tr() calls inside the instructor() calls of the lab file."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 def _state_ops(ns, name):
@@ -732,6 +746,27 @@ def test_stripped_lab_file(lab):
     compile(stripped, 'nftables_nat_stripped', 'exec')
     assert source.count(b'instructor(tr(') == 20                   # one per question
     assert b'Solution' not in stripped and b'Pour l\'enseignant' not in stripped
+    # the English of the instructor texts goes with them, the rest stays
+    kept = next(ast.literal_eval(node.value) for node in ast.parse(stripped).body
+                if isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', '') == '_TRANSLATIONS')['en']
+    literals = set(_instructor_literals())
+    assert not set(kept) & literals
+    assert len(kept) == len(lab._TRANSLATIONS['en']) - len(literals)
+
+
+def test_translations(lab):
+    """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for every
+    lab of the directory by test_draft_misc_translations.py), the instructor texts included."""
+    import check_sre_translations as cst
+    assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+    english = lab._TRANSLATIONS['en']
+    assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+    assert all(value and value != key for key, value in english.items())
+    literals = _instructor_literals()
+    assert len(set(literals)) == len(literals) == 20 and set(literals) <= set(english)
+    assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 20
+    assert lab.title.resolve('en') == "nftables: NAT, load balancing and proxy (nat)"
+    assert lab.title.resolve('fr') == "nftables : NAT, répartition de charge et proxy (nat)"
 
 
 def test_english_identifiers(lab, data, tmp_pub_dir):

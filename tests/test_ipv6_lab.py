@@ -1,10 +1,12 @@
 """Offline tests of the IPv6 lab (lab/sre/_DRAFT_misc/ipv6.py): data generation, topology and
 expected configuration, state ops, the two-pass grading contract with synthetic outputs (nothing
-done: 0, everything done: 100), the instructor texts and the stripped lab file.
+done: 0, everything done: 100), the instructor texts, the English translations and the stripped lab
+file.
 
 No Docker: the outputs of the containers are rendered from the generated data in the format of
 the real tools (ip, ip -j, dhclient lease file, dhcpd command line, the probe's JSON).
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -14,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from SRE import params
+from SRE import form_spec, params
 from SRE.instructor_text import has_instructor, markdown_to_html
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
@@ -436,13 +438,25 @@ class TestGrading:
 # texts
 # ---------------------------------------------------------------------------
 
-def _all_texts(grade, ns):
-    texts = [('informations', _text(ns.informations))]
+def _all_texts(grade, ns, lang='fr'):
+    texts = [('informations', _text(ns.informations, lang))]
     for q in grade.get_questions_ordered():
-        texts.append((_text(q.title), _text(q.description)))
+        texts.append((_text(q.title, lang), _text(q.description, lang)))
     for e in grade.get_grade_list():
-        texts.append((str(e.title), _text(e.description) if e.description else ''))
+        texts.append((str(e.title), _text(e.description, lang) if e.description else ''))
     return texts
+
+
+def _instructor_literals():
+    """The literals of the tr() calls inside instructor() (the texts strip-instructor removes)."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 class TestTexts:
@@ -496,6 +510,33 @@ class TestTexts:
                 assert '}' not in m.group(2)
         assert fields > 30
 
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py); the dropdown answers printed by the
+        instructor texts take the labels of the English forms."""
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        # the instructor texts: 20 of the 24 literals inside instructor(), the three verdicts of question 5.4
+        # and the end of its expected answer aside
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**', '**Answers.**', '**Expected.**'))
+                   for v in english.values()) == 20 and len(set(_instructor_literals())) == 24
+        assert lab.title.resolve('en') == "IPv6: addressing, static routing, SLAAC, DHCPv6, MTU and 6in4 tunnel"
+        assert lab.NetScheme.trou_noir._sre_state_description.resolve('en').startswith('PMTUD black hole')
+        forms = "\n".join(english.values())
+        assert all(f"{label}>>>{option}" in forms for option, label in lab.ANSWERS_EN.items())
+        g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert fr != en and has_instructor(fr) == has_instructor(en), _text(q.title)
+            outside_forms = re.sub(r'@@\{.*?\}@@', '', en)
+            assert not [o for o in lab.ANSWERS_EN if o in outside_forms], _text(q.title)
+            assert form_spec.form_fields(fr) == form_spec.form_fields(en), _text(q.title)
+        for where, text in _all_texts(g1, ns1, 'en'):
+            assert "{'" not in text and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", text), where
+            markdown_to_html(text, show_instructor=True)
+
     def test_strip_instructor(self, lab, data, tmp_pub_dir, tmp_path):
         from strip_instructor import strip_source
         result = strip_source(_LAB_PATH.read_bytes())
@@ -505,6 +546,9 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('ipv6_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept, literals = module._TRANSLATIONS['en'], set(_instructor_literals())
+        assert not set(kept) & literals
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(literals)
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 100)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())

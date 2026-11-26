@@ -20,7 +20,8 @@ The ``vxlan``, ``vrf`` and ``bridge`` modules of the host are loaded by the kern
 container creates such a device.  Grading reads the VXLAN devices and forwarding databases of the
 kernel (lib/vxlan.py), the EVPN json of vtysh (lib/frr.py), the VRF tables, the fragmentation counter
 of the underlay router and real pings.  The states ``solve_<part>`` apply the reference solution of
-one part, ``final`` all of them.  Facts checked live: ``.claude/rules/lib-vxlan.md``.
+one part, ``final`` all of them.  Facts checked live: ``.claude/rules/lib-vxlan.md``.  Texts are French
+(``tr()``) with their English in ``_TRANSLATIONS``, identifiers English.
 """
 import random
 import re
@@ -29,6 +30,7 @@ from ipaddress import IPv4Address, IPv4Interface, IPv4Network
 from typing import Dict, List
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks
@@ -960,27 +962,31 @@ Le chemin d'une adresse MAC d'un leaf à l'autre, étape par étape :
             self.file(r, "/etc/frr/frr.conf", self._frr_conf(r), permissions=0o640, owner="frr:frr")
             self.cmd(r, "systemctl start frr", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (VXLAN statique)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (VXLAN statique)",
+                                                  en="Part 1: solution (static VXLAN)"))
     def solve_static(self):
         self._apply_static()
         self.cmd('st_r', f"sleep {OSPF_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (EVPN)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (EVPN)", en="Part 2: solution (EVPN)"))
     def solve_l2(self):
         self._apply_l2()
         self.cmd('l2_spine', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (IRB symétrique, type 5)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (IRB symétrique, type 5)",
+                                                  en="Part 3: solution (symmetric IRB, type 5)"))
     def solve_irb(self):
         self._apply_mixed(self.solution_irb())
         self.cmd('irb_spine', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (dépannage)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (dépannage)",
+                                                  en="Part 4: solution (troubleshooting)"))
     def solve_fix(self):
         self._apply_mixed(self.solution_fix())
         self.cmd('fix_spine', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (underlay multicast, bonus)"))
+    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (underlay multicast, bonus)",
+                                                  en="Part 5: solution (multicast underlay, bonus)"))
     def solve_mcast(self):
         self._apply_mixed(self.solution_mcast())
         self.cmd('mc_r', f"sleep {CONVERGE_WAIT}", step=2)
@@ -1016,25 +1022,47 @@ def _rt(s) -> str:
     return found[0] if found else ''
 
 
-def _vtysh_text(solution: Dict[str, List[str]]) -> str:
+_COLONS = (('fr', " :"), ('en', ":"))      # the header of a router's block, per language
+
+
+def _vtysh_text(solution: Dict[str, List[str]]) -> Dict[str, str]:
+    """The vtysh sessions of a solution, one block per router, one text per language (the French one
+    has a space before the colon)."""
     blocks = []
     for router, cmds in solution.items():
         body = "\n".join(["configure terminal"] + [f" {c}" for c in cmds] + ["end", "write"])
-        blocks.append(f"`{router}` :\n\n```\n{body}\n```")
-    return "\n\n".join(blocks)
+        blocks.append((router, f"\n\n```\n{body}\n```"))
+    return {lang: "\n\n".join(f"`{router}`{colon}{body}" for router, body in blocks) for lang, colon in _COLONS}
 
 
-def _mixed_text(solution: Dict[str, Dict[str, List[str]]]) -> str:
+def _mixed_text(solution: Dict[str, Dict[str, List[str]]]) -> Dict[str, str]:
+    """The shell commands and vtysh sessions of a solution, one block per router, one text per language."""
     blocks = []
     for router, parts in solution.items():
-        text = f"`{router}` :\n\n"
+        text = "\n\n"
         if parts['sh']:
             text += "```\n" + "\n".join(parts['sh']) + "\n```\n\n"
         if parts['vtysh']:
             text += "```\n" + "\n".join(["configure terminal"] + [f" {c}" for c in parts['vtysh']]
                                         + ["end", "write"]) + "\n```"
-        blocks.append(text.rstrip())
-    return "\n\n".join(blocks)
+        blocks.append((router, text.rstrip()))
+    return {lang: "\n\n".join(f"`{router}`{colon}{text}" for router, text in blocks) for lang, colon in _COLONS}
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value (a tr() text, the result of
+    _vtysh_text / _mixed_text) gives one value per language."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
+
+
+def _join(separator: str, items):
+    """``separator.join(items)`` for plain strings and tr() texts (``str.join`` refuses translated texts)."""
+    text = ""
+    for k, item in enumerate(items):
+        text = (text + separator if k else text) + item
+    return text
 
 
 def _port_ok(links: List[dict], devices: Dict[str, dict], dev: str, host_if: str) -> bool:
@@ -1126,16 +1154,17 @@ class Grade(Grade0):
         mc_routes = get_mroutes(self, 'mc_r', step=2, allow_error=True)
 
         # ---------------- texts shared by the questions ---------------------------
-        sites = [('st', "1 — VXLAN statique", "`st_r`, les VTEP `st_vtep1` à `st_vtep3`, les hôtes `st_h1` à `st_h3`"),
-                 ('l2', "2 — EVPN", "`l2_spine`, `l2_leaf1` à `l2_leaf3`, les hôtes `l2_a1`, `l2_a2` (VNI A), "
-                                    "`l2_b2`, `l2_b3` (VNI B)"),
-                 ('irb', "3 — IRB symétrique, type 5", "`irb_spine`, `irb_leaf1`, `irb_leaf2`, `irb_border`, le "
-                                                       "routeur extérieur `irb_ext`, les hôtes `irb_a1`, `irb_a2` "
-                                                       "(sous-réseau A), `irb_b2` (sous-réseau B)"),
-                 ('fix', "4 — dépannage", "`fix_spine`, `fix_leaf1`, `fix_leaf2`, les hôtes `fix_h1`, `fix_h2`"),
-                 ('mc', "5 — underlay multicast (bonus)", "`mc_r`, les VTEP `mc_vtep1` à `mc_vtep3`, les hôtes "
-                                                          "`mc_h1` à `mc_h3`")]
-        site_rows = "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites)
+        sites = [('st', tr("1 — VXLAN statique"),
+                  tr("`st_r`, les VTEP `st_vtep1` à `st_vtep3`, les hôtes `st_h1` à `st_h3`")),
+                 ('l2', "2 — EVPN", tr("`l2_spine`, `l2_leaf1` à `l2_leaf3`, les hôtes `l2_a1`, `l2_a2` (VNI A), "
+                                       "`l2_b2`, `l2_b3` (VNI B)")),
+                 ('irb', tr("3 — IRB symétrique, type 5"),
+                  tr("`irb_spine`, `irb_leaf1`, `irb_leaf2`, `irb_border`, le routeur extérieur `irb_ext`, les "
+                     "hôtes `irb_a1`, `irb_a2` (sous-réseau A), `irb_b2` (sous-réseau B)")),
+                 ('fix', tr("4 — dépannage"), tr("`fix_spine`, `fix_leaf1`, `fix_leaf2`, les hôtes `fix_h1`, `fix_h2`")),
+                 ('mc', tr("5 — underlay multicast (bonus)"),
+                  tr("`mc_r`, les VTEP `mc_vtep1` à `mc_vtep3`, les hôtes `mc_h1` à `mc_h3`"))]
+        site_rows = _join("\n", ("| " + part + f" | `{site}_*` | " + machines + " |" for site, part, machines in sites))
         members: Dict[str, List[str]] = {n: [] for n in LINKS}
         for r, nets in ROUTER_IFACES.items():
             for i, n in enumerate(nets):
@@ -1146,18 +1175,20 @@ class Grade(Grade0):
         rows += [f"| `{site}_lo` | `{net(site + '_lo')}` | "
                  + ", ".join(f"`{r}` `{lo(r)}/32`" for r in LOOPBACKS if site_of(r) == site) + " |"
                  for site in SITE_NUMBER]
-        subnet_names = {'st_net': "site 1", 'l2_net': "site 2 (VNI A et VNI B)", 'irb_net_a': "site 3, sous-réseau A",
-                        'irb_net_b': "site 3, sous-réseau B", 'fix_net': "site 4", 'mc_net': "site 5"}
+        subnet_names = {'st_net': "site 1", 'l2_net': tr("site 2 (VNI A et VNI B)"),
+                        'irb_net_a': tr("site 3, sous-réseau A"), 'irb_net_b': tr("site 3, sous-réseau B"),
+                        'fix_net': "site 4", 'mc_net': "site 5"}
         for subnet, label in subnet_names.items():
             hosts = ", ".join(f"`{h}` (`{ip(h)}`)" for h, (_n, s, _g) in HOSTS.items() if s == subnet)
-            rows.append(f"| {label} | `{net(subnet)}` | {hosts} |")
-        rows.append(f"| réseau extérieur | `{net('irb_ext_net')}` | `{EXTERNAL}` ext0 (`{d.ips.irb_ext_addr.ip}`) |")
-        addressing = "\n".join(rows)
+            rows.append("| " + label + f" | `{net(subnet)}` | {hosts} |")
+        rows.append("| " + tr("réseau extérieur")
+                    + f" | `{net('irb_ext_net')}` | `{EXTERNAL}` ext0 (`{d.ips.irb_ext_addr.ip}`) |")
+        addressing = _join("\n", rows)
 
         self.question_dummy(
             title=tr("Organisation du TP"),
             hash="6e11fd142af56f19",
-            description=tr("""
+            description=_by_language(tr("""
 Lisez l'onglet **Informations** : il présente VXLAN, EVPN et le routage entre VNI, et leur mise en
 œuvre avec Linux et FRR. Le TP suppose connus OSPF et BGP (iBGP entre interfaces de bouclage).
 
@@ -1207,7 +1238,7 @@ sous-réseau de niveau 2 (sauf au site 3).
 **Évaluation.** Chaque évaluation lit vos réponses, les interfaces et les tables du noyau, l'état
 d'EVPN dans FRR, puis envoie des `ping` (dont des paquets de 1500 octets avec le bit DF). Elle dure
 une quinzaine de secondes.
-""").format(site_rows=site_rows, addressing=addressing, asn=FABRIC_AS, st_vni=d.st_vni, l2_a=d.l2_vni_a,
+"""), site_rows=site_rows, addressing=addressing, asn=FABRIC_AS, st_vni=d.st_vni, l2_a=d.l2_vni_a,
             l2_b=d.l2_vni_b, irb_a=d.irb_vni_a, irb_b=d.irb_vni_b, vrf=VRF, table=VRF_TABLE, l3vni=d.irb_l3vni,
             gw_a=d.ips.irb_gw_a, gw_b=d.ips.irb_gw_b, gw_mac=d.gw_mac, fix_vni=d.fix_vni, mc_vni=d.mc_vni,
             group=d.mc_group)
@@ -1247,7 +1278,7 @@ interfaces de bouclage. Chaque VTEP a, sur `eth1`, un hôte du même sous-résea
 3. Essayez `ping -M do -s 1472` d'un hôte à l'autre. Que se passe-t-il, et pourquoi ? Faites passer
    ces paquets de 1500 octets **sans fragmentation**, sans changer la MTU des hôtes.
 """).format(subnet=net('st_net'), vni=d.st_vni)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1262,7 +1293,7 @@ deux autres), `st_ping` (3 : `st_h1` → `st_h2`, `st_h1` → `st_h3`, `st_h2` �
 `st_vtep1` a appris l'adresse MAC de `st_h2` et de `st_h3` derrière le bon VTEP), `st_mtu` (3 : ping
 de 1500 octets avec DF de `st_h1` vers `st_h2` et `st_h3`, sans fragment créé par `st_r`) ;
 `st_q_port`, `st_q_overhead` (1 chacun) ; pour l'enseignant seulement : `st_q_copies` (1).
-""").format(solution=_mixed_text(ns.solution_static()))),
+"""), solution=_mixed_text(ns.solution_static()))),
         )
         cheat_st = {'port': str(VXLAN_PORT), 'overhead': '50', 'copies': 'two'}
         q1 = self.question_form(
@@ -1354,7 +1385,7 @@ existent ; aucune liste d'inondation n'est configurée (sections @@ref:evpn@@ à
 3. Vérifiez que `l2_a1` joint `l2_a2` et que `l2_b2` joint `l2_b3`, mais que `l2_a1` ne joint pas
    l'adresse de `l2_b2`, pourtant dans le même sous-réseau.
 """).format(subnet=net('l2_net'), a=d.l2_vni_a, b=d.l2_vni_b)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1370,7 +1401,7 @@ VTEP distants de chaque VNI), `l2_macs` (3 : 1 par leaf dont le noyau a install�
 hôtes distants de ses VNI), `l2_ping` (4 : 2 par VNI), `l2_isolation` (2 : `l2_a1` ne joint pas
 `l2_b2`) ; `l2_q_rt`, `l2_q_type3`, `l2_q_type2` (1 chacun) ; pour l'enseignant seulement :
 `l2_q_rr`, `l2_q_rd` (1 chacun).
-""").format(solution=_vtysh_text(ns.solution_l2()))),
+"""), solution=_vtysh_text(ns.solution_l2()))),
         )
         cheat_l2 = {'rt': rt(d.l2_vni_a), 'type3': '3', 'type2': '2', 'rr': 'ibgp', 'rd': 'rid_index'}
         q2 = self.question_form(
@@ -1496,7 +1527,7 @@ statique vers le réseau extérieur `{ext}` de `irb_ext` (sections @@ref:arp-sup
 """).format(net_a=net('irb_net_a'), net_b=net('irb_net_b'), a=d.irb_vni_a, b=d.irb_vni_b, gw_a=d.ips.irb_gw_a.ip,
             gw_b=d.ips.irb_gw_b.ip, vrf=VRF, table=VRF_TABLE, l3=d.irb_l3vni, ext=net('irb_ext_net'),
             gw_mac=d.gw_mac, ext_addr=d.ips.irb_ext_addr.ip)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1515,7 +1546,7 @@ d'`irb_a1` par `irb_leaf1`), `irb_type5` (3 : sur `irb_leaf1`, le réseau extér
 et le sous-réseau B par `irb_leaf2` ; sur `irb_border`, le sous-réseau A), `irb_ping` (6 : `irb_a1` →
 `irb_b2`, `irb_a1` → `irb_ext`, 3 chacun) ; `irb_q_l3vni` (1) ; pour l'enseignant seulement :
 `irb_q_mac`, `irb_q_silent`, `irb_q_sym` (1 chacun).
-""").format(solution=_mixed_text(ns.solution_irb()), l3=d.irb_l3vni, b=d.irb_vni_b)),
+"""), solution=_mixed_text(ns.solution_irb()), l3=d.irb_l3vni, b=d.irb_vni_b)),
         )
         cheat_irb = {'l3vni': str(d.irb_l3vni), 'mac': 'rmac', 'silent': 'unreachable', 'sym': 'own'}
         q3 = self.question_form(
@@ -1627,7 +1658,7 @@ configuration (section @@ref:evpn-debug@@).
 Trouvez et corrigez chaque panne sans tout reconfigurer : suivez le chemin d'une route EVPN et d'une
 trame d'un leaf à l'autre, dans les deux sens.
 """).format(vni=d.fix_vni, subnet=net('fix_net'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1637,7 +1668,7 @@ d'`eth1`), `fix_rr` (3 : `fix_leaf1` client du route reflector sur `fix_spine`),
 `advertise-all-vni` sur `fix_leaf2`), `fix_bridge` (3 : l'interface `vxlan` de `fix_leaf1` dans le pont
 d'`eth1`), `fix_ping` (4), `fix_macs` (2 : `fix_leaf1` a installé l'adresse MAC de `fix_h2` derrière
 `fix_leaf2`) ; pour l'enseignant seulement : `fix_q_vni`, `fix_q_rr` (1 chacun).
-""").format(solution=_mixed_text(ns.solution_fix()), vni=d.fix_vni)),
+"""), solution=_mixed_text(ns.solution_fix()), vni=d.fix_vni)),
         )
         cheat_fix = {'vni': 'recreate', 'rr': 'rr_client'}
         q4 = self.question_form(
@@ -1721,7 +1752,7 @@ de liste d'inondation : le trafic BUM du VNI **{vni}** doit passer par le groupe
 3. Vérifiez que les hôtes se joignent ; regardez `show ip mroute` sur `mc_r` et la table des
    interfaces `vxlan`.
 """).format(br=br(d.mc_vni), subnet=net('mc_net'), vni=d.mc_vni, group=d.mc_group)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1734,7 +1765,7 @@ connectée.
 {group}, un TTL supérieur à 1, dans le pont d'`eth1`), `mc_mroute` (2 : sur `mc_r`, l'entrée `(*,G)` du
 groupe vers les trois VTEP, puis une entrée `(S,G)` d'un VTEP), `mc_ping` (2 : `mc_h1` joint `mc_h2` et
 `mc_h3`).
-""").format(solution=_mixed_text(ns.solution_mcast()), vni=d.mc_vni, group=d.mc_group)),
+"""), solution=_mixed_text(ns.solution_mcast()), vni=d.mc_vni, group=d.mc_group)),
         )
         mc_ok = []
         for m in MC_VTEPS:
@@ -1760,4 +1791,1381 @@ groupe vers les trois VTEP, puis une entrée `(S,G)` d'un VTEP), `mc_ping` (2 : 
         )
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "VXLAN et EVPN : réseau overlay d'un data centre": "VXLAN and EVPN: data centre overlay network",
+    """
+**Sommaire**
+""": """
+**Contents**
+""",
+    "Overlay et underlay": "Overlay and underlay",
+    """
+Un data centre moderne est une **fabrique IP** : des *leaves* (les commutateurs de bord, qui
+reçoivent les serveurs) reliés à des *spines*, tous routés. Ce réseau routé, l'**underlay**, offre de
+nombreux chemins de même coût et se passe de spanning tree. Les machines virtuelles et les
+conteneurs veulent pourtant souvent partager un réseau de niveau 2 (une même adresse de sous-réseau,
+la migration d'une machine d'un serveur à l'autre), et les clients d'un hébergeur veulent leurs
+propres réseaux isolés.
+
+On construit donc des réseaux de niveau 2 **virtuels** par-dessus l'underlay : c'est l'**overlay**.
+Chaque trame Ethernet est encapsulée dans un paquet IP qui traverse l'underlay. Les équipements qui
+encapsulent et décapsulent sont les **VTEP** (*VXLAN Tunnel End Point*) : en général les leaves, ou
+l'hyperviseur lui-même.
+
+- un segment de niveau 2 est désigné par un **VNI** (*VXLAN Network Identifier*) de 24 bits : 16
+  millions de segments, au lieu des 4094 VLAN de 802.1Q ;
+- l'underlay ne connaît que les adresses des VTEP (une interface de bouclage par VTEP, annoncée
+  par l'IGP) ; il ignore tout des machines de l'overlay.
+""": """
+A modern data centre is an **IP fabric**: *leaves* (the edge switches, which the servers connect
+to) linked to *spines*, all of them routed. This routed network, the **underlay**, offers many
+equal-cost paths and needs no spanning tree. Virtual machines and containers nevertheless often
+want to share a layer-2 network (the same subnet address, the migration of a machine from one
+server to another), and the customers of a hosting provider want their own isolated networks.
+
+So **virtual** layer-2 networks are built on top of the underlay: this is the **overlay**. Each
+Ethernet frame is encapsulated in an IP packet that crosses the underlay. The devices that
+encapsulate and decapsulate are the **VTEPs** (*VXLAN Tunnel End Points*): usually the leaves, or
+the hypervisor itself.
+
+- a layer-2 segment is identified by a 24-bit **VNI** (*VXLAN Network Identifier*): 16 million
+  segments, instead of the 4094 VLANs of 802.1Q;
+- the underlay only knows the addresses of the VTEPs (one loopback interface per VTEP, advertised
+  by the IGP); it knows nothing of the machines of the overlay.
+""",
+    "L'encapsulation VXLAN": "VXLAN encapsulation",
+    """
+VXLAN (RFC 7348) transporte la trame Ethernet complète dans un datagramme **UDP**, port de
+destination **4789** :
+
+```
+| Ethernet ext. | IPv4 ext. | UDP     | VXLAN         | trame Ethernet d'origine     |
+| 14 octets     | 20 octets | 8 oct.  | 8 octets      | (en-tête 14 + données)       |
+                  VTEP -> VTEP  dport 4789  flags I + VNI
+```
+
+- l'en-tête VXLAN (8 octets) porte le drapeau *I* (VNI valide) et le VNI ;
+- le **port source UDP** est calculé par un hachage de la trame intérieure : deux flux différents
+  prennent des chemins différents dans un underlay à chemins multiples (ECMP) ;
+- le surcoût est de **50 octets** (14 + 20 + 8 + 8) : une trame dont le paquet IP fait 1500 octets
+  devient un paquet IP de 1550 octets dans l'underlay (section @@ref:mtu@@).
+
+`tcpdump` et `tshark` décodent VXLAN sur le port 4789 : `tcpdump -nei eth0 udp port 4789` montre
+l'en-tête extérieur, le VNI puis la trame intérieure.
+""": """
+VXLAN (RFC 7348) carries the complete Ethernet frame in a **UDP** datagram, destination port
+**4789**:
+
+```
+| outer Ethernet | outer IPv4 | UDP     | VXLAN         | original Ethernet frame      |
+| 14 bytes       | 20 bytes   | 8 bytes | 8 bytes       | (14-byte header + data)      |
+                   VTEP -> VTEP  dport 4789  flags I + VNI
+```
+
+- the VXLAN header (8 bytes) carries the *I* flag (valid VNI) and the VNI;
+- the **UDP source port** is computed from a hash of the inner frame: two different flows take
+  different paths in an underlay with multiple paths (ECMP);
+- the overhead is **50 bytes** (14 + 20 + 8 + 8): a frame whose IP packet is 1500 bytes long
+  becomes a 1550-byte IP packet in the underlay (section @@ref:mtu@@).
+
+`tcpdump` and `tshark` decode VXLAN on port 4789: `tcpdump -nei eth0 udp port 4789` shows the outer
+header, the VNI, then the inner frame.
+""",
+    "VXLAN sous Linux": "VXLAN on Linux",
+    """
+Linux réalise un VTEP avec une interface de type `vxlan`, branchée sur un pont (`bridge`) avec les
+interfaces des machines du segment :
+
+```
+ip link add vxlan100 type vxlan id 100 local 10.0.15.11 dstport 4789
+ip link add br100 type bridge
+ip link set vxlan100 master br100
+ip link set eth1 master br100
+ip link set vxlan100 up
+ip link set br100 up
+ip link set eth1 up
+```
+
+- `id` : le VNI ; `local` : l'adresse source des paquets VXLAN (l'interface de bouclage du VTEP) ;
+  `dstport 4789` : le port de l'IANA (Linux utilise 8472 par défaut, un reste de l'histoire) ;
+- `nolearning` désactive l'apprentissage des adresses MAC dans les paquets reçus (avec EVPN, c'est
+  BGP qui les installe) ;
+- le VNI d'une interface existante **ne peut pas être changé** : il faut la supprimer et la
+  recréer ;
+- sans `dev`, l'interface a une MTU de 1500 ; avec `dev eth0`, elle prend celle d'`eth0` moins 50.
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `ip -d link show vxlan100` | les paramètres : `vxlan id 100 local … dstport 4789 nolearning ttl …` |
+| `ip -br link show master br100` | les ports du pont |
+| `bridge fdb show dev vxlan100` | la table de l'interface : liste d'inondation (`00:00:00:00:00:00 dst …`) et adresses MAC distantes (`dst` = le VTEP) |
+| `bridge fdb show br br100` | toute la table du pont |
+""": """
+Linux implements a VTEP with an interface of type `vxlan`, attached to a bridge (`bridge`) together
+with the interfaces of the machines of the segment:
+
+```
+ip link add vxlan100 type vxlan id 100 local 10.0.15.11 dstport 4789
+ip link add br100 type bridge
+ip link set vxlan100 master br100
+ip link set eth1 master br100
+ip link set vxlan100 up
+ip link set br100 up
+ip link set eth1 up
+```
+
+- `id`: the VNI; `local`: the source address of the VXLAN packets (the loopback interface of the
+  VTEP); `dstport 4789`: the IANA port (Linux uses 8472 by default, a leftover of history);
+- `nolearning` disables the learning of MAC addresses from the received packets (with EVPN, BGP
+  installs them);
+- the VNI of an existing interface **cannot be changed**: it has to be deleted and created
+  again;
+- without `dev`, the interface has an MTU of 1500; with `dev eth0`, it takes that of `eth0` minus 50.
+
+| command | what it shows |
+|----------|-------------------|
+| `ip -d link show vxlan100` | the parameters: `vxlan id 100 local … dstport 4789 nolearning ttl …` |
+| `ip -br link show master br100` | the ports of the bridge |
+| `bridge fdb show dev vxlan100` | the table of the interface: flood list (`00:00:00:00:00:00 dst …`) and remote MAC addresses (`dst` = the VTEP) |
+| `bridge fdb show br br100` | the whole table of the bridge |
+""",
+    "Le trafic BUM et l'apprentissage": "BUM traffic and learning",
+    """
+Un pont doit inonder le trafic **BUM** (*Broadcast, Unknown unicast, Multicast*) : une requête ARP,
+une trame vers une adresse MAC qu'il ne connaît pas encore. Un VTEP l'envoie à tous les VTEP qui
+portent le même VNI, de deux manières :
+
+- la **réplication en tête de réseau** (*head-end replication*, HER) : le VTEP envoie une copie en
+  unicast à chaque VTEP de sa **liste d'inondation**. Sous Linux, cette liste est faite d'entrées
+  `00:00:00:00:00:00` de la table de l'interface `vxlan` :
+
+```
+bridge fdb append 00:00:00:00:00:00 dev vxlan100 dst 10.0.15.12
+bridge fdb append 00:00:00:00:00:00 dev vxlan100 dst 10.0.15.13
+```
+
+- un **groupe multicast** par VNI : le VTEP envoie une seule copie au groupe, l'underlay la
+  distribue aux VTEP abonnés (section @@ref:mcast-underlay@@).
+
+Dans les deux cas, le VTEP **apprend** l'adresse MAC source des trames qu'il décapsule et l'associe
+au VTEP qui les a envoyées (`… dst 10.0.15.12 self`) : les trames suivantes vers cette adresse
+partent en unicast vers ce seul VTEP. C'est le modèle *flood and learn* de VXLAN « nu » : il
+fonctionne, mais la liste d'inondation est écrite à la main sur chaque VTEP, et toutes les adresses
+s'apprennent en inondant. EVPN (section @@ref:evpn@@) remplace les deux par BGP.
+""": """
+A bridge must flood **BUM** traffic (*Broadcast, Unknown unicast, Multicast*): an ARP request, a
+frame to a MAC address it does not know yet. A VTEP sends it to every VTEP that carries the same
+VNI, in one of two ways:
+
+- **head-end replication** (HER): the VTEP sends a unicast copy to each VTEP of its **flood
+  list**. On Linux, this list is made of `00:00:00:00:00:00` entries in the table of the `vxlan`
+  interface:
+
+```
+bridge fdb append 00:00:00:00:00:00 dev vxlan100 dst 10.0.15.12
+bridge fdb append 00:00:00:00:00:00 dev vxlan100 dst 10.0.15.13
+```
+
+- one **multicast group** per VNI: the VTEP sends a single copy to the group, and the underlay
+  delivers it to the VTEPs that joined it (section @@ref:mcast-underlay@@).
+
+In both cases, the VTEP **learns** the source MAC address of the frames it decapsulates and
+associates it with the VTEP that sent them (`… dst 10.0.15.12 self`): the following frames to that
+address go in unicast to that VTEP alone. This is the *flood and learn* model of "bare" VXLAN: it
+works, but the flood list is written by hand on every VTEP, and every address is learned by
+flooding. EVPN (section @@ref:evpn@@) replaces both with BGP.
+""",
+    "La MTU de l'underlay": "The MTU of the underlay",
+    """
+Une trame dont le paquet IP fait 1500 octets donne un paquet VXLAN de 1550 octets. Sur des liens à
+1500 octets :
+
+- le VTEP refuse d'envoyer un paquet trop grand avec le bit DF : il répond à l'hôte par un ICMP
+  *fragmentation needed* (comme un routeur, bien qu'il soit un pont pour l'hôte), et l'hôte garde une
+  **PMTU de 1450** pendant une dizaine de minutes (`ip route get <dest>` : `cache … mtu 1450`) ;
+- un routeur de l'underlay dont le lien suivant est trop petit **fragmente** le paquet VXLAN (son bit
+  DF n'est pas mis) : les fragments sont réassemblés par le VTEP d'arrivée, au prix de performances
+  dégradées.
+
+Deux remèdes : **augmenter la MTU de l'underlay** à au moins 1550 sur tous ses liens (les data
+centres utilisent 9000, les *jumbo frames*), ou réduire la MTU des hôtes à 1450. Le premier ne
+change rien pour les hôtes.
+
+```
+ip link set eth0 mtu 1600                  # sur les deux extrémités de chaque lien
+ping -M do -s 1472 <dest>                  # un paquet de 1500 octets avec DF
+ip route flush cache                       # oublier les PMTU apprises (sur l'hôte)
+nstat -az IpFragCreates                    # les fragments créés par un routeur
+```
+
+OSPF compare la MTU des deux extrémités d'un lien : tant qu'elles diffèrent, l'adjacence reste
+bloquée (état *ExStart*), et changer la MTU d'une interface relance ses adjacences.
+""": """
+A frame whose IP packet is 1500 bytes long gives a 1550-byte VXLAN packet. On 1500-byte links:
+
+- the VTEP refuses to send a packet that is too big and has the DF bit: it answers the host with an
+  ICMP *fragmentation needed* (like a router, although it is a bridge for the host), and the host
+  keeps a **PMTU of 1450** for about ten minutes (`ip route get <dest>`: `cache … mtu 1450`);
+- an underlay router whose next link is too small **fragments** the VXLAN packet (its DF bit is
+  not set): the fragments are reassembled by the receiving VTEP, at the cost of degraded
+  performance.
+
+Two remedies: **raise the MTU of the underlay** to at least 1550 on all its links (data centres use
+9000, *jumbo frames*), or lower the MTU of the hosts to 1450. The first changes nothing for the
+hosts.
+
+```
+ip link set eth0 mtu 1600                  # on both ends of every link
+ping -M do -s 1472 <dest>                  # a 1500-byte packet with DF
+ip route flush cache                       # forget the learned PMTUs (on the host)
+nstat -az IpFragCreates                    # the fragments created by a router
+```
+
+OSPF compares the MTU of the two ends of a link: as long as they differ, the adjacency stays stuck
+(*ExStart* state), and changing the MTU of an interface restarts its adjacencies.
+""",
+    "EVPN, un plan de contrôle pour VXLAN": "EVPN, a control plane for VXLAN",
+    """
+**EVPN** (*Ethernet VPN*, RFC 7432, et RFC 8365 pour VXLAN) annonce par **MP-BGP** ce que VXLAN
+devait apprendre en inondant. Les VTEP sont des voisins BGP dans la famille **L2VPN EVPN** (AFI 25 /
+SAFI 70) ; chaque route porte un RD, des RT (section @@ref:evpn-rd-rt@@) et la communauté étendue
+d'encapsulation VXLAN (`ET:8`). Les types de route :
+
+| type | nom | rôle |
+|------|-----|------|
+| 1 | *Ethernet Auto-Discovery* | multi-attachement d'un serveur à deux leaves (ESI) |
+| 2 | *MAC/IP Advertisement* | une adresse MAC apprise sur un port local, avec son adresse IP si le VTEP la connaît |
+| 3 | *Inclusive Multicast Ethernet Tag* | « je porte ce VNI » : construit la liste d'inondation des autres VTEP |
+| 4 | *Ethernet Segment* | élection du *designated forwarder* d'un segment multi-attaché |
+| 5 | *IP Prefix* | un préfixe IP, pour router entre VNI et vers l'extérieur (section @@ref:type5@@) |
+
+Ce que gagne la fabrique :
+
+- la liste d'inondation de chaque VNI se construit seule (routes de type 3) : ajouter un VTEP ne
+  demande de configurer que lui ;
+- les adresses MAC distantes sont installées dès leur apprentissage par le leaf local (routes de type
+  2), sans inondation : `bridge fdb` les marque `extern_learn` ;
+- un leaf qui connaît aussi l'adresse IP d'un hôte peut répondre lui-même aux requêtes ARP (section
+  @@ref:arp-suppression@@) et router (section @@ref:irb@@).
+""": """
+**EVPN** (*Ethernet VPN*, RFC 7432, and RFC 8365 for VXLAN) advertises with **MP-BGP** what VXLAN
+had to learn by flooding. The VTEPs are BGP neighbours in the **L2VPN EVPN** family (AFI 25 /
+SAFI 70); each route carries an RD, RTs (section @@ref:evpn-rd-rt@@) and the VXLAN encapsulation
+extended community (`ET:8`). The route types:
+
+| type | name | role |
+|------|-----|------|
+| 1 | *Ethernet Auto-Discovery* | multihoming of a server to two leaves (ESI) |
+| 2 | *MAC/IP Advertisement* | a MAC address learned on a local port, with its IP address if the VTEP knows it |
+| 3 | *Inclusive Multicast Ethernet Tag* | "I carry this VNI": builds the flood list of the other VTEPs |
+| 4 | *Ethernet Segment* | election of the *designated forwarder* of a multihomed segment |
+| 5 | *IP Prefix* | an IP prefix, to route between VNIs and to the outside (section @@ref:type5@@) |
+
+What the fabric gains:
+
+- the flood list of each VNI builds itself (type 3 routes): adding a VTEP only requires
+  configuring that VTEP;
+- the remote MAC addresses are installed as soon as the local leaf learns them (type 2 routes),
+  without flooding: `bridge fdb` marks them `extern_learn`;
+- a leaf that also knows the IP address of a host can answer the ARP requests itself (section
+  @@ref:arp-suppression@@) and route (section @@ref:irb@@).
+""",
+    "RD et RT en EVPN": "RD and RT in EVPN",
+    """
+Comme pour les VPN BGP/MPLS, chaque VNI a un **RD** (il rend uniques les routes de deux VNI qui
+annoncent la même adresse) et des **RT** d'import et d'export (elles décident quel VNI importe une
+route). FRR les calcule tout seul :
+
+- **RD automatique** : `adresse-du-routeur:numéro`, où le numéro est un index interne attribué à
+  chaque VNI (ni le VNI ni une valeur prévisible) ;
+- **RT automatique** : `AS:VNI` ; deux leaves du même AS qui portent le même VNI ont donc la même RT,
+  sans rien configurer. Entre deux AS (eBGP), les RT automatiques diffèrent (`65101:100` et
+  `65102:100`), et FRR importe tout de même la route : il ne compare que la partie VNI d'une RT
+  automatique.
+
+On peut les fixer à la main, VNI par VNI :
+
+```
+router bgp 65000
+ address-family l2vpn evpn
+  vni 100
+   rd 10.0.15.11:100
+   route-target import 65000:100
+   route-target export 65000:100
+  exit-vni
+```
+""": """
+As for BGP/MPLS VPNs, each VNI has an **RD** (it keeps distinct the routes of two VNIs that
+advertise the same address) and import and export **RTs** (they decide which VNI imports a route). FRR
+computes them on its own:
+
+- **automatic RD**: `router-address:number`, where the number is an internal index assigned to
+  each VNI (neither the VNI nor a predictable value);
+- **automatic RT**: `AS:VNI`; two leaves of the same AS that carry the same VNI therefore have the
+  same RT, without any configuration. Between two ASes (eBGP), the automatic RTs differ
+  (`65101:100` and `65102:100`), and FRR still imports the route: it only compares the VNI part of
+  an automatic RT.
+
+They can be set by hand, VNI by VNI:
+
+```
+router bgp 65000
+ address-family l2vpn evpn
+  vni 100
+   rd 10.0.15.11:100
+   route-target import 65000:100
+   route-target export 65000:100
+  exit-vni
+```
+""",
+    "EVPN avec FRR": "EVPN with FRR",
+    """
+Les interfaces `vxlan` (avec `nolearning`) et leurs ponts existent déjà dans le noyau ; FRR les
+découvre. Sur un leaf :
+
+```
+configure terminal
+router bgp 65000
+ bgp router-id 10.0.15.11
+ no bgp default ipv4-unicast
+ neighbor 10.0.15.1 remote-as 65000
+ neighbor 10.0.15.1 update-source lo
+ address-family l2vpn evpn
+  neighbor 10.0.15.1 activate
+  advertise-all-vni
+ exit-address-family
+exit
+end
+write
+```
+
+- `advertise-all-vni` : annoncer tous les VNI du noyau, et installer dans le noyau ce qu'annoncent
+  les autres ; sans lui, BGP échange la famille EVPN mais ignore les VNI ;
+- la session part de l'interface de bouclage, que l'IGP de l'underlay annonce.
+
+Les leaves forment des sessions **iBGP** avec les spines. Un routeur iBGP ne transmet pas à un voisin
+iBGP ce qu'il a appris d'un autre voisin iBGP : sans maillage complet entre les leaves, le spine doit
+être **route reflector**, et chaque leaf son client :
+
+```
+router bgp 65000
+ bgp router-id 10.0.15.1
+ no bgp default ipv4-unicast
+ neighbor 10.0.15.11 remote-as 65000
+ neighbor 10.0.15.11 update-source lo
+ address-family l2vpn evpn
+  neighbor 10.0.15.11 activate
+  neighbor 10.0.15.11 route-reflector-client
+ exit-address-family
+exit
+```
+
+Le spine ne porte aucun VNI et n'est pas un VTEP : il ne fait que refléter les routes ; les paquets
+VXLAN le traversent comme n'importe quel paquet IP.
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `show bgp l2vpn evpn summary` | les sessions EVPN |
+| `show bgp l2vpn evpn route` | la table EVPN, rangée par RD (`[2]:…:[MAC]`, `[3]:…:[VTEP]`, `[5]:…:[préfixe]`) |
+| `show bgp l2vpn evpn route type macip` / `multicast` / `prefix` | les routes d'un type |
+| `show bgp l2vpn evpn vni` | les VNI de BGP : RD, RT d'import et d'export |
+| `show evpn vni` / `show evpn vni detail` | les VNI de zebra et leurs VTEP distants |
+| `show evpn mac vni all` | les adresses MAC locales et distantes |
+""": """
+The `vxlan` interfaces (with `nolearning`) and their bridges already exist in the kernel; FRR
+discovers them. On a leaf:
+
+```
+configure terminal
+router bgp 65000
+ bgp router-id 10.0.15.11
+ no bgp default ipv4-unicast
+ neighbor 10.0.15.1 remote-as 65000
+ neighbor 10.0.15.1 update-source lo
+ address-family l2vpn evpn
+  neighbor 10.0.15.1 activate
+  advertise-all-vni
+ exit-address-family
+exit
+end
+write
+```
+
+- `advertise-all-vni`: advertise every VNI of the kernel, and install in the kernel what the
+  others advertise; without it, BGP exchanges the EVPN family but ignores the VNIs;
+- the session starts from the loopback interface, which the IGP of the underlay advertises.
+
+The leaves form **iBGP** sessions with the spines. An iBGP router does not pass on to an iBGP
+neighbour what it learned from another iBGP neighbour: without a full mesh between the leaves, the
+spine must be a **route reflector**, and each leaf its client:
+
+```
+router bgp 65000
+ bgp router-id 10.0.15.1
+ no bgp default ipv4-unicast
+ neighbor 10.0.15.11 remote-as 65000
+ neighbor 10.0.15.11 update-source lo
+ address-family l2vpn evpn
+  neighbor 10.0.15.11 activate
+  neighbor 10.0.15.11 route-reflector-client
+ exit-address-family
+exit
+```
+
+The spine carries no VNI and is not a VTEP: it only reflects the routes; the VXLAN packets cross it
+like any other IP packet.
+
+| command | what it shows |
+|----------|-------------------|
+| `show bgp l2vpn evpn summary` | the EVPN sessions |
+| `show bgp l2vpn evpn route` | the EVPN table, sorted by RD (`[2]:…:[MAC]`, `[3]:…:[VTEP]`, `[5]:…:[prefix]`) |
+| `show bgp l2vpn evpn route type macip` / `multicast` / `prefix` | the routes of one type |
+| `show bgp l2vpn evpn vni` | the VNIs of BGP: RD, import and export RTs |
+| `show evpn vni` / `show evpn vni detail` | the VNIs of zebra and their remote VTEPs |
+| `show evpn mac vni all` | the local and remote MAC addresses |
+""",
+    "La suppression ARP": "ARP suppression",
+    """
+Une route de type 2 peut porter, avec l'adresse MAC, l'**adresse IP** de l'hôte : le leaf l'apprend
+dans sa table ARP, quand il a une adresse dans le sous-réseau (une SVI, section @@ref:irb@@). Les
+autres leaves connaissent alors le couple IP / MAC de chaque hôte distant, et peuvent **répondre
+eux-mêmes** aux requêtes ARP de leurs hôtes au lieu de les inonder dans toute la fabrique :
+
+```
+ip link set vxlan100 type bridge_slave neigh_suppress on
+bridge -d link show dev vxlan100              # … neigh_suppress on …
+show evpn arp-cache vni all                   # (vtysh) les couples IP / MAC connus
+```
+
+Le couple IP / MAC d'un hôte suit l'état de la table ARP du leaf : quand l'entrée vieillit (`STALE`),
+FRR la marque *inactive* et retire la route MAC/IP correspondante.
+""": """
+A type 2 route can carry, with the MAC address, the **IP address** of the host: the leaf learns it
+from its ARP table, when it has an address in the subnet (an SVI, section @@ref:irb@@). The other
+leaves then know the IP / MAC pair of every remote host, and can **answer themselves** the ARP
+requests of their hosts instead of flooding them through the whole fabric:
+
+```
+ip link set vxlan100 type bridge_slave neigh_suppress on
+bridge -d link show dev vxlan100              # … neigh_suppress on …
+show evpn arp-cache vni all                   # (vtysh) the known IP / MAC pairs
+```
+
+The IP / MAC pair of a host follows the state of the ARP table of the leaf: when the entry ages
+(`STALE`), FRR marks it *inactive* and withdraws the corresponding MAC/IP route.
+""",
+    "Router entre VNI : l'IRB": "Routing between VNIs: IRB",
+    """
+Pour router entre deux VNI (deux sous-réseaux), le leaf donne une adresse au pont du VNI : c'est la
+**SVI** (*Switched Virtual Interface*), passerelle des hôtes du segment. On parle d'**IRB**
+(*Integrated Routing and Bridging*). Deux modèles :
+
+- **IRB asymétrique** : le leaf d'entrée route vers le sous-réseau de destination, puis **pont** la
+  trame dans le VNI de destination. Chaque leaf doit porter **tous** les VNI de tous les
+  sous-réseaux, et apprendre toutes les adresses ;
+- **IRB symétrique** : le leaf d'entrée route le paquet vers le **leaf de sortie**, dans un VNI de
+  routage propre à la VRF, le **L3VNI** ; le leaf de sortie route une seconde fois vers l'hôte. Chaque
+  leaf ne porte que les VNI de ses hôtes, plus le L3VNI.
+
+En IRB symétrique, les sous-réseaux d'un client forment une **VRF** ; le L3VNI est le VNI de cette
+VRF entre les VTEP. Chaque VTEP a une **adresse MAC de routeur** (*router MAC*), annoncée dans la
+communauté étendue `Rmac` de ses routes ; la trame intérieure d'un paquet routé va de la *router
+MAC* du leaf d'entrée à celle du leaf de sortie. Une route de type 2 MAC/IP porte alors **deux VNI**
+(celui du segment, puis le L3VNI) et deux RT.
+""": """
+To route between two VNIs (two subnets), the leaf gives an address to the bridge of the VNI: this is
+the **SVI** (*Switched Virtual Interface*), the gateway of the hosts of the segment. This is called
+**IRB** (*Integrated Routing and Bridging*). Two models:
+
+- **asymmetric IRB**: the ingress leaf routes to the destination subnet, then **bridges** the
+  frame into the destination VNI. Every leaf must carry **all** the VNIs of all the subnets, and
+  learn every address;
+- **symmetric IRB**: the ingress leaf routes the packet to the **egress leaf**, in a routing VNI
+  of the VRF, the **L3VNI**; the egress leaf routes a second time to the host. Each leaf only
+  carries the VNIs of its hosts, plus the L3VNI.
+
+In symmetric IRB, the subnets of a customer form a **VRF**; the L3VNI is the VNI of this VRF between
+the VTEPs. Each VTEP has a **router MAC address** (*router MAC*), advertised in the `Rmac` extended
+community of its routes; the inner frame of a routed packet goes from the *router MAC* of the
+ingress leaf to that of the egress leaf. A type 2 MAC/IP route then carries **two VNIs** (that of
+the segment, then the L3VNI) and two RTs.
+""",
+    "La passerelle anycast distribuée": "The distributed anycast gateway",
+    """
+Un hôte peut être branché sur n'importe quel leaf, et migrer d'un leaf à l'autre. Pour qu'il garde
+sa passerelle, **tous les leaves** qui portent un VNI donnent à sa SVI la **même adresse IP et la
+même adresse MAC** : chaque hôte trouve sa passerelle sur son propre leaf, le trafic routé ne
+traverse jamais la fabrique pour atteindre une passerelle lointaine, et une migration ne change rien
+pour l'hôte.
+
+```
+ip link set br100 address 02:00:5e:00:00:01      # la même sur tous les leaves
+ip addr add 192.168.10.1/24 dev br100            # la même sur tous les leaves
+```
+
+Ces adresses ne sont jamais annoncées comme des hôtes : chaque leaf les considère comme locales.
+""": """
+A host can be connected to any leaf, and migrate from one leaf to another. So that it keeps its
+gateway, **every leaf** that carries a VNI gives its SVI the **same IP address and the same MAC
+address**: each host finds its gateway on its own leaf, routed traffic never crosses the fabric to
+reach a distant gateway, and a migration changes nothing for the host.
+
+```
+ip link set br100 address 02:00:5e:00:00:01      # the same on every leaf
+ip addr add 192.168.10.1/24 dev br100            # the same on every leaf
+```
+
+These addresses are never advertised as hosts: each leaf considers them local.
+""",
+    "IRB symétrique sous Linux et FRR": "Symmetric IRB on Linux and FRR",
+    """
+Le noyau d'abord, sur chaque leaf :
+
+```
+ip link add TENANT type vrf table 100            # la VRF
+ip link set TENANT up
+ip link add vxlan4000 type vxlan id 4000 local 10.0.15.11 dstport 4789 nolearning
+ip link add br4000 type bridge                   # le L3VNI : interface vxlan + pont, dans la VRF
+ip link set br4000 master TENANT
+ip link set vxlan4000 master br4000
+ip link set vxlan4000 up
+ip link set br4000 up
+ip link set br100 master TENANT                  # la SVI du VNI 100 dans la VRF
+```
+
+Puis FRR, qui associe le L3VNI à la VRF :
+
+```
+configure terminal
+vrf TENANT
+ vni 4000
+exit-vrf
+end
+write
+```
+
+Le pont du L3VNI n'a pas d'adresse. Les routes des hôtes distants apparaissent dans la table de la
+VRF sous la forme `192.168.20.15 via 10.0.15.12 dev br4000 onlink` : le prochain saut est le VTEP de
+sortie, joint par une entrée de voisinage vers sa *router MAC*.
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `show evpn vni` | le L3VNI (type `L3`) et sa VRF |
+| `show vrf vni` | la VRF, son L3VNI et sa *router MAC* |
+| `show evpn rmac vni all` | les *router MAC* des VTEP distants |
+| `ip route show vrf TENANT`, `ip neigh show vrf TENANT` | ce que le noyau en a fait |
+""": """
+The kernel first, on each leaf:
+
+```
+ip link add TENANT type vrf table 100            # the VRF
+ip link set TENANT up
+ip link add vxlan4000 type vxlan id 4000 local 10.0.15.11 dstport 4789 nolearning
+ip link add br4000 type bridge                   # the L3VNI: vxlan interface + bridge, in the VRF
+ip link set br4000 master TENANT
+ip link set vxlan4000 master br4000
+ip link set vxlan4000 up
+ip link set br4000 up
+ip link set br100 master TENANT                  # the SVI of VNI 100 in the VRF
+```
+
+Then FRR, which associates the L3VNI with the VRF:
+
+```
+configure terminal
+vrf TENANT
+ vni 4000
+exit-vrf
+end
+write
+```
+
+The bridge of the L3VNI has no address. The routes of the remote hosts appear in the table of the
+VRF in the form `192.168.20.15 via 10.0.15.12 dev br4000 onlink`: the next hop is the egress VTEP,
+reached through a neighbour entry pointing to its *router MAC*.
+
+| command | what it shows |
+|----------|-------------------|
+| `show evpn vni` | the L3VNI (type `L3`) and its VRF |
+| `show vrf vni` | the VRF, its L3VNI and its *router MAC* |
+| `show evpn rmac vni all` | the *router MACs* of the remote VTEPs |
+| `ip route show vrf TENANT`, `ip neigh show vrf TENANT` | what the kernel made of them |
+""",
+    "Les routes de type 5": "Type 5 routes",
+    """
+Les routes de type 2 ne décrivent que les hôtes que les leaves ont **déjà vus**. Deux cas ont besoin
+de préfixes :
+
+- un **hôte silencieux** : tant qu'il n'a rien émis, aucun leaf ne connaît son adresse et aucune
+  route /32 ne mène à lui ; si le leaf d'entrée ne porte pas son VNI, il ne peut même pas le chercher
+  par ARP. Chaque leaf annonce donc aussi ses **sous-réseaux** ; le leaf qui les porte fera la
+  résolution ARP lui-même ;
+- les **réseaux extérieurs** à la fabrique, connus d'un *border leaf* par une route statique ou un
+  protocole de routage.
+
+Une route de **type 5** annonce un préfixe d'une VRF, avec le L3VNI et la *router MAC* du VTEP qui
+l'annonce. Avec FRR, dans l'instance BGP de la VRF :
+
+```
+configure terminal
+router bgp 65000 vrf TENANT
+ bgp router-id 10.0.15.11
+ address-family ipv4 unicast
+  redistribute connected               # ou redistribute static, des sessions...
+ exit-address-family
+ address-family l2vpn evpn
+  advertise ipv4 unicast
+ exit-address-family
+exit
+end
+write
+```
+
+L'instance BGP de la VRF n'est pas nécessaire à l'IRB symétrique (les routes de type 2 suffisent) ;
+elle l'est pour annoncer des routes de type 5.
+""": """
+Type 2 routes only describe the hosts that the leaves have **already seen**. Two cases need
+prefixes:
+
+- a **silent host**: as long as it has sent nothing, no leaf knows its address and no /32 route
+  leads to it; if the ingress leaf does not carry its VNI, it cannot even look for it with ARP.
+  Each leaf therefore also advertises its **subnets**; the leaf that carries them will do the ARP
+  resolution itself;
+- the **networks outside** the fabric, known to a *border leaf* through a static route or a
+  routing protocol.
+
+A **type 5** route advertises a prefix of a VRF, with the L3VNI and the *router MAC* of the VTEP
+that advertises it. With FRR, in the BGP instance of the VRF:
+
+```
+configure terminal
+router bgp 65000 vrf TENANT
+ bgp router-id 10.0.15.11
+ address-family ipv4 unicast
+  redistribute connected               # or redistribute static, sessions...
+ exit-address-family
+ address-family l2vpn evpn
+  advertise ipv4 unicast
+ exit-address-family
+exit
+end
+write
+```
+
+The BGP instance of the VRF is not needed for symmetric IRB (type 2 routes are enough); it is
+needed to advertise type 5 routes.
+""",
+    "Un underlay multicast": "A multicast underlay",
+    """
+Au lieu d'une liste d'inondation, chaque VNI peut utiliser un **groupe multicast** : le VTEP envoie
+le trafic BUM au groupe, et rejoint ce groupe (IGMP) pour recevoir celui des autres. L'underlay doit
+router le multicast, en général avec **PIM-SM** (RP statique, arbre partagé puis arbre des sources) :
+
+```
+ip link add vxlan500 type vxlan id 500 group 239.1.1.5 dev eth0 ttl 5 dstport 4789
+```
+
+- `group` exige `dev` : l'interface par laquelle le VTEP rejoint le groupe et l'envoie ;
+- le **TTL par défaut d'un paquet VXLAN multicast est 1** : il ne franchirait aucun routeur ; `ttl`
+  le fixe ;
+- un routeur PIM ne prend en charge (enregistrement auprès du RP) que les sources **directement
+  connectées** : sans `local`, le VTEP utilise l'adresse de `dev`, sur le lien du routeur. Un VTEP
+  qui envoie depuis son interface de bouclage doit faire tourner PIM lui-même.
+
+Les adresses MAC distantes s'apprennent toujours dans les paquets reçus (*flood and learn*) : le
+multicast ne remplace que la liste d'inondation. EVPN peut aussi s'en servir pour son trafic BUM
+(au lieu de la réplication en tête de réseau).
+
+Sur le routeur (FRR) :
+
+```
+configure terminal
+ip pim rp 10.0.15.1 239.0.0.0/8
+interface lo
+ ip pim
+exit
+interface eth0
+ ip pim
+ ip igmp
+exit
+end
+write
+```
+
+`show ip igmp groups` montre les VTEP abonnés, `show ip mroute` l'entrée `(*,G)` puis une entrée
+`(S,G)` par VTEP qui émet.
+""": """
+Instead of a flood list, each VNI can use a **multicast group**: the VTEP sends the BUM traffic to
+the group, and joins that group (IGMP) to receive that of the others. The underlay must route
+multicast, usually with **PIM-SM** (static RP, shared tree then source tree):
+
+```
+ip link add vxlan500 type vxlan id 500 group 239.1.1.5 dev eth0 ttl 5 dstport 4789
+```
+
+- `group` requires `dev`: the interface through which the VTEP joins the group and sends to it;
+- the **default TTL of a multicast VXLAN packet is 1**: it would not cross any router; `ttl` sets
+  it;
+- a PIM router only takes charge of (registers with the RP) **directly connected** sources:
+  without `local`, the VTEP uses the address of `dev`, on the link of the router. A VTEP that
+  sends from its loopback interface must run PIM itself.
+
+The remote MAC addresses are still learned from the received packets (*flood and learn*):
+multicast only replaces the flood list. EVPN can also use it for its BUM traffic (instead of
+head-end replication).
+
+On the router (FRR):
+
+```
+configure terminal
+ip pim rp 10.0.15.1 239.0.0.0/8
+interface lo
+ ip pim
+exit
+interface eth0
+ ip pim
+ ip igmp
+exit
+end
+write
+```
+
+`show ip igmp groups` shows the VTEPs that joined, `show ip mroute` the `(*,G)` entry, then one
+`(S,G)` entry per sending VTEP.
+""",
+    "Dépannage d'une fabrique EVPN": "Troubleshooting an EVPN fabric",
+    """
+Le chemin d'une adresse MAC d'un leaf à l'autre, étape par étape :
+
+1. l'interface `vxlan` a-t-elle le bon VNI (`ip -d link show`), est-elle dans le pont du segment,
+   avec l'interface de l'hôte (`ip -br link show master brX`) ?
+2. la session EVPN du leaf est-elle établie **et activée** dans la famille L2VPN EVPN, le leaf
+   annonce-t-il ses VNI (`advertise-all-vni`, `show bgp l2vpn evpn vni`) ?
+3. le spine reflète-t-il les routes (`route-reflector-client` pour chaque leaf) ?
+4. l'autre leaf a-t-il reçu la route de type 3 du VNI, et le VTEP est-il dans sa liste d'inondation
+   (`show evpn vni detail`, `bridge fdb show dev vxlanX`) ?
+5. l'adresse MAC de l'hôte est-elle apprise localement, puis annoncée en type 2 (`show evpn mac vni
+   all`) ?
+
+| symptôme | cause probable |
+|----------|----------------|
+| `show bgp l2vpn evpn summary` vide | voisin non activé dans la famille EVPN |
+| la session est établie, aucune route de VNI | pas d'`advertise-all-vni` |
+| un leaf reçoit les routes de l'autre, pas l'inverse | un leaf n'est pas client du route reflector |
+| les routes arrivent mais ne sont pas importées | VNI ou RT différents d'un leaf à l'autre |
+| les VTEP se connaissent, l'hôte local n'est pas appris | interface `vxlan` ou de l'hôte hors du pont |
+| les petits paquets passent, pas les gros | MTU de l'underlay trop petite |
+""": """
+The path of a MAC address from one leaf to the other, step by step:
+
+1. does the `vxlan` interface have the right VNI (`ip -d link show`), is it in the bridge of the
+   segment, with the interface of the host (`ip -br link show master brX`)?
+2. is the EVPN session of the leaf established **and activated** in the L2VPN EVPN family, does
+   the leaf advertise its VNIs (`advertise-all-vni`, `show bgp l2vpn evpn vni`)?
+3. does the spine reflect the routes (`route-reflector-client` for each leaf)?
+4. has the other leaf received the type 3 route of the VNI, and is the VTEP in its flood list
+   (`show evpn vni detail`, `bridge fdb show dev vxlanX`)?
+5. is the MAC address of the host learned locally, then advertised as type 2 (`show evpn mac vni
+   all`)?
+
+| symptom | probable cause |
+|----------|----------------|
+| `show bgp l2vpn evpn summary` empty | neighbour not activated in the EVPN family |
+| the session is established, no VNI route | no `advertise-all-vni` |
+| one leaf receives the routes of the other, not the reverse | one leaf is not a client of the route reflector |
+| the routes arrive but are not imported | VNI or RT different from one leaf to the other |
+| the VTEPs know each other, the local host is not learned | `vxlan` interface or host interface outside the bridge |
+| small packets get through, large ones do not | underlay MTU too small |
+""",
+    "Partie 1 : solution (VXLAN statique)": "Part 1: solution (static VXLAN)",
+    "Partie 2 : solution (EVPN)": "Part 2: solution (EVPN)",
+    "Partie 3 : solution (IRB symétrique, type 5)": "Part 3: solution (symmetric IRB, type 5)",
+    "Partie 4 : solution (dépannage)": "Part 4: solution (troubleshooting)",
+    "Partie 5 : solution (underlay multicast, bonus)": "Part 5: solution (multicast underlay, bonus)",
+    "1 — VXLAN statique": "1 — static VXLAN",
+    "`st_r`, les VTEP `st_vtep1` à `st_vtep3`, les hôtes `st_h1` à `st_h3`": "`st_r`, the VTEPs `st_vtep1` to `st_vtep3`, the hosts `st_h1` to `st_h3`",
+    "`l2_spine`, `l2_leaf1` à `l2_leaf3`, les hôtes `l2_a1`, `l2_a2` (VNI A), `l2_b2`, `l2_b3` (VNI B)": "`l2_spine`, `l2_leaf1` to `l2_leaf3`, the hosts `l2_a1`, `l2_a2` (VNI A), `l2_b2`, `l2_b3` (VNI B)",
+    "3 — IRB symétrique, type 5": "3 — symmetric IRB, type 5",
+    "`irb_spine`, `irb_leaf1`, `irb_leaf2`, `irb_border`, le routeur extérieur `irb_ext`, les hôtes `irb_a1`, `irb_a2` (sous-réseau A), `irb_b2` (sous-réseau B)": "`irb_spine`, `irb_leaf1`, `irb_leaf2`, `irb_border`, the external router `irb_ext`, the hosts `irb_a1`, `irb_a2` (subnet A), `irb_b2` (subnet B)",
+    "4 — dépannage": "4 — troubleshooting",
+    "`fix_spine`, `fix_leaf1`, `fix_leaf2`, les hôtes `fix_h1`, `fix_h2`": "`fix_spine`, `fix_leaf1`, `fix_leaf2`, the hosts `fix_h1`, `fix_h2`",
+    "5 — underlay multicast (bonus)": "5 — multicast underlay (bonus)",
+    "`mc_r`, les VTEP `mc_vtep1` à `mc_vtep3`, les hôtes `mc_h1` à `mc_h3`": "`mc_r`, the VTEPs `mc_vtep1` to `mc_vtep3`, the hosts `mc_h1` to `mc_h3`",
+    "site 2 (VNI A et VNI B)": "site 2 (VNI A and VNI B)",
+    "site 3, sous-réseau A": "site 3, subnet A",
+    "site 3, sous-réseau B": "site 3, subnet B",
+    "réseau extérieur": "external network",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente VXLAN, EVPN et le routage entre VNI, et leur mise en
+œuvre avec Linux et FRR. Le TP suppose connus OSPF et BGP (iBGP entre interfaces de bouclage).
+
+**Le réseau.** Il est fait de **cinq sites indépendants**, un par partie ; chaque site a sa couleur
+sur le schéma :
+
+| partie | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- Les routeurs, les spines, les leaves et les VTEP font tourner **FRRouting** (FRR) : configurez-les
+  avec `vtysh`. Dans chaque site, l'**underlay fonctionne** : OSPF annonce les liens et les
+  interfaces de bouclage (les adresses des VTEP).
+- Sur les sites 2 et 3, les interfaces `vxlan` et les ponts des VNI de niveau 2 existent déjà sur les
+  leaves (noms `vxlan<VNI>` et `br<VNI>`) ; `bgpd` est activé sur les spines et les leaves des sites 2
+  à 4, `pimd` sur `mc_r`.
+- Les fichiers `/etc/hosts` contiennent les noms : `st_r-eth1` désigne l'adresse de l'interface
+  `eth1` de `st_r`, `st_vtep2-lo` l'adresse de bouclage de `st_vtep2`.
+- L'AS de la fabrique est **{asn}** (sites 2 à 4).
+
+**Plan d'adressage.** Les liens de l'underlay sont des /30 ; les hôtes d'un même site partagent un
+sous-réseau de niveau 2 (sauf au site 3).
+
+| réseau | préfixe | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Valeurs propres à votre instance.**
+
+- Partie 1 : VNI **{st_vni}**.
+- Partie 2 : VNI A **{l2_a}** (`l2_leaf1`, `l2_leaf2`), VNI B **{l2_b}** (`l2_leaf2`, `l2_leaf3`).
+- Partie 3 : VNI du sous-réseau A **{irb_a}** (`irb_leaf1`, `irb_leaf2`), du sous-réseau B **{irb_b}**
+  (`irb_leaf2`) ; VRF `{vrf}` (table {table}), L3VNI **{l3vni}** ; passerelle anycast : `{gw_a}` (A),
+  `{gw_b}` (B), adresse MAC `{gw_mac}`.
+- Partie 4 : VNI **{fix_vni}**.
+- Partie 5 : VNI **{mc_vni}**, groupe **{group}**.
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Enregistrez la configuration de FRR (`write` dans `vtysh`). Les commandes `ip` et `bridge` ne sont
+  pas enregistrées : ne redémarrez pas les machines.
+- Une session BGP s'établit en quelques secondes ; une route EVPN met quelques secondes de plus à
+  arriver dans le noyau des autres leaves.
+
+**Évaluation.** Chaque évaluation lit vos réponses, les interfaces et les tables du noyau, l'état
+d'EVPN dans FRR, puis envoie des `ping` (dont des paquets de 1500 octets avec le bit DF). Elle dure
+une quinzaine de secondes.
+""": """
+Read the **Informations** tab: it presents VXLAN, EVPN and routing between VNIs, and how they are
+implemented with Linux and FRR. The lab assumes you know OSPF and BGP (iBGP between loopback
+interfaces).
+
+**The network.** It is made of **five independent sites**, one per part; each site has its own
+colour on the diagram:
+
+| part | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- The routers, the spines, the leaves and the VTEPs run **FRRouting** (FRR): configure them with
+  `vtysh`. In each site, the **underlay works**: OSPF advertises the links and the loopback
+  interfaces (the addresses of the VTEPs).
+- On sites 2 and 3, the `vxlan` interfaces and the bridges of the layer-2 VNIs already exist on the
+  leaves (names `vxlan<VNI>` and `br<VNI>`); `bgpd` is enabled on the spines and the leaves of sites
+  2 to 4, `pimd` on `mc_r`.
+- The `/etc/hosts` files contain the names: `st_r-eth1` is the address of the `eth1` interface of
+  `st_r`, `st_vtep2-lo` the loopback address of `st_vtep2`.
+- The AS of the fabric is **{asn}** (sites 2 to 4).
+
+**Addressing plan.** The underlay links are /30s; the hosts of a site share a layer-2 subnet
+(except on site 3).
+
+| network | prefix | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Values specific to your instance.**
+
+- Part 1: VNI **{st_vni}**.
+- Part 2: VNI A **{l2_a}** (`l2_leaf1`, `l2_leaf2`), VNI B **{l2_b}** (`l2_leaf2`, `l2_leaf3`).
+- Part 3: VNI of subnet A **{irb_a}** (`irb_leaf1`, `irb_leaf2`), of subnet B **{irb_b}**
+  (`irb_leaf2`); VRF `{vrf}` (table {table}), L3VNI **{l3vni}**; anycast gateway: `{gw_a}` (A),
+  `{gw_b}` (B), MAC address `{gw_mac}`.
+- Part 4: VNI **{fix_vni}**.
+- Part 5: VNI **{mc_vni}**, group **{group}**.
+
+**Instructions.**
+
+- The parts are **independent**: do them in the order you like. A completed part gives all its
+  points, whatever the state of the others.
+- Save the configuration of FRR (`write` in `vtysh`). The `ip` and `bridge` commands are not saved:
+  do not restart the machines.
+- A BGP session comes up in a few seconds; an EVPN route takes a few more seconds to reach the
+  kernel of the other leaves.
+
+**Evaluation.** Each evaluation reads your answers, the interfaces and tables of the kernel, the
+state of EVPN in FRR, then sends `ping`s (including 1500-byte packets with the DF bit). It takes
+about fifteen seconds.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_static`, `solve_l2`, `solve_irb`, `solve_fix` et `solve_mcast` (onglet
+*Appliquer une configuration*) appliquent la solution d'une seule partie et remplissent ses
+formulaires. L'état `final` les applique toutes, attend {wait} s (les adjacences OSPF relancées par
+le changement de MTU) puis remplit tous les formulaires : une évaluation lancée dès son retour donne
+tous les points, bonus compris.
+
+Les pannes du site `fix` : l'interface `{vx}` de `fix_leaf2` a le VNI {wrong} (son nom est juste),
+`fix_leaf1` n'est pas client du route reflector sur `fix_spine`, `fix_leaf2` n'a pas
+`advertise-all-vni`, l'interface `{vx}` de `fix_leaf1` est hors du pont `{br}`.
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance. The
+states `solve_static`, `solve_l2`, `solve_irb`, `solve_fix` and `solve_mcast` (the *Apply
+Configuration* tab) apply the solution of a single part and fill in its forms. The `final` state
+applies them all, waits {wait} s (the OSPF adjacencies restarted by the MTU change), then fills in
+every form: an evaluation started as soon as it returns gives all the points, bonus included.
+
+The faults of the `fix` site: the `{vx}` interface of `fix_leaf2` has VNI {wrong} (its name is
+right), `fix_leaf1` is not a client of the route reflector on `fix_spine`, `fix_leaf2` lacks
+`advertise-all-vni`, the `{vx}` interface of `fix_leaf1` is outside the `{br}` bridge.
+""",
+    "Partie 1 — VXLAN statique (site st)": "Part 1 — static VXLAN (site st)",
+    "Un segment VXLAN entre trois VTEP": "A VXLAN segment between three VTEPs",
+    """
+`st_vtep1`, `st_vtep2` et `st_vtep3` sont reliés par le routeur `st_r` ; OSPF annonce leurs
+interfaces de bouclage. Chaque VTEP a, sur `eth1`, un hôte du même sous-réseau `{subnet}` : `st_h1`,
+`st_h2`, `st_h3`. Pour l'instant, les hôtes ne se joignent pas (sections @@ref:vxlan-header@@ à
+@@ref:mtu@@).
+
+1. Sur chaque VTEP, créez une interface `vxlan` pour le VNI **{vni}** (adresse locale : l'interface de
+   bouclage, port UDP de l'IANA) et un pont qui la relie à `eth1`.
+2. Donnez à chaque VTEP la liste d'inondation des deux autres (réplication en tête de réseau).
+   Vérifiez que les hôtes se joignent ; regardez la table de l'interface `vxlan` de `st_vtep1`, et
+   les paquets sur `st_r` (`tcpdump -nei eth0 udp port 4789`).
+3. Essayez `ping -M do -s 1472` d'un hôte à l'autre. Que se passe-t-il, et pourquoi ? Faites passer
+   ces paquets de 1500 octets **sans fragmentation**, sans changer la MTU des hôtes.
+""": """
+`st_vtep1`, `st_vtep2` and `st_vtep3` are linked by the router `st_r`; OSPF advertises their
+loopback interfaces. Each VTEP has, on `eth1`, a host of the same subnet `{subnet}`: `st_h1`,
+`st_h2`, `st_h3`. For now, the hosts cannot reach each other (sections @@ref:vxlan-header@@ to
+@@ref:mtu@@).
+
+1. On each VTEP, create a `vxlan` interface for VNI **{vni}** (local address: the loopback
+   interface, the IANA UDP port) and a bridge that connects it to `eth1`.
+2. Give each VTEP the flood list of the two others (head-end replication). Check that the hosts
+   reach each other; look at the table of the `vxlan` interface of `st_vtep1`, and at the packets
+   on `st_r` (`tcpdump -nei eth0 udp port 4789`).
+3. Try `ping -M do -s 1472` from one host to another. What happens, and why? Get these 1500-byte
+   packets through **without fragmentation**, without changing the MTU of the hosts.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Sans changement de MTU, le VTEP répond par un ICMP *fragmentation needed* (MTU 1450) : l'hôte refuse
+ensuite d'envoyer (`Message too long`) pendant une dizaine de minutes (`ip route flush cache` sur
+l'hôte pour l'oublier). Si seule la MTU des VTEP augmente, `st_r` fragmente les paquets VXLAN.
+
+Évaluation : `st_vxlan` (6 : 2 par VTEP, une interface du bon VNI, adresse locale et port 4789, dans
+le pont d'`eth1`), `st_flood` (3 : 1 par VTEP dont la liste d'inondation contient exactement les
+deux autres), `st_ping` (3 : `st_h1` → `st_h2`, `st_h1` → `st_h3`, `st_h2` → `st_h3`), `st_learn` (2 :
+`st_vtep1` a appris l'adresse MAC de `st_h2` et de `st_h3` derrière le bon VTEP), `st_mtu` (3 : ping
+de 1500 octets avec DF de `st_h1` vers `st_h2` et `st_h3`, sans fragment créé par `st_r`) ;
+`st_q_port`, `st_q_overhead` (1 chacun) ; pour l'enseignant seulement : `st_q_copies` (1).
+""": """
+**Solution.**
+
+{solution}
+
+Without an MTU change, the VTEP answers with an ICMP *fragmentation needed* (MTU 1450): the host then
+refuses to send (`Message too long`) for about ten minutes (`ip route flush cache` on the host to
+forget it). If only the MTU of the VTEPs is raised, `st_r` fragments the VXLAN packets.
+
+Evaluation: `st_vxlan` (6: 2 per VTEP, an interface with the right VNI, local address and port 4789,
+in the bridge of `eth1`), `st_flood` (3: 1 per VTEP whose flood list holds exactly the two others),
+`st_ping` (3: `st_h1` → `st_h2`, `st_h1` → `st_h3`, `st_h2` → `st_h3`), `st_learn` (2: `st_vtep1`
+has learned the MAC address of `st_h2` and of `st_h3` behind the right VTEP), `st_mtu` (3: 1500-byte
+ping with DF from `st_h1` to `st_h2` and `st_h3`, with no fragment created by `st_r`); `st_q_port`,
+`st_q_overhead` (1 each); for the instructor only: `st_q_copies` (1).
+""",
+    "Observations sur le site st": "Observations on site st",
+    """
+- port UDP de destination des paquets VXLAN : @@{port:[0-9]+}@@
+- nombre d'octets que l'encapsulation VXLAN ajoute à un paquet IP (de l'en-tête Ethernet extérieur à
+  l'en-tête VXLAN) : @@{overhead:[0-9]+}@@
+- nombre de paquets VXLAN que `st_vtep1` envoie pour une requête ARP de `st_h1` :
+  @@{copies:>deux, un par VTEP distant>>>two|un seul, en broadcast>>>one|un par lien de st_r>>>three|aucun : st_vtep1 répond lui-même>>>none}@@
+""": """
+- destination UDP port of the VXLAN packets: @@{port:[0-9]+}@@
+- number of bytes that VXLAN encapsulation adds to an IP packet (from the outer Ethernet header to
+  the VXLAN header): @@{overhead:[0-9]+}@@
+- number of VXLAN packets that `st_vtep1` sends for an ARP request of `st_h1`:
+  @@{copies:>two, one per remote VTEP>>>two|a single one, as a broadcast>>>one|one per link of st_r>>>three|none: st_vtep1 answers itself>>>none}@@
+""",
+    """
+**Solution.** **4789** ; **50** ; deux, un par VTEP distant.
+
+Évaluation : `st_q_port`, `st_q_overhead` (1 chacun) ; pour l'enseignant seulement : `st_q_copies` (1).
+""": """
+**Solution.** **4789**; **50**; two, one per remote VTEP.
+
+Evaluation: `st_q_port`, `st_q_overhead` (1 each); for the instructor only: `st_q_copies` (1).
+""",
+    "interfaces VXLAN et ponts des trois VTEP": "VXLAN interfaces and bridges of the three VTEPs",
+    "listes d'inondation": "flood lists",
+    "les trois hôtes se joignent": "the three hosts reach each other",
+    "adresses MAC apprises derrière leur VTEP": "MAC addresses learned behind their VTEP",
+    "paquets de 1500 octets sans fragmentation": "1500-byte packets without fragmentation",
+    "port de VXLAN": "VXLAN port",
+    "surcoût de l'encapsulation": "encapsulation overhead",
+    "réplication en tête de réseau": "head-end replication",
+    "Partie 2 — EVPN, le plan de contrôle (site l2)": "Part 2 — EVPN, the control plane (site l2)",
+    "Une fabrique EVPN": "An EVPN fabric",
+    """
+`l2_spine` relie `l2_leaf1`, `l2_leaf2` et `l2_leaf3` ; OSPF annonce leurs interfaces de bouclage.
+Les leaves portent deux VNI, qui utilisent **le même sous-réseau** `{subnet}` : le VNI A **{a}**
+(`l2_a1` derrière `l2_leaf1`, `l2_a2` derrière `l2_leaf2`) et le VNI B **{b}** (`l2_b2` derrière
+`l2_leaf2`, `l2_b3` derrière `l2_leaf3`). Leurs interfaces `vxlan` (sans apprentissage) et leurs ponts
+existent ; aucune liste d'inondation n'est configurée (sections @@ref:evpn@@ à @@ref:evpn-frr@@).
+
+1. Établissez une session iBGP entre chaque leaf et `l2_spine`, entre interfaces de bouclage, dans la
+   seule famille L2VPN EVPN ; les leaves annoncent tous leurs VNI. Faites de `l2_spine` le route
+   reflector des leaves.
+2. Regardez la table EVPN d'un leaf (`show bgp l2vpn evpn route`) : quelles routes de type 3, de
+   type 2 ? Puis la liste d'inondation des interfaces `vxlan` dans le noyau (`bridge fdb show`).
+3. Vérifiez que `l2_a1` joint `l2_a2` et que `l2_b2` joint `l2_b3`, mais que `l2_a1` ne joint pas
+   l'adresse de `l2_b2`, pourtant dans le même sous-réseau.
+""": """
+`l2_spine` links `l2_leaf1`, `l2_leaf2` and `l2_leaf3`; OSPF advertises their loopback interfaces.
+The leaves carry two VNIs, which use **the same subnet** `{subnet}`: VNI A **{a}** (`l2_a1` behind
+`l2_leaf1`, `l2_a2` behind `l2_leaf2`) and VNI B **{b}** (`l2_b2` behind `l2_leaf2`, `l2_b3` behind
+`l2_leaf3`). Their `vxlan` interfaces (without learning) and their bridges exist; no flood list is
+configured (sections @@ref:evpn@@ to @@ref:evpn-frr@@).
+
+1. Establish an iBGP session between each leaf and `l2_spine`, between loopback interfaces, in the
+   L2VPN EVPN family only; the leaves advertise all their VNIs. Make `l2_spine` the route
+   reflector of the leaves.
+2. Look at the EVPN table of a leaf (`show bgp l2vpn evpn route`): which type 3 routes, which type
+   2 routes? Then at the flood list of the `vxlan` interfaces in the kernel (`bridge fdb show`).
+3. Check that `l2_a1` reaches `l2_a2` and that `l2_b2` reaches `l2_b3`, but that `l2_a1` does not
+   reach the address of `l2_b2`, although it is in the same subnet.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Les routes de type 3 d'un VNI ne viennent que des leaves qui le portent : `l2_leaf1` n'a que
+`l2_leaf2` dans sa liste d'inondation du VNI A. Les adresses MAC distantes apparaissent dans le noyau
+avec `extern_learn`.
+
+Évaluation : `l2_sessions` (3 : 1 par leaf dont la session EVPN est établie sur le spine), `l2_rr`
+(2 : `l2_leaf1` a la route de type 3 de `l2_leaf2` pour le VNI A, `l2_leaf3` celle de `l2_leaf2`
+pour le VNI B, reflétées par le spine), `l2_vni` (3 : 1 par leaf dont zebra connaît exactement les
+VTEP distants de chaque VNI), `l2_macs` (3 : 1 par leaf dont le noyau a installé les adresses MAC des
+hôtes distants de ses VNI), `l2_ping` (4 : 2 par VNI), `l2_isolation` (2 : `l2_a1` ne joint pas
+`l2_b2`) ; `l2_q_rt`, `l2_q_type3`, `l2_q_type2` (1 chacun) ; pour l'enseignant seulement :
+`l2_q_rr`, `l2_q_rd` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+The type 3 routes of a VNI only come from the leaves that carry it: `l2_leaf1` only has `l2_leaf2`
+in its flood list of VNI A. The remote MAC addresses appear in the kernel with `extern_learn`.
+
+Evaluation: `l2_sessions` (3: 1 per leaf whose EVPN session is established on the spine), `l2_rr`
+(2: `l2_leaf1` has the type 3 route of `l2_leaf2` for VNI A, `l2_leaf3` that of `l2_leaf2` for VNI
+B, reflected by the spine), `l2_vni` (3: 1 per leaf whose zebra knows exactly the remote VTEPs of
+each VNI), `l2_macs` (3: 1 per leaf whose kernel has installed the MAC addresses of the remote hosts
+of its VNIs), `l2_ping` (4: 2 per VNI), `l2_isolation` (2: `l2_a1` does not reach `l2_b2`);
+`l2_q_rt`, `l2_q_type3`, `l2_q_type2` (1 each); for the instructor only: `l2_q_rr`, `l2_q_rd` (1
+each).
+""",
+    "Les routes EVPN": "The EVPN routes",
+    """
+- route target (automatique) du VNI A : @@{rt:[0-9: ]+}@@
+- type des routes qui construisent la liste d'inondation : @@{type3:[0-9]}@@
+- type des routes qui annoncent une adresse MAC : @@{type2:[0-9]}@@
+- sans route reflector, `l2_leaf1` apprendrait-il les routes de `l2_leaf2` par `l2_spine` ?
+  @@{rr:>non : un routeur iBGP ne transmet pas à un voisin iBGP ce qu'il a appris d'un autre voisin iBGP>>>ibgp|oui : le spine transmet toutes les routes>>>yes|non : les RT diffèrent>>>rt|oui, mais sans les routes de type 3>>>type3}@@
+- le RD automatique d'un VNI est :
+  @@{rd:>l'adresse du routeur suivie d'un numéro interne>>>rid_index|l'AS suivi du VNI>>>as_vni|l'adresse du routeur suivie du VNI>>>rid_vni|le même que la RT>>>rt}@@
+""": """
+- route target (automatic) of VNI A: @@{rt:[0-9: ]+}@@
+- type of the routes that build the flood list: @@{type3:[0-9]}@@
+- type of the routes that advertise a MAC address: @@{type2:[0-9]}@@
+- without a route reflector, would `l2_leaf1` learn the routes of `l2_leaf2` through `l2_spine`?
+  @@{rr:>no: an iBGP router does not pass on to an iBGP neighbour what it learned from another iBGP neighbour>>>ibgp|yes: the spine passes on every route>>>yes|no: the RTs differ>>>rt|yes, but without the type 3 routes>>>type3}@@
+- the automatic RD of a VNI is:
+  @@{rd:>the address of the router followed by an internal number>>>rid_index|the AS followed by the VNI>>>as_vni|the address of the router followed by the VNI>>>rid_vni|the same as the RT>>>rt}@@
+""",
+    """
+**Solution.** **`{rt}`** ; **3** ; **2** ; non : un routeur iBGP ne transmet pas à un voisin iBGP ce
+qu'il a appris d'un autre voisin iBGP ; l'adresse du routeur suivie d'un numéro interne.
+
+Évaluation : `l2_q_rt`, `l2_q_type3`, `l2_q_type2` (1 chacun) ; pour l'enseignant seulement :
+`l2_q_rr`, `l2_q_rd` (1 chacun).
+""": """
+**Solution.** **`{rt}`**; **3**; **2**; no: an iBGP router does not pass on to an iBGP neighbour
+what it learned from another iBGP neighbour; the address of the router followed by an internal
+number.
+
+Evaluation: `l2_q_rt`, `l2_q_type3`, `l2_q_type2` (1 each); for the instructor only: `l2_q_rr`,
+`l2_q_rd` (1 each).
+""",
+    "sessions EVPN des leaves sur le spine": "EVPN sessions of the leaves on the spine",
+    "routes reflétées par le spine": "routes reflected by the spine",
+    "VTEP distants de chaque VNI": "remote VTEPs of each VNI",
+    "adresses MAC distantes installées par EVPN": "remote MAC addresses installed by EVPN",
+    "les hôtes de chaque VNI se joignent": "the hosts of each VNI reach each other",
+    "les deux VNI sont isolés": "the two VNIs are isolated",
+    "RT du VNI A": "RT of VNI A",
+    "routes de type 3": "type 3 routes",
+    "routes de type 2": "type 2 routes",
+    "rôle du route reflector": "role of the route reflector",
+    "RD automatique": "automatic RD",
+    "Partie 3 — routage entre VNI et vers l'extérieur (site irb)": "Part 3 — routing between VNIs and to the outside (site irb)",
+    "IRB symétrique, passerelle anycast et routes de type 5": "Symmetric IRB, anycast gateway and type 5 routes",
+    """
+`irb_spine` est le route reflector de `irb_leaf1`, `irb_leaf2` et du *border leaf* `irb_border` ;
+EVPN fonctionne déjà pour les VNI de niveau 2 : le sous-réseau A `{net_a}` (VNI **{a}**, `irb_a1`
+derrière `irb_leaf1`, `irb_a2` derrière `irb_leaf2`) et le sous-réseau B `{net_b}` (VNI **{b}**,
+`irb_b2` derrière `irb_leaf2` seulement). Les hôtes ont pour passerelle `{gw_a}` (A) ou `{gw_b}` (B),
+qui n'existent pas encore. `irb_border` a déjà la VRF `{vrf}`, le L3VNI **{l3}** et une route
+statique vers le réseau extérieur `{ext}` de `irb_ext` (sections @@ref:arp-suppression@@ à
+@@ref:type5@@).
+
+1. Sur `irb_leaf1` et `irb_leaf2`, créez la VRF `{vrf}` (table {table}) et son L3VNI **{l3}**
+   (interface `vxlan`, pont, déclaration dans FRR).
+2. Faites des ponts des VNI de niveau 2 les passerelles de leurs hôtes : sur **les deux leaves**, la
+   même adresse IP et la même adresse MAC `{gw_mac}`, dans la VRF. Activez la suppression ARP sur les
+   interfaces `vxlan` des VNI de niveau 2.
+3. Faites annoncer en type 5 les sous-réseaux des leaves (leurs réseaux connectés dans la VRF) et,
+   par `irb_border`, le réseau extérieur.
+4. Vérifiez que `irb_a1` joint `irb_b2` et l'adresse `{ext_addr}` de `irb_ext`. Regardez les routes
+   de la VRF, et les paquets entre les leaves (`tcpdump -nei eth0 udp port 4789` sur `irb_spine`) :
+   quel VNI, quelles adresses MAC intérieures ?
+""": """
+`irb_spine` is the route reflector of `irb_leaf1`, `irb_leaf2` and of the *border leaf* `irb_border`;
+EVPN already works for the layer-2 VNIs: subnet A `{net_a}` (VNI **{a}**, `irb_a1` behind
+`irb_leaf1`, `irb_a2` behind `irb_leaf2`) and subnet B `{net_b}` (VNI **{b}**, `irb_b2` behind
+`irb_leaf2` only). The hosts have `{gw_a}` (A) or `{gw_b}` (B) as their gateway, which do not exist
+yet. `irb_border` already has the VRF `{vrf}`, the L3VNI **{l3}** and a static route to the external
+network `{ext}` of `irb_ext` (sections @@ref:arp-suppression@@ to @@ref:type5@@).
+
+1. On `irb_leaf1` and `irb_leaf2`, create the VRF `{vrf}` (table {table}) and its L3VNI **{l3}**
+   (`vxlan` interface, bridge, declaration in FRR).
+2. Make the bridges of the layer-2 VNIs the gateways of their hosts: on **both leaves**, the same IP
+   address and the same MAC address `{gw_mac}`, in the VRF. Enable ARP suppression on the `vxlan`
+   interfaces of the layer-2 VNIs.
+3. Have the subnets of the leaves (their connected networks in the VRF) advertised as type 5 and,
+   by `irb_border`, the external network.
+4. Check that `irb_a1` reaches `irb_b2` and the address `{ext_addr}` of `irb_ext`. Look at the
+   routes of the VRF, and at the packets between the leaves (`tcpdump -nei eth0 udp port 4789` on
+   `irb_spine`): which VNI, which inner MAC addresses?
+""",
+    """
+**Solution.**
+
+{solution}
+
+`irb_leaf1` ne porte pas le VNI du sous-réseau B : il route les paquets vers `irb_leaf2` dans le
+L3VNI ({l3}), la trame intérieure allant de sa *router MAC* à celle d'`irb_leaf2`. La route de type
+2 d'`irb_b2` porte deux VNI ({b}/{l3}). Sans les routes de type 5 des sous-réseaux, `irb_b2` ne serait
+joignable depuis `irb_leaf1` qu'après avoir lui-même émis (hôte silencieux).
+
+Évaluation : `irb_l3vni` (4 : 2 par leaf dont zebra a le L3VNI, de type L3, dans la VRF, état Up),
+`irb_gateway` (4 : 2 par leaf dont les ponts des VNI de niveau 2 ont l'adresse IP et l'adresse MAC de
+la passerelle, dans la VRF), `irb_suppress` (2 : 1 par leaf, suppression ARP sur ses interfaces
+`vxlan` de niveau 2), `irb_macip` (3 : sur `irb_leaf1`, la route MAC/IP d'`irb_b2` avec les deux VNI ;
+dans la VRF d'`irb_leaf1`, la route /32 d'`irb_b2` par `irb_leaf2` ; dans la VRF d'`irb_leaf2`, celle
+d'`irb_a1` par `irb_leaf1`), `irb_type5` (3 : sur `irb_leaf1`, le réseau extérieur par `irb_border`
+et le sous-réseau B par `irb_leaf2` ; sur `irb_border`, le sous-réseau A), `irb_ping` (6 : `irb_a1` →
+`irb_b2`, `irb_a1` → `irb_ext`, 3 chacun) ; `irb_q_l3vni` (1) ; pour l'enseignant seulement :
+`irb_q_mac`, `irb_q_silent`, `irb_q_sym` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+`irb_leaf1` does not carry the VNI of subnet B: it routes the packets to `irb_leaf2` in the L3VNI
+({l3}), the inner frame going from its *router MAC* to that of `irb_leaf2`. The type 2 route of
+`irb_b2` carries two VNIs ({b}/{l3}). Without the type 5 routes of the subnets, `irb_b2` would only
+be reachable from `irb_leaf1` after sending something itself (silent host).
+
+Evaluation: `irb_l3vni` (4: 2 per leaf whose zebra has the L3VNI, of type L3, in the VRF, state Up),
+`irb_gateway` (4: 2 per leaf whose layer-2 VNI bridges have the IP address and the MAC address of
+the gateway, in the VRF), `irb_suppress` (2: 1 per leaf, ARP suppression on its layer-2 `vxlan`
+interfaces), `irb_macip` (3: on `irb_leaf1`, the MAC/IP route of `irb_b2` with both VNIs; in the
+VRF of `irb_leaf1`, the /32 route of `irb_b2` via `irb_leaf2`; in the VRF of `irb_leaf2`, that of
+`irb_a1` via `irb_leaf1`), `irb_type5` (3: on `irb_leaf1`, the external network via `irb_border`
+and subnet B via `irb_leaf2`; on `irb_border`, subnet A), `irb_ping` (6: `irb_a1` → `irb_b2`,
+`irb_a1` → `irb_ext`, 3 each); `irb_q_l3vni` (1); for the instructor only: `irb_q_mac`,
+`irb_q_silent`, `irb_q_sym` (1 each).
+""",
+    "Le routage dans la fabrique": "Routing in the fabric",
+    """
+- VNI des paquets VXLAN de `irb_a1` vers `irb_b2` entre les deux leaves : @@{l3vni:[0-9]+}@@
+- adresse MAC de destination de la trame intérieure de ces paquets :
+  @@{mac:>la router MAC d'irb_leaf2>>>rmac|l'adresse MAC d'irb_b2>>>host|l'adresse MAC de la passerelle anycast>>>gw|ff:ff:ff:ff:ff:ff>>>bcast}@@
+- sans routes de type 5 pour les sous-réseaux, un hôte du sous-réseau B qui n'a encore rien émis
+  est, depuis `irb_a1` :
+  @@{silent:>injoignable : aucune route ne mène à lui depuis irb_leaf1>>>unreachable|joignable : irb_leaf1 le cherche par ARP>>>arp|joignable par la passerelle anycast>>>gw|joignable par irb_border>>>border}@@
+- en IRB symétrique, un leaf doit porter :
+  @@{sym:>les VNI de ses hôtes, plus le L3VNI>>>own|tous les VNI de la fabrique>>>all|seulement le L3VNI>>>l3|un VNI par VTEP distant>>>per_vtep}@@
+""": """
+- VNI of the VXLAN packets from `irb_a1` to `irb_b2` between the two leaves: @@{l3vni:[0-9]+}@@
+- destination MAC address of the inner frame of these packets:
+  @@{mac:>the router MAC of irb_leaf2>>>rmac|the MAC address of irb_b2>>>host|the MAC address of the anycast gateway>>>gw|ff:ff:ff:ff:ff:ff>>>bcast}@@
+- without type 5 routes for the subnets, a host of subnet B that has not sent anything yet is,
+  from `irb_a1`:
+  @@{silent:>unreachable: no route leads to it from irb_leaf1>>>unreachable|reachable: irb_leaf1 looks for it with ARP>>>arp|reachable through the anycast gateway>>>gw|reachable through irb_border>>>border}@@
+- in symmetric IRB, a leaf must carry:
+  @@{sym:>the VNIs of its hosts, plus the L3VNI>>>own|every VNI of the fabric>>>all|only the L3VNI>>>l3|one VNI per remote VTEP>>>per_vtep}@@
+""",
+    """
+**Solution.** **{l3}** ; la *router MAC* d'`irb_leaf2` ; injoignable : aucune route ne mène à lui
+depuis `irb_leaf1` ; les VNI de ses hôtes, plus le L3VNI.
+
+Évaluation : `irb_q_l3vni` (1) ; pour l'enseignant seulement : `irb_q_mac`, `irb_q_silent`,
+`irb_q_sym` (1 chacun).
+""": """
+**Solution.** **{l3}**; the *router MAC* of `irb_leaf2`; unreachable: no route leads to it from
+`irb_leaf1`; the VNIs of its hosts, plus the L3VNI.
+
+Evaluation: `irb_q_l3vni` (1); for the instructor only: `irb_q_mac`, `irb_q_silent`, `irb_q_sym` (1
+each).
+""",
+    "VRF et L3VNI des leaves": "VRF and L3VNI of the leaves",
+    "passerelle anycast sur les deux leaves": "anycast gateway on both leaves",
+    "suppression ARP": "ARP suppression",
+    "routes MAC/IP et routes des hôtes dans la VRF": "MAC/IP routes and host routes in the VRF",
+    "routes de type 5": "type 5 routes",
+    "routage entre sous-réseaux et vers l'extérieur": "routing between subnets and to the outside",
+    "VNI des paquets routés": "VNI of the routed packets",
+    "router MAC": "router MAC",
+    "hôte silencieux": "silent host",
+    "IRB symétrique": "symmetric IRB",
+    "Partie 4 — dépannage d'une fabrique EVPN (site fix)": "Part 4 — troubleshooting an EVPN fabric (site fix)",
+    "Une fabrique EVPN en panne": "A broken EVPN fabric",
+    """
+Le site `fix` est une petite fabrique EVPN : `fix_spine`, route reflector de `fix_leaf1` et
+`fix_leaf2`, et un VNI **{vni}** (sous-réseau `{subnet}`) qui relie `fix_h1` (derrière `fix_leaf1`) et
+`fix_h2` (derrière `fix_leaf2`). OSPF, les sessions EVPN, les interfaces `vxlan` et les ponts sont
+configurés. Pourtant `fix_h1` ne joint pas `fix_h2` : **quatre pannes** ont été glissées dans la
+configuration (section @@ref:evpn-debug@@).
+
+Trouvez et corrigez chaque panne sans tout reconfigurer : suivez le chemin d'une route EVPN et d'une
+trame d'un leaf à l'autre, dans les deux sens.
+""": """
+The `fix` site is a small EVPN fabric: `fix_spine`, route reflector of `fix_leaf1` and `fix_leaf2`,
+and a VNI **{vni}** (subnet `{subnet}`) that links `fix_h1` (behind `fix_leaf1`) and `fix_h2`
+(behind `fix_leaf2`). OSPF, the EVPN sessions, the `vxlan` interfaces and the bridges are
+configured. Yet `fix_h1` does not reach `fix_h2`: **four faults** have been slipped into the
+configuration (section @@ref:evpn-debug@@).
+
+Find and fix each fault without reconfiguring everything: follow the path of an EVPN route and of a
+frame from one leaf to the other, in both directions.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Évaluation : `fix_vni` (3 : l'interface `vxlan` de `fix_leaf2` a le VNI {vni}, dans le pont
+d'`eth1`), `fix_rr` (3 : `fix_leaf1` client du route reflector sur `fix_spine`), `fix_advertise` (3 :
+`advertise-all-vni` sur `fix_leaf2`), `fix_bridge` (3 : l'interface `vxlan` de `fix_leaf1` dans le pont
+d'`eth1`), `fix_ping` (4), `fix_macs` (2 : `fix_leaf1` a installé l'adresse MAC de `fix_h2` derrière
+`fix_leaf2`) ; pour l'enseignant seulement : `fix_q_vni`, `fix_q_rr` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+Evaluation: `fix_vni` (3: the `vxlan` interface of `fix_leaf2` has VNI {vni}, in the bridge of
+`eth1`), `fix_rr` (3: `fix_leaf1` client of the route reflector on `fix_spine`), `fix_advertise` (3:
+`advertise-all-vni` on `fix_leaf2`), `fix_bridge` (3: the `vxlan` interface of `fix_leaf1` in the
+bridge of `eth1`), `fix_ping` (4), `fix_macs` (2: `fix_leaf1` has installed the MAC address of
+`fix_h2` behind `fix_leaf2`); for the instructor only: `fix_q_vni`, `fix_q_rr` (1 each).
+""",
+    "Ce que montraient les pannes": "What the faults showed",
+    """
+- pour corriger le VNI d'une interface `vxlan` :
+  @@{vni:>il faut la supprimer et la recréer>>>recreate|ip link set … type vxlan id N suffit>>>set|il faut redémarrer FRR>>>frr|il faut changer le nom de l'interface>>>name}@@
+- `fix_leaf2` recevait les routes de `fix_leaf1` :
+  @@{rr:>non, tant que fix_leaf1 n'était pas client du route reflector>>>rr_client|oui, dès que la session était établie>>>yes|non, tant que les RT différaient>>>rt|non, tant que l'interface vxlan était hors du pont>>>bridge}@@
+""": """
+- to correct the VNI of a `vxlan` interface:
+  @@{vni:>it must be deleted and created again>>>recreate|ip link set … type vxlan id N is enough>>>set|FRR must be restarted>>>frr|the name of the interface must be changed>>>name}@@
+- `fix_leaf2` received the routes of `fix_leaf1`:
+  @@{rr:>no, as long as fix_leaf1 was not a client of the route reflector>>>rr_client|yes, as soon as the session was established>>>yes|no, as long as the RTs differed>>>rt|no, as long as the vxlan interface was outside the bridge>>>bridge}@@
+""",
+    """
+**Solution.** Il faut la supprimer et la recréer (« Cannot change VNI ») ; non, tant que `fix_leaf1`
+n'était pas client du route reflector.
+
+Évaluation, pour l'enseignant seulement : `fix_q_vni`, `fix_q_rr` (1 chacun).
+""": """
+**Solution.** It must be deleted and created again ("Cannot change VNI"); no, as long as `fix_leaf1`
+was not a client of the route reflector.
+
+Evaluation, for the instructor only: `fix_q_vni`, `fix_q_rr` (1 each).
+""",
+    "VNI de fix_leaf2": "VNI of fix_leaf2",
+    "fix_leaf1 client du route reflector": "fix_leaf1 client of the route reflector",
+    "advertise-all-vni sur fix_leaf2": "advertise-all-vni on fix_leaf2",
+    "interface vxlan de fix_leaf1 dans son pont": "vxlan interface of fix_leaf1 in its bridge",
+    "fix_h1 joint fix_h2": "fix_h1 reaches fix_h2",
+    "adresse MAC distante installée par EVPN": "remote MAC address installed by EVPN",
+    "changer un VNI": "changing a VNI",
+    "client du route reflector": "route reflector client",
+    "Partie 5 — un underlay multicast (site mc, bonus)": "Part 5 — a multicast underlay (site mc, bonus)",
+    "Inonder par un groupe multicast (bonus)": "Flooding through a multicast group (bonus)",
+    """
+`mc_vtep1`, `mc_vtep2` et `mc_vtep3` sont reliés par le routeur `mc_r` (OSPF fonctionne) ; chaque VTEP
+a déjà un pont `{br}` avec `eth1`, vers son hôte (`mc_h1` à `mc_h3`, sous-réseau `{subnet}`). Ici, pas
+de liste d'inondation : le trafic BUM du VNI **{vni}** doit passer par le groupe **{group}** (section
+@@ref:mcast-underlay@@).
+
+1. Sur chaque VTEP, créez l'interface `vxlan` du VNI {vni} avec ce groupe, et branchez-la sur le pont.
+2. Sur `mc_r`, activez PIM et IGMP sur les interfaces vers les VTEP, et faites de `mc_r` le RP des
+   groupes `239.0.0.0/8`.
+3. Vérifiez que les hôtes se joignent ; regardez `show ip mroute` sur `mc_r` et la table des
+   interfaces `vxlan`.
+""": """
+`mc_vtep1`, `mc_vtep2` and `mc_vtep3` are linked by the router `mc_r` (OSPF works); each VTEP already
+has a bridge `{br}` with `eth1`, towards its host (`mc_h1` to `mc_h3`, subnet `{subnet}`). Here, no
+flood list: the BUM traffic of VNI **{vni}** must go through the group **{group}** (section
+@@ref:mcast-underlay@@).
+
+1. On each VTEP, create the `vxlan` interface of VNI {vni} with this group, and attach it to the
+   bridge.
+2. On `mc_r`, enable PIM and IGMP on the interfaces towards the VTEPs, and make `mc_r` the RP of the
+   groups `239.0.0.0/8`.
+3. Check that the hosts reach each other; look at `show ip mroute` on `mc_r` and at the table of
+   the `vxlan` interfaces.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Sans `ttl`, les paquets multicast partent avec un TTL de 1 et `mc_r` ne les route pas ; avec `local`
+(l'interface de bouclage), `mc_r` ne prend pas en charge une source qui n'est pas directement
+connectée.
+
+Évaluation (bonus) : `mc_vxlan` (2 : les trois VTEP ont une interface du VNI {vni} avec le groupe
+{group}, un TTL supérieur à 1, dans le pont d'`eth1`), `mc_mroute` (2 : sur `mc_r`, l'entrée `(*,G)` du
+groupe vers les trois VTEP, puis une entrée `(S,G)` d'un VTEP), `mc_ping` (2 : `mc_h1` joint `mc_h2` et
+`mc_h3`).
+""": """
+**Solution.**
+
+{solution}
+
+Without `ttl`, the multicast packets leave with a TTL of 1 and `mc_r` does not route them; with
+`local` (the loopback interface), `mc_r` does not take charge of a source that is not directly
+connected.
+
+Evaluation (bonus): `mc_vxlan` (2: the three VTEPs have an interface of VNI {vni} with the group
+{group}, a TTL greater than 1, in the bridge of `eth1`), `mc_mroute` (2: on `mc_r`, the `(*,G)`
+entry of the group towards the three VTEPs, then an `(S,G)` entry of a VTEP), `mc_ping` (2: `mc_h1`
+reaches `mc_h2` and `mc_h3`).
+""",
+    "interfaces VXLAN multicast": "multicast VXLAN interfaces",
+    "routes multicast de mc_r": "multicast routes of mc_r",
+    "les hôtes se joignent": "the hosts reach each other",
+}}

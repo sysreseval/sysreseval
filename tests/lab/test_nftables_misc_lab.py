@@ -3,6 +3,7 @@ numbered course of the Informations tab (sections, the hooks with ingress / egre
 section, documentation addresses only, the markdown the GUI converts), the references of the
 questions to the course, and the stripped lab file.  No Docker.
 """
+import ast
 import datetime
 import importlib.util
 import re
@@ -110,10 +111,48 @@ def test_questions_reference_the_course(lab, data, tmp_pub_dir):
         assert str(value) in first
 
 
-def test_stripped_lab_file():
+def _instructor_literals():
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
+def test_translations(lab, data, tmp_pub_dir):
+    """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+    every lab of the directory by test_draft_misc_translations.py)."""
+    import check_sre_translations as cst
+    assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+    english = lab._TRANSLATIONS['en']
+    assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+    assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 5
+    assert set(_instructor_literals()) <= set(english)
+    assert lab.title.resolve('en') == "nftables: advanced features (sets, limit, reject) (misc)"
+    ns = _net_scheme(lab, data)
+    resolved, numbering = resolve_informations(ns.informations)
+    assert [s.tag for s in numbering.sections('en')] == [s.tag for s in numbering.sections('fr')]
+    course = _text(resolved, 'en')
+    assert '## <a id="base"></a>5. The base of a host firewall' in course and '- [6. Sets](#sets)' in course
+    assert '@@' not in course and "Pour l'enseignant" not in course
+
+
+def test_stripped_lab_file(lab, tmp_path):
     source = _LAB_PATH.read_bytes()
     result = strip_instructor.strip_source(source)
     stripped = result.data if hasattr(result, 'data') else result[0]
     assert b'instructor(' not in stripped
     compile(stripped, 'nftables_misc_stripped', 'exec')
     assert source.count(b'instructor(tr(') == 5
+    path = tmp_path / 'nftables_misc_stripped.py'
+    path.write_bytes(stripped)
+    spec = importlib.util.spec_from_file_location('nftables_misc_lab_stripped', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    kept = module._TRANSLATIONS['en']
+    literals = set(_instructor_literals())
+    assert len(literals) == 5 and not set(kept) & literals
+    assert len(kept) == len(lab._TRANSLATIONS['en']) - len(literals)

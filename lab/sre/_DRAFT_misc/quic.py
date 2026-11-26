@@ -16,7 +16,7 @@ Grading: the probe talks HTTP/3 to web, edge and ref (``curl --http3-only`` and 
 Retry seen, connections surviving a migration, 0-RTT accepted), pc goes through fw, the student's
 capture and key log in ``/shared`` are read with tshark, the forms check what can only be
 observed.  Every part is graded on its own device.  The ``final`` state applies the reference
-solution.  The texts are French (``tr()``), the instructor solutions French and English
+solution.  The texts are French (``tr()``) and translated into English
 (``_TRANSLATIONS``), the identifiers English.
 """
 import random
@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass
 from ipaddress import IPv4Network
 
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from dns import dig_query, render_zone_file
@@ -191,16 +192,128 @@ CHOICES = {
 }
 
 
-def _dd(name: str) -> str:
-    """The dropdown marker of field *name*."""
+# The English labels of the dropdowns, in the order of CHOICES. The English texts show them with the French
+# option as the value (`label>>>option`): the answer stored, the grading, the cheat answers and the archives
+# do not depend on the language of the student.
+CHOICES_EN = {
+    # part 1
+    'transport': ["TCP 443", "UDP 443", "UDP 4433", "TCP 853"],
+    'alpn': ["h2", "http/1.1", "h3", "quic"],
+    'initial_size': ["64 bytes", "576 bytes", "at least 1200 bytes", "exactly 1500 bytes"],
+    'sni': ["no: everything is encrypted from the first packet",
+            "yes: the keys of the Initial packets are derived from the DCID chosen by the client, which anyone sees",
+            "yes: QUIC never encrypts the handshake"],
+    'rtt': ["0", "1", "2", "3"],
+    'order': ["Handshake, then Initial, then 0-RTT",
+              "SYN, SYN-ACK, ACK, then ClientHello",
+              "Initial, then Handshake, then short-header packets (1-RTT)",
+              "Initial, then Retry, then 1-RTT"],
+    # part 2
+    'req_stream': ["1", "0: the first bidirectional stream opened by the client", "2", "3"],
+    'ctrl_stream': ["the response to the first request",
+                    "the control stream (type 0x00), which carries the SETTINGS frame",
+                    "the stream of the QPACK encoder (type 0x02)",
+                    "a push stream (type 0x01)"],
+    # part 3
+    'keep_tcp': ["QUIC needs TCP to exchange the certificates",
+                 "clients discover HTTP/3 through the Alt-Svc header of a first TCP connection, "
+                 "and those whose UDP is blocked stay on TCP",
+                 "nginx refuses a quic listener without an ssl listener on the same port"],
+    'ma': ["the maximum size of a datagram",
+           "the maximum number of streams",
+           "the time, in seconds, during which the client may remember this alternative",
+           "the version of QUIC offered"],
+    'tls_version': ["TLS 1.2 or 1.3, as the server chooses", "TLS 1.3 only", "DTLS 1.2",
+                    "none: QUIC has its own encryption"],
+    # part 4
+    'alias': ["the service is disabled",
+              "the highest priority, to try first",
+              "the alias mode: the client must follow the target name and ask for the HTTPS record of that name"],
+    'https_gain': ["the client knows from the DNS resolution that HTTP/3 is available: "
+                   "its first connection can be over QUIC straight away",
+                   "it encrypts the DNS queries",
+                   "it replaces the certificate of the server"],
+    # part 5
+    'fallback': ["it fails after a timeout",
+                 "it falls back to HTTP/2 over TCP, without an error",
+                 "it switches to HTTP/3 inside a TCP tunnel"],
+    'fw_sees': ["the HTTP/3 headers of each request",
+                "the sequence numbers and the flags, as with TCP",
+                "the UDP addresses and ports and, in the short headers, only the destination connection ID"],
+    'ct_track': ["through the CONNECTION_CLOSE frames of QUIC",
+                 "through timeouts: the entry disappears after a time without traffic",
+                 "through the version number of QUIC"],
+    'reject': ["no difference",
+               "the client immediately receives an ICMP error and gives up QUIC without waiting",
+               "the reject sends a TCP RST"],
+    # part 6
+    'mig_cid': ["the source IP address", "the TCP sequence number",
+                "the destination connection ID (DCID) of the QUIC packets",
+                "the TLS session ticket"],
+    'mig_frame': ["NEW_TOKEN", "PATH_CHALLENGE, which the client answers with PATH_RESPONSE",
+                  "HANDSHAKE_DONE", "RETIRE_CONNECTION_ID"],
+    'mig_tcp': ["it goes on without interruption",
+                "it slows down then resumes",
+                "it fails: the server receives segments from an unknown port and answers with an RST"],
+    'mig_workers': ["each worker has its own UDP socket (reuseport) and the kernel spreads the datagrams by "
+                    "addresses and ports: those of the new port reach a worker that does not know the connection",
+                    "nginx cannot do migration",
+                    "the firewall blocks the datagrams of the new port"],
+    # part 7
+    'retry_why': ["negotiating the version of QUIC",
+                  "checking that the client does receive what is sent to its address before spending resources "
+                  "on it: against address spoofing and amplification",
+                  "renewing the encryption keys"],
+    'amplification': ["no limit", "1200 bytes in all", "three times the bytes received from the client",
+                      "ten packets"],
+    'retry_cost': ["none", "one more round trip", "two more round trips"],
+    'second_initial': ["a Version Negotiation packet",
+                       "the same ClientHello, without a token",
+                       "the token of the Retry, and as its DCID the ID chosen by the server in the Retry"],
+    'new_token': ["giving the client a token for a future connection, which will have no Retry",
+                  "changing the connection ID",
+                  "announcing a new version of QUIC"],
+    # part 8
+    'replay': ["it travels in clear text",
+               "an attacker can replay it: the server cannot tell a copy from the original",
+               "it cannot carry an HTTP request"],
+    'zr_safe': ["all of them", "none", "only the POSTs",
+                "the idempotent requests, without side effects (the GET of a page)"],
+    'code_425': ["Upgrade Required", "Too Early: send the request again after the handshake",
+                 "Payload Too Large"],
+    'zr_need': ["none",
+                "a client certificate",
+                "a session ticket from a previous connection with this server, which allows early data"],
+    # bonus
+    'vn_versions': ["v1 and v2 (0x00000001 and 0x6b3343cf)", "0x00000001 (QUIC v1) only", "none"],
+    'vn_grease': ["it is QUIC v2",
+                  "it is a reserved version (pattern 0x?a?a?a?a) that no server supports: "
+                  "it triggers the negotiation",
+                  "it is Google's version"],
+}
+
+
+def _dd(name: str, lang: str = 'fr') -> str:
+    """The dropdown marker of field *name*; in English, the English labels with the French options as
+    values."""
     options, _ = CHOICES[name]
+    if lang == 'en':
+        options = [option if label == option else f"{label}>>>{option}"
+                   for label, option in zip(CHOICES_EN[name], options, strict=True)]
     return f"@@{{{name}:>{'|'.join(options)}}}@@"
 
 
-def _ok(name: str) -> str:
-    """The right option of field *name*."""
+def _ok(name: str, lang: str = 'fr') -> str:
+    """The right option of field *name* (its English label with *lang* 'en')."""
     options, index = CHOICES[name]
-    return options[index]
+    return CHOICES_EN[name][index] if lang == 'en' else options[index]
+
+
+def _with_answers(text: TranslatedText, fields, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values* and the right option of each dropdown of *fields*, in
+    the language of each version."""
+    return TranslatedText({lang: version.format(**values, **{f: _ok(f, lang) for f in fields})
+                           for lang, version in text.items()})
 
 
 def _norm(value) -> str:
@@ -1167,8 +1280,16 @@ chose avec le filtre `quic`.
 - le nom du serveur (SNI) est-il lisible dans la capture sans clé ? {_dd('sni')}
 - allers-retours avant que la requête parte, pour une nouvelle connexion : {_dd('rtt')}
 - les paquets de l'établissement, dans l'ordre : {_dd('order')}
+""", en=f"""
+- the sentence served by `/h3-secret.txt`: @@{{secret:.+}}@@
+- transport protocol and port of HTTP/3: {_dd('transport', 'en')}
+- application protocol announced in the ALPN: {_dd('alpn', 'en')}
+- size (UDP payload) of the client's Initial datagrams: {_dd('initial_size', 'en')}
+- is the server name (SNI) readable in the capture without a key? {_dd('sni', 'en')}
+- round trips before the request leaves, for a new connection: {_dd('rtt', 'en')}
+- the packets of the connection set-up, in order: {_dd('order', 'en')}
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** `curl -v` en TCP montre `alt-svc: h3=":443"; ma=86400` ; en QUIC, `using HTTP/3` et
 `[HTTP/3] [0] OPENED stream` (flux 0). La phrase est « {secret} » ; en HTTP/2, `ref` répond 426.
 
@@ -1183,7 +1304,7 @@ Réponses : {transport} ; {alpn} ; {initial_size} ; {sni} ; {rtt} ; {order}.
 
 L'évaluation cherche dans le journal de `ref` une requête HTTP/3 réussie de `client` vers
 `/h3-secret.txt`.
-""").format(secret=d.h3_secret, **{f: _ok(f) for f in fields})),
+"""), fields, secret=d.h3_secret)),
             cheat_answers={"final": answers},
         )
         self.add_grade_element(
@@ -1244,6 +1365,16 @@ Dans le trafic déchiffré :
 
 - le flux de la première requête : {_dd('req_stream')}
 - le flux 3, le premier flux unidirectionnel ouvert par le serveur : {_dd('ctrl_stream')}
+""", en=f"""
+The transport parameters of the server (in its EncryptedExtensions, readable only with the keys):
+
+- `initial_max_streams_bidi`: @@{{max_streams:[0-9]+}}@@
+- `max_idle_timeout` (in milliseconds): @@{{idle:[0-9]+}}@@
+
+In the decrypted traffic:
+
+- the stream of the first request: {_dd('req_stream', 'en')}
+- stream 3, the first unidirectional stream opened by the server: {_dd('ctrl_stream', 'en')}
 """)
             + instructor(tr("""
 **Solution.** Le journal des clés contient `CLIENT_HANDSHAKE_TRAFFIC_SECRET`,
@@ -1319,8 +1450,12 @@ rm -f /tmp/as; for i in 1 2; do curl -sS --alt-svc /tmp/as -o /dev/null -w '%{{h
 - pourquoi garder l'écoute TCP 443 ? {_dd('keep_tcp')}
 - que signifie `ma=86400` dans l'en-tête Alt-Svc ? {_dd('ma')}
 - version de TLS utilisée par QUIC : {_dd('tls_version')}
+""", en=f"""
+- why keep the TCP 443 listener? {_dd('keep_tcp', 'en')}
+- what does `ma=86400` mean in the Alt-Svc header? {_dd('ma', 'en')}
+- version of TLS used by QUIC: {_dd('tls_version', 'en')}
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** `{conf}` :
 
 ```
@@ -1332,7 +1467,7 @@ puis `nginx -t && systemctl enable --now nginx`. `ss -ulnp` montre une socket UD
 HTTP/3.
 
 Réponses : {keep_tcp} ; {ma} ; {tls_version}.
-""").format(conf=WEB_CONF, solution=web_conf(), **{f: _ok(f) for f in fields})),
+"""), fields, conf=WEB_CONF, solution=web_conf())),
             cheat_answers={"final": {f: _ok(f) for f in fields}},
         )
         self.add_grade_element(
@@ -1387,8 +1522,12 @@ dig @{ns} www.quic.tp HTTPS
 - que signifie la priorité 0 de l'enregistrement HTTPS de `news.tp` ? {_dd('alias')}
 - ce que l'enregistrement HTTPS apporte par rapport à Alt-Svc : {_dd('https_gain')}
 - numéro du type d'enregistrement HTTPS : @@{{rrtype:[0-9]+}}@@
+""", en=f"""
+- what does priority 0 of the HTTPS record of `news.tp` mean? {_dd('alias', 'en')}
+- what the HTTPS record brings compared with Alt-Svc: {_dd('https_gain', 'en')}
+- number of the HTTPS record type: @@{{rrtype:[0-9]+}}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Dans `{zone}`, augmenter le numéro de série et ajouter :
 
 ```
@@ -1402,7 +1541,7 @@ HTTPS 1 . alpn="h3,h2" port=443` décrit le service.
 Réponses : {alias} ; {https_gain} ; 65.
 
 L'évaluation interroge `ns` (réponse faisant autorité, priorité au moins 1, `h3` dans `alpn`).
-""").format(zone=ZONE_QUIC, alias=_ok('alias'), https_gain=_ok('https_gain'))),
+"""), ('alias', 'https_gain'), zone=ZONE_QUIC)),
             cheat_answers={"final": answers},
         )
         self.add_grade_element(
@@ -1456,8 +1595,13 @@ conntrack -L -p udp          # sur fw
 - ce que le pare-feu voit d'une connexion QUIC établie : {_dd('fw_sees')}
 - comment `conntrack` suit-il ce flux UDP ? {_dd('ct_track')}
 - pourquoi un `reject` plutôt qu'un `drop` de l'UDP 443 accélère le repli : {_dd('reject')}
+""", en=f"""
+- with the initial rule, `curl --http3`: {_dd('fallback', 'en')}
+- what the firewall sees of an established QUIC connection: {_dd('fw_sees', 'en')}
+- how does `conntrack` track this UDP flow? {_dd('ct_track', 'en')}
+- why a `reject` rather than a `drop` of UDP 443 speeds up the fallback: {_dd('reject', 'en')}
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Avant la règle, `curl --http3` se replie sur HTTP/2 (TCP) et `--http3-only` échoue au
 bout du délai ; `conntrack -L` ne montre que la connexion TCP du repli : les datagrammes UDP jetés par
 la chaîne `forward` n'y entrent pas (une entrée n'est confirmée que si le paquet sort du pare-feu).
@@ -1474,8 +1618,7 @@ Réponses : {fallback} ; {fw_sees} ; {ct_track} ; {reject}.
 
 L'évaluation, depuis `pc` : HTTP/3 vers `ref:443` ; puis, seulement si cela marche, l'UDP {alt} doit
 rester bloqué et HTTP/2 doit toujours passer ; la règle doit être dans `{conf}`.
-""").format(conf=FW_CONF, solution=render_fw_ruleset(quic=True), alt=NEWS_QUIC_ONLY_PORT,
-            **{f: _ok(f) for f in fields})),
+"""), fields, conf=FW_CONF, solution=render_fw_ruleset(quic=True), alt=NEWS_QUIC_ONLY_PORT)),
             cheat_answers={"final": {f: _ok(f) for f in fields}},
         )
         self.add_grade_element(
@@ -1537,8 +1680,13 @@ refuse alors tout nouveau chemin.)
 - la trame envoyée par le serveur pour vérifier la nouvelle adresse : {_dd('mig_frame')}
 - le téléchargement en HTTP/2 après `conntrack -F` : {_dd('mig_tcp')}
 - pourquoi la migration échouait avec {EDGE_WORKERS} workers : {_dd('mig_workers')}
+""", en=f"""
+- what lets the server attach the packets coming from the new port to the connection: {_dd('mig_cid', 'en')}
+- the frame sent by the server to check the new address: {_dd('mig_frame', 'en')}
+- the HTTP/2 download after `conntrack -F`: {_dd('mig_tcp', 'en')}
+- why migration failed with {EDGE_WORKERS} workers: {_dd('mig_workers', 'en')}
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Avant correction, `quic-client migrate` donne 0 ou 1 connexion survivante sur 5 : `ss
 -ulnp` montre {workers} sockets UDP 443 (une par worker, `reuseport`). Ajouter en tête de
 `/etc/nginx/nginx.conf` :
@@ -1556,7 +1704,7 @@ Réponses : {mig_cid} ; {mig_frame} ; {mig_tcp} ; {mig_workers}.
 
 L'évaluation : {migrations} connexions de la sonde vers `edge`, chacune migrée une fois (nouvelle
 socket et nouvel identifiant), doivent toutes recevoir la réponse à la requête suivante.
-""").format(workers=EDGE_WORKERS, migrations=MIGRATIONS, **{f: _ok(f) for f in fields})),
+"""), fields, workers=EDGE_WORKERS, migrations=MIGRATIONS)),
             cheat_answers={"final": {f: _ok(f) for f in fields}},
         )
         self.add_grade_element(
@@ -1605,8 +1753,14 @@ tshark -r /tmp/retry.pcapng -T fields -e frame.number -e ip.src -e quic.long.pac
 - coût du Retry pour une nouvelle connexion : {_dd('retry_cost')}
 - ce que contient le second Initial du client : {_dd('second_initial')}
 - à quoi sert la trame NEW_TOKEN ? {_dd('new_token')}
+""", en=f"""
+- what is the Retry for? {_dd('retry_why', 'en')}
+- before the address is validated, the server may send at most: {_dd('amplification', 'en')}
+- cost of the Retry for a new connection: {_dd('retry_cost', 'en')}
+- what the second Initial of the client holds: {_dd('second_initial', 'en')}
+- what is the NEW_TOKEN frame for? {_dd('new_token', 'en')}
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Dans `{conf}` (bloc `server`) :
 
 ```
@@ -1623,7 +1777,7 @@ Réponses : {retry_why} ; {amplification} ; {retry_cost} ; {second_initial} ; {n
 
 L'évaluation : une connexion de la sonde doit recevoir un Retry et aboutir ; `quic_host_key` doit
 désigner un fichier non vide lisible par root seul.
-""").format(conf=CDN_CONF, key=HOST_KEY, **{f: _ok(f) for f in fields})),
+"""), fields, conf=CDN_CONF, key=HOST_KEY)),
             cheat_answers={"final": {f: _ok(f) for f in fields}},
         )
         self.add_grade_element(
@@ -1666,8 +1820,13 @@ ajoutez à chaque réponse l'en-tête `Early-Data` qui vaut `$ssl_early_data`, e
 - requêtes acceptables en 0-RTT : {_dd('zr_safe')}
 - sens de la réponse 425 : {_dd('code_425')}
 - condition pour envoyer du 0-RTT : {_dd('zr_need')}
+""", en=f"""
+- risk specific to 0-RTT data: {_dd('replay', 'en')}
+- requests acceptable in 0-RTT: {_dd('zr_safe', 'en')}
+- meaning of the 425 response: {_dd('code_425', 'en')}
+- condition for sending 0-RTT: {_dd('zr_need', 'en')}
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Le bloc `server` de `{conf}` après les parties 7 et 8 :
 
 ```
@@ -1681,7 +1840,7 @@ Réponses : {replay} ; {zr_safe} ; {code_425} ; {zr_need}.
 
 L'évaluation : deux connexions de la sonde ; dans la seconde, le 0-RTT doit être accepté, `/` servi
 avec `Early-Data: 1` et `/order` refusé par 425, alors que `/order` répond 200 dans la première.
-""").format(conf=CDN_CONF, solution=cdn_conf(tuned=True), **{f: _ok(f) for f in fields})),
+"""), fields, conf=CDN_CONF, solution=cdn_conf(tuned=True))),
             cheat_answers={"final": {f: _ok(f) for f in fields}},
         )
         self.add_grade_element(
@@ -1719,8 +1878,11 @@ curl -sSI https://www.quic.tp:{port}/ | grep -i alt-svc
             + tr(f"""
 - les versions annoncées par `www.news.tp` : {_dd('vn_versions')}
 - pourquoi `quic-client vn` envoie-t-il la version `0x1a2a3a4a` ? {_dd('vn_grease')}
+""", en=f"""
+- the versions announced by `www.news.tp`: {_dd('vn_versions', 'en')}
+- why does `quic-client vn` send the version `0x1a2a3a4a`? {_dd('vn_grease', 'en')}
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Sur `web` :
 
 ```
@@ -1739,8 +1901,7 @@ puis `systemctl enable caddy && systemctl restart caddy`. Caddy annonce lui-mêm
 ne parle que QUIC v1) ; les identifiants de connexion y sont renvoyés inversés.
 
 Réponses : {vn_versions} ; {vn_grease}.
-""").format(cert=_cert(WWW), key=_key(WWW), caddyfile=caddyfile(), port=CADDY_PORT,
-            **{f: _ok(f) for f in fields})),
+"""), fields, cert=_cert(WWW), key=_key(WWW), caddyfile=caddyfile(), port=CADDY_PORT)),
             cheat_answers={"final": {f: _ok(f) for f in fields}},
         )
         self.add_grade_element(
@@ -1752,7 +1913,7 @@ Réponses : {vn_versions} ; {vn_grease}.
             description=tr("versions de ref, version réservée"))
 
 
-# English translations of the instructor texts (the course and the questions are French)
+# English translations of every tr() text (the course, the questions, the grade elements, the instructor texts)
 _TRANSLATIONS = {
     "en": {
         """
@@ -1773,7 +1934,7 @@ _TRANSLATIONS = {
 """: """
 **For the instructor.** Each question ends with its solution, computed for this project.
 
-- The `final` state (tab *Apply a configuration*) writes the whole solution: nginx and Caddy on
+- The `final` state (*Apply Configuration* tab) writes the whole solution: nginx and Caddy on
   `web`, the HTTPS record on `ns`, the UDP 443 rule of `fw`, `quic_bpf`, Retry, `quic_host_key` and
   0-RTT on `edge`, a decryptable capture in `/shared` (curl to `ref` from `client`), and fills the
   forms.
@@ -1812,7 +1973,7 @@ The ClientHello of the first Initial is readable without any key: `server_name` 
 ALPN `h3` (the Initial keys derive from the client's DCID and a public salt). The request leaves
 after one round trip.
 
-Answers (French form): {transport}; {alpn}; {initial_size}; {sni}; {rtt}; {order}.
+Answers: {transport}; {alpn}; {initial_size}; {sni}; {rtt}; {order}.
 
 The evaluation looks in the log of `ref` for a successful HTTP/3 request of `client` for
 `/h3-secret.txt`.
@@ -1866,7 +2027,7 @@ then `nginx -t && systemctl enable --now nginx`. `ss -ulnp` shows one UDP 443 so
 (`reuseport`). curl answers `3` with `--http3-only`; over HTTP/2 the response carries
 `alt-svc: h3=":443"; ma=86400`; with `--alt-svc`, the first request is HTTP/2 and the second HTTP/3.
 
-Answers (French form): {keep_tcp}; {ma}; {tls_version}.
+Answers: {keep_tcp}; {ma}; {tls_version}.
 """,
         """
 **Solution.** Dans `{zone}`, augmenter le numéro de série et ajouter :
@@ -1893,7 +2054,7 @@ then `named-checkzone quic.tp {zone} && rndc reload quic.tp`. `dig www.quic.tp H
 `1 . alpn="h3,h2"`. In `news.tp`, `news.tp. IN HTTPS 0 www.news.tp.` is an alias, `www.news.tp. IN
 HTTPS 1 . alpn="h3,h2" port=443` describes the service.
 
-Answers (French form): {alias}; {https_gain}; 65.
+Answers: {alias}; {https_gain}; 65.
 
 The evaluation queries `ns` (authoritative answer, priority at least 1, `h3` in `alpn`).
 """,
@@ -1926,7 +2087,7 @@ the firewall). The corrected `{conf}`:
 then `nft -f {conf}`. `curl --http3-only` answers `3`; UDP {alt} stays blocked; `conntrack -L -p udp`
 shows the UDP entry to port 443 (`[ASSURED]` once the traffic flows both ways) and its expiry delay.
 
-Answers (French form): {fallback}; {fw_sees}; {ct_track}; {reject}.
+Answers: {fallback}; {fw_sees}; {ct_track}; {reject}.
 
 The evaluation, from `pc`: HTTP/3 to `ref:443`; then, only when that works, UDP {alt} must stay
 blocked and HTTP/2 must still pass; the rule must be in `{conf}`.
@@ -1963,7 +2124,7 @@ quic_bpf on;
 `2 PATH_CHALLENGE received` and goes on to the end (without `quic_bpf`, it stalls then times out).
 The nginx log (`error_log ... info`) shows `quic migrated to path`.
 
-Answers (French form): {mig_cid}; {mig_frame}; {mig_tcp}; {mig_workers}.
+Answers: {mig_cid}; {mig_frame}; {mig_tcp}; {mig_workers}.
 
 The evaluation: {migrations} connections of the probe to `edge`, each migrated once (new socket and
 new connection ID), must all get the answer to their next request.
@@ -1998,7 +2159,7 @@ prints `Retry received: yes`. In the capture: Initial of the client (type 0, tok
 the server (type 3, with a new SCID), new Initial of the client with a token (66 bytes with curl)
 and the SCID of the Retry as DCID, then the usual handshake.
 
-Answers (French form): {retry_why}; {amplification}; {retry_cost}; {second_initial}; {new_token}.
+Answers: {retry_why}; {amplification}; {retry_cost}; {second_initial}; {new_token}.
 
 The evaluation: a connection of the probe must get a Retry and succeed; `quic_host_key` must name a
 non-empty file readable by root only.
@@ -2027,7 +2188,7 @@ Before: the second connection is resumed (`session resumed: yes`) but `0-RTT: re
 are sent again in 1-RTT. After: `0-RTT: accepted`, `GET / (stream 0, 0-RTT) -> 200` with
 `early-data: 1`, `GET /order (stream 4, 0-RTT) -> 425`; in the first connection `/order` answers 200.
 
-Answers (French form): {replay}; {zr_safe}; {code_425}; {zr_need}.
+Answers: {replay}; {zr_safe}; {code_425}; {zr_need}.
 
 The evaluation: two connections of the probe; in the second one, 0-RTT must be accepted, `/` served
 with `Early-Data: 1` and `/order` refused with 425, while `/order` answers 200 in the first one.
@@ -2069,7 +2230,1461 @@ then `systemctl enable caddy && systemctl restart caddy`. Caddy announces
 `quic-client vn www.news.tp` gets a Version Negotiation packet listing `0x00000001` only (nginx speaks
 QUIC v1 only); the connection IDs are sent back swapped.
 
-Answers (French form): {vn_versions}; {vn_grease}.
+Answers: {vn_versions}; {vn_grease}.
 """,
+        "QUIC et HTTP/3 : poignée de main, chiffrement, migration, 0-RTT": "QUIC and HTTP/3: handshake, encryption, migration, 0-RTT",
+        """**Sommaire**
+""": """**Contents**
+""",
+        "Pourquoi QUIC ?": "Why QUIC?",
+        """
+
+Le Web a longtemps reposé sur **TCP + TLS** : TCP fournit un flux d'octets fiable et ordonné, TLS le
+chiffre et authentifie le serveur. Cet empilement a trois défauts que QUIC corrige.
+
+- **La latence d'établissement.** Il faut une poignée de main TCP (1 aller-retour, *RTT*), puis une
+  poignée de main TLS (1 RTT en TLS 1.3, 2 en TLS 1.2) avant d'envoyer la première requête :
+  2 à 3 RTT, soit plusieurs centaines de millisecondes sur un lien lointain ou mobile.
+- **Le blocage en tête de ligne** (*head-of-line blocking*). HTTP/2 multiplexe des dizaines de
+  requêtes dans **une** connexion TCP ; un seul segment perdu bloque la livraison de tout ce qui
+  suit, toutes requêtes confondues, jusqu'à sa retransmission.
+- **L'ossification.** TCP est dans le noyau des systèmes et ses en-têtes sont lus — et parfois
+  modifiés — par des milliers d'équipements intermédiaires (pare-feu, NAT, accélérateurs) : toute
+  évolution du protocole (nouvelle option, nouveau comportement) se heurte à des équipements qui la
+  cassent. Faire évoluer TCP prend une décennie.
+
+**QUIC** (initialement *Quick UDP Internet Connections*, aujourd'hui un nom propre) est né chez
+Google en 2012 (« gQUIC »), puis a été normalisé par l'IETF de 2016 à 2021 sous une forme assez
+différente. C'est un protocole de transport **fiable, multiplexé et chiffré**, construit au-dessus
+d'**UDP** et implémenté **en espace utilisateur** (dans les navigateurs, les serveurs, les
+bibliothèques) : il évolue au rythme des applications, et presque tout son en-tête est chiffré, ce
+qui empêche les équipements intermédiaires de s'y attacher. HTTP/3 est la correspondance de HTTP sur
+QUIC ; en 2026 il porte une part importante du trafic Web (Google, Meta, Cloudflare, Akamai...).
+""": """
+
+The Web long relied on **TCP + TLS**: TCP provides a reliable, ordered byte stream, TLS encrypts it
+and authenticates the server. This stack has three flaws that QUIC fixes.
+
+- **Connection set-up latency.** A TCP handshake (1 round trip, *RTT*) is needed, then a TLS
+  handshake (1 RTT with TLS 1.3, 2 with TLS 1.2) before the first request can be sent: 2 to 3 RTT,
+  that is several hundred milliseconds over a distant or mobile link.
+- **Head-of-line blocking.** HTTP/2 multiplexes dozens of requests in **one** TCP connection; a
+  single lost segment blocks the delivery of everything that follows, all requests together, until
+  it is retransmitted.
+- **Ossification.** TCP lives in the kernel of the operating systems and its headers are read — and
+  sometimes changed — by thousands of middleboxes (firewalls, NATs, accelerators): any change to the
+  protocol (a new option, a new behaviour) runs into equipment that breaks it. Evolving TCP takes a
+  decade.
+
+**QUIC** (originally *Quick UDP Internet Connections*, now a proper name) was born at Google in 2012
+("gQUIC"), then standardised by the IETF from 2016 to 2021 in a rather different form. It is a
+**reliable, multiplexed and encrypted** transport protocol, built on top of **UDP** and implemented
+**in user space** (in browsers, servers, libraries): it evolves at the pace of the applications, and
+almost all of its header is encrypted, which prevents middleboxes from depending on it. HTTP/3 is
+the mapping of HTTP onto QUIC; in 2026 it carries a large share of Web traffic (Google, Meta,
+Cloudflare, Akamai...).
+""",
+        "QUIC dans la pile réseau": "QUIC in the network stack",
+        """
+
+```
+   HTTP/1.1, HTTP/2           HTTP/3 (RFC 9114) + QPACK (RFC 9204)
+   TLS 1.2 / 1.3              QUIC (RFC 9000) avec TLS 1.3 intégré (RFC 9001)
+   TCP                        UDP
+   IP                         IP
+```
+
+QUIC reprend ce que faisaient TCP (fiabilité, contrôle de flux, contrôle de congestion), TLS
+(chiffrement, authentification) et une partie de HTTP/2 (multiplexage de flux). Les principaux
+documents :
+
+| RFC | contenu |
+|-----|---------|
+| 8999 | propriétés de QUIC indépendantes de la version (ce qui restera vrai dans toutes les versions) |
+| 9000 | le transport : paquets, trames, flux, identifiants de connexion, migration |
+| 9001 | l'utilisation de TLS 1.3 pour protéger QUIC |
+| 9002 | détection des pertes et contrôle de congestion |
+| 9114 | HTTP/3 ; 9204 : QPACK, la compression des en-têtes |
+| 9369 | QUIC version 2 (identique à la v1 aux constantes près, pour éviter l'ossification) |
+| 9221 | datagrammes non fiables ; 9297 / 9298 : datagrammes HTTP et `CONNECT-UDP` (MASQUE) |
+| 9250 | DNS sur QUIC (DoQ) ; 9460 : enregistrements DNS SVCB / HTTPS ; 7838 : `Alt-Svc` |
+| 9312 | ce que les opérateurs réseau peuvent encore observer et gérer |
+
+Le port d'usage est **UDP 443** (le même numéro que HTTPS sur TCP). QUIC ne se limite pas au Web :
+DNS sur QUIC, SMB sur QUIC, tunnels MASQUE, WebTransport (@@ref:beyond@@).
+""": """
+
+```
+   HTTP/1.1, HTTP/2           HTTP/3 (RFC 9114) + QPACK (RFC 9204)
+   TLS 1.2 / 1.3              QUIC (RFC 9000) with TLS 1.3 built in (RFC 9001)
+   TCP                        UDP
+   IP                         IP
+```
+
+QUIC takes over what TCP did (reliability, flow control, congestion control), what TLS did
+(encryption, authentication) and part of HTTP/2 (stream multiplexing). The main documents:
+
+| RFC | content |
+|-----|---------|
+| 8999 | version-independent properties of QUIC (what will remain true in every version) |
+| 9000 | the transport: packets, frames, streams, connection IDs, migration |
+| 9001 | using TLS 1.3 to protect QUIC |
+| 9002 | loss detection and congestion control |
+| 9114 | HTTP/3; 9204: QPACK, header compression |
+| 9369 | QUIC version 2 (identical to v1 except for constants, to avoid ossification) |
+| 9221 | unreliable datagrams; 9297 / 9298: HTTP datagrams and `CONNECT-UDP` (MASQUE) |
+| 9250 | DNS over QUIC (DoQ); 9460: SVCB / HTTPS DNS records; 7838: `Alt-Svc` |
+| 9312 | what network operators can still observe and manage |
+
+The usual port is **UDP 443** (the same number as HTTPS over TCP). QUIC is not limited to the Web:
+DNS over QUIC, SMB over QUIC, MASQUE tunnels, WebTransport (@@ref:beyond@@).
+""",
+        "Paquets, en-têtes et trames": "Packets, headers and frames",
+        """
+
+Un **datagramme UDP** contient un ou plusieurs **paquets QUIC** (on dit qu'ils sont *coalescés*), et
+chaque paquet contient une suite de **trames**.
+
+### @@sec@@ Deux formes d'en-tête
+
+- **En-tête long** (premier bit à 1), pendant l'établissement : version (32 bits), longueur et
+  valeur de l'identifiant de connexion de destination (**DCID**), puis de source (**SCID**). Types
+  de paquets longs (QUIC v1) : **Initial** (0), **0-RTT** (1), **Handshake** (2), **Retry** (3). Un
+  paquet **Version Negotiation** a le champ version à 0.
+- **En-tête court** (premier bit à 0), une fois la connexion établie (paquets dits **1-RTT**) :
+  seulement quelques bits (dont le *spin bit* et le *key phase*), le DCID (sans longueur : chaque
+  extrémité connaît la longueur de ses propres identifiants) et le numéro de paquet.
+
+Le **numéro de paquet** et les bits de poids faible du premier octet sont masqués par une
+**protection d'en-tête** : un observateur ne voit ni les numéros de paquet ni les acquittements.
+
+### @@sec@@ Espaces de numérotation
+
+Il y a trois espaces de numéros de paquet indépendants : Initial, Handshake et données
+applicatives (0-RTT et 1-RTT). Chacun a ses propres clés et ses propres acquittements. Un numéro de
+paquet n'est **jamais réutilisé** : une donnée retransmise part dans un nouveau paquet, avec un
+nouveau numéro, ce qui supprime l'ambiguïté de TCP (« l'acquittement reçu concerne-t-il l'original
+ou la retransmission ? »).
+
+### @@sec@@ Les trames
+
+| type | trame | rôle |
+|------|-------|------|
+| 0x00 / 0x01 | PADDING / PING | bourrage / provoquer un acquittement (maintien en vie) |
+| 0x02, 0x03 | ACK | acquittements par plages, avec le délai d'acquittement |
+| 0x06 | CRYPTO | les messages de la poignée de main TLS |
+| 0x07 | NEW_TOKEN | un jeton pour une future connexion (@@ref:validation@@) |
+| 0x08 à 0x0f | STREAM | des données d'un flux (bits : décalage, longueur, fin du flux) |
+| 0x04 / 0x05 | RESET_STREAM / STOP_SENDING | abandon d'un flux |
+| 0x10 à 0x17 | MAX_DATA, MAX_STREAM_DATA, MAX_STREAMS, *_BLOCKED | contrôle de flux |
+| 0x18 / 0x19 | NEW_CONNECTION_ID / RETIRE_CONNECTION_ID | gestion des identifiants (@@ref:cid@@) |
+| 0x1a / 0x1b | PATH_CHALLENGE / PATH_RESPONSE | validation d'un chemin |
+| 0x1c, 0x1d | CONNECTION_CLOSE | fermeture (erreur de transport ou d'application) |
+| 0x1e | HANDSHAKE_DONE | le serveur confirme la fin de la poignée de main |
+""": """
+
+A **UDP datagram** holds one or more **QUIC packets** (they are said to be *coalesced*), and each
+packet holds a sequence of **frames**.
+
+### @@sec@@ Two header forms
+
+- **Long header** (first bit set to 1), during connection set-up: version (32 bits), length and
+  value of the destination connection ID (**DCID**), then of the source one (**SCID**). Long packet
+  types (QUIC v1): **Initial** (0), **0-RTT** (1), **Handshake** (2), **Retry** (3). A **Version
+  Negotiation** packet has its version field set to 0.
+- **Short header** (first bit set to 0), once the connection is established (so-called **1-RTT**
+  packets): only a few bits (among them the *spin bit* and the *key phase*), the DCID (without a
+  length: each end knows the length of its own IDs) and the packet number.
+
+The **packet number** and the low-order bits of the first byte are masked by a **header
+protection**: an observer sees neither the packet numbers nor the acknowledgements.
+
+### @@sec@@ Number spaces
+
+There are three independent packet number spaces: Initial, Handshake and application data (0-RTT
+and 1-RTT). Each has its own keys and its own acknowledgements. A packet number is **never
+reused**: retransmitted data leaves in a new packet, with a new number, which removes the ambiguity
+of TCP ("does the acknowledgement received concern the original or the retransmission?").
+
+### @@sec@@ Frames
+
+| type | frame | role |
+|------|-------|------|
+| 0x00 / 0x01 | PADDING / PING | padding / trigger an acknowledgement (keep-alive) |
+| 0x02, 0x03 | ACK | acknowledgements by ranges, with the acknowledgement delay |
+| 0x06 | CRYPTO | the messages of the TLS handshake |
+| 0x07 | NEW_TOKEN | a token for a future connection (@@ref:validation@@) |
+| 0x08 to 0x0f | STREAM | data of a stream (bits: offset, length, end of stream) |
+| 0x04 / 0x05 | RESET_STREAM / STOP_SENDING | abandoning a stream |
+| 0x10 to 0x17 | MAX_DATA, MAX_STREAM_DATA, MAX_STREAMS, *_BLOCKED | flow control |
+| 0x18 / 0x19 | NEW_CONNECTION_ID / RETIRE_CONNECTION_ID | management of the IDs (@@ref:cid@@) |
+| 0x1a / 0x1b | PATH_CHALLENGE / PATH_RESPONSE | validation of a path |
+| 0x1c, 0x1d | CONNECTION_CLOSE | closing (transport or application error) |
+| 0x1e | HANDSHAKE_DONE | the server confirms the end of the handshake |
+""",
+        "La poignée de main : TLS 1.3 dans QUIC": "The handshake: TLS 1.3 inside QUIC",
+        """
+
+QUIC n'utilise pas les enregistrements TLS : il transporte les **messages de la poignée de main
+TLS 1.3** dans des trames CRYPTO et en dérive ses propres clés de paquets. Seul **TLS 1.3** est
+possible. L'**ALPN** (négociation du protocole applicatif) est obligatoire : `h3` pour HTTP/3.
+
+```
+client                                               serveur
+Initial [CRYPTO: ClientHello + paramètres de transport]   ------>   (datagramme d'au moins 1200 octets)
+          <------   Initial [CRYPTO: ServerHello, ACK]
+                    Handshake [CRYPTO: EncryptedExtensions, Certificate,
+                               CertificateVerify, Finished]
+                    1-RTT [données éventuelles du serveur]
+Handshake [CRYPTO: Finished, ACK]
+1-RTT [STREAM 0 : la requête HTTP/3]       ------>
+          <------   1-RTT [HANDSHAKE_DONE, STREAM 0 : la réponse]
+```
+
+La requête part donc après **un seul aller-retour**, contre deux avec TCP + TLS 1.3.
+
+Les **clés des paquets Initial** dérivent du DCID choisi par le client et d'un sel publié dans la
+RFC : elles protègent contre les modifications accidentelles, **pas** contre un observateur, qui
+peut les recalculer. Wireshark déchiffre donc les paquets Initial sans aucune clé et y lit le
+ClientHello : **nom du serveur (SNI)**, ALPN, paramètres de transport du client (seule l'extension
+ECH, *Encrypted Client Hello*, masquerait le SNI). Les paquets Handshake et 1-RTT sont protégés par
+des clés issues de l'échange Diffie-Hellman de TLS : il faut les secrets de TLS pour les lire
+(@@ref:decrypt@@).
+
+Les **paramètres de transport** (une extension TLS) fixent les limites de chaque extrémité :
+`initial_max_data`, `initial_max_stream_data_*`, `initial_max_streams_bidi` / `_uni` (nombre de
+flux que le pair peut ouvrir), `max_idle_timeout` (fermeture après inactivité, en millisecondes),
+`max_udp_payload_size`, `active_connection_id_limit`, `disable_active_migration`,
+`stateless_reset_token`... Ceux du serveur voyagent dans l'**EncryptedExtensions**, donc chiffrés.
+""": """
+
+QUIC does not use TLS records: it carries the **messages of the TLS 1.3 handshake** in CRYPTO frames
+and derives its own packet keys from them. Only **TLS 1.3** is possible. **ALPN** (application
+protocol negotiation) is mandatory: `h3` for HTTP/3.
+
+```
+client                                               server
+Initial [CRYPTO: ClientHello + transport parameters]   ------>   (datagram of at least 1200 bytes)
+          <------   Initial [CRYPTO: ServerHello, ACK]
+                    Handshake [CRYPTO: EncryptedExtensions, Certificate,
+                               CertificateVerify, Finished]
+                    1-RTT [possible data from the server]
+Handshake [CRYPTO: Finished, ACK]
+1-RTT [STREAM 0: the HTTP/3 request]       ------>
+          <------   1-RTT [HANDSHAKE_DONE, STREAM 0: the response]
+```
+
+The request therefore leaves after **a single round trip**, against two with TCP + TLS 1.3.
+
+The **keys of the Initial packets** are derived from the DCID chosen by the client and from a salt
+published in the RFC: they protect against accidental changes, **not** against an observer, who can
+compute them again. Wireshark therefore decrypts the Initial packets without any key and reads the
+ClientHello in them: **server name (SNI)**, ALPN, transport parameters of the client (only the ECH
+extension, *Encrypted Client Hello*, would hide the SNI). The Handshake and 1-RTT packets are
+protected by keys derived from the Diffie-Hellman exchange of TLS: the TLS secrets are needed to
+read them (@@ref:decrypt@@).
+
+The **transport parameters** (a TLS extension) set the limits of each end: `initial_max_data`,
+`initial_max_stream_data_*`, `initial_max_streams_bidi` / `_uni` (number of streams the peer may
+open), `max_idle_timeout` (closing after inactivity, in milliseconds), `max_udp_payload_size`,
+`active_connection_id_limit`, `disable_active_migration`, `stateless_reset_token`... Those of the
+server travel in the **EncryptedExtensions**, hence encrypted.
+""",
+        "Flux, contrôle de flux et HTTP/3": "Streams, flow control and HTTP/3",
+        """
+
+Une connexion QUIC porte des **flux** (*streams*) indépendants, bidirectionnels ou
+unidirectionnels, ouverts par l'une ou l'autre extrémité sans échange préalable. Les deux bits de
+poids faible de l'identifiant de flux disent qui l'a ouvert et dans quel sens :
+
+| identifiants | flux |
+|--------------|------|
+| 0, 4, 8... | bidirectionnels ouverts par le client |
+| 1, 5, 9... | bidirectionnels ouverts par le serveur |
+| 2, 6, 10... | unidirectionnels ouverts par le client |
+| 3, 7, 11... | unidirectionnels ouverts par le serveur |
+
+Une perte ne retarde **que le flux** dont les données ont été perdues : les autres continuent d'être
+livrés. C'est la fin du blocage en tête de ligne entre requêtes.
+
+Le **contrôle de flux** limite ce que l'émetteur peut envoyer, par flux (MAX_STREAM_DATA) et pour
+toute la connexion (MAX_DATA), et le nombre de flux ouverts (MAX_STREAMS).
+
+**HTTP/3** place chaque requête et sa réponse sur un flux bidirectionnel ouvert par le client, sous
+forme de trames HTTP/3 (HEADERS, DATA). Chaque extrémité ouvre aussi des flux unidirectionnels,
+dont le premier octet donne le type : le flux de **contrôle** (type 0x00, obligatoire : trames
+SETTINGS, GOAWAY) et, selon ses besoins, les flux de l'**encodeur** (0x02) et du **décodeur** (0x03)
+**QPACK**, qui maintiennent la table dynamique de compression des en-têtes (QPACK remplace HPACK de
+HTTP/2 parce que les flux QUIC n'arrivent pas dans l'ordre). curl ouvre les trois ; nginx, qui
+n'insère rien dans la table dynamique, n'ouvre que le contrôle et le décodeur. Les pseudo-en-têtes
+`:method`, `:scheme`, `:authority`, `:path`, `:status` sont ceux de HTTP/2.
+""": """
+
+A QUIC connection carries independent **streams**, bidirectional or unidirectional, opened by
+either end without any prior exchange. The two low-order bits of the stream ID say who opened it and
+in which direction:
+
+| IDs | streams |
+|-----|---------|
+| 0, 4, 8... | bidirectional, opened by the client |
+| 1, 5, 9... | bidirectional, opened by the server |
+| 2, 6, 10... | unidirectional, opened by the client |
+| 3, 7, 11... | unidirectional, opened by the server |
+
+A loss **only delays the stream** whose data was lost: the others keep being delivered. That is the
+end of head-of-line blocking between requests.
+
+**Flow control** limits what the sender may send, per stream (MAX_STREAM_DATA) and for the whole
+connection (MAX_DATA), and the number of open streams (MAX_STREAMS).
+
+**HTTP/3** puts each request and its response on a bidirectional stream opened by the client, as
+HTTP/3 frames (HEADERS, DATA). Each end also opens unidirectional streams, whose first byte gives
+the type: the **control** stream (type 0x00, mandatory: SETTINGS, GOAWAY frames) and, as needed, the
+streams of the **QPACK encoder** (0x02) and **decoder** (0x03), which maintain the dynamic header
+compression table (QPACK replaces the HPACK of HTTP/2 because QUIC streams do not arrive in order).
+curl opens all three; nginx, which inserts nothing in the dynamic table, only opens the control and
+decoder streams. The pseudo-headers `:method`, `:scheme`, `:authority`, `:path`, `:status` are those
+of HTTP/2.
+""",
+        "Pertes et congestion": "Losses and congestion",
+        """
+
+Le destinataire acquitte par **plages** de numéros de paquets (jusqu'à des centaines de trous
+décrits dans une trame ACK), en indiquant le délai écoulé avant l'acquittement : l'émetteur mesure
+le RTT sans erreur. Un paquet est déclaré perdu quand des paquets plus récents ont été acquittés
+(seuil de 3 paquets ou délai de 9/8 RTT) ; si plus rien n'est acquitté, la **PTO** (*probe
+timeout*) envoie un paquet de sonde. Les trames perdues sont renvoyées dans de nouveaux paquets
+(sauf ce qui est devenu inutile, un flux abandonné par exemple).
+
+Le contrôle de congestion est celui de TCP : la RFC 9002 décrit NewReno ; les implémentations
+utilisent souvent CUBIC ou BBR, choisis par l'application et non par le noyau. ECN est pris en
+charge. Côté serveur, des optimisations comme **GSO** (envoyer plusieurs datagrammes en un appel
+système, `quic_gso on` dans nginx) comptent beaucoup : en espace utilisateur, QUIC coûte plus de
+processeur que TCP par octet transmis.
+""": """
+
+The receiver acknowledges by **ranges** of packet numbers (up to hundreds of gaps described in one
+ACK frame), stating the delay before the acknowledgement: the sender measures the RTT without error.
+A packet is declared lost when more recent packets have been acknowledged (threshold of 3 packets
+or a delay of 9/8 RTT); if nothing more is acknowledged, the **PTO** (*probe timeout*) sends a probe
+packet. Lost frames are sent again in new packets (except what has become useless, an abandoned
+stream for example).
+
+Congestion control is that of TCP: RFC 9002 describes NewReno; the implementations often use CUBIC
+or BBR, chosen by the application and not by the kernel. ECN is supported. On the server side,
+optimisations such as **GSO** (sending several datagrams in one system call, `quic_gso on` in nginx)
+matter a lot: in user space, QUIC costs more CPU than TCP per byte transmitted.
+""",
+        "Validation d'adresse : anti-amplification et Retry": "Address validation: anti-amplification and Retry",
+        """
+
+UDP ne vérifie pas l'adresse source : un attaquant peut envoyer un Initial avec l'adresse d'une
+victime, et si le serveur répondait par plusieurs kilo-octets (certificats !), il servirait
+d'**amplificateur**. Deux mécanismes l'empêchent :
+
+- le client doit **bourrer** ses datagrammes Initial à **au moins 1200 octets** (c'est aussi la
+  taille minimale que tout chemin doit transporter) ;
+- tant que l'adresse du client n'est pas **validée** (en recevant un paquet Handshake qu'il n'a pu
+  écrire qu'en ayant reçu la réponse), le serveur n'envoie **pas plus de 3 fois** les octets reçus.
+
+Un serveur peut exiger une validation explicite avant tout calcul coûteux : il répond au premier
+Initial par un paquet **Retry** contenant un **jeton** (chiffré par le serveur : adresse du client,
+date, DCID d'origine) et un nouvel identifiant de source. Le client recommence son Initial en y
+mettant le jeton, avec pour DCID l'identifiant donné par le Retry ; le serveur vérifie le jeton sans
+garder aucun état entre les deux. Coût : **un aller-retour de plus**. En fin de connexion, le
+serveur peut donner par une trame **NEW_TOKEN** un jeton pour la **prochaine** connexion, qui
+évitera le Retry. Le paquet Retry porte une étiquette d'intégrité (calculée avec une clé publiée)
+que le client vérifie.
+
+Avec plusieurs processus ou plusieurs serveurs derrière une même adresse, tous doivent déchiffrer
+les jetons des autres : nginx les chiffre avec la clé de **`quic_host_key`** (une clé aléatoire par
+défaut, refaite à chaque rechargement, qui rend invalides les jetons déjà donnés), qui sert aussi aux
+*stateless resets* (@@ref:cid@@).
+""": """
+
+UDP does not check the source address: an attacker can send an Initial with the address of a victim,
+and if the server answered with several kilobytes (certificates!), it would act as an
+**amplifier**. Two mechanisms prevent it:
+
+- the client must **pad** its Initial datagrams to **at least 1200 bytes** (this is also the minimum
+  size every path must carry);
+- as long as the client's address is not **validated** (by receiving a Handshake packet it could
+  only have written after receiving the reply), the server sends **no more than 3 times** the bytes
+  received.
+
+A server can require an explicit validation before any costly computation: it answers the first
+Initial with a **Retry** packet holding a **token** (encrypted by the server: client address, date,
+original DCID) and a new source ID. The client starts its Initial again with the token in it, and
+with the ID given by the Retry as its DCID; the server checks the token without keeping any state
+between the two. Cost: **one more round trip**. At the end of a connection, the server can give, in
+a **NEW_TOKEN** frame, a token for the **next** connection, which will avoid the Retry. The Retry
+packet carries an integrity tag (computed with a published key) that the client checks.
+
+With several processes or several servers behind one address, all of them must decrypt the tokens
+of the others: nginx encrypts them with the key of **`quic_host_key`** (a random key by default,
+created again at each reload, which invalidates the tokens already given), which is also used for
+*stateless resets* (@@ref:cid@@).
+""",
+        "Identifiants de connexion et migration": "Connection IDs and migration",
+        """
+
+Une connexion TCP est identifiée par le quadruplet (adresses, ports) : si l'un change, elle est
+perdue. Une connexion QUIC est identifiée par ses **identifiants de connexion** (*Connection IDs*),
+choisis par chaque extrémité pour les paquets qu'elle **reçoit** : le serveur reconnaît une
+connexion au DCID des paquets du client, quels que soient l'adresse et le port d'où ils viennent.
+
+- **Rebinding NAT.** Un NAT oublie une correspondance (délai expiré, redémarrage) et en recrée une
+  avec un autre port : en TCP, le serveur reçoit des segments d'un quadruplet inconnu et répond par
+  un RST ; en QUIC, le serveur voit le même DCID depuis une nouvelle adresse.
+- **Migration active.** Le client change de réseau (Wi-Fi vers 4G) et continue sa connexion depuis
+  sa nouvelle adresse.
+
+Dans les deux cas, le serveur **valide le nouveau chemin** : il envoie une trame **PATH_CHALLENGE**
+(8 octets aléatoires) que le client doit renvoyer dans une **PATH_RESPONSE** ; d'ici là, la limite
+d'amplification s'applique au nouveau chemin. Pour qu'un observateur ne puisse pas relier l'ancien
+chemin au nouveau, chaque extrémité utilise un **nouvel identifiant** sur un nouveau chemin : elles
+s'en donnent d'avance par des trames NEW_CONNECTION_ID (`active_connection_id_limit` en fixe le
+nombre). Un serveur peut refuser la migration active (`disable_active_migration`).
+
+Le revers : tout ce qui répartit les datagrammes **par adresses et ports** envoie les paquets d'un
+client migré ailleurs. C'est le cas des répartiteurs de charge, mais aussi du noyau : avec
+`reuseport`, chaque worker nginx a sa propre socket UDP et le noyau choisit la socket par un hachage
+des adresses et ports. Les paquets d'un nouveau port arrivent chez un worker qui ne connaît pas la
+connexion. **`quic_bpf on`** (contexte principal de `nginx.conf`) charge un programme eBPF qui
+aiguille les datagrammes selon le DCID (les identifiants de nginx encodent le worker) ; avec un seul
+worker le problème n'existe pas. Les répartiteurs de charge font de même (QUIC-LB : un identifiant
+qui encode le serveur).
+
+Un serveur qui a perdu l'état d'une connexion (redémarrage) répond aux paquets inconnus par un
+**stateless reset** : un paquet qui ressemble à un paquet ordinaire mais se termine par un jeton
+annoncé pour cet identifiant ; le client ferme alors la connexion sans attendre le délai
+d'inactivité.
+""": """
+
+A TCP connection is identified by its 4-tuple (addresses, ports): if one of them changes, it is
+lost. A QUIC connection is identified by its **connection IDs**, chosen by each end for the packets
+it **receives**: the server recognises a connection by the DCID of the client's packets, whatever
+the address and port they come from.
+
+- **NAT rebinding.** A NAT forgets a mapping (timeout, reboot) and creates a new one with another
+  port: with TCP, the server receives segments from an unknown 4-tuple and answers with an RST; with
+  QUIC, the server sees the same DCID from a new address.
+- **Active migration.** The client changes network (Wi-Fi to 4G) and goes on with its connection
+  from its new address.
+
+In both cases, the server **validates the new path**: it sends a **PATH_CHALLENGE** frame (8 random
+bytes) that the client must send back in a **PATH_RESPONSE**; until then, the amplification limit
+applies to the new path. So that an observer cannot link the old path to the new one, each end uses
+a **new ID** on a new path: they give each other some in advance with NEW_CONNECTION_ID frames
+(`active_connection_id_limit` sets how many). A server can refuse active migration
+(`disable_active_migration`).
+
+The downside: anything that spreads the datagrams **by addresses and ports** sends the packets of a
+migrated client elsewhere. That is the case of load balancers, but also of the kernel: with
+`reuseport`, each nginx worker has its own UDP socket and the kernel chooses the socket by a hash of
+the addresses and ports. The packets from a new port reach a worker that does not know the
+connection. **`quic_bpf on`** (main context of `nginx.conf`) loads an eBPF program that steers the
+datagrams by DCID (the IDs of nginx encode the worker); with a single worker the problem does not
+exist. Load balancers do the same (QUIC-LB: an ID that encodes the server).
+
+A server that has lost the state of a connection (restart) answers unknown packets with a
+**stateless reset**: a packet that looks like an ordinary one but ends with a token announced for
+that ID; the client then closes the connection without waiting for the idle timeout.
+""",
+        "Reprise de session et 0-RTT": "Session resumption and 0-RTT",
+        """
+
+Après une poignée de main, le serveur envoie un **ticket de session** (message TLS NewSessionTicket).
+À la connexion suivante, le client présente ce ticket : la poignée de main est **reprise** (pas de
+certificat à vérifier), et si le ticket l'autorise (`max_early_data_size`), le client peut envoyer
+des données **dès le premier datagramme**, dans des paquets **0-RTT** chiffrés avec une clé issue du
+ticket : la requête part sans attendre aucun aller-retour.
+
+Le 0-RTT a deux faiblesses :
+
+- **le rejeu** : un attaquant qui a capturé les paquets 0-RTT peut les renvoyer, et le serveur ne
+  distingue pas la copie de l'original ; une requête « commander », « payer », « supprimer » serait
+  exécutée deux fois ;
+- pas de confidentialité persistante (*forward secrecy*) pour ces données : elles ne dépendent que
+  de la clé du ticket.
+
+On réserve donc le 0-RTT aux requêtes **idempotentes** (le GET d'une page). Le serveur sait qu'une
+requête est arrivée en 0-RTT : nginx met `$ssl_early_data` à `1` (on le transmet à l'application par
+l'en-tête `Early-Data: 1`), et la réponse **425 Too Early** (RFC 8470) demande au client de renvoyer la
+requête après la fin de la poignée de main. Le serveur peut aussi refuser tout le 0-RTT : le client
+renvoie alors ses requêtes normalement, en 1-RTT.
+
+```
+ssl_early_data on;                            # nginx : accepter le 0-RTT
+add_header Early-Data $ssl_early_data always;
+location = /order {
+    if ($ssl_early_data) { return 425; }     # pas de commande en 0-RTT
+}
+```
+""": """
+
+After a handshake, the server sends a **session ticket** (TLS NewSessionTicket message). At the next
+connection, the client presents this ticket: the handshake is **resumed** (no certificate to
+check), and if the ticket allows it (`max_early_data_size`), the client can send data **in its very
+first datagram**, in **0-RTT** packets encrypted with a key derived from the ticket: the request
+leaves without waiting for any round trip.
+
+0-RTT has two weaknesses:
+
+- **replay**: an attacker who captured the 0-RTT packets can send them again, and the server cannot
+  tell the copy from the original; an "order", "pay" or "delete" request would be executed twice;
+- no forward secrecy for this data: it only depends on the key of the ticket.
+
+0-RTT is therefore kept for **idempotent** requests (the GET of a page). The server knows that a
+request arrived in 0-RTT: nginx sets `$ssl_early_data` to `1` (it is passed on to the application
+in the header `Early-Data: 1`), and the response **425 Too Early** (RFC 8470) asks the client to
+send the request again after the end of the handshake. The server can also refuse all 0-RTT: the
+client then sends its requests again normally, in 1-RTT.
+
+```
+ssl_early_data on;                            # nginx: accept 0-RTT
+add_header Early-Data $ssl_early_data always;
+location = /order {
+    if ($ssl_early_data) { return 425; }     # no order in 0-RTT
+}
+```
+""",
+        "Découverte de HTTP/3 : Alt-Svc, enregistrement HTTPS, repli sur TCP": "Discovering HTTP/3: Alt-Svc, HTTPS record, fallback to TCP",
+        """
+
+Une URL `https://` ne dit pas si le serveur parle HTTP/3. Trois mécanismes :
+
+- **`Alt-Svc`** (RFC 7838) : un serveur joint en HTTP/1.1 ou HTTP/2 (TCP) annonce
+  `Alt-Svc: h3=":443"; ma=86400`, « le même service est disponible en HTTP/3 sur le port UDP 443,
+  information valable 86 400 s ». Le client le mémorise et passe en QUIC aux connexions suivantes.
+  La toute première connexion est donc en TCP.
+- **L'enregistrement DNS HTTPS** (type 65, RFC 9460, cas particulier de SVCB) : la réponse DNS dit
+  d'avance quels protocoles sont disponibles, et la première connexion peut être directement en QUIC :
+
+  ```
+  www   IN HTTPS 1 . alpn="h3,h2" port=443 ipv4hint=192.0.2.10
+  @     IN HTTPS 0 www.example.tp.
+  ```
+
+  La priorité (*SvcPriority*) **0** est le **mode alias** (comme un CNAME, mais permis à l'apex de la
+  zone : le client demande l'enregistrement HTTPS du nom cible) ; **1 et plus**, le **mode service**,
+  avec la cible (`.` = le nom lui-même) et des paramètres : `alpn`, `port`, `ipv4hint`, `ipv6hint`,
+  `ech` (la clé de l'Encrypted Client Hello). Chrome, Safari et Firefox l'utilisent (selon les
+  versions et les systèmes) ; curl 8.14 de Debian ne le lit pas.
+- **Le repli** : l'UDP est bloqué sur une partie des réseaux. Un navigateur lance QUIC et, si rien ne
+  répond très vite, TCP en parallèle (*Happy Eyeballs*), et garde ce qui marche. curl : `--http3`
+  tente QUIC et se replie sur TCP, `--http3-only` n'essaie que QUIC.
+
+Le serveur doit donc **garder son écoute TCP 443** : c'est elle qui fait découvrir HTTP/3 et qui
+sert les clients dont l'UDP est filtré.
+""": """
+
+An `https://` URL does not say whether the server speaks HTTP/3. Three mechanisms:
+
+- **`Alt-Svc`** (RFC 7838): a server reached over HTTP/1.1 or HTTP/2 (TCP) announces
+  `Alt-Svc: h3=":443"; ma=86400`, "the same service is available over HTTP/3 on UDP port 443,
+  information valid for 86,400 s". The client remembers it and switches to QUIC for the following
+  connections. The very first connection is therefore over TCP.
+- **The HTTPS DNS record** (type 65, RFC 9460, a special case of SVCB): the DNS answer says in
+  advance which protocols are available, and the first connection can be over QUIC straight away:
+
+  ```
+  www   IN HTTPS 1 . alpn="h3,h2" port=443 ipv4hint=192.0.2.10
+  @     IN HTTPS 0 www.example.tp.
+  ```
+
+  Priority (*SvcPriority*) **0** is the **alias mode** (like a CNAME, but allowed at the apex of the
+  zone: the client asks for the HTTPS record of the target name); **1 and above**, the **service
+  mode**, with the target (`.` = the name itself) and parameters: `alpn`, `port`, `ipv4hint`,
+  `ipv6hint`, `ech` (the key of the Encrypted Client Hello). Chrome, Safari and Firefox use it
+  (depending on versions and systems); the curl 8.14 of Debian does not read it.
+- **Fallback**: UDP is blocked on part of the networks. A browser starts QUIC and, if nothing answers
+  very quickly, TCP in parallel (*Happy Eyeballs*), and keeps what works. curl: `--http3` tries QUIC
+  and falls back to TCP, `--http3-only` only tries QUIC.
+
+The server must therefore **keep listening on TCP 443**: that is what makes clients discover HTTP/3
+and what serves the clients whose UDP is filtered.
+""",
+        "QUIC, pare-feu et NAT": "QUIC, firewalls and NAT",
+        """
+
+Ce qu'un équipement intermédiaire voit d'une connexion QUIC :
+
+- les **adresses et ports UDP**, la taille et l'horodatage des datagrammes ;
+- pendant l'établissement, les en-têtes longs : version, DCID et SCID ; le contenu des paquets
+  Initial (déchiffrable par tous : le ClientHello, son SNI) ;
+- ensuite, en-tête court : le **DCID** seulement, et éventuellement le *spin bit* (un bit qui
+  bascule une fois par aller-retour, que le client peut laisser activer pour permettre aux
+  opérateurs de mesurer le RTT) ;
+- **rien** des numéros de paquet, des acquittements, des flux, des fermetures (chiffrés).
+
+Un pare-feu à états suit donc QUIC comme tout flux UDP : **par des délais**. Avec Netfilter,
+`conntrack` crée l'entrée au premier datagramme (état `NEW`), la marque `ASSURED` quand la réponse
+revient, et la supprime après un délai sans trafic (sur Linux, 30 s sans réponse, 120 s ensuite) ;
+il n'y a pas de FIN ou de RST à observer. Un NAT fait de même pour ses correspondances : une
+connexion QUIC inactive plus longtemps que ce délai perd sa correspondance et doit être maintenue
+par des PING (ou supporter le rebinding, @@ref:cid@@).
+
+Beaucoup de réseaux d'entreprise n'ouvrent que TCP 80/443 vers l'extérieur ; QUIC échoue alors et
+les clients se replient sur TCP (@@ref:discovery@@). Bloquer l'UDP 443 est d'ailleurs un moyen
+volontaire de forcer TCP (pour une inspection TLS, par exemple). Un **`reject`** (réponse ICMP
+*port unreachable*) fait échouer la tentative QUIC aussitôt ; un **`drop`** oblige le client à
+attendre son délai avant de se replier.
+
+```
+# nftables : laisser sortir QUIC depuis le réseau interne
+iifname "eth1" oifname "eth0" udp dport 443 accept
+```
+""": """
+
+What a middlebox sees of a QUIC connection:
+
+- the **UDP addresses and ports**, the size and timing of the datagrams;
+- during set-up, the long headers: version, DCID and SCID; the content of the Initial packets
+  (decryptable by anyone: the ClientHello, its SNI);
+- afterwards, short header: the **DCID** only, and possibly the *spin bit* (a bit that flips once
+  per round trip, which the client may let be enabled so that operators can measure the RTT);
+- **nothing** of the packet numbers, acknowledgements, streams, closings (encrypted).
+
+A stateful firewall therefore tracks QUIC like any UDP flow: **with timeouts**. With Netfilter,
+`conntrack` creates the entry with the first datagram (state `NEW`), marks it `ASSURED` when the
+reply comes back, and deletes it after a time without traffic (on Linux, 30 s without a reply, 120 s
+afterwards); there is no FIN or RST to observe. A NAT does the same for its mappings: a QUIC
+connection idle for longer than this timeout loses its mapping and must be kept alive with PINGs
+(or survive the rebinding, @@ref:cid@@).
+
+Many corporate networks only open TCP 80/443 to the outside; QUIC then fails and the clients fall
+back to TCP (@@ref:discovery@@). Blocking UDP 443 is in fact a deliberate way of forcing TCP (for TLS
+inspection, for example). A **`reject`** (ICMP *port unreachable* reply) makes the QUIC attempt fail
+at once; a **`drop`** forces the client to wait for its timeout before falling back.
+
+```
+# nftables: let QUIC out from the internal network
+iifname "eth1" oifname "eth0" udp dport 443 accept
+```
+""",
+        "Observer QUIC : captures et journal des clés": "Observing QUIC: captures and key log",
+        """
+
+Sans clé, une capture montre les datagrammes, les en-têtes longs et le contenu des paquets Initial.
+Pour voir le reste, il faut les **secrets TLS** de la connexion. Les clients et serveurs fondés sur
+OpenSSL, GnuTLS, NSS ou aioquic savent les écrire dans un **journal des clés** au format
+`SSLKEYLOGFILE` quand la variable d'environnement du même nom est définie :
+
+```
+SSLKEYLOGFILE=/shared/quic.keys curl --http3-only https://www.example.tp/
+```
+
+Le fichier contient une ligne par secret : `CLIENT_HANDSHAKE_TRAFFIC_SECRET`,
+`SERVER_HANDSHAKE_TRAFFIC_SECRET` (paquets Handshake), `CLIENT_TRAFFIC_SECRET_0`,
+`SERVER_TRAFFIC_SECRET_0` (paquets 1-RTT), et `CLIENT_EARLY_TRAFFIC_SECRET` en cas de 0-RTT. Wireshark
+le lit dans *Édition > Préférences > Protocols > TLS > (Pre)-Master-Secret log filename* ; tshark avec
+`-o tls.keylog_file:FICHIER`.
+
+| filtre d'affichage | ce qu'il garde |
+|--------------------|----------------|
+| `quic` | tout QUIC |
+| `quic.long.packet_type == 0` (1, 2, 3) | les paquets Initial (0-RTT, Handshake, Retry) |
+| `quic.header_form == 0` | les paquets à en-tête court (1-RTT) |
+| `quic.frame_type == 0x1a` | les PATH_CHALLENGE |
+| `quic.stream.stream_id == 0` | les trames STREAM du flux 0 |
+| `tls.handshake.type == 1` / `== 8` | ClientHello / EncryptedExtensions (paramètres de transport) |
+| `http3` | les trames HTTP/3 (HEADERS, DATA, SETTINGS...) |
+
+```
+tshark -r f.pcapng -Y quic -T fields -e frame.number -e udp.length -e quic.long.packet_type
+tshark -r f.pcapng -o tls.keylog_file:f.keys -Y http3 -T fields -e http3.headers.method -e http3.headers.path
+tshark -r f.pcapng -o tls.keylog_file:f.keys -Y 'tls.handshake.type == 8' -V | grep -i parameter
+```
+
+Wireshark reconnaît QUIC sur le port 443 ; si le port éphémère du client est celui d'un autre
+protocole (37008 : TZSP), forcez le décodage : *Analyser > Décoder comme...* ou `tshark -d
+udp.port==443,quic`.
+
+Les implémentations savent aussi écrire des journaux **qlog** (JSON des événements QUIC), qu'on
+visualise avec qvis (`quic-client --qlog DIR`).
+""": """
+
+Without a key, a capture shows the datagrams, the long headers and the content of the Initial
+packets. To see the rest, the **TLS secrets** of the connection are needed. The clients and servers
+based on OpenSSL, GnuTLS, NSS or aioquic can write them in a **key log** in the `SSLKEYLOGFILE`
+format when the environment variable of the same name is set:
+
+```
+SSLKEYLOGFILE=/shared/quic.keys curl --http3-only https://www.example.tp/
+```
+
+The file holds one line per secret: `CLIENT_HANDSHAKE_TRAFFIC_SECRET`,
+`SERVER_HANDSHAKE_TRAFFIC_SECRET` (Handshake packets), `CLIENT_TRAFFIC_SECRET_0`,
+`SERVER_TRAFFIC_SECRET_0` (1-RTT packets), and `CLIENT_EARLY_TRAFFIC_SECRET` with 0-RTT. Wireshark
+reads it in *Edit > Preferences > Protocols > TLS > (Pre)-Master-Secret log filename*; tshark with
+`-o tls.keylog_file:FILE`.
+
+| display filter | what it keeps |
+|----------------|---------------|
+| `quic` | all of QUIC |
+| `quic.long.packet_type == 0` (1, 2, 3) | the Initial packets (0-RTT, Handshake, Retry) |
+| `quic.header_form == 0` | the short-header packets (1-RTT) |
+| `quic.frame_type == 0x1a` | the PATH_CHALLENGEs |
+| `quic.stream.stream_id == 0` | the STREAM frames of stream 0 |
+| `tls.handshake.type == 1` / `== 8` | ClientHello / EncryptedExtensions (transport parameters) |
+| `http3` | the HTTP/3 frames (HEADERS, DATA, SETTINGS...) |
+
+```
+tshark -r f.pcapng -Y quic -T fields -e frame.number -e udp.length -e quic.long.packet_type
+tshark -r f.pcapng -o tls.keylog_file:f.keys -Y http3 -T fields -e http3.headers.method -e http3.headers.path
+tshark -r f.pcapng -o tls.keylog_file:f.keys -Y 'tls.handshake.type == 8' -V | grep -i parameter
+```
+
+Wireshark recognises QUIC on port 443; if the ephemeral port of the client is that of another
+protocol (37008: TZSP), force the decoding: *Analyze > Decode As...* or `tshark -d
+udp.port==443,quic`.
+
+The implementations can also write **qlog** logs (JSON of the QUIC events), which are visualised
+with qvis (`quic-client --qlog DIR`).
+""",
+        "Configurer HTTP/3 : nginx et Caddy": "Configuring HTTP/3: nginx and Caddy",
+        """
+
+nginx parle HTTP/3 depuis la version 1.25 ; le 0-RTT demande une bibliothèque TLS qui offre une
+interface QUIC (OpenSSL 3.5 et nginx 1.29 ou plus, BoringSSL, QuicTLS). Un serveur HTTP/3 typique
+(fichier de `/etc/nginx/conf.d/`) :
+
+```
+server {
+    listen 443 quic reuseport;      # UDP : QUIC / HTTP/3
+    listen 443 ssl;                 # TCP : HTTP/1.1 et HTTP/2
+    http2 on;
+    http3 on;
+    server_name www.example.tp;
+    ssl_certificate     /etc/nginx/ssl/www.example.tp.crt;
+    ssl_certificate_key /etc/nginx/ssl/www.example.tp.key;
+    add_header Alt-Svc 'h3=":443"; ma=86400' always;
+    root /var/www/example;
+}
+```
+
+| directive | contexte | effet |
+|-----------|----------|-------|
+| `listen ... quic` | server | écoute UDP ; `reuseport` (une seule fois par port) donne une socket par worker |
+| `http3 on` | http, server | HTTP/3 sur les écoutes quic |
+| `quic_retry on` | http, server | Retry : validation d'adresse avant la poignée de main |
+| `quic_host_key fichier` | http, server | clé des jetons et des stateless resets (commune aux workers et aux rechargements) |
+| `quic_bpf on` | principal | aiguillage des datagrammes par eBPF selon le DCID : migration avec plusieurs workers |
+| `quic_gso on` | http, server | envoi groupé de datagrammes (GSO) |
+| `ssl_early_data on` | http, server | 0-RTT ; variable `$ssl_early_data` |
+| `http3_max_concurrent_streams N` | http, server | flux de requêtes simultanés : paramètre `initial_max_streams_bidi` |
+| `keepalive_timeout` | http, server | pour HTTP/3, le délai d'inactivité : paramètre `max_idle_timeout` |
+
+Commandes utiles : `nginx -t` (vérifier), `nginx -T` (afficher toute la configuration),
+`systemctl reload nginx`, `systemctl enable --now nginx`, `ss -ulnp` (les sockets UDP) et le journal
+`/var/log/nginx/error.log`.
+
+**Caddy** active HTTP/3 tout seul et ajoute l'en-tête `Alt-Svc`. Avec un certificat fourni et sans
+obtention automatique de certificat :
+
+```
+{
+	auto_https off
+}
+https://www.example.tp:8444 {
+	tls /etc/caddy/www.crt /etc/caddy/www.key
+	root * /var/www/example
+	file_server
+}
+```
+
+(Caddy tourne sous l'utilisateur `caddy`, qui doit pouvoir lire la clé.)
+""": """
+
+nginx has spoken HTTP/3 since version 1.25; 0-RTT requires a TLS library with a QUIC interface
+(OpenSSL 3.5 and nginx 1.29 or later, BoringSSL, QuicTLS). A typical HTTP/3 server (a file of
+`/etc/nginx/conf.d/`):
+
+```
+server {
+    listen 443 quic reuseport;      # UDP: QUIC / HTTP/3
+    listen 443 ssl;                 # TCP: HTTP/1.1 and HTTP/2
+    http2 on;
+    http3 on;
+    server_name www.example.tp;
+    ssl_certificate     /etc/nginx/ssl/www.example.tp.crt;
+    ssl_certificate_key /etc/nginx/ssl/www.example.tp.key;
+    add_header Alt-Svc 'h3=":443"; ma=86400' always;
+    root /var/www/example;
+}
+```
+
+| directive | context | effect |
+|-----------|---------|--------|
+| `listen ... quic` | server | UDP listening; `reuseport` (only once per port) gives one socket per worker |
+| `http3 on` | http, server | HTTP/3 on the quic listeners |
+| `quic_retry on` | http, server | Retry: address validation before the handshake |
+| `quic_host_key file` | http, server | key of the tokens and of the stateless resets (shared by the workers and across reloads) |
+| `quic_bpf on` | main | steering of the datagrams by eBPF according to the DCID: migration with several workers |
+| `quic_gso on` | http, server | grouped sending of datagrams (GSO) |
+| `ssl_early_data on` | http, server | 0-RTT; variable `$ssl_early_data` |
+| `http3_max_concurrent_streams N` | http, server | concurrent request streams: parameter `initial_max_streams_bidi` |
+| `keepalive_timeout` | http, server | for HTTP/3, the idle timeout: parameter `max_idle_timeout` |
+
+Useful commands: `nginx -t` (check), `nginx -T` (show the whole configuration),
+`systemctl reload nginx`, `systemctl enable --now nginx`, `ss -ulnp` (the UDP sockets) and the log
+`/var/log/nginx/error.log`.
+
+**Caddy** enables HTTP/3 on its own and adds the `Alt-Svc` header. With a certificate provided and
+no automatic certificate retrieval:
+
+```
+{
+	auto_https off
+}
+https://www.example.tp:8444 {
+	tls /etc/caddy/www.crt /etc/caddy/www.key
+	root * /var/www/example
+	file_server
+}
+```
+
+(Caddy runs as the user `caddy`, which must be able to read the key.)
+""",
+        "Outils du TP": "Tools of the lab",
+        """
+
+**curl** (8.14, HTTP/3 par l'interface QUIC d'OpenSSL 3.5 ; donnez-lui **une URL par commande** en
+HTTP/3 : la seconde requête d'une même connexion reste parfois sans réponse) :
+
+```
+curl -v --http3-only https://www.example.tp/          # QUIC seulement
+curl -v --http3 https://www.example.tp/               # QUIC, repli sur TCP
+curl --alt-svc /tmp/altsvc https://www.example.tp/    # mémorise les Alt-Svc et les suit
+curl -sS -o /dev/null -w '%{http_version} %{http_code}\\n' --http3-only https://www.example.tp/
+curl --connect-to ::192.0.2.10:443 https://www.example.tp/   # imposer l'adresse du serveur
+```
+
+**quic-client** (installé sur `client` et `pc`, fondé sur aioquic) montre ce que curl ne montre pas :
+version, identifiants de connexion, Retry, reprise et 0-RTT, migration.
+
+```
+quic-client get -i https://www.example.tp/ https://www.example.tp/autre   # -i : en-têtes
+quic-client get --keylog /shared/q.keys --qlog /tmp/qlog https://www.example.tp/
+quic-client resume -i https://www.example.tp/ https://www.example.tp/order  # 2 connexions : 0-RTT
+quic-client migrate --connections 5 https://www.example.tp/   # migrer 5 connexions
+quic-client get --progress --timeout 60 -o /dev/null https://www.example.tp/gros.bin
+quic-client vn www.example.tp                                 # négociation de version
+```
+
+**tshark** / **Wireshark** (@@ref:decrypt@@) ; **dig** / **kdig** (`dig www.example.tp HTTPS`) ;
+**conntrack** (`conntrack -L`, `conntrack -E` pour suivre les événements, `conntrack -F` pour vider la
+table) ; **nft** (`nft list ruleset`, `nft -f /etc/nftables.conf`).
+""": """
+
+**curl** (8.14, HTTP/3 through the QUIC interface of OpenSSL 3.5; give it **one URL per command**
+over HTTP/3: the second request of a connection sometimes gets no answer):
+
+```
+curl -v --http3-only https://www.example.tp/          # QUIC only
+curl -v --http3 https://www.example.tp/               # QUIC, fallback to TCP
+curl --alt-svc /tmp/altsvc https://www.example.tp/    # remembers the Alt-Svc and follows them
+curl -sS -o /dev/null -w '%{http_version} %{http_code}\\n' --http3-only https://www.example.tp/
+curl --connect-to ::192.0.2.10:443 https://www.example.tp/   # force the address of the server
+```
+
+**quic-client** (installed on `client` and `pc`, based on aioquic) shows what curl does not:
+version, connection IDs, Retry, resumption and 0-RTT, migration.
+
+```
+quic-client get -i https://www.example.tp/ https://www.example.tp/other   # -i: headers
+quic-client get --keylog /shared/q.keys --qlog /tmp/qlog https://www.example.tp/
+quic-client resume -i https://www.example.tp/ https://www.example.tp/order  # 2 connections: 0-RTT
+quic-client migrate --connections 5 https://www.example.tp/   # migrate 5 connections
+quic-client get --progress --timeout 60 -o /dev/null https://www.example.tp/big.bin
+quic-client vn www.example.tp                                 # version negotiation
+```
+
+**tshark** / **Wireshark** (@@ref:decrypt@@); **dig** / **kdig** (`dig www.example.tp HTTPS`);
+**conntrack** (`conntrack -L`, `conntrack -E` to follow the events, `conntrack -F` to flush the
+table); **nft** (`nft list ruleset`, `nft -f /etc/nftables.conf`).
+""",
+        "Au-delà du Web": "Beyond the Web",
+        """
+
+- **DNS sur QUIC** (DoQ, RFC 9250, port UDP 853) : une requête DNS par flux, sans le blocage en tête
+  de ligne de DNS sur TLS (`kdig +quic @serveur nom`).
+- **MASQUE** (RFC 9298, 9484) : des tunnels UDP ou IP dans HTTP/3 (`CONNECT-UDP`) ; c'est la
+  technique des relais de confidentialité (iCloud Private Relay, par exemple).
+- **WebTransport** : flux et datagrammes entre un navigateur et un serveur sur HTTP/3 (jeux,
+  visioconférence), successeur possible de WebSocket.
+- **Datagrammes non fiables** (RFC 9221) : des données sans retransmission dans une connexion
+  chiffrée et contrôlée en congestion (médias temps réel, tunnels).
+- **SMB sur QUIC** (partages Windows sans VPN), **QUIC v2** (RFC 9369, mêmes mécanismes, autres
+  constantes : la diversité des versions empêche les équipements de s'attacher à la v1).
+""": """
+
+- **DNS over QUIC** (DoQ, RFC 9250, UDP port 853): one DNS query per stream, without the
+  head-of-line blocking of DNS over TLS (`kdig +quic @server name`).
+- **MASQUE** (RFC 9298, 9484): UDP or IP tunnels inside HTTP/3 (`CONNECT-UDP`); this is the
+  technique of privacy relays (iCloud Private Relay, for example).
+- **WebTransport**: streams and datagrams between a browser and a server over HTTP/3 (games,
+  video conferencing), a possible successor of WebSocket.
+- **Unreliable datagrams** (RFC 9221): data without retransmission inside an encrypted,
+  congestion-controlled connection (real-time media, tunnels).
+- **SMB over QUIC** (Windows shares without a VPN), **QUIC v2** (RFC 9369, same mechanisms, other
+  constants: the diversity of versions keeps middleboxes from depending on v1).
+""",
+        "Solution de référence : nginx et Caddy sur web, zone DNS, pare-feu, réglages de edge, capture déchiffrable dans /shared, formulaires remplis.": "Reference solution: nginx and Caddy on web, DNS zone, firewall, edge settings, a decryptable capture in /shared, forms filled.",
+        """
+| machine | adresse | rôle |
+|---------|---------|------|
+| `client` | `{client}` | votre poste : curl (HTTP/3), `quic-client`, tshark / Wireshark, Firefox |
+| `ref` = `www.news.tp` | `{ref}` | un site « d'Internet » qui sert déjà HTTP/3 (UDP 443 et 8443) ; pas d'accès |
+| `web` = `www.quic.tp` | `{web}` | le serveur web de l'entreprise, à configurer (partie 3, bonus) |
+| `edge` = `cdn.quic.tp` | `{edge}` | le second serveur, en HTTP/3 avec les réglages par défaut (parties 6 à 8) |
+| `ns` | `{ns}` | le serveur DNS de `news.tp` et `quic.tp`, résolveur des machines (partie 4) |
+| `fw` | `{fw_wan}` / `{fw_corp}` | le pare-feu et NAT de l'entreprise (partie 5) |
+| `pc` | `{pc}` | un poste du réseau interne `corp` ({corp}), derrière `fw` |
+""": """
+| machine | address | role |
+|---------|---------|------|
+| `client` | `{client}` | your host: curl (HTTP/3), `quic-client`, tshark / Wireshark, Firefox |
+| `ref` = `www.news.tp` | `{ref}` | a site "on the Internet" that already serves HTTP/3 (UDP 443 and 8443); no access |
+| `web` = `www.quic.tp` | `{web}` | the company's web server, to configure (part 3, bonus) |
+| `edge` = `cdn.quic.tp` | `{edge}` | the second server, over HTTP/3 with the default settings (parts 6 to 8) |
+| `ns` | `{ns}` | the DNS server of `news.tp` and `quic.tp`, resolver of the machines (part 4) |
+| `fw` | `{fw_wan}` / `{fw_corp}` | the company's firewall and NAT (part 5) |
+| `pc` | `{pc}` | a host of the internal network `corp` ({corp}), behind `fw` |
+""",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente QUIC (paquets, poignée de main, flux, validation
+d'adresse, migration, 0-RTT), HTTP/3, sa découverte, son passage dans les pare-feu, et les outils.
+
+Le réseau `wan` ({wan}) joue le rôle d'Internet. Toutes les machines sont des Debian 13 ; les noms
+sont dans `/etc/hosts` (et dans le DNS de `ns`).
+""": """
+Read the **Informations** tab: it presents QUIC (packets, handshake, streams, address validation,
+migration, 0-RTT), HTTP/3, how it is discovered, how it crosses firewalls, and the tools.
+
+The network `wan` ({wan}) plays the part of the Internet. All the machines run Debian 13; the names
+are in `/etc/hosts` (and in the DNS of `ns`).
+""",
+        """
+Déjà en place : les adresses, une autorité de certification du TP en qui toutes les machines ont
+confiance (`{ca}`), les certificats et les clés des sites dans `/etc/nginx/ssl/` de `web` et
+`edge`, le contenu des sites (`/var/www/quic`, `/var/www/cdn`), le serveur `ref`, le DNS, le pare-feu.
+`/shared` est un répertoire commun à toutes les machines. `web`, `edge` et `ns` tournent avec systemd
+(`systemctl`, `journalctl`).
+
+**Plan du TP.**
+
+1. **Premier contact avec HTTP/3** : curl et une capture face au serveur `ref` ;
+2. **Déchiffrer QUIC** : journal des clés TLS et Wireshark / tshark ;
+3. **HTTP/3 avec nginx** sur `web` ;
+4. **Enregistrement DNS HTTPS** sur `ns` ;
+5. **Pare-feu et repli sur TCP** : `fw` et `pc` ;
+6. **Migration de connexion** : `edge` derrière un NAT qui change de port ;
+7. **Retry et validation d'adresse** sur `edge` ;
+8. **0-RTT** sur `edge` ;
+9. **Bonus** : Caddy, négociation de version.
+
+Règles valables pour tout le TP :
+
+- chaque partie est notée indépendamment des autres ; la configuration d'une partie terminée **reste
+  en place** ;
+- l'évaluation observe les services tels qu'ils tournent quand elle est lancée (requêtes HTTP/3 de la
+  machine cachée de l'évaluation vers `web`, `edge` et `ref`, de `pc` vers `ref`), lit vos fichiers
+  dans `/shared` et vos réponses aux formulaires ;
+- la configuration doit survivre à un redémarrage du service : écrivez-la dans les fichiers.
+""": """
+Already in place: the addresses, a certification authority of the lab that every machine trusts
+(`{ca}`), the certificates and keys of the sites in `/etc/nginx/ssl/` of `web` and `edge`, the
+content of the sites (`/var/www/quic`, `/var/www/cdn`), the server `ref`, the DNS, the firewall.
+`/shared` is a directory shared by all the machines. `web`, `edge` and `ns` run systemd
+(`systemctl`, `journalctl`).
+
+**Plan of the lab.**
+
+1. **First contact with HTTP/3**: curl and a capture against the server `ref`;
+2. **Decrypting QUIC**: TLS key log and Wireshark / tshark;
+3. **HTTP/3 with nginx** on `web`;
+4. **HTTPS DNS record** on `ns`;
+5. **Firewall and fallback to TCP**: `fw` and `pc`;
+6. **Connection migration**: `edge` behind a NAT that changes port;
+7. **Retry and address validation** on `edge`;
+8. **0-RTT** on `edge`;
+9. **Bonus**: Caddy, version negotiation.
+
+Rules valid for the whole lab:
+
+- each part is graded independently of the others; the configuration of a finished part **stays in
+  place**;
+- the evaluation observes the services as they run when it is started (HTTP/3 requests from the
+  hidden machine of the evaluation to `web`, `edge` and `ref`, from `pc` to `ref`), reads your files
+  in `/shared` and your answers to the forms;
+- the configuration must survive a restart of the service: write it in the files.
+""",
+        "Partie 1 — Premier contact avec HTTP/3": "Part 1 — First contact with HTTP/3",
+        "Premier contact avec HTTP/3": "First contact with HTTP/3",
+        """
+Le serveur `ref` (`www.news.tp`) sert déjà HTTP/3. Tout se passe sur `client`.
+
+**1.** Demandez la page d'accueil en TCP, puis en QUIC, et comparez les traces de curl :
+
+```
+curl -v https://www.news.tp/ -o /dev/null
+curl -v --http3-only https://www.news.tp/ -o /dev/null
+```
+
+Repérez l'en-tête `alt-svc` de la réponse en HTTP/2, la ligne `using HTTP/3`, l'identifiant du flux
+de la requête.
+
+**2.** La page `/h3-secret.txt` n'est servie qu'en HTTP/3 (essayez aussi avec `--http2`) :
+
+```
+curl --http3-only https://www.news.tp/h3-secret.txt
+```
+
+**3.** Capturez une connexion QUIC et regardez-la sans aucune clé :
+
+```
+tshark -i eth0 -f "udp port 443" -w /tmp/h3.pcapng      # dans un premier terminal, Ctrl-C ensuite
+curl --http3-only -o /dev/null https://www.news.tp/      # dans un second terminal
+tshark -r /tmp/h3.pcapng -T fields -e frame.number -e ip.src -e udp.length -e quic.header_form -e quic.long.packet_type
+tshark -r /tmp/h3.pcapng -Y 'tls.handshake.type == 1' -V | grep -E 'server_name|ALPN Next'
+```
+
+(`quic.header_form` vaut 1 pour un en-tête long, 0 pour un en-tête court ; `quic.long.packet_type` :
+0 Initial, 1 0-RTT, 2 Handshake, 3 Retry.) Wireshark (`wireshark &` sur `client`) montre la même
+chose avec le filtre `quic`.
+""": """
+The server `ref` (`www.news.tp`) already serves HTTP/3. Everything happens on `client`.
+
+**1.** Request the home page over TCP, then over QUIC, and compare the traces of curl:
+
+```
+curl -v https://www.news.tp/ -o /dev/null
+curl -v --http3-only https://www.news.tp/ -o /dev/null
+```
+
+Spot the `alt-svc` header of the HTTP/2 response, the line `using HTTP/3`, the stream ID of the
+request.
+
+**2.** The page `/h3-secret.txt` is only served over HTTP/3 (try with `--http2` too):
+
+```
+curl --http3-only https://www.news.tp/h3-secret.txt
+```
+
+**3.** Capture a QUIC connection and look at it without any key:
+
+```
+tshark -i eth0 -f "udp port 443" -w /tmp/h3.pcapng      # in a first terminal, Ctrl-C afterwards
+curl --http3-only -o /dev/null https://www.news.tp/      # in a second terminal
+tshark -r /tmp/h3.pcapng -T fields -e frame.number -e ip.src -e udp.length -e quic.header_form -e quic.long.packet_type
+tshark -r /tmp/h3.pcapng -Y 'tls.handshake.type == 1' -V | grep -E 'server_name|ALPN Next'
+```
+
+(`quic.header_form` is 1 for a long header, 0 for a short header; `quic.long.packet_type`:
+0 Initial, 1 0-RTT, 2 Handshake, 3 Retry.) Wireshark (`wireshark &` on `client`) shows the same
+thing with the filter `quic`.
+""",
+        "ref a servi /h3-secret.txt en HTTP/3 à client": "ref served /h3-secret.txt over HTTP/3 to client",
+        "la phrase servie en HTTP/3 seulement": "the sentence served over HTTP/3 only",
+        "UDP 443, ALPN h3, Initial de 1200 octets, SNI lisible, 1 RTT, ordre des paquets": "UDP 443, ALPN h3, 1200-byte Initial, readable SNI, 1 RTT, order of the packets",
+        "Partie 2 — Déchiffrer QUIC": "Part 2 — Decrypting QUIC",
+        "Déchiffrer une capture QUIC": "Decrypting a QUIC capture",
+        """
+Sans clé, une capture ne montre que les paquets Initial. curl écrit les secrets TLS de ses
+connexions dans le fichier nommé par la variable `SSLKEYLOGFILE` (@@ref:decrypt@@).
+
+**1.** Sur `client`, capturez dans `/shared/quic.pcapng` une connexion vers `ref` dont curl écrit le
+journal des clés dans `/shared/quic.keys` :
+
+```
+tshark -i eth0 -f "udp port 443 and host {ref}" -w /shared/quic.pcapng   # Ctrl-C après le curl
+SSLKEYLOGFILE=/shared/quic.keys curl --http3-only https://www.news.tp/h3-secret.txt
+cat /shared/quic.keys
+```
+
+**2.** Relisez la capture sans clé, puis avec :
+
+```
+tshark -r /shared/quic.pcapng -Y quic
+tshark -r /shared/quic.pcapng -o tls.keylog_file:/shared/quic.keys -Y http3
+tshark -r /shared/quic.pcapng -o tls.keylog_file:/shared/quic.keys -Y http3 -T fields \\
+       -e quic.stream.stream_id -e http3.stream_uni_type -e http3.headers.method -e http3.headers.path
+tshark -r /shared/quic.pcapng -o tls.keylog_file:/shared/quic.keys -Y 'tls.handshake.type == 8' -V | grep -i parameter
+```
+
+Ou dans Wireshark : *Édition > Préférences > Protocols > TLS > (Pre)-Master-Secret log filename*.
+Laissez les deux fichiers dans `/shared` : l'évaluation vérifie qu'ils se déchiffrent l'un par l'autre.
+""": """
+Without a key, a capture only shows the Initial packets. curl writes the TLS secrets of its
+connections in the file named by the variable `SSLKEYLOGFILE` (@@ref:decrypt@@).
+
+**1.** On `client`, capture into `/shared/quic.pcapng` a connection to `ref` whose key log curl
+writes into `/shared/quic.keys`:
+
+```
+tshark -i eth0 -f "udp port 443 and host {ref}" -w /shared/quic.pcapng   # Ctrl-C after the curl
+SSLKEYLOGFILE=/shared/quic.keys curl --http3-only https://www.news.tp/h3-secret.txt
+cat /shared/quic.keys
+```
+
+**2.** Read the capture again without the key, then with it:
+
+```
+tshark -r /shared/quic.pcapng -Y quic
+tshark -r /shared/quic.pcapng -o tls.keylog_file:/shared/quic.keys -Y http3
+tshark -r /shared/quic.pcapng -o tls.keylog_file:/shared/quic.keys -Y http3 -T fields \\
+       -e quic.stream.stream_id -e http3.stream_uni_type -e http3.headers.method -e http3.headers.path
+tshark -r /shared/quic.pcapng -o tls.keylog_file:/shared/quic.keys -Y 'tls.handshake.type == 8' -V | grep -i parameter
+```
+
+Or in Wireshark: *Edit > Preferences > Protocols > TLS > (Pre)-Master-Secret log filename*.
+Leave both files in `/shared`: the evaluation checks that one decrypts the other.
+""",
+        "/shared/quic.pcapng : une connexion QUIC entre client et ref": "/shared/quic.pcapng: a QUIC connection between client and ref",
+        "/shared/quic.keys déchiffre la capture : requêtes HTTP/3 lisibles": "/shared/quic.keys decrypts the capture: HTTP/3 requests readable",
+        "initial_max_streams_bidi du serveur": "initial_max_streams_bidi of the server",
+        "max_idle_timeout du serveur, en millisecondes": "max_idle_timeout of the server, in milliseconds",
+        "flux de la requête, flux de contrôle de HTTP/3": "stream of the request, control stream of HTTP/3",
+        "Partie 3 — HTTP/3 avec nginx": "Part 3 — HTTP/3 with nginx",
+        "Servir www.quic.tp en HTTP/3 avec nginx": "Serving www.quic.tp over HTTP/3 with nginx",
+        """
+Sur `web`, nginx 1.30 est installé mais ne sert pas encore `www.quic.tp`. Le certificat et la clé
+sont dans `{cert}` et `{key}`, le site dans `{root}`.
+
+**1.** Écrivez `{conf}` : un bloc `server` pour `www.quic.tp` qui écoute en QUIC sur l'UDP 443
+(`reuseport`) et en TLS sur le TCP 443, active HTTP/2 et HTTP/3, et annonce HTTP/3 par l'en-tête
+`Alt-Svc` (@@ref:nginx@@).
+
+**2.** Vérifiez, démarrez nginx et faites-le démarrer avec la machine :
+
+```
+nginx -t
+systemctl enable --now nginx      # ensuite : systemctl reload nginx
+ss -ulnp ; ss -tlnp
+```
+
+**3.** Depuis `client` :
+
+```
+curl -sS --http3-only -w '%{{http_version}}\\n' https://www.quic.tp/
+curl -sSI --http2 https://www.quic.tp/
+rm -f /tmp/as; for i in 1 2; do curl -sS --alt-svc /tmp/as -o /dev/null -w '%{{http_version}}\\n' https://www.quic.tp/; done
+```
+
+(la seconde boucle montre curl qui passe de HTTP/2 à HTTP/3 grâce à l'Alt-Svc mémorisé.)
+""": """
+On `web`, nginx 1.30 is installed but does not serve `www.quic.tp` yet. The certificate and the key
+are in `{cert}` and `{key}`, the site in `{root}`.
+
+**1.** Write `{conf}`: a `server` block for `www.quic.tp` that listens with QUIC on UDP 443
+(`reuseport`) and with TLS on TCP 443, enables HTTP/2 and HTTP/3, and announces HTTP/3 with the
+`Alt-Svc` header (@@ref:nginx@@).
+
+**2.** Check, start nginx and make it start with the machine:
+
+```
+nginx -t
+systemctl enable --now nginx      # afterwards: systemctl reload nginx
+ss -ulnp ; ss -tlnp
+```
+
+**3.** From `client`:
+
+```
+curl -sS --http3-only -w '%{{http_version}}\\n' https://www.quic.tp/
+curl -sSI --http2 https://www.quic.tp/
+rm -f /tmp/as; for i in 1 2; do curl -sS --alt-svc /tmp/as -o /dev/null -w '%{{http_version}}\\n' https://www.quic.tp/; done
+```
+
+(the second loop shows curl switching from HTTP/2 to HTTP/3 thanks to the remembered Alt-Svc.)
+""",
+        "nginx écoute sur l'UDP 443 de web": "nginx listens on UDP 443 of web",
+        "https://www.quic.tp/ en HTTP/3 seulement, certificat vérifié, page du site": "https://www.quic.tp/ over HTTP/3 only, certificate verified, page of the site",
+        "https://www.quic.tp/ toujours servi en HTTP/2 sur TCP": "https://www.quic.tp/ still served over HTTP/2 on TCP",
+        "la réponse en TCP annonce Alt-Svc: h3=\":443\"": "the TCP response announces Alt-Svc: h3=\":443\"",
+        "nginx actif et démarré avec la machine": "nginx active and started with the machine",
+        "écoute TCP gardée, ma d'Alt-Svc, TLS 1.3": "TCP listener kept, ma of Alt-Svc, TLS 1.3",
+        "Partie 4 — Enregistrement DNS HTTPS": "Part 4 — HTTPS DNS record",
+        "Annoncer HTTP/3 dans le DNS": "Announcing HTTP/3 in the DNS",
+        """
+`ns` (BIND 9.20) sert les zones `news.tp` et `quic.tp`. La zone `news.tp` contient déjà des
+enregistrements HTTPS ; regardez-les depuis `client` :
+
+```
+dig www.news.tp HTTPS
+dig news.tp HTTPS
+```
+
+Sur `ns`, ajoutez à la zone `quic.tp` (`{zone}`) un enregistrement HTTPS qui annonce HTTP/3 et HTTP/2
+pour `www.quic.tp` (mode service, cible : le nom lui-même), augmentez le numéro de série, vérifiez et
+rechargez la zone (@@ref:discovery@@) :
+
+```
+named-checkzone quic.tp {zone}
+rndc reload quic.tp
+dig @{ns} www.quic.tp HTTPS
+```
+""": """
+`ns` (BIND 9.20) serves the zones `news.tp` and `quic.tp`. The zone `news.tp` already holds HTTPS
+records; look at them from `client`:
+
+```
+dig www.news.tp HTTPS
+dig news.tp HTTPS
+```
+
+On `ns`, add to the zone `quic.tp` (`{zone}`) an HTTPS record that announces HTTP/3 and HTTP/2 for
+`www.quic.tp` (service mode, target: the name itself), increase the serial number, check and reload
+the zone (@@ref:discovery@@):
+
+```
+named-checkzone quic.tp {zone}
+rndc reload quic.tp
+dig @{ns} www.quic.tp HTTPS
+```
+""",
+        "ns répond pour www.quic.tp un enregistrement HTTPS en mode service avec h3": "ns answers for www.quic.tp an HTTPS record in service mode with h3",
+        "mode alias, apport par rapport à Alt-Svc, type 65": "alias mode, gain over Alt-Svc, type 65",
+        "Partie 5 — Pare-feu et repli sur TCP": "Part 5 — Firewall and fallback to TCP",
+        "Laisser passer QUIC à travers le pare-feu": "Letting QUIC through the firewall",
+        """
+`fw` relie le réseau interne `corp` (`eth1`) à l'extérieur (`eth0`) : il traduit les adresses
+(`masquerade random`) et ne laisse sortir que le TCP 80/443, le DNS et le ping. Sa configuration est
+dans `{conf}`.
+
+**1.** Sur `pc` :
+
+```
+curl -v --http3 -o /dev/null https://www.news.tp/ 2>&1 | grep -E 'Trying|using|HTTP/'
+curl -sS --http3-only --max-time 5 https://www.news.tp/
+```
+
+Sur `fw`, regardez les règles et la table de suivi des connexions pendant ces essais :
+
+```
+nft list ruleset
+conntrack -L ; conntrack -E      # Ctrl-C pour arrêter -E
+```
+
+**2.** Sur `fw`, ajoutez à `{conf}` la règle qui laisse sortir **QUIC vers l'UDP 443 seulement**
+depuis `corp`, rechargez (`nft -f {conf}`) et vérifiez depuis `pc` que HTTP/3 passe, et que
+l'UDP {alt} (où `ref` écoute aussi en QUIC) reste fermé :
+
+```
+curl -sS --http3-only -o /dev/null -w '%{{http_version}}\\n' https://www.news.tp/
+curl -sS --http3-only --max-time 3 https://www.news.tp:{alt}/
+conntrack -L -p udp          # sur fw
+```
+""": """
+`fw` connects the internal network `corp` (`eth1`) to the outside (`eth0`): it translates the
+addresses (`masquerade random`) and only lets out TCP 80/443, DNS and ping. Its configuration is in
+`{conf}`.
+
+**1.** On `pc`:
+
+```
+curl -v --http3 -o /dev/null https://www.news.tp/ 2>&1 | grep -E 'Trying|using|HTTP/'
+curl -sS --http3-only --max-time 5 https://www.news.tp/
+```
+
+On `fw`, look at the rules and at the connection tracking table during these attempts:
+
+```
+nft list ruleset
+conntrack -L ; conntrack -E      # Ctrl-C to stop -E
+```
+
+**2.** On `fw`, add to `{conf}` the rule that lets out **QUIC to UDP 443 only** from `corp`, reload
+(`nft -f {conf}`) and check from `pc` that HTTP/3 goes through, and that UDP {alt} (where `ref`
+also listens with QUIC) stays closed:
+
+```
+curl -sS --http3-only -o /dev/null -w '%{{http_version}}\\n' https://www.news.tp/
+curl -sS --http3-only --max-time 3 https://www.news.tp:{alt}/
+conntrack -L -p udp          # on fw
+```
+""",
+        "pc joint www.news.tp en HTTP/3 à travers fw": "pc reaches www.news.tp over HTTP/3 through fw",
+        "l'UDP {alt} reste bloqué (seul l'UDP 443 est ouvert)": "UDP {alt} stays blocked (only UDP 443 is open)",
+        "HTTP/2 sur TCP passe toujours": "HTTP/2 over TCP still goes through",
+        "la règle UDP 443 est dans /etc/nftables.conf": "the UDP 443 rule is in /etc/nftables.conf",
+        "repli de curl, ce que voit le pare-feu, suivi par délais, reject": "fallback of curl, what the firewall sees, tracking by timeouts, reject",
+        "Partie 6 — Migration de connexion": "Part 6 — Connection migration",
+        "Survivre à un changement d'adresse": "Surviving a change of address",
+        """
+`edge` sert `cdn.quic.tp` en HTTP/3 avec {workers} workers nginx, sans autre réglage ; `/big.bin`
+(20 Mo) y est servi à 1 Mo/s (@@ref:cid@@).
+
+**1.** Depuis `client`, faites changer de port (et d'identifiant de connexion) cinq connexions, une
+fois chacune, et comptez celles qui survivent ; regardez les sockets UDP de nginx sur `edge` :
+
+```
+quic-client migrate --connections 5 https://cdn.quic.tp/
+ss -ulnp | grep nginx            # sur edge
+```
+
+**2.** L'expérience du NAT (la partie 5 doit être faite : l'UDP 443 doit sortir de `corp`). Sur `pc`,
+lancez un téléchargement en HTTP/2 puis, dans un second terminal, en HTTP/3 ; pendant chacun, videz
+la table de suivi de `fw` : le NAT oublie ses correspondances et en refait avec d'autres ports
+(`masquerade random`).
+
+```
+curl --http2 -o /dev/null https://cdn.quic.tp/big.bin                     # sur pc
+quic-client get --progress --timeout 60 -o /dev/null https://cdn.quic.tp/big.bin   # sur pc
+conntrack -F                                                              # sur fw, pendant le téléchargement
+```
+
+**3.** Corrigez `edge` pour que les connexions migrées survivent (`quic_bpf on;` dans le contexte
+principal de `/etc/nginx/nginx.conf`, ou un seul worker), redémarrez nginx et refaites 1 et 2.
+
+(curl ne sert pas ici : son client QUIC ne donne au serveur aucun identifiant de rechange, et nginx
+refuse alors tout nouveau chemin.)
+""": """
+`edge` serves `cdn.quic.tp` over HTTP/3 with {workers} nginx workers, with no other setting;
+`/big.bin` (20 MB) is served there at 1 MB/s (@@ref:cid@@).
+
+**1.** From `client`, make five connections change port (and connection ID), once each, and count
+those that survive; look at the UDP sockets of nginx on `edge`:
+
+```
+quic-client migrate --connections 5 https://cdn.quic.tp/
+ss -ulnp | grep nginx            # on edge
+```
+
+**2.** The NAT experiment (part 5 must be done: UDP 443 must be able to leave `corp`). On `pc`,
+start a download over HTTP/2 then, in a second terminal, over HTTP/3; during each one, flush the
+tracking table of `fw`: the NAT forgets its mappings and makes new ones with other ports
+(`masquerade random`).
+
+```
+curl --http2 -o /dev/null https://cdn.quic.tp/big.bin                     # on pc
+quic-client get --progress --timeout 60 -o /dev/null https://cdn.quic.tp/big.bin   # on pc
+conntrack -F                                                              # on fw, during the download
+```
+
+**3.** Fix `edge` so that the migrated connections survive (`quic_bpf on;` in the main context of
+`/etc/nginx/nginx.conf`, or a single worker), restart nginx and do 1 and 2 again.
+
+(curl is no use here: its QUIC client gives the server no spare ID, and nginx then refuses any new
+path.)
+""",
+        "{n} connexions vers edge survivent chacune à une migration": "{n} connections to edge each survive a migration",
+        "DCID, PATH_CHALLENGE, échec de TCP, sockets par worker": "DCID, PATH_CHALLENGE, failure of TCP, sockets per worker",
+        "Partie 7 — Retry et validation d'adresse": "Part 7 — Retry and address validation",
+        "Valider l'adresse du client avec Retry": "Validating the client's address with Retry",
+        """
+**1.** Depuis `client` : `quic-client get https://cdn.quic.tp/` affiche `Retry received: no`.
+
+**2.** Sur `edge`, dans le bloc `server` de `{conf}`, activez Retry et donnez à nginx une clé fixe
+pour ses jetons (@@ref:validation@@) :
+
+```
+openssl rand -out {key} 80
+chmod 600 {key}
+```
+
+puis les directives `quic_retry on;` et `quic_host_key {key};`, `nginx -t` et
+`systemctl reload nginx`.
+
+**3.** Depuis `client`, relancez `quic-client get` et capturez l'établissement :
+
+```
+tshark -i eth0 -f "udp port 443 and host {edge}" -w /tmp/retry.pcapng     # Ctrl-C après le curl
+curl -sS --http3-only -o /dev/null https://cdn.quic.tp/
+tshark -r /tmp/retry.pcapng -T fields -e frame.number -e ip.src -e quic.long.packet_type -e quic.token_length -e quic.dcid -e quic.scid
+```
+""": """
+**1.** From `client`: `quic-client get https://cdn.quic.tp/` shows `Retry received: no`.
+
+**2.** On `edge`, in the `server` block of `{conf}`, enable Retry and give nginx a fixed key for its
+tokens (@@ref:validation@@):
+
+```
+openssl rand -out {key} 80
+chmod 600 {key}
+```
+
+then the directives `quic_retry on;` and `quic_host_key {key};`, `nginx -t` and
+`systemctl reload nginx`.
+
+**3.** From `client`, run `quic-client get` again and capture the connection set-up:
+
+```
+tshark -i eth0 -f "udp port 443 and host {edge}" -w /tmp/retry.pcapng     # Ctrl-C after the curl
+curl -sS --http3-only -o /dev/null https://cdn.quic.tp/
+tshark -r /tmp/retry.pcapng -T fields -e frame.number -e ip.src -e quic.long.packet_type -e quic.token_length -e quic.dcid -e quic.scid
+```
+""",
+        "edge répond par un Retry, puis la connexion aboutit": "edge answers with a Retry, then the connection completes",
+        "quic_host_key : un fichier de clé non vide, lisible par root seul": "quic_host_key: a non-empty key file, readable by root only",
+        "rôle du Retry, limite d'amplification, coût, jeton, NEW_TOKEN": "role of Retry, amplification limit, cost, token, NEW_TOKEN",
+        "Partie 8 — 0-RTT": "Part 8 — 0-RTT",
+        "Envoyer la requête dès le premier paquet": "Sending the request in the first packet",
+        """
+**1.** Depuis `client`, `quic-client resume` ouvre une première connexion (il y reçoit un ticket de
+session), puis une seconde où il envoie ses requêtes en 0-RTT (@@ref:zerortt@@) :
+
+```
+quic-client resume -i https://cdn.quic.tp/ https://cdn.quic.tp/order
+```
+
+**2.** Sur `edge`, dans le bloc `server` de `{conf}` : acceptez le 0-RTT (`ssl_early_data on;`),
+ajoutez à chaque réponse l'en-tête `Early-Data` qui vaut `$ssl_early_data`, et faites répondre
+**425** à la page `/order` quand la requête est arrivée en 0-RTT (une commande ne doit pas pouvoir
+être rejouée). Rechargez nginx et relancez `quic-client resume`.
+
+**3.** Avec `quic-client resume --keylog /tmp/0rtt.keys` et une capture, retrouvez les paquets 0-RTT
+(`quic.long.packet_type == 1`) dans tshark.
+""": """
+**1.** From `client`, `quic-client resume` opens a first connection (where it receives a session
+ticket), then a second one where it sends its requests in 0-RTT (@@ref:zerortt@@):
+
+```
+quic-client resume -i https://cdn.quic.tp/ https://cdn.quic.tp/order
+```
+
+**2.** On `edge`, in the `server` block of `{conf}`: accept 0-RTT (`ssl_early_data on;`), add to
+every response the header `Early-Data` set to `$ssl_early_data`, and make the page `/order` answer
+**425** when the request arrived in 0-RTT (an order must not be replayable). Reload nginx and run
+`quic-client resume` again.
+
+**3.** With `quic-client resume --keylog /tmp/0rtt.keys` and a capture, find the 0-RTT packets
+(`quic.long.packet_type == 1`) in tshark.
+""",
+        "edge accepte le 0-RTT et le signale par Early-Data: 1": "edge accepts 0-RTT and flags it with Early-Data: 1",
+        "/order : 425 en 0-RTT, 200 après la poignée de main": "/order: 425 in 0-RTT, 200 after the handshake",
+        "rejeu, requêtes idempotentes, 425 Too Early, ticket de session": "replay, idempotent requests, 425 Too Early, session ticket",
+        "Bonus — Caddy et négociation de version": "Bonus — Caddy and version negotiation",
+        "Pour aller plus loin (bonus)": "Going further (bonus)",
+        """
+**1. Caddy.** Sur `web`, servez aussi `www.quic.tp` avec Caddy sur le port **{port}** (TCP et UDP),
+avec le même certificat et le même site (@@ref:nginx@@). Caddy tourne sous l'utilisateur `caddy` :
+copiez le certificat et la clé dans `/etc/caddy/` et donnez-les-lui. Écrivez `/etc/caddy/Caddyfile`,
+puis `systemctl enable --now caddy` (ou `systemctl restart caddy`). Depuis `client` :
+
+```
+curl -sS --http3-only -o /dev/null -w '%{{http_version}}\\n' https://www.quic.tp:{port}/
+curl -sSI https://www.quic.tp:{port}/ | grep -i alt-svc
+```
+
+**2. Négociation de version.** Depuis `client` : `quic-client vn www.news.tp`, et capturez l'échange.
+""": """
+**1. Caddy.** On `web`, also serve `www.quic.tp` with Caddy on port **{port}** (TCP and UDP), with
+the same certificate and the same site (@@ref:nginx@@). Caddy runs as the user `caddy`: copy the
+certificate and the key into `/etc/caddy/` and give them to it. Write `/etc/caddy/Caddyfile`, then
+`systemctl enable --now caddy` (or `systemctl restart caddy`). From `client`:
+
+```
+curl -sS --http3-only -o /dev/null -w '%{{http_version}}\\n' https://www.quic.tp:{port}/
+curl -sSI https://www.quic.tp:{port}/ | grep -i alt-svc
+```
+
+**2. Version negotiation.** From `client`: `quic-client vn www.news.tp`, and capture the exchange.
+""",
+        "Caddy sert www.quic.tp en HTTP/3 sur le port {port}": "Caddy serves www.quic.tp over HTTP/3 on port {port}",
+        "versions de ref, version réservée": "versions of ref, reserved version",
     }
 }

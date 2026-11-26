@@ -10,7 +10,9 @@ tournent avec systemd (image `init13`) pour les unités `openvpn-server@` / `ope
 La sonde observe le trafic du `wan` pendant l'évaluation (``tcpdump``) et se connecte au serveur
 avec un certificat signé au vol par la CA de l'étudiant, puis avec le certificat révoqué.
 L'état ``final`` applique la solution de référence.  Chaque question se termine par sa solution
-dans un bloc ``instructor()`` (mode enseignant).
+dans un bloc ``instructor()`` (mode enseignant).  Les textes sont en français (``tr()``), leur
+anglais dans ``_TRANSLATIONS`` ; les listes déroulantes anglaises affichent un libellé anglais et
+enregistrent l'option française.
 
 Les images Docker doivent contenir les paquets ``openvpn`` et ``easy-rsa`` (images ≥ 1.29).
 """
@@ -21,6 +23,7 @@ from dataclasses import dataclass
 from ipaddress import IPv4Interface, IPv4Network
 from typing import Dict
 
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from firewall import get_ruleset, ruleset_mentions
@@ -46,7 +49,8 @@ from utils import random_sentence
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("OpenVPN : tunnels, PKI, accès distant, site à site")
+title = tr("OpenVPN : tunnels, PKI, accès distant, site à site",
+           en="OpenVPN: tunnels, PKI, remote access, site to site")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True
@@ -84,6 +88,16 @@ EKU_CLIENT = "TLS Web Client Authentication"
 
 PHP_PAGE = ('<?php header("Content-Type: text/plain"); '
             'echo "client=" . $_SERVER["REMOTE_ADDR"] . "\\nserver=" . $_SERVER["SERVER_ADDR"] . "\\n";\n')
+#: the comments of server.conf by part, per language (the `final` state writes the French ones)
+_SERVER_CONF_COMMENTS = {
+    'fr': {4: "partie 4 : le LAN du site A", 5: "partie 5 : site à site", 7: "partie 7 : révocation"},
+    'en': {4: "part 4: the LAN of site A", 5: "part 5: site to site", 7: "part 7: revocation"},
+}
+#: the placeholder of the peer's fingerprint in the p2p.conf of the instructor texts, per language
+_P2P_FINGERPRINT_PLACEHOLDERS = {
+    'fr': ("EMPREINTE_DU_CERTIFICAT_DE_GWB", "EMPREINTE_DU_CERTIFICAT_DE_SRV"),
+    'en': ("GWB_CERTIFICATE_FINGERPRINT", "SRV_CERTIFICATE_FINGERPRINT"),
+}
 
 _TOPOLOGY = {
     'wan': {'srv': 0, 'gwb': 0, 'nomade': 0, 'inet': 0, 'sonde': 0},
@@ -533,22 +547,23 @@ UDP 1194, routage asymétrique (chemin du retour oublié), MTU (grands paquets p
                 f"ifconfig {d.ips.p2p_gwb.ip} {d.ips.p2p_srv.ip}\ntls-client\ncert p2p.crt\nkey p2p.key\n"
                 f"peer-fingerprint {fingerprint}\nkeepalive 10 60\nverb 3\n")
 
-    def server_conf(self, part: int = 7) -> str:
+    def server_conf(self, part: int = 7, lang: str = 'fr') -> str:
         """server.conf after *part* (3: remote access, 4: + push route, 5: + site to site,
-        6: unchanged (ccd/nomade + NAT), 7: + crl-verify)."""
+        6: unchanged (ccd/nomade + NAT), 7: + crl-verify), its comments in *lang*."""
         d = self.data
+        comments = _SERVER_CONF_COMMENTS[lang]
         text = (f"port {VPN_PORT}\nproto udp\ndev tun\ntopology subnet\n"
                 f"server {d.nets.vpn.network_address} {_mask(d.nets.vpn)}\n"
                 f"ca ca.crt\ncert srv.crt\nkey srv.key\ndh none\ntls-crypt ta.key\n"
                 f"keepalive 10 120\npersist-key\npersist-tun\nuser nobody\ngroup nogroup\n"
                 f"status {SERVER_STATUS_FILE} 10\nverb 3\nexplicit-exit-notify 1\n")
         if part >= 4:
-            text += f"\n# partie 4 : le LAN du site A\npush \"route {d.nets.lana.network_address} {_mask(d.nets.lana)}\"\n"
+            text += f"\n# {comments[4]}\npush \"route {d.nets.lana.network_address} {_mask(d.nets.lana)}\"\n"
         if part >= 5:
-            text += (f"\n# partie 5 : site à site\nclient-config-dir ccd\n"
+            text += (f"\n# {comments[5]}\nclient-config-dir ccd\n"
                      f"route {d.nets.lanb.network_address} {_mask(d.nets.lanb)}\n")
         if part >= 7:
-            text += "\n# partie 7 : révocation\ncrl-verify crl.pem\n"
+            text += f"\n# {comments[7]}\ncrl-verify crl.pem\n"
         return text
 
     def ccd_siteb(self) -> str:
@@ -738,6 +753,34 @@ def _route_via(routes: dict, net: IPv4Network) -> str:
     return entry[0] if entry else ''
 
 
+_DROPDOWN_RE = re.compile(r"@@\{\w+(?:~\d*)?:>([^}]*)\}@@")
+
+
+def _option_labels(lang: str) -> Dict[str, str]:
+    """{option: label} of the dropdowns of the *lang* texts of _TRANSLATIONS (`label>>>option`: the English
+    forms show the label and store the French option)."""
+    labels = {}
+    for text in _TRANSLATIONS.get(lang, {}).values():
+        for options in _DROPDOWN_RE.findall(text):
+            for option in options.split('|'):
+                label, sep, value = option.rpartition('>>>')
+                if sep:
+                    labels[value] = label
+    return labels
+
+
+def _with_answers(text: TranslatedText, answers: Dict[str, str], **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values* and the right *answers* of a form (the French options),
+    in the language of each version: in English, an option is printed with its English label; a dict
+    value gives one value per language (the comments of a configuration file)."""
+    result = {}
+    for lang, version in text.items():
+        labels = _option_labels(lang) if lang != default_language else {}
+        result[lang] = version.format(**{k: v[lang] if isinstance(v, dict) else v for k, v in values.items()},
+                                      **{k: labels.get(v, v) for k, v in answers.items()})
+    return TranslatedText(result)
+
+
 class Grade(Grade0):
     def __init__(self, net_scheme):
         super().__init__(net_scheme)
@@ -846,15 +889,22 @@ class Grade(Grade0):
 
         # The texts of a question are not indented: the first one starts at the margin, so an
         # indented one would be drawn as a code block.
-        addressing = no_tr(f"""
+        addressing = tr(f"""
 | réseau | préfixe | machines |
 |--------|---------|----------|
 | `wan` (« Internet ») | `{wan}` | `srv` eth0 (`{d.ips.srv_wan.ip}`), `gwb` eth0 (`{d.ips.gwb_wan.ip}`), `nomade` (`{d.ips.nomade.ip}`), `inet` eth0 (`{d.ips.inet_wan.ip}`, routeur par défaut du wan) |
 | `internet` (« le reste d'Internet ») | `{d.nets.internet}` | `inet` eth1 (`{d.ips.inet_internet.ip}`), `web` (`{d.ips.web.ip}`, serveur web) |
 | `lana` (site A) | `{lana}` | `srv` eth1 (`{d.ips.srv_lana.ip}`, routeur par défaut), `ca` (`{d.ips.ca.ip}`), `m1` (`{d.ips.m1.ip}`, serveur web) |
 | `lanb` (site B) | `{lanb}` | `gwb` eth1 (`{d.ips.gwb_lanb.ip}`, routeur par défaut), `m2` (`{d.ips.m2.ip}`, serveur web) |
+""", en=f"""
+| network | prefix | machines |
+|---------|--------|----------|
+| `wan` ("Internet") | `{wan}` | `srv` eth0 (`{d.ips.srv_wan.ip}`), `gwb` eth0 (`{d.ips.gwb_wan.ip}`), `nomade` (`{d.ips.nomade.ip}`), `inet` eth0 (`{d.ips.inet_wan.ip}`, default router of the wan) |
+| `internet` ("the rest of the Internet") | `{d.nets.internet}` | `inet` eth1 (`{d.ips.inet_internet.ip}`), `web` (`{d.ips.web.ip}`, web server) |
+| `lana` (site A) | `{lana}` | `srv` eth1 (`{d.ips.srv_lana.ip}`, default router), `ca` (`{d.ips.ca.ip}`), `m1` (`{d.ips.m1.ip}`, web server) |
+| `lanb` (site B) | `{lanb}` | `gwb` eth1 (`{d.ips.gwb_lanb.ip}`, default router), `m2` (`{d.ips.m2.ip}`, web server) |
 """)
-        values = no_tr(f"""
+        values = tr(f"""
 | paramètre | valeur pour **votre** instance |
 |-----------|--------------------------------|
 | tunnel point à point (partie 1) : adresses `srv` / `gwb`, port | **`{d.ips.p2p_srv.ip}`** / **`{d.ips.p2p_gwb.ip}`**, UDP **`{P2P_PORT}`** |
@@ -864,6 +914,16 @@ class Grade(Grade0):
 | réseau du VPN (partie 3) | **`{vpn_net}`** (le serveur prendra `{d.ips.vpn_srv.ip}`), UDP **`{VPN_PORT}`** |
 | phrase servie par `http://m1/secret.txt` (partie 4) | à lire depuis `nomade` |
 | phrase servie par `http://m2/secret.txt` (partie 5) | à lire depuis `nomade` |
+""", en=f"""
+| parameter | value for **your** instance |
+|-----------|-----------------------------|
+| point-to-point tunnel (part 1): addresses of `srv` / `gwb`, port | **`{d.ips.p2p_srv.ip}`** / **`{d.ips.p2p_gwb.ip}`**, UDP **`{P2P_PORT}`** |
+| Common Name of the authority (part 2) | **`{CA_CN}`** |
+| password of the private key of the CA | **`{d.ca_passphrase}`** |
+| certificates to issue | server **`srv`**; clients **`nomade`**, **`siteb`**, **`ancien`** |
+| network of the VPN (part 3) | **`{vpn_net}`** (the server will take `{d.ips.vpn_srv.ip}`), UDP **`{VPN_PORT}`** |
+| sentence served by `http://m1/secret.txt` (part 4) | to be read from `nomade` |
+| sentence served by `http://m2/secret.txt` (part 5) | to be read from `nomade` |
 """)
 
         self.question_dummy(
@@ -980,7 +1040,7 @@ Faites de même sur `gwb` dans `/etc/openvpn/client/` (CN `gwb`). Échangez les 
 - ce qui authentifie le pair ici : @@{auth:>l'empreinte SHA-256 de son certificat|une autorité de certification commune|une clé statique partagée|son adresse IP}@@
 - une interface `tun` transporte : @@{tun:>des paquets IP (niveau 3)|des trames Ethernet (niveau 2)|des datagrammes UDP}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** `/etc/openvpn/server/p2p.conf` sur `srv` :
 
 ```
@@ -998,9 +1058,11 @@ Faites de même sur `gwb` dans `/etc/openvpn/client/` (CN `gwb`). Échangez les 
 - L'évaluation lit les deux fichiers (`peer-fingerprint` = empreinte du certificat de l'autre), vérifie
   que `srv` écoute en UDP {p2p_port}, les adresses des interfaces `tun` et un `ping` dans chaque sens.
 - Réponses : {proto} {port} ; {icmp_wan} ; {auth} ; {tun}.
-""").format(conf_srv=self.net_scheme.p2p_conf_srv(), conf_gwb=self.net_scheme.p2p_conf_gwb(), p2p_port=P2P_PORT,
-            srv_wan=d.ips.srv_wan.ip, gwb_wan=d.ips.gwb_wan.ip, p2p_srv=d.ips.p2p_srv.ip,
-            p2p_gwb=d.ips.p2p_gwb.ip, **q1_answers)),
+"""), q1_answers,
+            conf_srv={lang: self.net_scheme.p2p_conf_srv(gwb) for lang, (gwb, _) in _P2P_FINGERPRINT_PLACEHOLDERS.items()},
+            conf_gwb={lang: self.net_scheme.p2p_conf_gwb(srv) for lang, (_, srv) in _P2P_FINGERPRINT_PLACEHOLDERS.items()},
+            p2p_port=P2P_PORT, srv_wan=d.ips.srv_wan.ip, gwb_wan=d.ips.gwb_wan.ip, p2p_srv=d.ips.p2p_srv.ip,
+            p2p_gwb=d.ips.p2p_gwb.ip)),
             cheat_answers={"final": q1_answers},
         )
 
@@ -1078,7 +1140,7 @@ certification** signe les certificats de tous. Sur la machine **`ca`**, en `root
 - une demande de signature (`pki/reqs/srv.req`) contient : @@{csr:>la clé publique et l'identité (CN) du demandeur|la clé privée et la clé publique du demandeur|le certificat de la CA}@@
 - le mot de passe saisi à `build-ca` protège : @@{pass:>la clé privée de la CA, demandée à chaque signature|le fichier ca.crt|les connexions des clients au serveur}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Sur `ca` (les mêmes commandes, sans interaction, sont celles de l'état `final`) :
 
 ```
@@ -1102,7 +1164,7 @@ et `chmod 600 /etc/openvpn/server/srv.key /etc/openvpn/server/ta.key`.
   `ca.crt` identique à celui de la CA, `srv.key` correspond à `srv.crt`, `ta.key` est une clé OpenVPN
   (`-----BEGIN OpenVPN Static key V1-----`), clés en mode `600`.
 - Réponses : {stays} ; {type} ; {csr} ; {pass}.
-""").format(passphrase=d.ca_passphrase, ca_cn=CA_CN, **q2_answers)),
+"""), q2_answers, passphrase=d.ca_passphrase, ca_cn=CA_CN)),
             cheat_answers={"final": q2_answers},
         )
 
@@ -1239,7 +1301,7 @@ Essayez aussi `tcpdump -ni tun0`.
 - `remote-cert-tls server` sur le client garantit que : @@{rct:>un client de la même CA ne peut pas se faire passer pour le serveur|le serveur a bien été démarré par root|le certificat du serveur n'est pas expiré}@@
 - `ip a show tun0` sur `nomade` montre : @@{tun_addr:>une adresse du réseau du VPN|l'adresse publique du serveur|aucune adresse}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** `/etc/openvpn/server/server.conf` sur `srv` (tel qu'il sera à la fin du TP, les
 parties 4, 5 et 7 y ajoutent leurs directives) :
 
@@ -1261,8 +1323,10 @@ parties 4, 5 et 7 y ajoutent leurs directives) :
   `Initialization Sequence Completed` ; sur le `wan`, du trafic UDP {vpn_port} du nomade vers `{srv_wan}`
   et aucun ICMP en clair du nomade vers le VPN ou `lana`.
 - Réponses : {log_ok} ; {wan_seen} ; {tls_crypt} ; {rct} ; {tun_addr}.
-""").format(server_conf=self.net_scheme.server_conf(), client_conf=self.net_scheme.client_conf('nomade'), vpn_srv=d.ips.vpn_srv.ip,
-            vpn=vpn_net, vpn_port=VPN_PORT, srv_wan=d.ips.srv_wan.ip, **q3_answers)),
+"""), q3_answers,
+            server_conf={lang: self.net_scheme.server_conf(lang=lang) for lang in _SERVER_CONF_COMMENTS},
+            client_conf=self.net_scheme.client_conf('nomade'), vpn_srv=d.ips.vpn_srv.ip,
+            vpn=vpn_net, vpn_port=VPN_PORT, srv_wan=d.ips.srv_wan.ip)),
             cheat_answers={"final": q3_answers},
         )
 
@@ -1553,7 +1617,7 @@ nft add rule ip nat postrouting ip saddr {vpn} oifname eth0 masquerade
 - pourquoi le NAT est-il nécessaire ? @@{nat:>Internet n'a pas de route vers le réseau du VPN : les réponses ne reviendraient pas|OpenVPN ne peut pas chiffrer les paquets vers Internet|le nomade n'a pas de route par défaut}@@
 - routeur par défaut de `gwb` après cette partie : @@{gwb_default:[0-9.]+}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** `/etc/openvpn/server/ccd/nomade` :
 
 ```
@@ -1575,8 +1639,8 @@ et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.co
   `curl http://{web}/` depuis `nomade` affichant `client={srv_wan}`, et sur le `wan` aucune requête TCP 80
   vers `web` partant de `{nomade}` mais des requêtes TCP 80 de `{srv_wan}`.
 - Réponses : {def1} ; {inet_sees} ; {nat} ; {gwb_default}.
-""").format(ccd_nomade=self.net_scheme.ccd_nomade(), nft=self.net_scheme.nft_nat(), nomade=d.ips.nomade.ip, vpn_srv=d.ips.vpn_srv.ip,
-            srv_wan=d.ips.srv_wan.ip, inet=d.ips.inet_wan.ip, web=d.ips.web.ip, vpn=vpn_net, **q6_answers)),
+"""), q6_answers, ccd_nomade=self.net_scheme.ccd_nomade(), nft=self.net_scheme.nft_nat(), nomade=d.ips.nomade.ip,
+            vpn_srv=d.ips.vpn_srv.ip, srv_wan=d.ips.srv_wan.ip, inet=d.ips.inet_wan.ip, web=d.ips.web.ip, vpn=vpn_net)),
             cheat_answers={"final": q6_answers},
         )
 
@@ -1660,7 +1724,7 @@ Le portable de l'utilisateur `ancien` a été volé : son certificat doit être 
 - faut-il redémarrer le serveur après avoir recopié une nouvelle CRL ? @@{restart:>non : la CRL est relue à chaque connexion si le fichier a changé|oui, toujours|oui, et redémarrer aussi les clients}@@
 - la révocation coupe-t-elle une session de `ancien` déjà ouverte ? @@{session:>non, à la prochaine renégociation TLS (reneg-sec) ou au redémarrage du serveur|oui, immédiatement|oui, au prochain paquet de données}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Sur `ca` : `./easyrsa revoke ancien && ./easyrsa gen-crl && cp pki/crl.pem /shared/` ;
 sur `srv` : `cp /shared/crl.pem /etc/openvpn/server/ && chmod 644 /etc/openvpn/server/crl.pem`, puis
 `crl-verify crl.pem` dans `server.conf` et `systemctl restart openvpn-server@server`.
@@ -1675,7 +1739,7 @@ sur `srv` : `cp /shared/crl.pem /etc/openvpn/server/ && chmod 644 /etc/openvpn/s
   (sur `ca` et sur `srv`), `crl-verify` dans `server.conf`, et la sonde : refusée avec le certificat
   `ancien`, acceptée avec le sien.
 - Réponses : {letter} ; {log} ; {restart} ; {session}.
-""").format(**q7_answers)),
+"""), q7_answers)),
             cheat_answers={"final": q7_answers},
         )
 
@@ -1718,4 +1782,1520 @@ sur `srv` : `cp /shared/crl.pem /etc/openvpn/server/ && chmod 644 /etc/openvpn/s
         )
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "OpenVPN : tunnels, PKI, accès distant, site à site": "OpenVPN: tunnels, PKI, remote access, site to site",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "Pourquoi un VPN ?": "Why a VPN?",
+    """
+
+Un **réseau privé virtuel** (VPN, *Virtual Private Network*) relie des machines ou des réseaux
+à travers un réseau que l'on ne contrôle pas — Internet — comme s'ils étaient sur un même réseau
+privé. Les paquets IP du réseau privé sont **encapsulés** dans d'autres paquets qui traversent
+Internet, et le contenu est **chiffré** : un observateur sur le chemin voit qu'un tunnel existe
+entre deux adresses publiques, pas ce qui y circule.
+
+Un VPN apporte trois garanties :
+
+- **confidentialité** : les données sont chiffrées ;
+- **intégrité** : un paquet modifié en route est rejeté ;
+- **authentification** : chaque extrémité prouve son identité (certificat, clé, mot de passe).
+
+Deux usages dominent :
+
+| usage | exemple |
+|-------|---------|
+| **accès distant** (*road warrior*) | un portable en déplacement rejoint le réseau de l'entreprise |
+| **site à site** | deux agences relient leurs réseaux locaux par leurs passerelles |
+
+On distingue aussi les VPN de **niveau 2** (le tunnel transporte des trames Ethernet : les deux
+côtés sont dans le même domaine de diffusion) et de **niveau 3** (le tunnel transporte des paquets
+IP et se comporte comme un lien routé). Les principales technologies : **IPsec** (dans le noyau,
+IKEv2 pour l'authentification et les clés, ESP pour les données ; complexe à configurer),
+**WireGuard** (dans le noyau, clés statiques Curve25519, très simple, UDP seulement),
+**OpenVPN** (en espace utilisateur, TLS, UDP ou TCP), les tunnels **SSH** (`ssh -w`, `-L`, `-D`)
+et les VPN d'opérateur (MPLS).
+
+**OpenVPN** (2001, James Yonan ; licence GPL) s'appuie sur la bibliothèque OpenSSL : il réutilise
+**TLS** et les certificats **X.509** pour authentifier les pairs et négocier les clés, puis chiffre
+chaque paquet. Il n'a besoin que d'un **seul port** (UDP 1194 par défaut, TCP possible, par exemple
+TCP 443 pour passer un pare-feu), traverse le NAT, tourne sur tous les systèmes et fonctionne aussi
+bien en point à point qu'en serveur pour des centaines de clients. Debian fournit la version 2.6.
+""": """
+
+A **virtual private network** (VPN) links machines or networks across a network one does not
+control — the Internet — as if they were on one private network. The IP packets of the private
+network are **encapsulated** in other packets that cross the Internet, and the content is
+**encrypted**: an observer on the path sees that a tunnel exists between two public addresses, not
+what flows through it.
+
+A VPN provides three guarantees:
+
+- **confidentiality**: the data is encrypted;
+- **integrity**: a packet modified on the way is rejected;
+- **authentication**: each end proves its identity (certificate, key, password).
+
+Two uses dominate:
+
+| use | example |
+|-----|---------|
+| **remote access** (*road warrior*) | a laptop on the move joins the company network |
+| **site to site** | two branches link their local networks through their gateways |
+
+VPNs are also divided into **layer 2** VPNs (the tunnel carries Ethernet frames: both sides are in
+the same broadcast domain) and **layer 3** VPNs (the tunnel carries IP packets and behaves like a
+routed link). The main technologies: **IPsec** (in the kernel, IKEv2 for authentication and keys,
+ESP for the data; complex to configure), **WireGuard** (in the kernel, static Curve25519 keys, very
+simple, UDP only), **OpenVPN** (in user space, TLS, UDP or TCP), **SSH** tunnels (`ssh -w`, `-L`,
+`-D`) and carrier VPNs (MPLS).
+
+**OpenVPN** (2001, James Yonan; GPL licence) builds on the OpenSSL library: it reuses **TLS** and
+**X.509** certificates to authenticate the peers and negotiate the keys, then encrypts each packet.
+It needs only **one port** (UDP 1194 by default, TCP possible, for example TCP 443 to get through
+a firewall), traverses NAT, runs on every system and works equally well point to point and as a
+server for hundreds of clients. Debian ships version 2.6.
+""",
+    "Le tunnel : encapsulation, `tun` et `tap`": "The tunnel: encapsulation, `tun` and `tap`",
+    """
+
+OpenVPN crée une **interface réseau virtuelle** : `tun0` (niveau 3, transporte des paquets IP) ou
+`tap0` (niveau 2, transporte des trames Ethernet). Pour le système, c'est une interface comme une
+autre : elle a une adresse, des routes y pointent. Ce que le noyau y envoie est lu par le processus
+`openvpn` (par le périphérique `/dev/net/tun`), chiffré, puis émis dans un datagramme UDP vers le
+pair ; ce qui arrive du pair est déchiffré et réinjecté dans `tun0` comme s'il venait du réseau.
+
+```
+ paquet émis par une application de nomade vers m1 :
+ ┌────────────┬───────────────┬──────────────────────────────┐
+ │ IP interne │ TCP/UDP/ICMP  │ données                      │  → routé vers tun0
+ └────────────┴───────────────┴──────────────────────────────┘
+                 chiffrement + authentification par openvpn
+ ┌────────────┬─────┬───────────┬────────────────────────────┐
+ │ IP externe │ UDP │ en-tête   │ paquet interne chiffré     │  → émis sur eth0
+ │ nomade→srv │1194 │ OpenVPN   │ (illisible sur le wan)     │
+ └────────────┴─────┴───────────┴────────────────────────────┘
+```
+
+L'encapsulation ajoute une quarantaine d'octets : un paquet interne de 1500 octets ne tient plus
+dans une trame Ethernet. OpenVPN limite la taille des segments TCP avec `mssfix` (par défaut) et
+peut fragmenter lui-même (`fragment`) ; l'interface `tun0` a un MTU de 1500 par défaut, que l'on
+peut réduire (`tun-mtu`).
+
+Dans ce TP tous les tunnels sont de niveau 3 (`dev tun`). Un tunnel `tap` sert lorsqu'il faut
+transporter autre chose qu'IP ou étendre un domaine de diffusion (jeux en réseau, protocoles
+non routables) : il coûte plus cher (diffusions, ARP dans le tunnel).
+""": """
+
+OpenVPN creates a **virtual network interface**: `tun0` (layer 3, carries IP packets) or `tap0`
+(layer 2, carries Ethernet frames). For the system it is an interface like any other: it has an
+address, routes point to it. What the kernel sends into it is read by the `openvpn` process
+(through the `/dev/net/tun` device), encrypted, then sent in a UDP datagram to the peer; what
+arrives from the peer is decrypted and injected back into `tun0` as if it came from the network.
+
+```
+ packet sent by an application of nomade to m1:
+ ┌────────────┬───────────────┬──────────────────────────────┐
+ │ inner IP   │ TCP/UDP/ICMP  │ data                         │  → routed to tun0
+ └────────────┴───────────────┴──────────────────────────────┘
+                 encryption + authentication by openvpn
+ ┌────────────┬─────┬───────────┬────────────────────────────┐
+ │ outer IP   │ UDP │ OpenVPN   │ encrypted inner packet     │  → sent on eth0
+ │ nomade→srv │1194 │ header    │ (unreadable on the wan)    │
+ └────────────┴─────┴───────────┴────────────────────────────┘
+```
+
+Encapsulation adds about forty bytes: an inner packet of 1500 bytes no longer fits in an Ethernet
+frame. OpenVPN limits the size of TCP segments with `mssfix` (on by default) and can fragment by
+itself (`fragment`); the `tun0` interface has an MTU of 1500 by default, which can be reduced
+(`tun-mtu`).
+
+In this lab every tunnel is a layer 3 tunnel (`dev tun`). A `tap` tunnel is used when something
+other than IP must be carried or a broadcast domain extended (network games, non-routable
+protocols): it costs more (broadcasts, ARP inside the tunnel).
+""",
+    "OpenVPN : canal de contrôle et canal de données": "OpenVPN: control channel and data channel",
+    """
+
+OpenVPN multiplexe deux flux sur le même port UDP :
+
+- le **canal de contrôle** : une session **TLS** entre les deux pairs (poignée de main, certificats,
+  échange des clés, renégociation périodique — `reneg-sec`, 3600 s par défaut). C'est là que
+  chaque côté **prouve son identité** et que les clés de session sont établies ;
+- le **canal de données** : les paquets du tunnel, chiffrés et authentifiés avec les clés de
+  session par un algorithme négocié dans la liste `data-ciphers` (par défaut
+  `AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305`). Un paquet altéré ou rejoué est jeté.
+
+Trois façons d'authentifier les pairs sur le canal de contrôle :
+
+| méthode | directives | usage |
+|---------|------------|-------|
+| **PKI** : chaque pair a un certificat signé par une autorité (CA) commune | `ca`, `cert`, `key` | le cas général, obligatoire au-delà de deux pairs |
+| **empreintes** : chaque pair connaît l'empreinte SHA-256 du certificat (auto-signé) de l'autre | `peer-fingerprint` | deux ou trois machines, sans CA (OpenVPN ≥ 2.6) |
+| **clé statique** partagée (`secret`) : pas de TLS | `secret` | obsolète (dépréciée, supprimée dans 2.7) |
+
+Deux protections supplémentaires du canal de contrôle utilisent une **clé partagée** en plus de TLS
+(`openvpn --genkey tls-crypt ta.key`) :
+
+- `tls-auth ta.key` : chaque paquet de contrôle porte un HMAC calculé avec la clé ; un paquet sans
+  HMAC valide est ignoré avant même d'atteindre la pile TLS. Protège le serveur des scans de port,
+  des attaques par déni de service et des failles de la bibliothèque TLS ;
+- `tls-crypt ta.key` : en plus, le canal de contrôle est **chiffré** : la poignée de main TLS et les
+  certificats ne sont plus lisibles sur le réseau. À préférer aujourd'hui (`tls-crypt-v2` donne
+  une clé par client).
+
+Avec une PKI, `remote-cert-tls server` sur le client exige que le certificat présenté par le serveur
+ait bien été émis **pour un serveur** (extension *extendedKeyUsage* = *TLS Web Server
+Authentication*) : sans cela, n'importe quel client de la même CA pourrait se faire passer pour le
+serveur. L'option symétrique `remote-cert-tls client` existe côté serveur.
+
+`dh none` : les échanges de clés utilisent les courbes elliptiques (ECDH) et aucun fichier de
+paramètres Diffie-Hellman (`dh2048.pem`, long à produire) n'est nécessaire.
+""": """
+
+OpenVPN multiplexes two streams on the same UDP port:
+
+- the **control channel**: a **TLS** session between the two peers (handshake, certificates,
+  key exchange, periodic renegotiation — `reneg-sec`, 3600 s by default). This is where each
+  side **proves its identity** and where the session keys are established;
+- the **data channel**: the packets of the tunnel, encrypted and authenticated with the session
+  keys by an algorithm negotiated from the `data-ciphers` list (by default
+  `AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305`). An altered or replayed packet is dropped.
+
+Three ways to authenticate the peers on the control channel:
+
+| method | directives | use |
+|--------|------------|-----|
+| **PKI**: each peer has a certificate signed by a common authority (CA) | `ca`, `cert`, `key` | the general case, mandatory beyond two peers |
+| **fingerprints**: each peer knows the SHA-256 fingerprint of the other's (self-signed) certificate | `peer-fingerprint` | two or three machines, without a CA (OpenVPN ≥ 2.6) |
+| shared **static key** (`secret`): no TLS | `secret` | obsolete (deprecated, removed in 2.7) |
+
+Two additional protections of the control channel use a **shared key** on top of TLS
+(`openvpn --genkey tls-crypt ta.key`):
+
+- `tls-auth ta.key`: every control packet carries an HMAC computed with the key; a packet without
+  a valid HMAC is ignored before it even reaches the TLS stack. It protects the server from port
+  scans, denial-of-service attacks and flaws of the TLS library;
+- `tls-crypt ta.key`: in addition, the control channel is **encrypted**: the TLS handshake and the
+  certificates can no longer be read on the network. The one to prefer today (`tls-crypt-v2` gives
+  one key per client).
+
+With a PKI, `remote-cert-tls server` on the client requires the certificate presented by the
+server to have been issued **for a server** (extension *extendedKeyUsage* = *TLS Web Server
+Authentication*): without it, any client of the same CA could impersonate the server. The
+symmetric option `remote-cert-tls client` exists on the server side.
+
+`dh none`: the key exchanges use elliptic curves (ECDH) and no Diffie-Hellman parameter file
+(`dh2048.pem`, slow to generate) is needed.
+""",
+    "Deux modes : point à point et serveur multi-clients": "Two modes: point to point and multi-client server",
+    """
+
+**Point à point** : deux pairs, une interface `tun` de chaque côté, adressée par
+`ifconfig ADRESSE_LOCALE ADRESSE_DISTANTE`. Un côté est `tls-server` (il écoute, `port 1195`),
+l'autre `tls-client` (il appelle : `remote ADRESSE PORT`, `nobind`). Le tunnel ne transporte que
+ce que les routes y envoient ; sans directive `route`, seules les deux adresses du tunnel sont
+joignables.
+
+**Serveur** : la directive `server RÉSEAU MASQUE` transforme OpenVPN en serveur multi-clients. Elle
+prend la première adresse du réseau pour `tun0`, attribue une adresse à chaque client qui se
+connecte et lui **pousse** sa configuration (`push`). Les clients se déclarent avec `client`
+(= `tls-client` + `pull` : accepter ce que le serveur pousse).
+
+| directive serveur | effet |
+|-------------------|-------|
+| `server 10.8.0.0 255.255.255.0` | réseau du VPN ; le serveur prend `.1` |
+| `topology subnet` | une adresse par client dans un seul /24 (le mode historique `net30` consommait un /30 par client ; `subnet` deviendra la valeur par défaut dans la version 2.7) |
+| `push "route RÉSEAU MASQUE"` | route ajoutée chez chaque client (vers un réseau derrière le serveur) |
+| `push "redirect-gateway def1"` | tout le trafic du client passe par le VPN (§ @@ref:routing@@) |
+| `push "dhcp-option DNS ADRESSE"` | serveur DNS à utiliser (appliqué automatiquement sous Windows, par un script sous Linux) |
+| `client-config-dir ccd` | un fichier par client, nommé d'après le **Common Name** de son certificat, lu à sa connexion |
+| `iroute RÉSEAU MASQUE` (dans `ccd/NOM`) | « ce réseau est derrière ce client » : routage interne d'OpenVPN vers un client passerelle |
+| `route RÉSEAU MASQUE` | route ajoutée dans la **table du noyau** du serveur vers `tun0` (à combiner avec `iroute`) |
+| `client-to-client` | les clients se voient directement sans passer par le noyau du serveur (sinon : forwarding + pare-feu du serveur) |
+| `keepalive 10 120` | `ping 10` + `ping-restart 120`, poussés aux clients : détection d'un pair muet |
+| `persist-key`, `persist-tun` | garder clés et interface lors d'un redémarrage interne (nécessaire avec `user nobody`) |
+| `user nobody`, `group nogroup` | abandonner les privilèges une fois le tunnel monté |
+| `status FICHIER [n]` | état des clients connectés, réécrit toutes les *n* secondes |
+| `verb 3` | verbosité du journal (0 silencieux … 4 détaillé, 6 et plus : débogage) |
+| `explicit-exit-notify 1` | en UDP, prévenir le pair quand on s'arrête |
+
+| directive client | effet |
+|------------------|-------|
+| `client` | mode client : accepter la configuration poussée |
+| `remote ADRESSE PORT` | le serveur (plusieurs lignes `remote` = repli) |
+| `proto udp`, `dev tun` | mêmes valeurs que le serveur |
+| `nobind` | ne pas réserver de port source |
+| `resolv-retry infinite` | réessayer la résolution du nom du serveur sans fin |
+| `ca`, `cert`, `key`, `tls-crypt` | la PKI et la clé partagée |
+| `remote-cert-tls server` | n'accepter qu'un certificat de serveur (§ @@ref:channels@@) |
+| `route-nopull` | ignorer les routes poussées (tests) |
+
+Un fichier de configuration peut **inclure** les clés et certificats entre balises
+(`<ca> … </ca>`, `<cert>`, `<key>`, `<tls-crypt>`) : c'est le format « tout en un » des fichiers
+`.ovpn` distribués aux utilisateurs.
+""": """
+
+**Point to point**: two peers, one `tun` interface on each side, addressed with
+`ifconfig LOCAL_ADDRESS REMOTE_ADDRESS`. One side is `tls-server` (it listens, `port 1195`), the
+other `tls-client` (it calls: `remote ADDRESS PORT`, `nobind`). The tunnel only carries what the
+routes send into it; without a `route` directive, only the two addresses of the tunnel are
+reachable.
+
+**Server**: the `server NETWORK MASK` directive turns OpenVPN into a multi-client server. It takes
+the first address of the network for `tun0`, assigns an address to each client that connects and
+**pushes** its configuration to it (`push`). The clients declare themselves with `client`
+(= `tls-client` + `pull`: accept what the server pushes).
+
+| server directive | effect |
+|------------------|--------|
+| `server 10.8.0.0 255.255.255.0` | network of the VPN; the server takes `.1` |
+| `topology subnet` | one address per client in a single /24 (the historical `net30` mode used up a /30 per client; `subnet` becomes the default in version 2.7) |
+| `push "route NETWORK MASK"` | route added on every client (to a network behind the server) |
+| `push "redirect-gateway def1"` | all the client's traffic goes through the VPN (§ @@ref:routing@@) |
+| `push "dhcp-option DNS ADDRESS"` | DNS server to use (applied automatically on Windows, by a script on Linux) |
+| `client-config-dir ccd` | one file per client, named after the **Common Name** of its certificate, read when it connects |
+| `iroute NETWORK MASK` (in `ccd/NAME`) | "this network is behind this client": OpenVPN's internal routing to a gateway client |
+| `route NETWORK MASK` | route added to the server's **kernel table**, through `tun0` (to be combined with `iroute`) |
+| `client-to-client` | the clients reach each other directly without going through the server's kernel (otherwise: forwarding + the server's firewall) |
+| `keepalive 10 120` | `ping 10` + `ping-restart 120`, pushed to the clients: detection of a silent peer |
+| `persist-key`, `persist-tun` | keep the keys and the interface across an internal restart (needed with `user nobody`) |
+| `user nobody`, `group nogroup` | drop the privileges once the tunnel is up |
+| `status FILE [n]` | status of the connected clients, rewritten every *n* seconds |
+| `verb 3` | verbosity of the log (0 silent … 4 detailed, 6 and above: debugging) |
+| `explicit-exit-notify 1` | over UDP, notify the peer when stopping |
+
+| client directive | effect |
+|------------------|--------|
+| `client` | client mode: accept the pushed configuration |
+| `remote ADDRESS PORT` | the server (several `remote` lines = fallback) |
+| `proto udp`, `dev tun` | same values as the server |
+| `nobind` | do not bind a source port |
+| `resolv-retry infinite` | retry resolving the server's name forever |
+| `ca`, `cert`, `key`, `tls-crypt` | the PKI and the shared key |
+| `remote-cert-tls server` | accept only a server certificate (§ @@ref:channels@@) |
+| `route-nopull` | ignore the pushed routes (tests) |
+
+A configuration file can **embed** the keys and certificates between tags (`<ca> … </ca>`,
+`<cert>`, `<key>`, `<tls-crypt>`): this is the "all in one" format of the `.ovpn` files handed out
+to users.
+""",
+    "La PKI avec easy-rsa": "The PKI with easy-rsa",
+    """
+
+**easy-rsa** (paquet `easy-rsa`) est le jeu de scripts d'OpenVPN autour d'`openssl` pour tenir une
+petite autorité de certification. On travaille dans un répertoire de travail créé par
+`make-cadir`, qui contient le script `easyrsa`, la configuration `openssl-easyrsa.cnf`, le fichier
+`vars` (paramètres : `EASYRSA_REQ_CN`, `EASYRSA_CA_EXPIRE`, `EASYRSA_CERT_EXPIRE` — 825 jours par
+défaut —, `EASYRSA_ALGO rsa|ec`, `EASYRSA_KEY_SIZE`…) et, après `init-pki`, le répertoire `pki/` :
+
+```
+make-cadir /root/easy-rsa && cd /root/easy-rsa
+./easyrsa init-pki                    # crée pki/ (vide)
+./easyrsa build-ca                    # pki/ca.crt + pki/private/ca.key (mot de passe demandé ; `nopass` pour l'omettre)
+./easyrsa gen-req srv nopass          # clé pki/private/srv.key + demande pki/reqs/srv.req
+./easyrsa sign-req server srv         # certificat pki/issued/srv.crt, type « server »
+./easyrsa gen-req nomade nopass
+./easyrsa sign-req client nomade      # type « client »
+./easyrsa build-server-full srv nopass    # raccourci : gen-req + sign-req server
+./easyrsa build-client-full nomade nopass
+./easyrsa revoke ancien               # marque le certificat révoqué (R dans pki/index.txt)
+./easyrsa gen-crl                     # pki/crl.pem : liste de révocation signée par la CA
+./easyrsa show-cert nomade            # lire un certificat émis
+openvpn --genkey tls-crypt ta.key     # clé partagée pour tls-crypt (ou tls-auth)
+```
+
+- La **clé privée de la CA** (`pki/private/ca.key`) ne quitte jamais la machine de la CA ; son
+  mot de passe est demandé à chaque signature. Les clés privées des serveurs et des clients
+  (`pki/private/*.key`) sont créées sans mot de passe (`nopass`) pour que les services démarrent
+  seuls ; le fichier doit être en mode `600`.
+- Une **demande de signature** (CSR, `pki/reqs/NOM.req`) contient la clé publique et l'identité
+  (le *Common Name*, CN) ; jamais la clé privée. La CA la signe et produit le certificat.
+- Le **type** donné à `sign-req` (`server`, `client`, défini dans `x509-types/`) fixe les
+  extensions : *extendedKeyUsage* `serverAuth` ou `clientAuth`, *keyUsage*. C'est ce que
+  `remote-cert-tls server` vérifie.
+- Le **Common Name** d'un client est son identité pour OpenVPN : nom du fichier `ccd/`, colonne du
+  fichier d'état, journal. Chaque client doit avoir son propre certificat (sinon
+  `duplicate-cn`, à éviter).
+- La **révocation** : `revoke` puis `gen-crl` ; le serveur charge la liste avec
+  `crl-verify crl.pem` et refuse les certificats qui y figurent. Le fichier est relu à chaque
+  connexion si son horodatage a changé : il faut **recopier** la nouvelle CRL sur le serveur à
+  chaque révocation, sans redémarrer OpenVPN. Avec `user nobody`, le fichier doit rester lisible
+  par cet utilisateur (mode `644`). Une session déjà ouverte n'est coupée qu'à la prochaine
+  renégociation TLS (`reneg-sec`, 1 h) ou au redémarrage du serveur.
+
+Fichiers à transférer : vers le **serveur** `ca.crt`, `srv.crt`, `srv.key`, `ta.key` (et plus tard
+`crl.pem`) ; vers chaque **client** `ca.crt`, `NOM.crt`, `NOM.key`, `ta.key`. En vrai, ces fichiers
+voyagent par un canal sûr (`scp`, clé USB) ; dans ce TP, le répertoire `/shared` est monté dans
+toutes les machines et sert de boîte aux lettres (`cp pki/ca.crt /shared/`, puis `cp /shared/ca.crt
+/etc/openvpn/server/` sur l'autre machine).
+""": """
+
+**easy-rsa** (package `easy-rsa`) is OpenVPN's set of scripts around `openssl` for running a small
+certificate authority. One works in a working directory created by `make-cadir`, which holds the
+`easyrsa` script, the configuration `openssl-easyrsa.cnf`, the `vars` file (parameters:
+`EASYRSA_REQ_CN`, `EASYRSA_CA_EXPIRE`, `EASYRSA_CERT_EXPIRE` — 825 days by default —,
+`EASYRSA_ALGO rsa|ec`, `EASYRSA_KEY_SIZE`…) and, after `init-pki`, the `pki/` directory:
+
+```
+make-cadir /root/easy-rsa && cd /root/easy-rsa
+./easyrsa init-pki                    # creates pki/ (empty)
+./easyrsa build-ca                    # pki/ca.crt + pki/private/ca.key (password asked; `nopass` to omit it)
+./easyrsa gen-req srv nopass          # key pki/private/srv.key + request pki/reqs/srv.req
+./easyrsa sign-req server srv         # certificate pki/issued/srv.crt, type "server"
+./easyrsa gen-req nomade nopass
+./easyrsa sign-req client nomade      # type "client"
+./easyrsa build-server-full srv nopass    # shortcut: gen-req + sign-req server
+./easyrsa build-client-full nomade nopass
+./easyrsa revoke ancien               # marks the certificate revoked (R in pki/index.txt)
+./easyrsa gen-crl                     # pki/crl.pem: revocation list signed by the CA
+./easyrsa show-cert nomade            # read an issued certificate
+openvpn --genkey tls-crypt ta.key     # shared key for tls-crypt (or tls-auth)
+```
+
+- The **private key of the CA** (`pki/private/ca.key`) never leaves the CA machine; its password
+  is asked at every signature. The private keys of the servers and of the clients
+  (`pki/private/*.key`) are created without a password (`nopass`) so that the services start on
+  their own; the file must be in mode `600`.
+- A **certificate signing request** (CSR, `pki/reqs/NAME.req`) holds the public key and the
+  identity (the *Common Name*, CN); never the private key. The CA signs it and produces the
+  certificate.
+- The **type** given to `sign-req` (`server`, `client`, defined in `x509-types/`) sets the
+  extensions: *extendedKeyUsage* `serverAuth` or `clientAuth`, *keyUsage*. This is what
+  `remote-cert-tls server` checks.
+- The **Common Name** of a client is its identity for OpenVPN: name of the `ccd/` file, column of
+  the status file, log. Each client must have its own certificate (otherwise `duplicate-cn`, to be
+  avoided).
+- **Revocation**: `revoke` then `gen-crl`; the server loads the list with `crl-verify crl.pem` and
+  refuses the certificates listed in it. The file is read again at every connection if its
+  timestamp has changed: the new CRL must be **copied** to the server at every revocation, without
+  restarting OpenVPN. With `user nobody`, the file must stay readable by that user (mode `644`). A
+  session already open is only cut at the next TLS renegotiation (`reneg-sec`, 1 h) or when the
+  server restarts.
+
+Files to transfer: to the **server** `ca.crt`, `srv.crt`, `srv.key`, `ta.key` (and later
+`crl.pem`); to each **client** `ca.crt`, `NAME.crt`, `NAME.key`, `ta.key`. In real life these files
+travel over a safe channel (`scp`, USB stick); in this lab, the `/shared` directory is mounted in
+every machine and serves as a mailbox (`cp pki/ca.crt /shared/`, then `cp /shared/ca.crt
+/etc/openvpn/server/` on the other machine).
+""",
+    "Fichiers de configuration et systemd": "Configuration files and systemd",
+    """
+
+Le paquet Debian `openvpn` fournit des **unités modèles** systemd : le nom après `@` désigne le
+fichier de configuration.
+
+| fichier | unité | répertoire de travail |
+|---------|-------|-----------------------|
+| `/etc/openvpn/server/NOM.conf` | `openvpn-server@NOM` | `/etc/openvpn/server` |
+| `/etc/openvpn/client/NOM.conf` | `openvpn-client@NOM` | `/etc/openvpn/client` |
+| `/etc/openvpn/NOM.conf` (ancien) | `openvpn@NOM` | `/etc/openvpn` |
+
+Les chemins relatifs d'une configuration (`ca ca.crt`, `cert srv.crt`) sont donc lus dans le
+répertoire de l'unité. L'unité `openvpn-server@` ajoute
+`--status /run/openvpn-server/status-NOM.log --status-version 2` : le **fichier d'état** du
+serveur, réécrit chaque minute (ou toutes les *n* secondes avec une directive `status … n`), liste
+les clients connectés (`CLIENT_LIST`, CN, adresse réelle, adresse VPN, octets) et la table de
+routage interne (`ROUTING_TABLE`, adresse ou réseau → client).
+
+```
+systemctl start openvpn-server@server      # démarre /etc/openvpn/server/server.conf
+systemctl enable --now openvpn-client@nomade   # démarre et active au démarrage
+systemctl status openvpn-server@server
+journalctl -u openvpn-server@server -f     # le journal (verb 3 : connexions, erreurs)
+systemctl restart openvpn-server@server    # après toute modification de la configuration
+cat /run/openvpn-server/status-server.log  # clients connectés
+openvpn --config server.conf               # à la main, au premier plan, pour voir les erreurs
+```
+
+Les unités tournent sous `root` puis passent à `user nobody` / `group nogroup` si la configuration
+le demande ; les options `persist-key` et `persist-tun` évitent qu'OpenVPN ait besoin de
+privilèges lors d'une renégociation ou d'un redémarrage interne (`SIGUSR1`). Une **interface de
+gestion** (`management 127.0.0.1 7505`) permet d'interroger le processus (`status`, `kill NOM`)
+avec `telnet` ou `nc`.
+""": """
+
+The Debian `openvpn` package ships systemd **template units**: the name after `@` designates the
+configuration file.
+
+| file | unit | working directory |
+|------|------|-------------------|
+| `/etc/openvpn/server/NAME.conf` | `openvpn-server@NAME` | `/etc/openvpn/server` |
+| `/etc/openvpn/client/NAME.conf` | `openvpn-client@NAME` | `/etc/openvpn/client` |
+| `/etc/openvpn/NAME.conf` (old) | `openvpn@NAME` | `/etc/openvpn` |
+
+The relative paths of a configuration (`ca ca.crt`, `cert srv.crt`) are therefore read in the
+directory of the unit. The `openvpn-server@` unit adds
+`--status /run/openvpn-server/status-NAME.log --status-version 2`: the **status file** of the
+server, rewritten every minute (or every *n* seconds with a `status … n` directive), lists the
+connected clients (`CLIENT_LIST`, CN, real address, VPN address, bytes) and the internal routing
+table (`ROUTING_TABLE`, address or network → client).
+
+```
+systemctl start openvpn-server@server      # starts /etc/openvpn/server/server.conf
+systemctl enable --now openvpn-client@nomade   # starts it and enables it at boot
+systemctl status openvpn-server@server
+journalctl -u openvpn-server@server -f     # the log (verb 3: connections, errors)
+systemctl restart openvpn-server@server    # after any change of the configuration
+cat /run/openvpn-server/status-server.log  # connected clients
+openvpn --config server.conf               # by hand, in the foreground, to see the errors
+```
+
+The units run as `root`, then switch to `user nobody` / `group nogroup` if the configuration asks
+for it; the `persist-key` and `persist-tun` options spare OpenVPN the need for privileges during a
+renegotiation or an internal restart (`SIGUSR1`). A **management interface**
+(`management 127.0.0.1 7505`) lets one query the process (`status`, `kill NAME`) with `telnet` or
+`nc`.
+""",
+    "Routage : atteindre les réseaux derrière le tunnel": "Routing: reaching the networks behind the tunnel",
+    """
+
+Un tunnel monté ne transporte que ce que les **routes** y envoient, dans les deux sens.
+
+**Du client vers un réseau derrière le serveur** (`lana`) : le serveur pousse la route
+(`push "route RÉSEAU MASQUE"`) ; le client l'installe vers `tun0`. Le serveur doit **router** entre
+`tun0` et son LAN : `sysctl -w net.ipv4.ip_forward=1` (persistant dans `/etc/sysctl.d/`). Puis le
+**chemin du retour** : les machines du LAN doivent savoir joindre le réseau du VPN — soit parce que
+le serveur VPN est leur routeur par défaut, soit par une route statique (`ip route add VPN via
+SERVEUR`), soit parce que le serveur fait du **NAT** (les machines du LAN voient alors l'adresse
+LAN du serveur et non celle du client).
+
+**Site à site** : la passerelle du site B est un client comme un autre, mais un réseau entier
+(`lanb`) se trouve derrière elle. Le serveur doit l'apprendre deux fois :
+
+- `iroute lanb MASQUE` dans `ccd/siteb` : OpenVPN sait que les paquets pour `lanb` partent vers
+  **ce** client (routage interne, entre les clients) ;
+- `route lanb MASQUE` dans `server.conf` : le **noyau** du serveur envoie les paquets pour `lanb`
+  dans `tun0` (sinon ils suivent la route par défaut).
+
+Pour que les autres clients joignent `lanb`, on leur pousse la route (`push "route lanb …"`) ;
+pousser cette route **à la passerelle de B elle-même** lui donnerait une route vers son propre
+LAN par le tunnel : on la pousse donc par client, dans `ccd/nomade`. La passerelle B route
+(`ip_forward`) et les machines de `lanb` l'ont pour routeur par défaut ; le serveur route entre
+ses clients grâce à `ip_forward` (ou `client-to-client`).
+
+**Tunnel complet** (*full tunnel*) : `push "redirect-gateway def1"` fait passer **tout** le
+trafic du client par le VPN. Le client ajoute une route hôte vers l'adresse publique du serveur
+par son ancienne passerelle (le tunnel lui-même doit rester joignable), puis deux routes
+`0.0.0.0/1` et `128.0.0.0/1` vers le VPN : elles sont plus précises que la route par défaut
+`0.0.0.0/0`, qui reste en place (`def1`) et sera retrouvée intacte à la fermeture du tunnel. Pour
+sortir sur Internet, le serveur doit faire du **NAT** : la source des paquets venant du VPN devient
+son adresse publique (`nft add rule ip nat postrouting ip saddr VPN oifname eth0 masquerade`),
+sinon les réponses d'Internet, adressées à `10.8.0.x`, ne reviendraient jamais. L'inverse,
+*split tunnel*, ne fait passer par le VPN que les réseaux poussés.
+
+Le DNS suit la même logique : `push "dhcp-option DNS ADRESSE"` ; sous Linux un script
+(`update-resolv-conf` fourni dans `/etc/openvpn/`, ou `update-systemd-resolved`) l'applique avec
+`script-security 2`.
+""": """
+
+A tunnel that is up only carries what the **routes** send into it, in both directions.
+
+**From the client to a network behind the server** (`lana`): the server pushes the route
+(`push "route NETWORK MASK"`); the client installs it through `tun0`. The server must **route**
+between `tun0` and its LAN: `sysctl -w net.ipv4.ip_forward=1` (persistent in `/etc/sysctl.d/`).
+Then the **return path**: the machines of the LAN must know how to reach the network of the VPN —
+either because the VPN server is their default router, or through a static route (`ip route add VPN
+via SERVER`), or because the server does **NAT** (the machines of the LAN then see the LAN address
+of the server and not that of the client).
+
+**Site to site**: the site B gateway is a client like any other, but a whole network (`lanb`) lies
+behind it. The server must learn it twice:
+
+- `iroute lanb MASK` in `ccd/siteb`: OpenVPN knows that the packets for `lanb` go to **this**
+  client (internal routing, between the clients);
+- `route lanb MASK` in `server.conf`: the **kernel** of the server sends the packets for `lanb`
+  into `tun0` (otherwise they follow the default route).
+
+For the other clients to reach `lanb`, the route is pushed to them (`push "route lanb …"`);
+pushing that route **to the B gateway itself** would give it a route to its own LAN through the
+tunnel: it is therefore pushed per client, in `ccd/nomade`. The B gateway routes (`ip_forward`)
+and the machines of `lanb` have it as their default router; the server routes between its clients
+thanks to `ip_forward` (or `client-to-client`).
+
+**Full tunnel**: `push "redirect-gateway def1"` sends **all** the traffic of the client through the
+VPN. The client adds a host route to the public address of the server through its old gateway (the
+tunnel itself must stay reachable), then two routes `0.0.0.0/1` and `128.0.0.0/1` to the VPN: they
+are more specific than the default route `0.0.0.0/0`, which stays in place (`def1`) and is found
+intact when the tunnel closes. To go out to the Internet, the server must do **NAT**: the source of
+the packets coming from the VPN becomes its public address
+(`nft add rule ip nat postrouting ip saddr VPN oifname eth0 masquerade`), otherwise the replies from
+the Internet, addressed to `10.8.0.x`, would never come back. The opposite, the *split tunnel*,
+sends only the pushed networks through the VPN.
+
+DNS follows the same logic: `push "dhcp-option DNS ADDRESS"`; on Linux a script
+(`update-resolv-conf` shipped in `/etc/openvpn/`, or `update-systemd-resolved`) applies it with
+`script-security 2`.
+""",
+    "Observation et diagnostic": "Observation and troubleshooting",
+    """
+
+- **Sur le réseau public** : `tcpdump -ni eth0 udp port 1194` ne montre que des datagrammes UDP
+  entre les deux adresses publiques ; ni les adresses internes ni les protocoles transportés ne sont
+  visibles. Wireshark décode l'en-tête OpenVPN (type de paquet : `P_CONTROL`, `P_DATA_V2`…) mais pas
+  le contenu.
+- **Sur une extrémité** : `ip a show tun0` (adresse du tunnel), `ip route` (routes vers `tun0`,
+  routes `0.0.0.0/1` et `128.0.0.0/1` d'un tunnel complet), `ss -ulnp` (le serveur écoute sur
+  1194), `tcpdump -ni tun0` (le trafic **en clair** dans le tunnel).
+- **Le journal** (`journalctl -u openvpn-server@server`, ou la sortie d'`openvpn` lancé à la main) :
+
+| message | sens |
+|---------|------|
+| `Initialization Sequence Completed` | le tunnel est monté |
+| `Peer Connection Initiated with [AF_INET]A.B.C.D:port` | poignée de main TLS réussie avec ce pair |
+| `TLS Error: TLS key negotiation failed to occur within 60 seconds` | le pair ne répond pas : adresse, port, pare-feu, `ta.key` différente (`tls-crypt unwrap error`) |
+| `VERIFY ERROR: depth=0, error=unable to get local issuer certificate` | certificat signé par une autre CA |
+| `VERIFY ERROR: … error=certificate revoked` / `CRL CHECK FAILED` | certificat dans la CRL |
+| `VERIFY ERROR: … remote-cert-tls` / `Certificate does not have key usage extension` | le pair n'a pas un certificat de serveur |
+| `Options error: …` | erreur de syntaxe ou fichier introuvable dans la configuration |
+| `Cannot ioctl TUNSETIFF tun: Operation not permitted` | pas de droit sur `/dev/net/tun` |
+| `AUTH_FAILED` | mot de passe refusé (`auth-user-pass`) |
+
+Causes classiques d'échec : horloge d'une machine fausse (certificat « pas encore valide »),
+fichiers de clés illisibles après le passage à `user nobody` (CRL, scripts), pare-feu bloquant
+UDP 1194, routage asymétrique (chemin du retour oublié), MTU (grands paquets perdus : `ping -s 1400
+-M do`, baisser `tun-mtu` ou utiliser `mssfix`).
+""": """
+
+- **On the public network**: `tcpdump -ni eth0 udp port 1194` shows only UDP datagrams between the
+  two public addresses; neither the inner addresses nor the carried protocols are visible.
+  Wireshark decodes the OpenVPN header (packet type: `P_CONTROL`, `P_DATA_V2`…) but not the
+  content.
+- **On an end point**: `ip a show tun0` (address of the tunnel), `ip route` (routes through `tun0`,
+  routes `0.0.0.0/1` and `128.0.0.0/1` of a full tunnel), `ss -ulnp` (the server listens on 1194),
+  `tcpdump -ni tun0` (the traffic **in the clear** inside the tunnel).
+- **The log** (`journalctl -u openvpn-server@server`, or the output of `openvpn` started by hand):
+
+| message | meaning |
+|---------|---------|
+| `Initialization Sequence Completed` | the tunnel is up |
+| `Peer Connection Initiated with [AF_INET]A.B.C.D:port` | TLS handshake successful with this peer |
+| `TLS Error: TLS key negotiation failed to occur within 60 seconds` | the peer does not answer: address, port, firewall, different `ta.key` (`tls-crypt unwrap error`) |
+| `VERIFY ERROR: depth=0, error=unable to get local issuer certificate` | certificate signed by another CA |
+| `VERIFY ERROR: … error=certificate revoked` / `CRL CHECK FAILED` | certificate in the CRL |
+| `VERIFY ERROR: … remote-cert-tls` / `Certificate does not have key usage extension` | the peer does not have a server certificate |
+| `Options error: …` | syntax error or file not found in the configuration |
+| `Cannot ioctl TUNSETIFF tun: Operation not permitted` | no permission on `/dev/net/tun` |
+| `AUTH_FAILED` | password refused (`auth-user-pass`) |
+
+Classic causes of failure: the wrong clock on a machine (certificate "not yet valid"), key files
+unreadable after the switch to `user nobody` (CRL, scripts), a firewall blocking UDP 1194,
+asymmetric routing (return path forgotten), MTU (large packets lost: `ping -s 1400 -M do`, lower
+`tun-mtu` or use `mssfix`).
+""",
+    "Sécurité": "Security",
+    """
+
+- **Authentification forte** : certificats par machine ou par utilisateur, jamais partagés ;
+  `remote-cert-tls server` côté client ; `verify-x509-name` pour épingler le nom du serveur ;
+  éventuellement `auth-user-pass` (mot de passe vérifié par un greffon PAM/LDAP) ou un second
+  facteur (`static-challenge`), en plus du certificat.
+- **Canal de contrôle protégé** : `tls-crypt` (ou `tls-auth`), `tls-version-min 1.2`,
+  renégociation périodique (`reneg-sec`), `tls-cert-profile preferred`.
+- **Données** : laisser OpenVPN négocier `data-ciphers` (AES-GCM, ChaCha20-Poly1305) ; ne jamais
+  activer la **compression** (`comp-lzo`, `compress` : attaque VORACLE, retirée par défaut).
+- **Moindre privilège** : `user nobody`, `group nogroup`, `persist-key`, `persist-tun`, voire
+  `chroot` ; clés privées en mode `600` ; la clé de la CA hors ligne et protégée par mot de passe.
+- **Révocation** opérationnelle : CRL tenue à jour et distribuée (`crl-verify`), certificats de
+  durée limitée (`EASYRSA_CERT_EXPIRE`), ou renouvellement automatique.
+- **Périmètre** : le serveur VPN est une porte d'entrée dans le réseau : pare-feu sur `tun0`
+  (quels clients atteignent quels services), journalisation (`status`, `verb`), pas de
+  `client-to-client` sans raison, `duplicate-cn` interdit.
+- **Comparaison** : WireGuard est plus simple et plus rapide (noyau) mais sans PKI ni TCP ni
+  authentification par mot de passe ; IPsec est le standard des équipements réseau ; OpenVPN reste
+  le plus souple (TCP 443, proxy HTTP, authentifications variées, un seul port).
+""": """
+
+- **Strong authentication**: certificates per machine or per user, never shared;
+  `remote-cert-tls server` on the client side; `verify-x509-name` to pin the name of the server;
+  possibly `auth-user-pass` (password checked by a PAM/LDAP plugin) or a second factor
+  (`static-challenge`), on top of the certificate.
+- **Protected control channel**: `tls-crypt` (or `tls-auth`), `tls-version-min 1.2`, periodic
+  renegotiation (`reneg-sec`), `tls-cert-profile preferred`.
+- **Data**: let OpenVPN negotiate `data-ciphers` (AES-GCM, ChaCha20-Poly1305); never enable
+  **compression** (`comp-lzo`, `compress`: VORACLE attack, removed by default).
+- **Least privilege**: `user nobody`, `group nogroup`, `persist-key`, `persist-tun`, even `chroot`;
+  private keys in mode `600`; the key of the CA offline and protected by a password.
+- Operational **revocation**: a CRL kept up to date and distributed (`crl-verify`), certificates of
+  limited lifetime (`EASYRSA_CERT_EXPIRE`), or automatic renewal.
+- **Perimeter**: the VPN server is a way into the network: a firewall on `tun0` (which clients
+  reach which services), logging (`status`, `verb`), no `client-to-client` without a reason,
+  `duplicate-cn` forbidden.
+- **Comparison**: WireGuard is simpler and faster (kernel) but has no PKI, no TCP and no password
+  authentication; IPsec is the standard of network equipment; OpenVPN remains the most flexible
+  (TCP 443, HTTP proxy, varied authentication methods, a single port).
+""",
+    "Organisation du TP": "Lab organisation",
+    """
+Lisez l'onglet **Informations** : il présente les VPN, OpenVPN (tunnel, canaux, modes), la PKI
+easy-rsa, les unités systemd, le routage et le diagnostic.
+
+Ce TP met en place des tunnels **OpenVPN** 2.6 entre trois sites reliés par un réseau `wan` qui
+joue le rôle d'Internet : le **site A** (serveur VPN `srv`, autorité de certification `ca`,
+serveur interne `m1`), le **site B** (passerelle `gwb`, machine `m2`) et un poste **nomade**.
+Le routeur `inet` (le fournisseur d'accès) est le routeur par défaut du `wan` ; derrière lui, le
+réseau `internet` représente le reste d'Internet avec le serveur web `web`.
+""": """
+Read the **Informations** tab: it presents VPNs, OpenVPN (tunnel, channels, modes), the easy-rsa
+PKI, the systemd units, routing and troubleshooting.
+
+This lab sets up **OpenVPN** 2.6 tunnels between three sites linked by a `wan` network that plays
+the role of the Internet: **site A** (VPN server `srv`, certificate authority `ca`, internal server
+`m1`), **site B** (gateway `gwb`, machine `m2`) and a **roaming** host, `nomade`. The router `inet`
+(the Internet service provider) is the default router of the `wan`; behind it, the `internet`
+network stands for the rest of the Internet, with the web server `web`.
+""",
+    """
+Déjà en place (ne pas modifier) : adresses, routes par défaut, `/etc/hosts` (les noms `srv_wan`,
+`srv_lana`, `gwb_wan`, `gwb_lanb`, `nomade`, `inet_wan`, `inet_internet`, `web`, `ca`, `m1`, `m2`),
+les serveurs web de `m1`, `m2` et `web` (la page `/` affiche l'adresse du client telle que le
+serveur la voit, `/secret.txt` une phrase). Il n'y a **pas de DNS**. `srv`, `gwb` et `nomade` tournent avec systemd (`systemctl`,
+`journalctl`) ; `/shared` est un répertoire commun à toutes les machines pour échanger des fichiers.
+
+**Plan du TP.**
+
+1. **Premier tunnel** point à point entre `srv` et `gwb`, authentifié par empreintes
+   (`peer-fingerprint`), sans CA ;
+2. **PKI** avec easy-rsa sur `ca` : autorité, certificat de serveur, certificats de clients,
+   clé `tls-crypt` ;
+3. **Serveur d'accès distant** sur `srv` et client `nomade` ;
+4. **Accès au LAN** du site A depuis le nomade (`push route`, forwarding) ;
+5. **Site à site** : `gwb` client du serveur, `iroute`, `lanb` ↔ `lana` ;
+6. **Tunnel complet** pour le nomade (`redirect-gateway def1`) et NAT sur `srv` ;
+7. **Révocation** d'un certificat (CRL).
+
+Règles valables pour tout le TP :
+
+- les parties sont à faire **dans l'ordre** ;
+- les fichiers sont attendus aux emplacements indiqués (`/root/easy-rsa` sur `ca`,
+  `/etc/openvpn/server/` sur `srv`, `/etc/openvpn/client/` sur `gwb` et `nomade`) et les tunnels
+  sont lancés par les unités systemd `openvpn-server@NOM` / `openvpn-client@NOM` ;
+- la configuration d'une partie terminée **reste en place** : à la fin, les trois tunnels sont
+  montés en même temps ;
+- l'évaluation observe les tunnels tels qu'ils tournent au moment où elle est lancée (fichiers
+  d'état, `ping` à travers les tunnels, trafic sur le `wan`) : relancez un service arrêté pour un
+  essai. Les valeurs ci-dessous sont propres à votre instance et doivent être utilisées telles
+  quelles.
+""": """
+Already in place (do not modify): addresses, default routes, `/etc/hosts` (the names `srv_wan`,
+`srv_lana`, `gwb_wan`, `gwb_lanb`, `nomade`, `inet_wan`, `inet_internet`, `web`, `ca`, `m1`, `m2`),
+the web servers of `m1`, `m2` and `web` (the page `/` shows the address of the client as the
+server sees it, `/secret.txt` a sentence). There is **no DNS**. `srv`, `gwb` and `nomade` run systemd (`systemctl`,
+`journalctl`); `/shared` is a directory common to every machine, for exchanging files.
+
+**Lab plan.**
+
+1. **First tunnel**, point to point between `srv` and `gwb`, authenticated by fingerprints
+   (`peer-fingerprint`), without a CA;
+2. **PKI** with easy-rsa on `ca`: authority, server certificate, client certificates, `tls-crypt`
+   key;
+3. **Remote access server** on `srv` and client `nomade`;
+4. **Access to the LAN** of site A from `nomade` (`push route`, forwarding);
+5. **Site to site**: `gwb` client of the server, `iroute`, `lanb` ↔ `lana`;
+6. **Full tunnel** for `nomade` (`redirect-gateway def1`) and NAT on `srv`;
+7. **Revocation** of a certificate (CRL).
+
+Rules for the whole lab:
+
+- the parts are to be done **in order**;
+- the files are expected at the given locations (`/root/easy-rsa` on `ca`,
+  `/etc/openvpn/server/` on `srv`, `/etc/openvpn/client/` on `gwb` and `nomade`) and the tunnels
+  are started by the systemd units `openvpn-server@NAME` / `openvpn-client@NAME`;
+- the configuration of a finished part **stays in place**: at the end, the three tunnels are up
+  at the same time;
+- the evaluation observes the tunnels as they run when it is started (status files, `ping`
+  through the tunnels, traffic on the `wan`): restart a service you stopped for a test. The values
+  below are specific to your instance and must be used as they are.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
+projet ; les fichiers de configuration complets y figurent.
+
+- L'état `final` (onglet *Appliquer une configuration*) applique toute la solution et remplit les
+  formulaires : PKI easy-rsa en mode batch sur `ca`, certificats auto-signés du tunnel point à
+  point, tous les fichiers de configuration, forwarding, NAT, unités systemd ; il attend ensuite
+  (jusqu'à une minute) que `nomade` et `siteb` apparaissent dans le fichier d'état du serveur.
+- L'évaluation lit les fichiers de configuration (directives, pas la forme), le fichier d'état
+  `/run/openvpn-server/status-server.log`, les interfaces et routes de `srv`, `gwb` et `nomade`,
+  puis fait des `ping` et des `curl` **à travers les tunnels** (de `nomade`, `m1`, `m2`) pendant
+  que la machine cachée `sonde`, sur le `wan`, capture le trafic : on vérifie que le trafic du
+  nomade n'apparaît qu'en UDP 1194 et que ses requêtes web sortent avec l'adresse publique de `srv`.
+- La sonde se connecte ensuite au serveur comme un client, avec un certificat signé **au vol** par la
+  CA de l'étudiant (hors base easy-rsa, série fixe) et la `ta.key` du serveur, puis avec le
+  certificat révoqué `ancien` : la première connexion doit réussir, la seconde échouer. Ces tentatives
+  apparaissent dans le journal du serveur de l'étudiant (CN `sre-sonde` et `ancien`).
+- Une évaluation dure environ une minute (captures, deux connexions de sonde de 15 s).
+""": """
+**For the instructor.** Each question ends with its solution, computed for the addresses of this
+project; the complete configuration files are included.
+
+- The `final` state (*Apply Configuration* tab) applies the whole solution and fills in the forms:
+  easy-rsa PKI in batch mode on `ca`, self-signed certificates of the point-to-point tunnel, every
+  configuration file, forwarding, NAT, systemd units; it then waits (up to a minute) for `nomade`
+  and `siteb` to appear in the status file of the server.
+- The evaluation reads the configuration files (the directives, not their layout), the status file
+  `/run/openvpn-server/status-server.log`, the interfaces and routes of `srv`, `gwb` and `nomade`,
+  then runs `ping` and `curl` **through the tunnels** (from `nomade`, `m1`, `m2`) while the hidden
+  machine `sonde`, on the `wan`, captures the traffic: it checks that the traffic of `nomade`
+  appears only as UDP 1194 and that its web requests leave with the public address of `srv`.
+- The probe then connects to the server as a client, with a certificate signed **on the fly** by
+  the student's CA (outside the easy-rsa database, fixed serial) and the server's `ta.key`, then
+  with the revoked certificate `ancien`: the first connection must succeed, the second fail. These
+  attempts appear in the log of the student's server (CN `sre-sonde` and `ancien`).
+- An evaluation lasts about a minute (captures, two probe connections of 15 s).
+""",
+    "Partie 1 — Premier tunnel point à point (peer-fingerprint)": "Part 1 — First point-to-point tunnel (peer-fingerprint)",
+    "Tunnel point à point entre srv et gwb": "Point-to-point tunnel between srv and gwb",
+    """
+Premier tunnel, sans autorité de certification : chaque pair a un certificat **auto-signé** et
+connaît l'**empreinte** de celui de l'autre (`peer-fingerprint`, OpenVPN ≥ 2.6).
+
+**1.** Sur `srv`, dans `/etc/openvpn/server/`, créez une clé et un certificat auto-signé (courbe
+elliptique, 10 ans) :
+
+```
+cd /etc/openvpn/server
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -nodes -sha256 -days 3650 \\
+        -subj /CN=srv -keyout p2p.key -out p2p.crt
+openssl x509 -in p2p.crt -noout -fingerprint -sha256
+```
+
+Faites de même sur `gwb` dans `/etc/openvpn/client/` (CN `gwb`). Échangez les **empreintes**
+(pas les clés !), par exemple par `/shared`.
+
+**2.** Sur `srv`, écrivez `/etc/openvpn/server/p2p.conf` : `dev tun`, `port {p2p_port}`, `proto udp`,
+`ifconfig {p2p_srv} {p2p_gwb}`, `tls-server`, `dh none`, `cert p2p.crt`, `key p2p.key`,
+`peer-fingerprint EMPREINTE_DE_GWB`, `keepalive 10 60`, `verb 3` ; démarrez-le avec
+`systemctl start openvpn-server@p2p` et lisez `journalctl -u openvpn-server@p2p`.
+
+**3.** Sur `gwb`, écrivez `/etc/openvpn/client/p2p.conf` : `dev tun`, `proto udp`,
+`remote {srv_wan} {p2p_port}`, `nobind`, `ifconfig {p2p_gwb} {p2p_srv}`, `tls-client`,
+`cert p2p.crt`, `key p2p.key`, `peer-fingerprint EMPREINTE_DE_SRV`, `keepalive 10 60`,
+`verb 3` ; démarrez `openvpn-client@p2p`.
+
+**4.** Vérifiez : `ip a show tun0` des deux côtés, `ping {p2p_srv}` depuis `gwb`. Lancez
+`tcpdump -ni eth0 udp` sur `gwb` pendant un `ping` et observez.
+""": """
+First tunnel, without a certificate authority: each peer has a **self-signed** certificate and
+knows the **fingerprint** of the other's (`peer-fingerprint`, OpenVPN ≥ 2.6).
+
+**1.** On `srv`, in `/etc/openvpn/server/`, create a key and a self-signed certificate (elliptic
+curve, 10 years):
+
+```
+cd /etc/openvpn/server
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -nodes -sha256 -days 3650 \\
+        -subj /CN=srv -keyout p2p.key -out p2p.crt
+openssl x509 -in p2p.crt -noout -fingerprint -sha256
+```
+
+Do the same on `gwb` in `/etc/openvpn/client/` (CN `gwb`). Exchange the **fingerprints** (not the
+keys!), for example through `/shared`.
+
+**2.** On `srv`, write `/etc/openvpn/server/p2p.conf`: `dev tun`, `port {p2p_port}`, `proto udp`,
+`ifconfig {p2p_srv} {p2p_gwb}`, `tls-server`, `dh none`, `cert p2p.crt`, `key p2p.key`,
+`peer-fingerprint GWB_FINGERPRINT`, `keepalive 10 60`, `verb 3`; start it with
+`systemctl start openvpn-server@p2p` and read `journalctl -u openvpn-server@p2p`.
+
+**3.** On `gwb`, write `/etc/openvpn/client/p2p.conf`: `dev tun`, `proto udp`,
+`remote {srv_wan} {p2p_port}`, `nobind`, `ifconfig {p2p_gwb} {p2p_srv}`, `tls-client`,
+`cert p2p.crt`, `key p2p.key`, `peer-fingerprint SRV_FINGERPRINT`, `keepalive 10 60`,
+`verb 3`; start `openvpn-client@p2p`.
+
+**4.** Check: `ip a show tun0` on both sides, `ping {p2p_srv}` from `gwb`. Run
+`tcpdump -ni eth0 udp` on `gwb` during a `ping` and observe.
+""",
+    """
+- protocole et port vus sur le `wan` pendant le `ping` : @@{proto:>UDP|TCP|ICMP|GRE}@@ @@{port:[0-9]+}@@
+- le `ping` (ICMP) est-il visible en clair sur le `wan` ? @@{icmp_wan:>non, il est chiffré dans les datagrammes UDP|oui, entre les deux adresses du tunnel|oui, entre les deux adresses publiques}@@
+- ce qui authentifie le pair ici : @@{auth:>l'empreinte SHA-256 de son certificat|une autorité de certification commune|une clé statique partagée|son adresse IP}@@
+- une interface `tun` transporte : @@{tun:>des paquets IP (niveau 3)|des trames Ethernet (niveau 2)|des datagrammes UDP}@@
+""": """
+- protocol and port seen on the `wan` during the `ping`: @@{proto:>UDP|TCP|ICMP|GRE}@@ @@{port:[0-9]+}@@
+- is the `ping` (ICMP) visible in the clear on the `wan`? @@{icmp_wan:>no, it is encrypted inside the UDP datagrams>>>non, il est chiffré dans les datagrammes UDP|yes, between the two addresses of the tunnel>>>oui, entre les deux adresses du tunnel|yes, between the two public addresses>>>oui, entre les deux adresses publiques}@@
+- what authenticates the peer here: @@{auth:>the SHA-256 fingerprint of its certificate>>>l'empreinte SHA-256 de son certificat|a common certificate authority>>>une autorité de certification commune|a shared static key>>>une clé statique partagée|its IP address>>>son adresse IP}@@
+- a `tun` interface carries: @@{tun:>IP packets (layer 3)>>>des paquets IP (niveau 3)|Ethernet frames (layer 2)>>>des trames Ethernet (niveau 2)|UDP datagrams>>>des datagrammes UDP}@@
+""",
+    """
+**Solution.** `/etc/openvpn/server/p2p.conf` sur `srv` :
+
+```
+{conf_srv}```
+
+`/etc/openvpn/client/p2p.conf` sur `gwb` :
+
+```
+{conf_gwb}```
+
+- L'empreinte se lit avec `openssl x509 -in p2p.crt -noout -fingerprint -sha256` (après le `=`) ;
+  OpenVPN l'accepte avec ou sans les deux-points.
+- Sur le `wan`, on ne voit que des datagrammes **UDP {p2p_port}** entre `{srv_wan}` et `{gwb_wan}` : le
+  `ping` ({p2p_gwb} → {p2p_srv}) est chiffré dedans. `tcpdump -ni tun0` sur une extrémité montre l'ICMP en clair.
+- L'évaluation lit les deux fichiers (`peer-fingerprint` = empreinte du certificat de l'autre), vérifie
+  que `srv` écoute en UDP {p2p_port}, les adresses des interfaces `tun` et un `ping` dans chaque sens.
+- Réponses : {proto} {port} ; {icmp_wan} ; {auth} ; {tun}.
+""": """
+**Solution.** `/etc/openvpn/server/p2p.conf` on `srv`:
+
+```
+{conf_srv}```
+
+`/etc/openvpn/client/p2p.conf` on `gwb`:
+
+```
+{conf_gwb}```
+
+- The fingerprint is read with `openssl x509 -in p2p.crt -noout -fingerprint -sha256` (after the
+  `=`); OpenVPN accepts it with or without the colons.
+- On the `wan`, only **UDP {p2p_port}** datagrams between `{srv_wan}` and `{gwb_wan}` are seen: the
+  `ping` ({p2p_gwb} → {p2p_srv}) is encrypted inside them. `tcpdump -ni tun0` on one end shows the ICMP in the clear.
+- The evaluation reads both files (`peer-fingerprint` = fingerprint of the other's certificate),
+  checks that `srv` listens on UDP {p2p_port}, the addresses of the `tun` interfaces and a `ping` in each direction.
+- Answers: {proto} {port}; {icmp_wan}; {auth}; {tun}.
+""",
+    "certificat auto-signé et clé p2p.crt / p2p.key sur srv et sur gwb": "self-signed certificate and key p2p.crt / p2p.key on srv and on gwb",
+    "chaque p2p.conf porte l'empreinte SHA-256 du certificat de l'autre pair": "each p2p.conf holds the SHA-256 fingerprint of the other peer's certificate",
+    "openvpn écoute en UDP {port} sur srv (openvpn-server@p2p)": "openvpn listens on UDP {port} on srv (openvpn-server@p2p)",
+    "une interface tun porte l'adresse du tunnel sur srv et sur gwb": "a tun interface holds the address of the tunnel on srv and on gwb",
+    "ping à travers le tunnel point à point dans les deux sens": "ping through the point-to-point tunnel in both directions",
+    "observation du tunnel sur le wan, empreintes, interface tun": "observation of the tunnel on the wan, fingerprints, tun interface",
+    "Partie 2 — Autorité de certification avec easy-rsa": "Part 2 — Certificate authority with easy-rsa",
+    "Création de la PKI sur ca": "Creating the PKI on ca",
+    """
+Les empreintes ne passent pas à l'échelle : au-delà de deux pairs, une **autorité de
+certification** signe les certificats de tous. Sur la machine **`ca`**, en `root` :
+
+1. `make-cadir /root/easy-rsa` puis `cd /root/easy-rsa` ; regardez le contenu (`ls -l`,
+   `less vars`) et initialisez la PKI : `./easyrsa init-pki`.
+2. Créez l'autorité : `./easyrsa build-ca` — mot de passe de la clé privée **`{passphrase}`**,
+   Common Name **`{ca_cn}`**. Lisez `pki/ca.crt` avec `openssl x509 -in pki/ca.crt -noout -text`
+   (émetteur, sujet, `CA:TRUE`, validité).
+3. Créez la clé et le certificat du **serveur** `srv` (sans mot de passe) : `./easyrsa gen-req srv
+   nopass` puis `./easyrsa sign-req server srv` (ou le raccourci `./easyrsa build-server-full srv
+   nopass`). Comparez les extensions de `pki/issued/srv.crt` et de `pki/ca.crt`
+   (`openssl x509 -in … -noout -ext extendedKeyUsage,basicConstraints`).
+4. Créez les certificats des **clients** `nomade`, `siteb` et `ancien` (`gen-req … nopass` +
+   `sign-req client …`, ou `build-client-full … nopass`). Lisez `pki/index.txt`.
+5. Créez la clé partagée du canal de contrôle : `openvpn --genkey tls-crypt /root/easy-rsa/ta.key`.
+6. Transférez sur `srv`, dans `/etc/openvpn/server/` : `ca.crt`, `srv.crt`, `srv.key` et `ta.key`
+   (par `/shared` ; les clés en mode `600`).
+""": """
+Fingerprints do not scale: beyond two peers, a **certificate authority** signs everyone's
+certificates. On the **`ca`** machine, as `root`:
+
+1. `make-cadir /root/easy-rsa` then `cd /root/easy-rsa`; look at the contents (`ls -l`,
+   `less vars`) and initialise the PKI: `./easyrsa init-pki`.
+2. Create the authority: `./easyrsa build-ca` — password of the private key **`{passphrase}`**,
+   Common Name **`{ca_cn}`**. Read `pki/ca.crt` with `openssl x509 -in pki/ca.crt -noout -text`
+   (issuer, subject, `CA:TRUE`, validity).
+3. Create the key and the certificate of the **server** `srv` (without a password): `./easyrsa gen-req srv
+   nopass` then `./easyrsa sign-req server srv` (or the shortcut `./easyrsa build-server-full srv
+   nopass`). Compare the extensions of `pki/issued/srv.crt` and of `pki/ca.crt`
+   (`openssl x509 -in … -noout -ext extendedKeyUsage,basicConstraints`).
+4. Create the certificates of the **clients** `nomade`, `siteb` and `ancien` (`gen-req … nopass` +
+   `sign-req client …`, or `build-client-full … nopass`). Read `pki/index.txt`.
+5. Create the shared key of the control channel: `openvpn --genkey tls-crypt /root/easy-rsa/ta.key`.
+6. Transfer to `srv`, into `/etc/openvpn/server/`: `ca.crt`, `srv.crt`, `srv.key` and `ta.key`
+   (through `/shared`; the keys in mode `600`).
+""",
+    """
+- le fichier qui ne doit **jamais** quitter `ca` : @@{stays:>pki/private/ca.key|pki/ca.crt|pki/issued/srv.crt|ta.key}@@
+- ce que `sign-req server` ajoute au certificat par rapport à `sign-req client` :
+  @@{type:>l'extension extendedKeyUsage = TLS Web Server Authentication|une durée de validité plus longue|une clé RSA plus grande|le mot de passe du serveur}@@
+- une demande de signature (`pki/reqs/srv.req`) contient : @@{csr:>la clé publique et l'identité (CN) du demandeur|la clé privée et la clé publique du demandeur|le certificat de la CA}@@
+- le mot de passe saisi à `build-ca` protège : @@{pass:>la clé privée de la CA, demandée à chaque signature|le fichier ca.crt|les connexions des clients au serveur}@@
+""": """
+- the file that must **never** leave `ca`: @@{stays:>pki/private/ca.key|pki/ca.crt|pki/issued/srv.crt|ta.key}@@
+- what `sign-req server` adds to the certificate compared with `sign-req client`:
+  @@{type:>the extendedKeyUsage = TLS Web Server Authentication extension>>>l'extension extendedKeyUsage = TLS Web Server Authentication|a longer validity period>>>une durée de validité plus longue|a larger RSA key>>>une clé RSA plus grande|the password of the server>>>le mot de passe du serveur}@@
+- a signing request (`pki/reqs/srv.req`) contains: @@{csr:>the public key and the identity (CN) of the requester>>>la clé publique et l'identité (CN) du demandeur|the private key and the public key of the requester>>>la clé privée et la clé publique du demandeur|the certificate of the CA>>>le certificat de la CA}@@
+- the password typed at `build-ca` protects: @@{pass:>the private key of the CA, asked at every signature>>>la clé privée de la CA, demandée à chaque signature|the ca.crt file>>>le fichier ca.crt|the connections of the clients to the server>>>les connexions des clients au serveur}@@
+""",
+    """
+**Solution.** Sur `ca` (les mêmes commandes, sans interaction, sont celles de l'état `final`) :
+
+```
+make-cadir /root/easy-rsa && cd /root/easy-rsa
+./easyrsa init-pki
+./easyrsa build-ca                         # mot de passe {passphrase}, CN {ca_cn}
+./easyrsa build-server-full srv nopass     # = gen-req srv nopass + sign-req server srv
+./easyrsa build-client-full nomade nopass
+./easyrsa build-client-full siteb nopass
+./easyrsa build-client-full ancien nopass
+openvpn --genkey tls-crypt ta.key
+cp pki/ca.crt pki/issued/srv.crt pki/private/srv.key ta.key /shared/
+```
+
+puis sur `srv` : `cp /shared/ca.crt /shared/srv.crt /shared/srv.key /shared/ta.key /etc/openvpn/server/`
+et `chmod 600 /etc/openvpn/server/srv.key /etc/openvpn/server/ta.key`.
+
+- Évalué : `pki/ca.crt` auto-signé, `CA:TRUE`, CN `{ca_cn}`, clé `pki/private/ca.key` chiffrée et
+  déchiffrable avec `{passphrase}` ; `pki/issued/srv.crt` signé par la CA, CN `srv`, *TLS Web Server
+  Authentication* ; `nomade`, `siteb`, `ancien` signés, *TLS Web Client Authentication* ; sur `srv`,
+  `ca.crt` identique à celui de la CA, `srv.key` correspond à `srv.crt`, `ta.key` est une clé OpenVPN
+  (`-----BEGIN OpenVPN Static key V1-----`), clés en mode `600`.
+- Réponses : {stays} ; {type} ; {csr} ; {pass}.
+""": """
+**Solution.** On `ca` (the same commands, without interaction, are those of the `final` state):
+
+```
+make-cadir /root/easy-rsa && cd /root/easy-rsa
+./easyrsa init-pki
+./easyrsa build-ca                         # password {passphrase}, CN {ca_cn}
+./easyrsa build-server-full srv nopass     # = gen-req srv nopass + sign-req server srv
+./easyrsa build-client-full nomade nopass
+./easyrsa build-client-full siteb nopass
+./easyrsa build-client-full ancien nopass
+openvpn --genkey tls-crypt ta.key
+cp pki/ca.crt pki/issued/srv.crt pki/private/srv.key ta.key /shared/
+```
+
+then on `srv`: `cp /shared/ca.crt /shared/srv.crt /shared/srv.key /shared/ta.key /etc/openvpn/server/`
+and `chmod 600 /etc/openvpn/server/srv.key /etc/openvpn/server/ta.key`.
+
+- Evaluated: `pki/ca.crt` self-signed, `CA:TRUE`, CN `{ca_cn}`, key `pki/private/ca.key` encrypted
+  and decryptable with `{passphrase}`; `pki/issued/srv.crt` signed by the CA, CN `srv`, *TLS Web
+  Server Authentication*; `nomade`, `siteb`, `ancien` signed, *TLS Web Client Authentication*; on
+  `srv`, `ca.crt` identical to that of the CA, `srv.key` matches `srv.crt`, `ta.key` is an OpenVPN
+  key (`-----BEGIN OpenVPN Static key V1-----`), keys in mode `600`.
+- Answers: {stays}; {type}; {csr}; {pass}.
+""",
+    "autorité : certificat auto-signé correspondant à la clé, CA:TRUE et CN {cn}, clé privée chiffrée avec le mot de passe demandé": "authority: self-signed certificate matching the key, CA:TRUE and CN {cn}, private key encrypted with the given password",
+    "certificat du serveur : CN srv, signé par la CA, type server (TLS Web Server Authentication)": "server certificate: CN srv, signed by the CA, server type (TLS Web Server Authentication)",
+    "certificats des clients nomade, siteb et ancien : signés par la CA, type client": "certificates of the clients nomade, siteb and ancien: signed by the CA, client type",
+    "clé tls-crypt ta.key (openvpn --genkey) dans /etc/openvpn/server, mode 600": "tls-crypt key ta.key (openvpn --genkey) in /etc/openvpn/server, mode 600",
+    "sur srv : ca.crt identique à celui de la CA, srv.crt et srv.key correspondants, clé en mode 600": "on srv: ca.crt identical to that of the CA, matching srv.crt and srv.key, key in mode 600",
+    "rôle des fichiers de la PKI": "role of the PKI files",
+    "Partie 3 — Serveur d'accès distant et client nomade": "Part 3 — Remote access server and roaming client",
+    "Serveur OpenVPN sur srv et client nomade": "OpenVPN server on srv and client nomade",
+    """
+**1.** Sur `srv`, écrivez `/etc/openvpn/server/server.conf` :
+
+```
+port {vpn_port}
+proto udp
+dev tun
+topology subnet
+server {vpn_addr} {vpn_mask}
+ca ca.crt
+cert srv.crt
+key srv.key
+dh none
+tls-crypt ta.key
+keepalive 10 120
+persist-key
+persist-tun
+user nobody
+group nogroup
+status /run/openvpn-server/status-server.log 10
+verb 3
+explicit-exit-notify 1
+```
+
+Démarrez-le : `systemctl enable --now openvpn-server@server`, puis `journalctl -u
+openvpn-server@server`, `ip a show tun0`, `ss -ulnp`.
+
+**2.** Depuis `ca`, transférez sur `nomade` (dans `/etc/openvpn/client/`) les fichiers `ca.crt`,
+`nomade.crt`, `nomade.key` et `ta.key`.
+
+**3.** Sur `nomade`, écrivez `/etc/openvpn/client/nomade.conf` :
+
+```
+client
+dev tun
+proto udp
+remote {srv_wan} {vpn_port}
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+ca ca.crt
+cert nomade.crt
+key nomade.key
+tls-crypt ta.key
+verb 3
+```
+
+Démarrez `openvpn-client@nomade`, lisez son journal, puis `ip a show tun0`, `ip route`,
+`ping {vpn_srv}`. Sur `srv`, lisez `/run/openvpn-server/status-server.log`.
+
+**4.** Sur `nomade`, lancez `tcpdump -ni eth0` pendant un `ping {vpn_srv}` : que voit-on ?
+Essayez aussi `tcpdump -ni tun0`.
+""": """
+**1.** On `srv`, write `/etc/openvpn/server/server.conf`:
+
+```
+port {vpn_port}
+proto udp
+dev tun
+topology subnet
+server {vpn_addr} {vpn_mask}
+ca ca.crt
+cert srv.crt
+key srv.key
+dh none
+tls-crypt ta.key
+keepalive 10 120
+persist-key
+persist-tun
+user nobody
+group nogroup
+status /run/openvpn-server/status-server.log 10
+verb 3
+explicit-exit-notify 1
+```
+
+Start it: `systemctl enable --now openvpn-server@server`, then `journalctl -u
+openvpn-server@server`, `ip a show tun0`, `ss -ulnp`.
+
+**2.** From `ca`, transfer to `nomade` (into `/etc/openvpn/client/`) the files `ca.crt`,
+`nomade.crt`, `nomade.key` and `ta.key`.
+
+**3.** On `nomade`, write `/etc/openvpn/client/nomade.conf`:
+
+```
+client
+dev tun
+proto udp
+remote {srv_wan} {vpn_port}
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+ca ca.crt
+cert nomade.crt
+key nomade.key
+tls-crypt ta.key
+verb 3
+```
+
+Start `openvpn-client@nomade`, read its log, then `ip a show tun0`, `ip route`,
+`ping {vpn_srv}`. On `srv`, read `/run/openvpn-server/status-server.log`.
+
+**4.** On `nomade`, run `tcpdump -ni eth0` during a `ping {vpn_srv}`: what do you see?
+Also try `tcpdump -ni tun0`.
+""",
+    """
+- la ligne du journal qui annonce que le tunnel est monté : @@{log_ok:>Initialization Sequence Completed|Peer Connection Initiated|TLS Error|UDPv4 link local}@@
+- sur `eth0` du nomade pendant le `ping` on voit : @@{wan_seen:>des datagrammes UDP 1194 entre les adresses publiques|des paquets ICMP entre les adresses du VPN|des segments TCP 443}@@
+- `tls-crypt ta.key` : @@{tls_crypt:>chiffre et authentifie le canal de contrôle TLS avec une clé partagée|remplace le certificat du serveur|chiffre les données du tunnel à la place d'AES}@@
+- `remote-cert-tls server` sur le client garantit que : @@{rct:>un client de la même CA ne peut pas se faire passer pour le serveur|le serveur a bien été démarré par root|le certificat du serveur n'est pas expiré}@@
+- `ip a show tun0` sur `nomade` montre : @@{tun_addr:>une adresse du réseau du VPN|l'adresse publique du serveur|aucune adresse}@@
+""": """
+- the log line announcing that the tunnel is up: @@{log_ok:>Initialization Sequence Completed|Peer Connection Initiated|TLS Error|UDPv4 link local}@@
+- on `eth0` of `nomade` during the `ping` one sees: @@{wan_seen:>UDP 1194 datagrams between the public addresses>>>des datagrammes UDP 1194 entre les adresses publiques|ICMP packets between the VPN addresses>>>des paquets ICMP entre les adresses du VPN|TCP 443 segments>>>des segments TCP 443}@@
+- `tls-crypt ta.key`: @@{tls_crypt:>encrypts and authenticates the TLS control channel with a shared key>>>chiffre et authentifie le canal de contrôle TLS avec une clé partagée|replaces the certificate of the server>>>remplace le certificat du serveur|encrypts the data of the tunnel instead of AES>>>chiffre les données du tunnel à la place d'AES}@@
+- `remote-cert-tls server` on the client guarantees that: @@{rct:>a client of the same CA cannot impersonate the server>>>un client de la même CA ne peut pas se faire passer pour le serveur|the server was indeed started by root>>>le serveur a bien été démarré par root|the certificate of the server has not expired>>>le certificat du serveur n'est pas expiré}@@
+- `ip a show tun0` on `nomade` shows: @@{tun_addr:>an address of the VPN network>>>une adresse du réseau du VPN|the public address of the server>>>l'adresse publique du serveur|no address>>>aucune adresse}@@
+""",
+    """
+**Solution.** `/etc/openvpn/server/server.conf` sur `srv` (tel qu'il sera à la fin du TP, les
+parties 4, 5 et 7 y ajoutent leurs directives) :
+
+```
+{server_conf}```
+
+`/etc/openvpn/client/nomade.conf` sur `nomade` :
+
+```
+{client_conf}```
+
+- `server` donne `{vpn_srv}` à `tun0` du serveur ; le nomade reçoit une adresse de `{vpn}` et une route
+  vers ce réseau par `tun0`. La ligne `status … 10` remplace celle de l'unité (toutes les 60 s) :
+  le fichier d'état est à jour pour l'évaluation.
+- Évalué : `openvpn` écoute en UDP {vpn_port} ; les directives (`server`, `topology subnet`, `dh none`,
+  `tls-crypt`, `user`/`group`, `persist-*`, `keepalive`, `explicit-exit-notify`) ; `tun0` = `{vpn_srv}` ;
+  `nomade` dans le fichier d'état et une adresse de `{vpn}` sur son `tun0` ; `ping` du nomade vers
+  `{vpn_srv}` ; la sonde (certificat `sre-sonde` signé par la CA + `ta.key` du serveur) obtient
+  `Initialization Sequence Completed` ; sur le `wan`, du trafic UDP {vpn_port} du nomade vers `{srv_wan}`
+  et aucun ICMP en clair du nomade vers le VPN ou `lana`.
+- Réponses : {log_ok} ; {wan_seen} ; {tls_crypt} ; {rct} ; {tun_addr}.
+""": """
+**Solution.** `/etc/openvpn/server/server.conf` on `srv` (as it will be at the end of the lab;
+parts 4, 5 and 7 add their directives to it):
+
+```
+{server_conf}```
+
+`/etc/openvpn/client/nomade.conf` on `nomade`:
+
+```
+{client_conf}```
+
+- `server` gives `{vpn_srv}` to the `tun0` of the server; `nomade` receives an address of `{vpn}`
+  and a route to that network through `tun0`. The `status … 10` line replaces that of the unit
+  (every 60 s): the status file is up to date for the evaluation.
+- Evaluated: `openvpn` listens on UDP {vpn_port}; the directives (`server`, `topology subnet`, `dh none`,
+  `tls-crypt`, `user`/`group`, `persist-*`, `keepalive`, `explicit-exit-notify`); `tun0` = `{vpn_srv}`;
+  `nomade` in the status file and an address of `{vpn}` on its `tun0`; `ping` from `nomade` to
+  `{vpn_srv}`; the probe (certificate `sre-sonde` signed by the CA + the server's `ta.key`) gets
+  `Initialization Sequence Completed`; on the `wan`, UDP {vpn_port} traffic from `nomade` to `{srv_wan}`
+  and no ICMP in the clear from `nomade` to the VPN or `lana`.
+- Answers: {log_ok}; {wan_seen}; {tls_crypt}; {rct}; {tun_addr}.
+""",
+    "openvpn écoute en UDP {port} sur srv (openvpn-server@server)": "openvpn listens on UDP {port} on srv (openvpn-server@server)",
+    "server.conf : server + topology subnet ; dh none + tls-crypt ; user/group + persist ; keepalive + explicit-exit-notify": "server.conf: server + topology subnet; dh none + tls-crypt; user/group + persist; keepalive + explicit-exit-notify",
+    "tun0 du serveur porte {ip}": "the tun0 of the server holds {ip}",
+    "nomade.conf : client + remote ; remote-cert-tls server + tls-crypt + nobind": "nomade.conf: client + remote; remote-cert-tls server + tls-crypt + nobind",
+    "nomade dans le fichier d'état du serveur ; son tun0 a une adresse du réseau du VPN": "nomade in the status file of the server; its tun0 has an address of the VPN network",
+    "ping de nomade vers l'adresse VPN du serveur": "ping from nomade to the VPN address of the server",
+    "un client muni d'un certificat signé par la CA et de ta.key se connecte au serveur": "a client holding a certificate signed by the CA and ta.key connects to the server",
+    "sur le wan : trafic UDP {port} du nomade vers srv, aucun ICMP en clair du nomade vers le VPN ou les LAN": "on the wan: UDP {port} traffic from nomade to srv, no ICMP in the clear from nomade to the VPN or the LANs",
+    "journal, trafic observé, tls-crypt, remote-cert-tls, adresse du tunnel": "log, observed traffic, tls-crypt, remote-cert-tls, address of the tunnel",
+    "Partie 4 — Accès au réseau du site A depuis le nomade": "Part 4 — Access to the site A network from the roaming host",
+    "push route et forwarding": "push route and forwarding",
+    """
+Le nomade doit atteindre les machines du site A (`ca`, `m1`, réseau `{lana}`).
+
+1. Sur `srv`, ajoutez à `server.conf` : `push "route {lana_addr} {lana_mask}"` et relancez le
+   serveur (`systemctl restart openvpn-server@server`). Sur `nomade`, attendez la reconnexion
+   (journal) et regardez `ip route`.
+2. `ping {m1}` depuis `nomade` : pourquoi cela ne marche-t-il pas encore ? Activez le routage sur
+   `srv` : `sysctl -w net.ipv4.ip_forward=1` (et rendez-le persistant dans `/etc/sysctl.d/`).
+3. Depuis `nomade` : `curl http://{m1}/secret.txt` et `curl http://{m1}/` (la page affiche
+   l'adresse du client telle que `m1` la voit). Vérifiez aussi `ping ca`.
+""": """
+The roaming host `nomade` must reach the machines of site A (`ca`, `m1`, network `{lana}`).
+
+1. On `srv`, add to `server.conf`: `push "route {lana_addr} {lana_mask}"` and restart the
+   server (`systemctl restart openvpn-server@server`). On `nomade`, wait for the reconnection
+   (log) and look at `ip route`.
+2. `ping {m1}` from `nomade`: why does it not work yet? Enable routing on `srv`:
+   `sysctl -w net.ipv4.ip_forward=1` (and make it persistent in `/etc/sysctl.d/`).
+3. From `nomade`: `curl http://{m1}/secret.txt` and `curl http://{m1}/` (the page shows the
+   address of the client as `m1` sees it). Also check `ping ca`.
+""",
+    """
+- phrase lue dans `http://m1/secret.txt` : @@{secret:.+}@@
+- l'adresse « client » affichée par `http://m1/` est : @@{src_seen:>l'adresse VPN du nomade|l'adresse publique du nomade|l'adresse de srv sur lana}@@
+- pourquoi la réponse de `m1` retrouve-t-elle le nomade sans route ajoutée sur `m1` ?
+  @@{return:>m1 a srv pour routeur par défaut, qui connaît le réseau du VPN par tun0|srv fait du NAT vers lana|le nomade est directement sur lana}@@
+""": """
+- sentence read in `http://m1/secret.txt`: @@{secret:.+}@@
+- the "client" address shown by `http://m1/` is: @@{src_seen:>the VPN address of nomade>>>l'adresse VPN du nomade|the public address of nomade>>>l'adresse publique du nomade|the address of srv on lana>>>l'adresse de srv sur lana}@@
+- why does the reply of `m1` find its way back to `nomade` without any route added on `m1`?
+  @@{return:>m1 has srv as its default router, which knows the VPN network through tun0>>>m1 a srv pour routeur par défaut, qui connaît le réseau du VPN par tun0|srv does NAT towards lana>>>srv fait du NAT vers lana|nomade is directly on lana>>>le nomade est directement sur lana}@@
+""",
+    """
+**Solution.** Dans `server.conf` : `push "route {lana_addr} {lana_mask}"`, puis sur `srv`
+`sysctl -w net.ipv4.ip_forward=1` et `echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-vpn.conf`.
+
+- Sans forwarding, `srv` reçoit les paquets du nomade pour `m1` sur `tun0` mais ne les transmet pas sur
+  `eth1`. Le retour marche parce que `m1` envoie sa réponse à son routeur par défaut `srv`
+  ({srv_lana}), qui a une route vers `{vpn}` par `tun0` (ajoutée par `server`).
+- `m1` voit l'adresse **VPN** du nomade (une adresse de `{vpn}`) : pas de NAT à cette étape.
+- Évalué : la directive `push route`, la route vers `{lana}` par `tun0` sur `nomade`, `ip_forward` sur
+  `srv`, un `ping` de `nomade` vers `m1`, et la page `http://{m1}/` vue du nomade (adresse client dans `{vpn}`).
+- Phrase secrète : « {secret} ».
+""": """
+**Solution.** In `server.conf`: `push "route {lana_addr} {lana_mask}"`, then on `srv`
+`sysctl -w net.ipv4.ip_forward=1` and `echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-vpn.conf`.
+
+- Without forwarding, `srv` receives the packets of `nomade` for `m1` on `tun0` but does not pass
+  them on to `eth1`. The return works because `m1` sends its reply to its default router `srv`
+  ({srv_lana}), which has a route to `{vpn}` through `tun0` (added by `server`).
+- `m1` sees the **VPN** address of `nomade` (an address of `{vpn}`): no NAT at this stage.
+- Evaluated: the `push route` directive, the route to `{lana}` through `tun0` on `nomade`, `ip_forward` on
+  `srv`, a `ping` from `nomade` to `m1`, and the page `http://{m1}/` seen from `nomade` (client address in `{vpn}`).
+- Secret sentence: "{secret}".
+""",
+    "server.conf pousse la route vers {lana}": "server.conf pushes the route to {lana}",
+    "nomade a une route vers {lana} par tun0": "nomade has a route to {lana} through tun0",
+    "routage des paquets (ip_forward) activé sur srv": "packet routing (ip_forward) enabled on srv",
+    "ping de nomade vers m1 à travers le tunnel": "ping from nomade to m1 through the tunnel",
+    "http://m1/ vu du nomade affiche son adresse VPN (pas de NAT vers lana)": "http://m1/ seen from nomade shows its VPN address (no NAT towards lana)",
+    "phrase secrète de m1, adresse vue par m1, chemin du retour": "secret sentence of m1, address seen by m1, return path",
+    "Partie 5 — Site à site : le réseau du site B": "Part 5 — Site to site: the site B network",
+    "gwb client du serveur, iroute": "gwb client of the server, iroute",
+    """
+La passerelle `gwb` du site B devient un client du serveur, et tout `lanb` (`{lanb}`) doit
+dialoguer avec `lana`.
+
+1. Transférez sur `gwb`, dans `/etc/openvpn/client/`, les fichiers `ca.crt`, `siteb.crt`,
+   `siteb.key`, `ta.key` ; écrivez `/etc/openvpn/client/siteb.conf` sur le modèle de
+   `nomade.conf` et démarrez `openvpn-client@siteb`. Vérifiez dans le fichier d'état de `srv`
+   que `siteb` est connecté et que `gwb` a reçu la route vers `lana`.
+2. Sur `srv`, déclarez que `lanb` est derrière ce client : dans `server.conf`,
+   `client-config-dir ccd` et `route {lanb_addr} {lanb_mask}` ; créez
+   `/etc/openvpn/server/ccd/siteb` contenant `iroute {lanb_addr} {lanb_mask}` ; relancez le
+   serveur et regardez `ip route` sur `srv` et le fichier d'état (`ROUTING_TABLE`).
+3. Activez le routage sur `gwb` (`ip_forward`, persistant). Testez `ping {m1}` depuis `m2`,
+   `ping {m2}` depuis `m1`.
+4. Le nomade doit aussi joindre `lanb`, mais la route ne doit être poussée qu'à lui (pas à
+   `gwb`) : créez `/etc/openvpn/server/ccd/nomade` contenant
+   `push "route {lanb_addr} {lanb_mask}"`, relancez, puis depuis `nomade` : `ping {m2}` et
+   `curl http://{m2}/secret.txt`.
+""": """
+The site B gateway `gwb` becomes a client of the server, and the whole of `lanb` (`{lanb}`) must
+communicate with `lana`.
+
+1. Transfer to `gwb`, into `/etc/openvpn/client/`, the files `ca.crt`, `siteb.crt`,
+   `siteb.key`, `ta.key`; write `/etc/openvpn/client/siteb.conf` modelled on `nomade.conf` and
+   start `openvpn-client@siteb`. Check in the status file of `srv` that `siteb` is connected, and
+   that `gwb` received the route to `lana`.
+2. On `srv`, declare that `lanb` is behind this client: in `server.conf`,
+   `client-config-dir ccd` and `route {lanb_addr} {lanb_mask}`; create
+   `/etc/openvpn/server/ccd/siteb` containing `iroute {lanb_addr} {lanb_mask}`; restart the
+   server and look at `ip route` on `srv` and at the status file (`ROUTING_TABLE`).
+3. Enable routing on `gwb` (`ip_forward`, persistent). Test `ping {m1}` from `m2`,
+   `ping {m2}` from `m1`.
+4. `nomade` must also reach `lanb`, but the route must be pushed to it alone (not to `gwb`):
+   create `/etc/openvpn/server/ccd/nomade` containing
+   `push "route {lanb_addr} {lanb_mask}"`, restart, then from `nomade`: `ping {m2}` and
+   `curl http://{m2}/secret.txt`.
+""",
+    """
+- phrase lue dans `http://m2/secret.txt` depuis `nomade` : @@{secret:.+}@@
+- `iroute` dans `ccd/siteb` renseigne : @@{iroute:>OpenVPN : quel client est la passerelle de ce réseau|le noyau du serveur : envoyer ces paquets dans tun0|le client : la route à installer chez lui}@@
+- `route` dans `server.conf` renseigne : @@{route:>le noyau du serveur : envoyer ces paquets dans tun0|OpenVPN : quel client est la passerelle de ce réseau|le client : la route à installer chez lui}@@
+- si la ligne `push "route …"` vers `lanb` était dans `server.conf` plutôt que dans `ccd/nomade` :
+  @@{ccd_push:>gwb aurait une route vers son propre LAN par le tunnel|rien ne changerait|le nomade perdrait sa route vers lana}@@
+""": """
+- sentence read in `http://m2/secret.txt` from `nomade`: @@{secret:.+}@@
+- `iroute` in `ccd/siteb` tells: @@{iroute:>OpenVPN: which client is the gateway of this network>>>OpenVPN : quel client est la passerelle de ce réseau|the kernel of the server: send these packets into tun0>>>le noyau du serveur : envoyer ces paquets dans tun0|the client: the route to install on its side>>>le client : la route à installer chez lui}@@
+- `route` in `server.conf` tells: @@{route:>the kernel of the server: send these packets into tun0>>>le noyau du serveur : envoyer ces paquets dans tun0|OpenVPN: which client is the gateway of this network>>>OpenVPN : quel client est la passerelle de ce réseau|the client: the route to install on its side>>>le client : la route à installer chez lui}@@
+- if the `push "route …"` line to `lanb` were in `server.conf` rather than in `ccd/nomade`:
+  @@{ccd_push:>gwb would have a route to its own LAN through the tunnel>>>gwb aurait une route vers son propre LAN par le tunnel|nothing would change>>>rien ne changerait|nomade would lose its route to lana>>>le nomade perdrait sa route vers lana}@@
+""",
+    """
+**Solution.** `/etc/openvpn/client/siteb.conf` sur `gwb` :
+
+```
+{client_conf}```
+
+Sur `srv`, dans `server.conf` : `client-config-dir ccd` et `route {lanb_addr} {lanb_mask}` ;
+`/etc/openvpn/server/ccd/siteb` : `{ccd_siteb}` ; `/etc/openvpn/server/ccd/nomade` :
+`{ccd_nomade}` ; `sysctl -w net.ipv4.ip_forward=1` sur `gwb`.
+
+- `iroute` est le routage **interne** d'OpenVPN (vers quel client envoyer un paquet qui sort de `tun0`),
+  `route` celui du **noyau** (envoyer dans `tun0` les paquets pour `lanb`). Les deux sont nécessaires.
+  Le fichier d'état montre alors `ROUTING_TABLE,{lanb},siteb,…`.
+- `m2` → `m1` : `gwb` (routeur par défaut de `m2`) a reçu la route vers `lana` par `tun0` (`push route`
+  de la partie 4), `srv` route vers `eth1`. `m1` → `m2` : `srv` (routeur par défaut de `m1`) envoie dans
+  `tun0` (`route`), OpenVPN choisit le client `siteb` (`iroute`), `gwb` route vers `eth1`.
+- `nomade` → `m2` : route poussée par `ccd/nomade`, puis `srv` route entre ses deux clients grâce à
+  `ip_forward` (sans `client-to-client`).
+- Évalué : `siteb` dans le fichier d'état, `client-config-dir` + `iroute`, `route` + la route du noyau de
+  `srv` vers `{lanb}` par `tun0`, `ROUTING_TABLE`, `ip_forward` sur `gwb`, la route de `gwb` vers `lana`
+  par `tun0`, les trois `ping` (`m2`→`m1`, `m1`→`m2`, `nomade`→`m2`).
+- Phrase secrète de `m2` : « {secret} ».
+""": """
+**Solution.** `/etc/openvpn/client/siteb.conf` on `gwb`:
+
+```
+{client_conf}```
+
+On `srv`, in `server.conf`: `client-config-dir ccd` and `route {lanb_addr} {lanb_mask}`;
+`/etc/openvpn/server/ccd/siteb`: `{ccd_siteb}`; `/etc/openvpn/server/ccd/nomade`:
+`{ccd_nomade}`; `sysctl -w net.ipv4.ip_forward=1` on `gwb`.
+
+- `iroute` is the **internal** routing of OpenVPN (to which client to send a packet read from
+  `tun0`), `route` that of the **kernel** (send the packets for `lanb` into `tun0`). Both are
+  needed. The status file then shows `ROUTING_TABLE,{lanb},siteb,…`.
+- `m2` → `m1`: `gwb` (default router of `m2`) received the route to `lana` through `tun0` (`push route`
+  of part 4), `srv` routes to `eth1`. `m1` → `m2`: `srv` (default router of `m1`) sends into
+  `tun0` (`route`), OpenVPN picks the client `siteb` (`iroute`), `gwb` routes to `eth1`.
+- `nomade` → `m2`: route pushed by `ccd/nomade`, then `srv` routes between its two clients thanks
+  to `ip_forward` (without `client-to-client`).
+- Evaluated: `siteb` in the status file, `client-config-dir` + `iroute`, `route` + the kernel route of
+  `srv` to `{lanb}` through `tun0`, `ROUTING_TABLE`, `ip_forward` on `gwb`, the route of `gwb` to `lana`
+  through `tun0`, the three `ping`s (`m2`→`m1`, `m1`→`m2`, `nomade`→`m2`).
+- Secret sentence of `m2`: "{secret}".
+""",
+    "siteb connecté (fichier d'état) ; siteb.conf : client, remote, remote-cert-tls server, tls-crypt": "siteb connected (status file); siteb.conf: client, remote, remote-cert-tls server, tls-crypt",
+    "client-config-dir dans server.conf ; iroute {lanb} dans ccd/siteb": "client-config-dir in server.conf; iroute {lanb} in ccd/siteb",
+    "route {lanb} dans server.conf et dans la table de routage de srv (par tun0)": "route {lanb} in server.conf and in the routing table of srv (through tun0)",
+    "la table de routage interne du serveur (fichier d'état) associe {lanb} à siteb": "the internal routing table of the server (status file) maps {lanb} to siteb",
+    "ip_forward sur gwb ; route de gwb vers lana par tun0 (poussée par le serveur)": "ip_forward on gwb; route of gwb to lana through tun0 (pushed by the server)",
+    "ping m2 → m1, m1 → m2 et nomade → m2 à travers les tunnels": "ping m2 → m1, m1 → m2 and nomade → m2 through the tunnels",
+    "phrase secrète de m2 ; iroute, route et push par client": "secret sentence of m2; iroute, route and per-client push",
+    "Partie 6 — Tunnel complet pour le nomade et NAT": "Part 6 — Full tunnel for the roaming host and NAT",
+    "redirect-gateway def1 et NAT sur srv": "redirect-gateway def1 and NAT on srv",
+    """
+Depuis son hôtel, le nomade veut que **tout** son trafic, y compris vers Internet, passe par le
+VPN de l'entreprise (`web`, `{web}`, est un serveur web « sur Internet », derrière le routeur
+`inet` du fournisseur d'accès).
+
+**1.** Depuis `nomade`, `curl http://{web}/` : quelle adresse client `web` voit-il ? Notez `ip route`.
+
+**2.** Sur `srv`, ajoutez à `/etc/openvpn/server/ccd/nomade` la ligne `push "redirect-gateway def1"`
+(au nomade seulement : la passerelle `gwb` doit garder sa route par défaut) et relancez le
+serveur. Sur `nomade`, après reconnexion, lisez `ip route` et refaites le `curl` : pourquoi
+échoue-t-il ?
+
+**3.** Sur `srv`, faites du **NAT** pour le trafic venant du VPN vers le `wan` :
+
+```
+nft add table ip nat
+nft 'add chain ip nat postrouting {{ type nat hook postrouting priority 100; }}'
+nft add rule ip nat postrouting ip saddr {vpn} oifname eth0 masquerade
+```
+
+(ou écrivez ces règles dans `/etc/nftables.conf` et chargez-le avec `nft -f`). Refaites le
+`curl` depuis `nomade` et vérifiez que `gwb` a toujours sa route par défaut.
+""": """
+From the hotel, the roaming user wants **all** the traffic of `nomade`, including to the Internet,
+to go through the company VPN (`web`, `{web}`, is a web server "on the Internet", behind the
+router `inet` of the Internet service provider).
+
+**1.** From `nomade`, `curl http://{web}/`: which client address does `web` see? Note down `ip route`.
+
+**2.** On `srv`, add to `/etc/openvpn/server/ccd/nomade` the line `push "redirect-gateway def1"`
+(to `nomade` only: the gateway `gwb` must keep its default route) and restart the server. On
+`nomade`, after the reconnection, read `ip route` and run the `curl` again: why does it fail?
+
+**3.** On `srv`, do **NAT** for the traffic coming from the VPN towards the `wan`:
+
+```
+nft add table ip nat
+nft 'add chain ip nat postrouting {{ type nat hook postrouting priority 100; }}'
+nft add rule ip nat postrouting ip saddr {vpn} oifname eth0 masquerade
+```
+
+(or write these rules in `/etc/nftables.conf` and load it with `nft -f`). Run the `curl` again
+from `nomade` and check that `gwb` still has its default route.
+""",
+    """
+- `redirect-gateway def1` installe chez le client : @@{def1:>deux routes 0.0.0.0/1 et 128.0.0.0/1, plus précises que la route par défaut qui reste en place|une nouvelle route par défaut à la place de l'ancienne|une route vers le réseau du serveur seulement}@@
+- adresse client affichée par `http://web/` depuis `nomade` une fois le tunnel complet et le NAT en place : @@{inet_sees:[0-9.]+}@@
+- pourquoi le NAT est-il nécessaire ? @@{nat:>Internet n'a pas de route vers le réseau du VPN : les réponses ne reviendraient pas|OpenVPN ne peut pas chiffrer les paquets vers Internet|le nomade n'a pas de route par défaut}@@
+- routeur par défaut de `gwb` après cette partie : @@{gwb_default:[0-9.]+}@@
+""": """
+- `redirect-gateway def1` installs on the client: @@{def1:>two routes 0.0.0.0/1 and 128.0.0.0/1, more specific than the default route, which stays in place>>>deux routes 0.0.0.0/1 et 128.0.0.0/1, plus précises que la route par défaut qui reste en place|a new default route replacing the old one>>>une nouvelle route par défaut à la place de l'ancienne|a route to the network of the server only>>>une route vers le réseau du serveur seulement}@@
+- client address shown by `http://web/` from `nomade` once the full tunnel and the NAT are in place: @@{inet_sees:[0-9.]+}@@
+- why is NAT needed? @@{nat:>the Internet has no route to the VPN network: the replies would not come back>>>Internet n'a pas de route vers le réseau du VPN : les réponses ne reviendraient pas|OpenVPN cannot encrypt the packets to the Internet>>>OpenVPN ne peut pas chiffrer les paquets vers Internet|nomade has no default route>>>le nomade n'a pas de route par défaut}@@
+- default router of `gwb` after this part: @@{gwb_default:[0-9.]+}@@
+""",
+    """
+**Solution.** `/etc/openvpn/server/ccd/nomade` :
+
+```
+{ccd_nomade}```
+
+et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.conf`) :
+
+```
+{nft}```
+
+- Avant : `web` voit `{nomade}` (le nomade sort par `inet` directement). Après `def1` : `ip route` sur
+  `nomade` montre `0.0.0.0/1` et `128.0.0.0/1` via `{vpn_srv}` (`tun0`) et une route hôte `{srv_wan}` via
+  `{inet}` (l'ancienne passerelle) pour que le tunnel lui-même reste joignable ; la route par défaut
+  d'origine est conservée. Sans NAT, `web` reçoit des paquets de source `{vpn}` et ni lui ni `inet` n'ont de
+  route de retour vers ce réseau. Avec le `masquerade`, `web` voit `{srv_wan}`.
+- `gwb` garde `default via {inet}` : la redirection n'est poussée qu'au nomade (`ccd/nomade`).
+- Évalué : la directive dans `ccd/nomade`, les deux routes `/1` par `tun0` sur `nomade`, la route par défaut
+  intacte sur `gwb`, une règle `masquerade` (ou `snat` vers une adresse) dans le jeu de règles de `srv`,
+  `curl http://{web}/` depuis `nomade` affichant `client={srv_wan}`, et sur le `wan` aucune requête TCP 80
+  vers `web` partant de `{nomade}` mais des requêtes TCP 80 de `{srv_wan}`.
+- Réponses : {def1} ; {inet_sees} ; {nat} ; {gwb_default}.
+""": """
+**Solution.** `/etc/openvpn/server/ccd/nomade`:
+
+```
+{ccd_nomade}```
+
+and on `srv` (file `/etc/nftables.conf`, loaded by `nft -f /etc/nftables.conf`):
+
+```
+{nft}```
+
+- Before: `web` sees `{nomade}` (`nomade` goes out through `inet` directly). After `def1`: `ip route` on
+  `nomade` shows `0.0.0.0/1` and `128.0.0.0/1` via `{vpn_srv}` (`tun0`) and a host route `{srv_wan}` via
+  `{inet}` (the old gateway) so that the tunnel itself stays reachable; the original default route
+  is kept. Without NAT, `web` receives packets with source `{vpn}` and neither it nor `inet` has a
+  return route to that network. With the `masquerade`, `web` sees `{srv_wan}`.
+- `gwb` keeps `default via {inet}`: the redirection is pushed to `nomade` only (`ccd/nomade`).
+- Evaluated: the directive in `ccd/nomade`, the two `/1` routes through `tun0` on `nomade`, the default route
+  intact on `gwb`, a `masquerade` rule (or a `snat` to an address) in the ruleset of `srv`,
+  `curl http://{web}/` from `nomade` showing `client={srv_wan}`, and on the `wan` no TCP 80 request
+  to `web` leaving from `{nomade}` but TCP 80 requests from `{srv_wan}`.
+- Answers: {def1}; {inet_sees}; {nat}; {gwb_default}.
+""",
+    "ccd/nomade pousse redirect-gateway def1 (au nomade seulement)": "ccd/nomade pushes redirect-gateway def1 (to nomade only)",
+    "routes 0.0.0.0/1 et 128.0.0.0/1 par tun0 sur nomade": "routes 0.0.0.0/1 and 128.0.0.0/1 through tun0 on nomade",
+    "gwb a gardé sa route par défaut vers inet (pas de tunnel complet pour le site B)": "gwb kept its default route to inet (no full tunnel for site B)",
+    "règle masquerade (nftables ou iptables) sur srv": "masquerade rule (nftables or iptables) on srv",
+    "http://web/ vu du nomade affiche l'adresse publique de srv : tout le trafic passe par le VPN": "http://web/ seen from nomade shows the public address of srv: all the traffic goes through the VPN",
+    "sur le wan : requêtes TCP 80 vers web depuis srv, aucune depuis l'adresse publique du nomade": "on the wan: TCP 80 requests to web from srv, none from the public address of nomade",
+    "def1, adresse vue par web, rôle du NAT, route par défaut de gwb": "def1, address seen by web, role of the NAT, default route of gwb",
+    "Partie 7 — Révocation d'un certificat (CRL)": "Part 7 — Revocation of a certificate (CRL)",
+    "Révocation du certificat ancien": "Revocation of the ancien certificate",
+    """
+Le portable de l'utilisateur `ancien` a été volé : son certificat doit être refusé.
+
+1. Sur `ca` : `./easyrsa revoke ancien` puis `./easyrsa gen-crl`. Lisez `pki/index.txt` et
+   `openssl crl -in pki/crl.pem -noout -text`.
+2. Transférez `pki/crl.pem` sur `srv` dans `/etc/openvpn/server/crl.pem` — en mode **644** : le
+   serveur tourne sous `nobody` et relit ce fichier — et ajoutez `crl-verify crl.pem` à
+   `server.conf` ; relancez le serveur.
+3. Vérifiez que `nomade` et `siteb` se reconnectent, puis testez le certificat révoqué, par
+   exemple depuis `nomade` avec les fichiers `ancien.crt` / `ancien.key` copiés dans `/root` :
+   `openvpn --client --dev tun --proto udp --remote {srv_wan} {vpn_port} --nobind --ca
+   /etc/openvpn/client/ca.crt --cert /root/ancien.crt --key /root/ancien.key --tls-crypt
+   /etc/openvpn/client/ta.key --remote-cert-tls server --route-nopull --verb 3` (arrêt par
+   Ctrl-C), en regardant le journal du serveur.
+""": """
+The laptop of the user `ancien` has been stolen: their certificate must be refused.
+
+1. On `ca`: `./easyrsa revoke ancien` then `./easyrsa gen-crl`. Read `pki/index.txt` and
+   `openssl crl -in pki/crl.pem -noout -text`.
+2. Transfer `pki/crl.pem` to `srv` as `/etc/openvpn/server/crl.pem` — in mode **644**: the
+   server runs as `nobody` and reads this file again — and add `crl-verify crl.pem` to
+   `server.conf`; restart the server.
+3. Check that `nomade` and `siteb` reconnect, then test the revoked certificate, for example from
+   `nomade` with the files `ancien.crt` / `ancien.key` copied into `/root`:
+   `openvpn --client --dev tun --proto udp --remote {srv_wan} {vpn_port} --nobind --ca
+   /etc/openvpn/client/ca.crt --cert /root/ancien.crt --key /root/ancien.key --tls-crypt
+   /etc/openvpn/client/ta.key --remote-cert-tls server --route-nopull --verb 3` (stop it with
+   Ctrl-C), while watching the log of the server.
+""",
+    """
+- lettre qui marque un certificat révoqué dans `pki/index.txt` : @@{letter:>V|R|E}@@
+- ce que le journal du **serveur** affiche pour le client révoqué : @@{log:>VERIFY ERROR … certificate revoked / CRL CHECK FAILED|AUTH_FAILED|Initialization Sequence Completed|Options error}@@
+- faut-il redémarrer le serveur après avoir recopié une nouvelle CRL ? @@{restart:>non : la CRL est relue à chaque connexion si le fichier a changé|oui, toujours|oui, et redémarrer aussi les clients}@@
+- la révocation coupe-t-elle une session de `ancien` déjà ouverte ? @@{session:>non, à la prochaine renégociation TLS (reneg-sec) ou au redémarrage du serveur|oui, immédiatement|oui, au prochain paquet de données}@@
+""": """
+- letter that marks a revoked certificate in `pki/index.txt`: @@{letter:>V|R|E}@@
+- what the log of the **server** shows for the revoked client: @@{log:>VERIFY ERROR … certificate revoked / CRL CHECK FAILED|AUTH_FAILED|Initialization Sequence Completed|Options error}@@
+- must the server be restarted after copying a new CRL? @@{restart:>no: the CRL is read again at every connection if the file has changed>>>non : la CRL est relue à chaque connexion si le fichier a changé|yes, always>>>oui, toujours|yes, and the clients must be restarted too>>>oui, et redémarrer aussi les clients}@@
+- does the revocation cut a session of `ancien` that is already open? @@{session:>no, only at the next TLS renegotiation (reneg-sec) or when the server restarts>>>non, à la prochaine renégociation TLS (reneg-sec) ou au redémarrage du serveur|yes, immediately>>>oui, immédiatement|yes, at the next data packet>>>oui, au prochain paquet de données}@@
+""",
+    """
+**Solution.** Sur `ca` : `./easyrsa revoke ancien && ./easyrsa gen-crl && cp pki/crl.pem /shared/` ;
+sur `srv` : `cp /shared/crl.pem /etc/openvpn/server/ && chmod 644 /etc/openvpn/server/crl.pem`, puis
+`crl-verify crl.pem` dans `server.conf` et `systemctl restart openvpn-server@server`.
+
+- `pki/index.txt` : la ligne de `ancien` commence par `R` (révoqué, avec la date) ; `openssl crl … -text`
+  liste son numéro de série. Côté serveur : `VERIFY ERROR: depth=0, error=certificate revoked` puis
+  `TLS Error`, et côté client la poignée de main échoue.
+- Le fichier `crl.pem` est relu à chaque nouvelle connexion quand son horodatage change : pas de
+  redémarrage, mais il faut recopier la CRL à chaque révocation. Lisible par `nobody` (mode 644), sinon
+  le serveur refuse **tous** les clients après le passage à `user nobody`.
+- Évalué : `R` pour `ancien` dans `index.txt`, `crl.pem` signé par la CA contenant la série de `ancien`
+  (sur `ca` et sur `srv`), `crl-verify` dans `server.conf`, et la sonde : refusée avec le certificat
+  `ancien`, acceptée avec le sien.
+- Réponses : {letter} ; {log} ; {restart} ; {session}.
+""": """
+**Solution.** On `ca`: `./easyrsa revoke ancien && ./easyrsa gen-crl && cp pki/crl.pem /shared/`;
+on `srv`: `cp /shared/crl.pem /etc/openvpn/server/ && chmod 644 /etc/openvpn/server/crl.pem`, then
+`crl-verify crl.pem` in `server.conf` and `systemctl restart openvpn-server@server`.
+
+- `pki/index.txt`: the line of `ancien` starts with `R` (revoked, with the date); `openssl crl … -text`
+  lists its serial number. On the server side: `VERIFY ERROR: depth=0, error=certificate revoked`
+  then `TLS Error`, and on the client side the handshake fails.
+- The `crl.pem` file is read again at every new connection when its timestamp changes: no restart,
+  but the CRL must be copied again at every revocation. Readable by `nobody` (mode 644), otherwise
+  the server refuses **every** client after the switch to `user nobody`.
+- Evaluated: `R` for `ancien` in `index.txt`, `crl.pem` signed by the CA containing the serial of
+  `ancien` (on `ca` and on `srv`), `crl-verify` in `server.conf`, and the probe: refused with the
+  certificate `ancien`, accepted with its own.
+- Answers: {letter}; {log}; {restart}; {session}.
+""",
+    "le certificat ancien est marqué révoqué (R) dans pki/index.txt": "the ancien certificate is marked revoked (R) in pki/index.txt",
+    "pki/crl.pem signé par la CA et contenant le numéro de série de ancien": "pki/crl.pem signed by the CA and containing the serial number of ancien",
+    "crl-verify dans server.conf ; crl.pem sur srv contient la série de ancien et reste lisible par nobody": "crl-verify in server.conf; crl.pem on srv contains the serial of ancien and stays readable by nobody",
+    "le serveur refuse le certificat révoqué ancien (et accepte toujours un certificat valide)": "the server refuses the revoked certificate ancien (and still accepts a valid certificate)",
+    "index.txt, journal du serveur, relecture de la CRL, sessions ouvertes": "index.txt, server log, re-reading of the CRL, open sessions",
+}}

@@ -10,6 +10,7 @@ transit only.  Covers the data, the topology, the state ops, the two-pass gradin
 done: 0; everything: 100 + 6 bonus points; **each part alone gives exactly its points and everything
 but one part the rest**) and the texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -20,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from SRE import params
+from SRE import form_spec, params
 from SRE.instructor_text import has_instructor, markdown_to_html
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -744,6 +745,18 @@ def _simulate_with_answers(lab, data, tmp_pub_dir, cheat):
 # ---------------------------------------------------------------------------
 
 
+def _instructor_literals():
+    """The French literals of the tr() calls inside the instructor() calls of the lab."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 def _all_texts(grade, ns):
     texts = [('informations', _text(ns.informations))]
     for q in grade.get_questions_ordered():
@@ -812,17 +825,49 @@ class TestTexts:
                          'default_metric', 'l1_areas', 'csnp', 'preemptive', 'pseudonode', 'metric', 'narrow', 'tlv',
                          'domain', 'f12', 'f23', 'f34', 'transit']
 
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """Every tr() text has its English in _TRANSLATIONS['en'] (the markup is checked for every lab of
+        the directory by test_draft_misc_translations.py); the values built in code (table of the sites,
+        dropdown of the causes, vtysh sessions of the solutions) have their English version."""
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        literals = _instructor_literals()
+        assert len(literals) == 12 and set(literals) <= set(english)
+        assert all(english[t].lstrip().startswith(('**Solution.**', '**For the instructor.**')) for t in literals)
+        assert lab.title.resolve('en') == "IS-IS: dynamic routing"
+        assert lab.NetScheme.solve_fix._sre_state_description.resolve('en') == "Part 5: solution (troubleshooting)"
+        g1, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        questions = g1.get_questions_ordered()
+        for q in questions:
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert has_instructor(fr) and has_instructor(en) and fr != en, _text(q.title)
+            assert form_spec.form_fields(fr) == form_spec.form_fields(en), _text(q.title)
+        organisation = _text(questions[0].description, 'en')
+        assert "| 1 — first domain | `bas_*` |" in organisation and "premier domaine" not in organisation
+        assert "| 1 — premier domaine | `bas_*` |" in _text(questions[0].description, 'fr')
+        basics = {lang: _text(questions[1].description, lang) for lang in ('fr', 'en')}
+        assert "`bas_r3` :\n\n```\nconfigure terminal" in basics['fr']
+        assert "`bas_r3`:\n\n```\nconfigure terminal" in basics['en']
+        causes = _text(questions[-2].description, 'en')
+        assert "different areas>>>area|" in causes and "aires différentes" not in causes
+
     def test_strip_instructor(self, lab, data, tmp_pub_dir, tmp_path):
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 12 and result.warnings == []
+        assert result.calls == len(_instructor_literals()) == 12 and result.warnings == []
         assert b'**Solution.**' not in result.data and b"Pour l'enseignant" not in result.data
+        assert b'**For the instructor.**' not in result.data
         stripped = tmp_path / 'isis_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('isis_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 6)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())

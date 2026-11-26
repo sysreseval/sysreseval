@@ -1490,19 +1490,29 @@ class Grade(Grade0):
         # =====================================================================
         # The session: who is who, what is given
         # =====================================================================
-        addressing = no_tr(f"""
+        addressing = tr(f"""
 | réseau | adresse | machines |
 |--------|---------|----------|
 | `wan` | `{d.nets.wan}` | `client` (`{client_ip}`), `proxy` eth0 (`{proxy}`), `lb1` eth0 (`{lb1}`), `lb2` eth0 (`{lb2}`), adresse virtuelle (`{vip}`) |
 | `lan` | `{d.nets.lan}` | `proxy` eth1 (`{ns._ip('proxy_lan')}`), `lb1` eth1 (`{lb_lan['lb1']}`), `lb2` eth1 (`{lb_lan['lb2']}`), `web1` (`{web['web1']}`), `web2` (`{web['web2']}`), `web3` (`{web['web3']}`), `web4` (`{web['web4']}`) |
+""", en=f"""
+| network | address | machines |
+|--------|---------|----------|
+| `wan` | `{d.nets.wan}` | `client` (`{client_ip}`), `proxy` eth0 (`{proxy}`), `lb1` eth0 (`{lb1}`), `lb2` eth0 (`{lb2}`), virtual address (`{vip}`) |
+| `lan` | `{d.nets.lan}` | `proxy` eth1 (`{ns._ip('proxy_lan')}`), `lb1` eth1 (`{lb_lan['lb1']}`), `lb2` eth1 (`{lb_lan['lb2']}`), `web1` (`{web['web1']}`), `web2` (`{web['web2']}`), `web3` (`{web['web3']}`), `web4` (`{web['web4']}`) |
 """)
-        names = no_tr(f"""
+        names = tr(f"""
 | nom | adresse | servi par |
 |-----|---------|-----------|
 | `{SITE}`, `{API_SITE}`, `{OLD_SITE}` | `{proxy}` | nginx sur `proxy` (parties 2 à 6) |
 | `{APP_SITE}` | `{vip}` | HAProxy sur `lb1` / `lb2`, derrière l'adresse virtuelle (parties 8 à 10) |
+""", en=f"""
+| name | address | served by |
+|-----|---------|-----------|
+| `{SITE}`, `{API_SITE}`, `{OLD_SITE}` | `{proxy}` | nginx on `proxy` (parts 2 to 6) |
+| `{APP_SITE}` | `{vip}` | HAProxy on `lb1` / `lb2`, behind the virtual address (parts 8 to 10) |
 """)
-        values = no_tr(f"""
+        values = tr(f"""
 | partie | donnée | valeur |
 |--------|--------|--------|
 | 1 | code à envoyer au formulaire `/form` | `{d.form_code}` |
@@ -1510,6 +1520,14 @@ class Grade(Grade0):
 | 6 | phrase de la page de maintenance | `{d.maintenance_sentence}` |
 | 8 | compte de la page de statistiques | `{STATS_USER}` / `{d.stats_password}` |
 | 10 | identifiant du routeur virtuel / mot de passe VRRP | `{d.vrrp_id}` / `{d.vrrp_password}` |
+""", en=f"""
+| part | item | value |
+|--------|--------|--------|
+| 1 | code to send to the form `/form` | `{d.form_code}` |
+| 6 | account of `/admin/` | `{ADMIN_USER}` / `{d.admin_password}` |
+| 6 | sentence of the maintenance page | `{d.maintenance_sentence}` |
+| 8 | account of the statistics page | `{STATS_USER}` / `{d.stats_password}` |
+| 10 | virtual router identifier / VRRP password | `{d.vrrp_id}` / `{d.vrrp_password}` |
 """)
 
         self.question_dummy(
@@ -2521,7 +2539,7 @@ def parse_sequence_of(grade, machine: str, commands: list, prelude: str = "", st
     return parse_sequence(out)
 
 
-# English translations of the instructor texts (the course and the questions are French)
+# English translations: texts are French (``tr()``) with their English here, identifiers English
 _TRANSLATIONS = {
     "en": {
         """
@@ -3008,5 +3026,1819 @@ location /catalog/ {{
   and `web2` answer (2 points), `X-Forwarded-For` (1 point); a new `/catalog/` page requested
   twice from `https://www.shop.tp` carries the same `REQUEST_ID` (2 points) and `X-Cache: HIT` (1 point).
 """,
+        "HTTP : reverse proxy, cache, répartition de charge et haute disponibilité": "HTTP: reverse proxy, cache, load balancing and high availability",
+        """**Sommaire**
+""": """**Contents**
+""",
+        "Le protocole HTTP": "The HTTP protocol",
+        """
+
+HTTP est un protocole **requête / réponse** en texte, au-dessus de TCP (port 80) ou de TLS (HTTPS,
+port 443). Le client envoie une **ligne de requête** (méthode, cible, version), des **en-têtes**, une
+ligne vide et éventuellement un corps ; le serveur répond par une **ligne d'état** (version, code,
+raison), des en-têtes, une ligne vide et le corps :
+
+```
+GET /catalog/shoes?color=red HTTP/1.1        HTTP/1.1 200 OK
+Host: www.example.org                        Content-Type: text/html; charset=utf-8
+User-Agent: curl/7.88.1                      Content-Length: 1234
+Accept: */*                                  Cache-Control: max-age=60
+                                             Set-Cookie: SESSIONID=3f9a; Path=/; HttpOnly
+```
+
+| méthode | usage |
+|---------|-------|
+| `GET`, `HEAD` | lire une ressource (`HEAD` : les en-têtes seuls) ; sans effet de bord, on peut les rejouer |
+| `POST` | envoyer des données (formulaire, création) ; non rejouable sans risque |
+| `PUT`, `DELETE`, `PATCH` | remplacer, supprimer, modifier (API REST) |
+| `OPTIONS` | demander ce que le serveur accepte |
+
+| code | sens | exemples |
+|------|------|----------|
+| 2xx | succès | `200 OK`, `204 No Content` |
+| 3xx | redirection | `301` / `308` (définitive), `302` / `307` (temporaire), avec l'en-tête `Location` ; `304 Not Modified` |
+| 4xx | erreur du client | `400`, `401` (authentification demandée), `403` (interdit), `404`, `405` (méthode refusée, en-tête `Allow`), `429` (trop de requêtes) |
+| 5xx | erreur du serveur | `500` ; et celles que **produit un mandataire** : `502 Bad Gateway` (le serveur d'application a répondu n'importe quoi ou a refusé la connexion), `503 Service Unavailable` (aucun serveur disponible), `504 Gateway Timeout` (pas de réponse à temps) |
+
+### @@sec:vhost@@ Hôtes virtuels
+
+Une même adresse IP héberge souvent plusieurs sites : le serveur choisit le site d'après l'en-tête
+**`Host`** de la requête (obligatoire en HTTP/1.1), et en HTTPS d'après le nom annoncé dans la
+poignée de main TLS (**SNI**). Demander `http://192.0.2.10/` et demander `http://www.example.org/`
+à la même adresse peuvent donc donner deux pages différentes.
+
+### @@sec:versions@@ Connexions et versions
+
+- **HTTP/1.0** : une connexion TCP par requête.
+- **HTTP/1.1** : connexions **persistantes** (*keep-alive*) : plusieurs requêtes se suivent sur la même
+  connexion ; `Connection: close` la ferme.
+- **HTTP/2** : binaire, plusieurs requêtes **multiplexées** sur une connexion, en pratique seulement
+  au-dessus de TLS (négocié par l'extension ALPN, protocole `h2`).
+- **HTTP/3** : la même sémantique au-dessus de QUIC (UDP).
+
+Les méthodes, les codes et les en-têtes sont les mêmes dans toutes les versions.
+
+### @@sec:curl@@ curl
+
+`curl` est le client HTTP en ligne de commande ; il affiche le corps de la réponse.
+
+| option | effet |
+|--------|-------|
+| `-v` | montre la requête envoyée (`>`) et la réponse reçue (`<`), poignée de main TLS comprise |
+| `-i` / `-I` | affiche aussi les en-têtes de la réponse / envoie un `HEAD` et n'affiche que les en-têtes |
+| `-s -o /dev/null -w '%{http_code}\\n'` | n'affiche que le code de la réponse |
+| `-H 'Nom: valeur'` | ajoute ou remplace un en-tête (`-H 'Host: autre.example.org'`) |
+| `-X MÉTHODE`, `-d 'a=1&b=2'` | choisit la méthode ; envoie un corps (et passe en `POST`) |
+| `-L` | suit les redirections |
+| `-b 'nom=valeur'`, `-c fichier` / `-b fichier` | envoie un cookie ; garde et renvoie les cookies reçus |
+| `-u login:mot_de_passe` | authentification *Basic* |
+| `--resolve nom:port:adresse` | utilise cette adresse pour ce nom, sans DNS (le `Host` et le SNI restent le nom) |
+| `-k`, `--cacert fichier` | ne vérifie pas le certificat ; le vérifie avec cette autorité |
+| `--http2`, `--compressed` | demande HTTP/2 ; accepte une réponse compressée |
+""": """
+
+HTTP is a text-based **request / response** protocol, over TCP (port 80) or over TLS (HTTPS,
+port 443). The client sends a **request line** (method, target, version), **headers**, an
+empty line and possibly a body; the server answers with a **status line** (version, code,
+reason), headers, an empty line and the body:
+
+```
+GET /catalog/shoes?color=red HTTP/1.1        HTTP/1.1 200 OK
+Host: www.example.org                        Content-Type: text/html; charset=utf-8
+User-Agent: curl/7.88.1                      Content-Length: 1234
+Accept: */*                                  Cache-Control: max-age=60
+                                             Set-Cookie: SESSIONID=3f9a; Path=/; HttpOnly
+```
+
+| method | use |
+|---------|-------|
+| `GET`, `HEAD` | read a resource (`HEAD`: the headers only); no side effects, they can be replayed |
+| `POST` | send data (form, creation); cannot be replayed safely |
+| `PUT`, `DELETE`, `PATCH` | replace, delete, modify (REST API) |
+| `OPTIONS` | ask what the server accepts |
+
+| code | meaning | examples |
+|------|------|----------|
+| 2xx | success | `200 OK`, `204 No Content` |
+| 3xx | redirection | `301` / `308` (permanent), `302` / `307` (temporary), with the `Location` header; `304 Not Modified` |
+| 4xx | client error | `400`, `401` (authentication required), `403` (forbidden), `404`, `405` (method not allowed, `Allow` header), `429` (too many requests) |
+| 5xx | server error | `500`; and those that **a proxy produces**: `502 Bad Gateway` (the application server answered garbage or refused the connection), `503 Service Unavailable` (no server available), `504 Gateway Timeout` (no answer in time) |
+
+### @@sec:vhost@@ Virtual hosts
+
+One IP address often hosts several sites: the server chooses the site from the **`Host`** header
+of the request (mandatory in HTTP/1.1), and over HTTPS from the name announced in the TLS
+handshake (**SNI**). Requesting `http://192.0.2.10/` and requesting `http://www.example.org/`
+from the same address can therefore give two different pages.
+
+### @@sec:versions@@ Connections and versions
+
+- **HTTP/1.0**: one TCP connection per request.
+- **HTTP/1.1**: **persistent** connections (*keep-alive*): several requests follow one another on the same
+  connection; `Connection: close` closes it.
+- **HTTP/2**: binary, several requests **multiplexed** over one connection, in practice only
+  over TLS (negotiated by the ALPN extension, protocol `h2`).
+- **HTTP/3**: the same semantics over QUIC (UDP).
+
+The methods, the codes and the headers are the same in every version.
+
+### @@sec:curl@@ curl
+
+`curl` is the command-line HTTP client; it prints the body of the response.
+
+| option | effect |
+|--------|-------|
+| `-v` | shows the request sent (`>`) and the response received (`<`), TLS handshake included |
+| `-i` / `-I` | also prints the response headers / sends a `HEAD` and prints only the headers |
+| `-s -o /dev/null -w '%{http_code}\\n'` | prints only the response code |
+| `-H 'Name: value'` | adds or replaces a header (`-H 'Host: other.example.org'`) |
+| `-X METHOD`, `-d 'a=1&b=2'` | chooses the method; sends a body (and switches to `POST`) |
+| `-L` | follows redirections |
+| `-b 'name=value'`, `-c file` / `-b file` | sends a cookie; keeps and sends back the cookies received |
+| `-u login:password` | *Basic* authentication |
+| `--resolve name:port:address` | uses this address for this name, without DNS (the `Host` and the SNI remain the name) |
+| `-k`, `--cacert file` | does not check the certificate; checks it with this authority |
+| `--http2`, `--compressed` | asks for HTTP/2; accepts a compressed response |
+""",
+        "Mandataires : proxy et reverse proxy": "Proxies: forward proxy and reverse proxy",
+        """
+
+Un **mandataire** (*proxy*) reçoit une requête HTTP et la refait pour le compte d'un autre.
+
+- Le **proxy** tout court (*forward proxy* : squid, tinyproxy) est du côté des **clients** : les postes
+  d'une entreprise lui confient leurs requêtes vers l'Internet (filtrage, journalisation, cache).
+- Le **reverse proxy** (*mandataire inverse* : nginx, HAProxy, Varnish, Apache, Caddy, Traefik) est du côté
+  des **serveurs** : les clients croient parler au site, le reverse proxy transmet aux **serveurs
+  d'application** (*backends*, *upstreams*), qui ne sont pas joignables directement.
+
+```
+client ──HTTP(S)──▶ reverse proxy ──HTTP──▶ serveur d'application 1
+                    (adresse publique)  ╲──▶ serveur d'application 2
+```
+
+Ce qu'on confie à un reverse proxy : un **point d'entrée unique** pour plusieurs sites et
+applications (aiguillage par nom et par chemin), la **terminaison TLS**, le **cache**, la
+compression, la **répartition de charge** et la tolérance aux pannes, le contrôle d'accès et la
+limitation de débit, le masquage de l'architecture interne.
+
+Un mandataire travaille à l'une de ces deux couches :
+
+- **couche 7** (HTTP) : il lit la requête, peut choisir le serveur d'après le nom, le chemin ou un cookie,
+  ajouter des en-têtes, mettre en cache ;
+- **couche 4** (TCP) : il relaie des connexions sans les comprendre (n'importe quel protocole, TLS
+  non déchiffré), et ne choisit que d'après les adresses et les ports.
+
+### @@sec:forwarded@@ Ce que voit le serveur d'application
+
+Derrière un reverse proxy, la connexion TCP que reçoit le serveur d'application **vient du
+mandataire** : son journal ne contient plus que l'adresse du proxy. Le mandataire transmet donc ce
+qu'il sait dans des en-têtes :
+
+| en-tête | contenu |
+|---------|---------|
+| `X-Forwarded-For` | l'adresse du client ; chaque mandataire traversé **ajoute** celle de son interlocuteur : `client, proxy1` |
+| `X-Real-IP` | l'adresse du client vue par le premier mandataire (une seule valeur) |
+| `X-Forwarded-Proto` | `http` ou `https` : le protocole utilisé par le client (le backend, lui, ne voit que du HTTP) |
+| `X-Forwarded-Host`, `Host` | le nom demandé par le client ; `Host` doit être **transmis tel quel** si l'application distingue ses sites |
+| `Forwarded` | la forme normalisée (RFC 7239) : `Forwarded: for=192.0.2.7;proto=https` |
+| `Via` | la liste des mandataires traversés |
+
+Ces en-têtes sont de simples lignes de texte : **un client peut les envoyer lui-même**. Une
+application ne doit croire que ce qu'a écrit son propre mandataire : le **dernier** élément de
+`X-Forwarded-For`, ou un `X-Real-IP` que le mandataire **remplace** toujours.
+""": """
+
+A **proxy** receives an HTTP request and makes it again on behalf of someone else.
+
+- The plain **proxy** (*forward proxy*: squid, tinyproxy) is on the side of the **clients**: the hosts
+  of a company hand it their requests to the Internet (filtering, logging, cache).
+- The **reverse proxy** (nginx, HAProxy, Varnish, Apache, Caddy, Traefik) is on the side
+  of the **servers**: the clients believe they are talking to the site, the reverse proxy passes the requests on to the
+  **application servers** (*backends*, *upstreams*), which cannot be reached directly.
+
+```
+client ──HTTP(S)──▶ reverse proxy ──HTTP──▶ application server 1
+                    (public address)    ╲──▶ application server 2
+```
+
+What a reverse proxy is entrusted with: a **single entry point** for several sites and
+applications (routing by name and by path), **TLS termination**, **caching**,
+compression, **load balancing** and fault tolerance, access control and
+rate limiting, hiding the internal architecture.
+
+A proxy works at one of these two layers:
+
+- **layer 7** (HTTP): it reads the request, can choose the server from the name, the path or a cookie,
+  add headers, cache;
+- **layer 4** (TCP): it relays connections without understanding them (any protocol, TLS
+  not decrypted), and chooses only from the addresses and the ports.
+
+### @@sec:forwarded@@ What the application server sees
+
+Behind a reverse proxy, the TCP connection the application server receives **comes from the
+proxy**: its log only holds the address of the proxy. The proxy therefore passes on what
+it knows in headers:
+
+| header | content |
+|---------|---------|
+| `X-Forwarded-For` | the client's address; every proxy crossed **appends** the address of its peer: `client, proxy1` |
+| `X-Real-IP` | the client's address as seen by the first proxy (a single value) |
+| `X-Forwarded-Proto` | `http` or `https`: the protocol used by the client (the backend itself only sees HTTP) |
+| `X-Forwarded-Host`, `Host` | the name requested by the client; `Host` must be **passed unchanged** if the application tells its sites apart |
+| `Forwarded` | the standardised form (RFC 7239): `Forwarded: for=192.0.2.7;proto=https` |
+| `Via` | the list of the proxies crossed |
+
+These headers are plain lines of text: **a client can send them itself**. An
+application must only trust what its own proxy wrote: the **last** item of
+`X-Forwarded-For`, or an `X-Real-IP` that the proxy always **replaces**.
+""",
+        "nginx en reverse proxy": "nginx as a reverse proxy",
+        """
+
+La configuration de nginx est faite de **directives** (`nom valeur;`) rangées dans des **contextes**
+emboîtés : `http { ... }` contient des `server { ... }` (un site), qui contiennent des
+`location { ... }` (une partie du site). Sur les machines du TP (le paquet de nginx.org, rangé
+comme celui de Debian) :
+
+| fichier | rôle |
+|---------|------|
+| `/etc/nginx/nginx.conf` | fichier principal ; inclut les suivants **dans** le contexte `http` |
+| `/etc/nginx/conf.d/*.conf` | ce qui se déclare au niveau `http` (`upstream`, zones...) |
+| `/etc/nginx/sites-available/` | un fichier par site ; il est actif s'il a un lien dans `sites-enabled/` (`ln -s`) |
+| `/etc/nginx/snippets/` | morceaux à inclure (`include snippets/x.conf;`) |
+| `/var/log/nginx/access.log`, `error.log` | journaux |
+
+`nginx -t` vérifie la configuration, `systemctl reload nginx` l'applique sans couper les connexions,
+`nginx -T` affiche la configuration complète telle que nginx la lit. Le site `default` livré dans
+`sites-enabled/` est à retirer quand on installe les siens.
+
+### @@sec:nginx-select@@ Quel `server`, quel `location` ?
+
+Pour une requête, nginx choisit d'abord le **`server`** : parmi ceux qui écoutent sur l'adresse et le
+port de la connexion (`listen`), celui dont `server_name` correspond à l'en-tête `Host` ; si aucun ne
+correspond, le **serveur par défaut** de ce port (`listen 80 default_server;`, sinon le premier
+déclaré). Un serveur par défaut qui ne sert rien évite de répondre à n'importe quel nom :
+
+```nginx
+server {
+    listen 80 default_server;
+    server_name _;
+    return 444;              # 444 : nginx ferme la connexion sans répondre
+}
+```
+
+Puis il choisit le **`location`** : une correspondance exacte (`location = /x`) l'emporte ; sinon le
+plus long **préfixe** (`location /images/`), sauf si une expression régulière (`location ~ \\.php$`)
+correspond (un préfixe marqué `^~` empêche ce test).
+
+### @@sec:proxy-pass@@ `proxy_pass` et les en-têtes
+
+```nginx
+server {
+    listen 80;
+    server_name www.example.org;
+
+    location / {
+        proxy_pass http://192.0.2.21:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+- Par défaut nginx envoie au backend `Host: <ce qui suit proxy_pass>` et `Connection: close`, en
+  HTTP/1.0 : `proxy_set_header Host $host;` transmet le nom demandé par le client.
+- `$remote_addr` est l'adresse du client ; `$proxy_add_x_forwarded_for` vaut l'en-tête
+  `X-Forwarded-For` reçu suivi de `$remote_addr` ; `$scheme` vaut `http` ou `https` ; `$request_uri`
+  est le chemin demandé avec ses paramètres.
+- Les `proxy_set_header` écrits dans un `server` valent pour ses `location`, **sauf** ceux qui en
+  déclarent eux-mêmes : mieux vaut les regrouper dans un fichier inclus.
+- `proxy_hide_header X-Powered-By;` retire un en-tête de la réponse du backend ; `server_tokens off;`
+  (contexte `http`) retire la version de nginx de l'en-tête `Server` et des pages d'erreur.
+
+**Avec ou sans chemin après `proxy_pass`.** Sans chemin (`proxy_pass http://backend;`) la requête est
+transmise telle quelle. Avec un chemin, même réduit à `/`, la partie du chemin qui correspond au
+`location` est **remplacée** :
+
+```nginx
+location /blog/ { proxy_pass http://192.0.2.22:8080; }    # /blog/a  ->  /blog/a
+location /blog/ { proxy_pass http://192.0.2.22:8080/; }   # /blog/a  ->  /a
+```
+
+**Sans mandater.** `return 301 https://www.example.org$request_uri;` redirige ; `root /var/www/site;`
+sert des fichiers du disque (`/static/a.css` → `/var/www/site/static/a.css`), et `expires 1h;` leur
+ajoute les en-têtes `Expires` et `Cache-Control: max-age=3600`.
+""": """
+
+The configuration of nginx is made of **directives** (`name value;`) placed in nested
+**contexts**: `http { ... }` holds `server { ... }` blocks (a site), which hold
+`location { ... }` blocks (a part of the site). On the machines of the lab (the nginx.org package, laid out
+like Debian's):
+
+| file | role |
+|---------|------|
+| `/etc/nginx/nginx.conf` | main file; includes the following ones **inside** the `http` context |
+| `/etc/nginx/conf.d/*.conf` | what is declared at the `http` level (`upstream`, zones...) |
+| `/etc/nginx/sites-available/` | one file per site; it is active if it has a link in `sites-enabled/` (`ln -s`) |
+| `/etc/nginx/snippets/` | pieces to include (`include snippets/x.conf;`) |
+| `/var/log/nginx/access.log`, `error.log` | logs |
+
+`nginx -t` checks the configuration, `systemctl reload nginx` applies it without cutting the connections,
+`nginx -T` prints the complete configuration as nginx reads it. The `default` site shipped in
+`sites-enabled/` must be removed when you install your own.
+
+### @@sec:nginx-select@@ Which `server`, which `location`?
+
+For a request, nginx first chooses the **`server`**: among those listening on the address and the
+port of the connection (`listen`), the one whose `server_name` matches the `Host` header; if none
+matches, the **default server** of that port (`listen 80 default_server;`, otherwise the first one
+declared). A default server that serves nothing avoids answering to any name:
+
+```nginx
+server {
+    listen 80 default_server;
+    server_name _;
+    return 444;              # 444: nginx closes the connection without answering
+}
+```
+
+Then it chooses the **`location`**: an exact match (`location = /x`) wins; otherwise the
+longest **prefix** (`location /images/`), unless a regular expression (`location ~ \\.php$`)
+matches (a prefix marked `^~` prevents that test).
+
+### @@sec:proxy-pass@@ `proxy_pass` and the headers
+
+```nginx
+server {
+    listen 80;
+    server_name www.example.org;
+
+    location / {
+        proxy_pass http://192.0.2.21:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+- By default nginx sends the backend `Host: <what follows proxy_pass>` and `Connection: close`, over
+  HTTP/1.0: `proxy_set_header Host $host;` passes on the name requested by the client.
+- `$remote_addr` is the client's address; `$proxy_add_x_forwarded_for` is the
+  `X-Forwarded-For` header received followed by `$remote_addr`; `$scheme` is `http` or `https`; `$request_uri`
+  is the requested path with its parameters.
+- The `proxy_set_header` directives written in a `server` apply to its `location` blocks, **except** those
+  that declare some themselves: better group them in an included file.
+- `proxy_hide_header X-Powered-By;` removes a header from the backend's response; `server_tokens off;`
+  (`http` context) removes the version of nginx from the `Server` header and from the error pages.
+
+**With or without a path after `proxy_pass`.** Without a path (`proxy_pass http://backend;`) the request is
+passed unchanged. With a path, even reduced to `/`, the part of the path that matches the
+`location` is **replaced**:
+
+```nginx
+location /blog/ { proxy_pass http://192.0.2.22:8080; }    # /blog/a  ->  /blog/a
+location /blog/ { proxy_pass http://192.0.2.22:8080/; }   # /blog/a  ->  /a
+```
+
+**Without proxying.** `return 301 https://www.example.org$request_uri;` redirects; `root /var/www/site;`
+serves files from the disk (`/static/a.css` → `/var/www/site/static/a.css`), and `expires 1h;` adds
+the headers `Expires` and `Cache-Control: max-age=3600` to them.
+""",
+        "Répartition de charge": "Load balancing",
+        """
+
+Plusieurs serveurs d'application identiques derrière un **répartiteur** (*load balancer*) : on
+ajoute de la capacité en ajoutant des serveurs, et la panne de l'un d'eux ne coupe pas le service.
+
+### @@sec:lb-algo@@ Algorithmes
+
+| algorithme | principe | nginx | HAProxy |
+|------------|----------|-------|---------|
+| tourniquet (*round robin*) | chacun son tour | par défaut | `balance roundrobin` |
+| pondéré | proportionnel à un poids (serveurs inégaux) | `weight=3` | `weight 3` |
+| moins de connexions | le serveur le moins occupé (requêtes de durées inégales) | `least_conn;` | `balance leastconn` |
+| hachage de la source | une adresse cliente va toujours au même serveur | `ip_hash;` | `balance source` |
+| hachage de l'URL | une URL va toujours au même serveur (caches) | `hash $request_uri consistent;` | `balance uri` |
+
+### @@sec:health@@ Tests de vie
+
+- **Passifs** : le répartiteur constate les échecs des vraies requêtes (connexion refusée, délai
+  dépassé), écarte le serveur un moment et rejoue la requête ailleurs. Un client a quand même attendu.
+- **Actifs** : le répartiteur interroge lui-même chaque serveur à intervalle régulier, au niveau
+  TCP (le port répond-il ?) ou HTTP (une page de santé, `GET /health`, répond-elle `200` ?). Un serveur
+  est retiré après *n* échecs (`fall`) et remis après *m* succès (`rise`). Le test HTTP détecte une
+  application en panne **dont le port répond encore**.
+
+### @@sec:sticky@@ Persistance de session
+
+Si l'application garde la session d'un utilisateur **dans la mémoire d'un serveur**, les requêtes
+suivantes de cet utilisateur doivent revenir au même serveur, sinon il est « déconnecté » une fois
+sur deux. Solutions : le hachage de la source (fragile : tout un site derrière un NAT va au même
+serveur), un **cookie** que le répartiteur pose pour désigner le serveur, ou mieux, des sessions
+partagées (base de données, Redis) qui rendent les serveurs interchangeables.
+
+### @@sec:nginx-lb@@ Avec nginx : `upstream`
+
+```nginx
+upstream app {                      # contexte http (conf.d/)
+    server 192.0.2.21:8080 weight=2;
+    server 192.0.2.22:8080;
+    server 192.0.2.23:8080 backup;  # ne sert que si les autres sont en panne
+    keepalive 16;                   # connexions gardées ouvertes vers les serveurs
+}
+server {
+    location / {
+        proxy_pass http://app;
+        proxy_http_version 1.1;          # nécessaires pour keepalive
+        proxy_set_header Connection "";
+    }
+}
+```
+
+Les tests de vie de nginx (version libre) sont **passifs** : après un échec (connexion refusée,
+**délai dépassé**) le serveur est écarté 10 s (`max_fails=1 fail_timeout=10s`, valeurs par défaut) et
+la requête est rejouée sur le serveur suivant (`proxy_next_upstream`). Quand tous les serveurs sont
+écartés, nginx répond `502` et note `no live upstreams` dans `error.log`. Les tests actifs sont
+réservés à la version commerciale : c'est une des raisons de préférer HAProxy pour ce rôle.
+""": """
+
+Several identical application servers behind a **load balancer**: capacity is added by
+adding servers, and the failure of one of them does not interrupt the service.
+
+### @@sec:lb-algo@@ Algorithms
+
+| algorithm | principle | nginx | HAProxy |
+|------------|----------|-------|---------|
+| round robin | each in turn | default | `balance roundrobin` |
+| weighted | proportional to a weight (unequal servers) | `weight=3` | `weight 3` |
+| least connections | the least busy server (requests of unequal durations) | `least_conn;` | `balance leastconn` |
+| source hash | a client address always goes to the same server | `ip_hash;` | `balance source` |
+| URL hash | a URL always goes to the same server (caches) | `hash $request_uri consistent;` | `balance uri` |
+
+### @@sec:health@@ Health checks
+
+- **Passive**: the load balancer notices the failures of real requests (connection refused, timeout
+  exceeded), sets the server aside for a while and replays the request elsewhere. A client has waited all the same.
+- **Active**: the load balancer itself queries each server at regular intervals, at the
+  TCP level (does the port answer?) or at the HTTP level (does a health page, `GET /health`, answer `200`?). A server
+  is removed after *n* failures (`fall`) and put back after *m* successes (`rise`). The HTTP check detects an
+  application that has failed **while its port still answers**.
+
+### @@sec:sticky@@ Session persistence
+
+If the application keeps a user's session **in the memory of one server**, the following requests
+of that user must come back to the same server, otherwise they are "logged out" every other
+time. Solutions: source hashing (fragile: a whole site behind a NAT goes to the same
+server), a **cookie** that the load balancer sets to designate the server, or better, shared
+sessions (database, Redis) that make the servers interchangeable.
+
+### @@sec:nginx-lb@@ With nginx: `upstream`
+
+```nginx
+upstream app {                      # http context (conf.d/)
+    server 192.0.2.21:8080 weight=2;
+    server 192.0.2.22:8080;
+    server 192.0.2.23:8080 backup;  # serves only if the others are down
+    keepalive 16;                   # connections kept open to the servers
+}
+server {
+    location / {
+        proxy_pass http://app;
+        proxy_http_version 1.1;          # needed for keepalive
+        proxy_set_header Connection "";
+    }
+}
+```
+
+The health checks of nginx (free version) are **passive**: after a failure (connection refused,
+**timeout exceeded**) the server is set aside for 10 s (`max_fails=1 fail_timeout=10s`, the default values) and
+the request is replayed on the next server (`proxy_next_upstream`). When every server is
+set aside, nginx answers `502` and writes `no live upstreams` in `error.log`. Active checks are
+reserved for the commercial version: that is one of the reasons for preferring HAProxy in this role.
+""",
+        "Terminaison TLS": "TLS termination",
+        """
+
+Le reverse proxy porte le **certificat** du site et déchiffre : c'est la **terminaison TLS**. Les
+serveurs d'application reçoivent du HTTP en clair sur le réseau interne, et un seul endroit gère
+les certificats. (Autres choix : rechiffrer vers les backends ; ou relayer le TLS sans le
+déchiffrer, en couche 4, quand le backend doit garder sa clé.)
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name www.example.org;
+    ssl_certificate     /etc/ssl/site/www.example.org.crt;   # certificat (+ intermédiaires)
+    ssl_certificate_key /etc/ssl/site/www.example.org.key;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    ...
+}
+server {
+    listen 80;
+    server_name www.example.org;
+    return 301 https://$host$request_uri;
+}
+```
+
+- La redirection `80 → 443` garde le chemin et les paramètres.
+- **HSTS** (`Strict-Transport-Security`) demande au navigateur de ne plus jamais utiliser HTTP pour
+  ce nom pendant la durée indiquée ; `always` l'ajoute aussi aux réponses d'erreur.
+- `X-Forwarded-Proto: https` dit à l'application que le client est en HTTPS, pour qu'elle ne
+  fabrique pas de liens ou de redirections en `http://`.
+- `http2` sur la ligne `listen` active HTTP/2.
+- Vérifier : `curl -v --cacert ca.crt https://www.example.org/`,
+  `openssl s_client -connect adresse:443 -servername www.example.org`.
+""": """
+
+The reverse proxy holds the **certificate** of the site and decrypts: this is **TLS termination**. The
+application servers receive plain HTTP on the internal network, and a single place manages
+the certificates. (Other choices: re-encrypt towards the backends; or relay TLS without
+decrypting it, at layer 4, when the backend must keep its key.)
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name www.example.org;
+    ssl_certificate     /etc/ssl/site/www.example.org.crt;   # certificate (+ intermediates)
+    ssl_certificate_key /etc/ssl/site/www.example.org.key;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    ...
+}
+server {
+    listen 80;
+    server_name www.example.org;
+    return 301 https://$host$request_uri;
+}
+```
+
+- The `80 → 443` redirection keeps the path and the parameters.
+- **HSTS** (`Strict-Transport-Security`) asks the browser never to use HTTP again for
+  this name for the duration given; `always` also adds it to the error responses.
+- `X-Forwarded-Proto: https` tells the application that the client is on HTTPS, so that it does not
+  build `http://` links or redirections.
+- `http2` on the `listen` line enables HTTP/2.
+- Check: `curl -v --cacert ca.crt https://www.example.org/`,
+  `openssl s_client -connect address:443 -servername www.example.org`.
+""",
+        "Protéger et fiabiliser": "Protection and reliability",
+        """
+
+**Authentification *Basic*.** Le serveur répond `401` avec `WWW-Authenticate: Basic` ; le client
+renvoie `Authorization: Basic <login:mot de passe en base64>` : à n'utiliser que sur HTTPS.
+
+```nginx
+location /admin/ {
+    auth_basic "Administration";
+    auth_basic_user_file /etc/nginx/htpasswd;     # htpasswd -c /etc/nginx/htpasswd alice
+    proxy_pass http://app;
+}
+```
+
+**Filtrage par adresse.** `allow 192.0.2.7; deny all;` (dans l'ordre, la première règle qui
+correspond l'emporte ; refus : `403`). Exemple : la page d'état de nginx, `stub_status;`.
+
+**Limitation de débit.** Une zone de mémoire partagée compte les requêtes par clé (ici l'adresse du
+client) :
+
+```nginx
+limit_req_zone $binary_remote_addr zone=perip:10m rate=5r/s;    # contexte http
+location /api/ {
+    limit_req zone=perip burst=5 nodelay;     # 5 requêtes d'avance tolérées, servies sans attente
+    limit_req_status 429;                     # 503 par défaut
+    proxy_pass http://api;
+}
+```
+
+**Délais et pages d'erreur.** `proxy_connect_timeout` et `proxy_read_timeout` (60 s par défaut)
+bornent l'attente du backend : au-delà, nginx répond `504` (après avoir essayé les autres serveurs de
+l'`upstream`). Un backend qui refuse la connexion donne `502`. `error_page` remplace les pages
+d'erreur brutes :
+
+```nginx
+proxy_read_timeout 3s;
+error_page 502 503 504 /maintenance.html;
+location = /maintenance.html { root /var/www/site; internal; }   # internal : pas accessible directement
+```
+
+**Compression.** `gzip on;` (en commentaire dans le `nginx.conf` du paquet : à écrire au niveau
+`http`, `server` ou `location`) ne compresse que `text/html` :
+`gzip_types text/plain application/json text/css;` étend la liste. Le client doit avoir envoyé
+`Accept-Encoding: gzip` ; la réponse porte alors `Content-Encoding: gzip`.
+""": """
+
+**HTTP *Basic* authentication.** The server answers `401` with `WWW-Authenticate: Basic`; the client
+sends back `Authorization: Basic <login:password in base64>`: to be used over HTTPS only.
+
+```nginx
+location /admin/ {
+    auth_basic "Administration";
+    auth_basic_user_file /etc/nginx/htpasswd;     # htpasswd -c /etc/nginx/htpasswd alice
+    proxy_pass http://app;
+}
+```
+
+**Filtering by address.** `allow 192.0.2.7; deny all;` (in order, the first rule that
+matches wins; refusal: `403`). Example: the status page of nginx, `stub_status;`.
+
+**Rate limiting.** A shared memory zone counts the requests per key (here the client's
+address):
+
+```nginx
+limit_req_zone $binary_remote_addr zone=perip:10m rate=5r/s;    # http context
+location /api/ {
+    limit_req zone=perip burst=5 nodelay;     # 5 requests ahead tolerated, served without waiting
+    limit_req_status 429;                     # 503 by default
+    proxy_pass http://api;
+}
+```
+
+**Timeouts and error pages.** `proxy_connect_timeout` and `proxy_read_timeout` (60 s by default)
+bound the wait for the backend: beyond that, nginx answers `504` (after trying the other servers of
+the `upstream`). A backend that refuses the connection gives `502`. `error_page` replaces the raw error
+pages:
+
+```nginx
+proxy_read_timeout 3s;
+error_page 502 503 504 /maintenance.html;
+location = /maintenance.html { root /var/www/site; internal; }   # internal: not reachable directly
+```
+
+**Compression.** `gzip on;` (commented out in the `nginx.conf` of the package: to be written at the
+`http`, `server` or `location` level) only compresses `text/html`:
+`gzip_types text/plain application/json text/css;` extends the list. The client must have sent
+`Accept-Encoding: gzip`; the response then carries `Content-Encoding: gzip`.
+""",
+        "Cache HTTP et Varnish": "HTTP caching and Varnish",
+        """
+
+Un **cache partagé**, placé devant l'application, garde les réponses et les ressert sans la
+déranger. Ce sont les en-têtes de la réponse qui disent ce qui est permis :
+
+| en-tête | sens |
+|---------|------|
+| `Cache-Control: max-age=60` | réponse réutilisable pendant 60 s (`s-maxage` : valeur pour les caches partagés) |
+| `Cache-Control: private` | propre à un utilisateur : interdite aux caches partagés |
+| `Cache-Control: no-store` | ne jamais garder |
+| `Expires` | l'ancienne forme, une date |
+| `ETag`, `Last-Modified` | permettent de **revalider** (`If-None-Match` → `304 Not Modified`) |
+| `Vary: Accept-Encoding` | la réponse dépend de cet en-tête de la requête |
+| `Age` | ajouté par le cache : âge de la réponse servie, en secondes |
+
+Un cache partagé ne doit **jamais** servir à un utilisateur la page d'un autre : par prudence, une
+requête portant `Cookie` ou `Authorization`, ou une réponse portant `Set-Cookie`, n'est pas mise
+en cache. C'est aussi ce qui rend un cache inefficace quand l'application pose un cookie sur toutes
+ses pages.
+
+### @@sec:varnish@@ Varnish
+
+Varnish est un reverse proxy **spécialisé dans le cache**, en mémoire. Sous Debian il écoute sur le
+port **6081** (unité `varnish.service`) et lit `/etc/varnish/default.vcl`. Il ne fait pas de TLS :
+on place un terminateur TLS (nginx, HAProxy) devant lui. Sa configuration est un programme, en
+**VCL** : des déclarations, puis des sous-routines appelées aux étapes du traitement d'une requête.
+
+```vcl
+vcl 4.1;
+import directors;
+
+probe health { .url = "/health"; .interval = 2s; .timeout = 1s; .window = 3; .threshold = 2; }
+backend app1 { .host = "192.0.2.21"; .port = "8080"; .probe = health; }
+backend app2 { .host = "192.0.2.22"; .port = "8080"; .probe = health; }
+acl purgers { "localhost"; "192.0.2.7"; }
+
+sub vcl_init {                                # au chargement : un répartiteur
+    new pool = directors.round_robin();
+    pool.add_backend(app1);
+    pool.add_backend(app2);
+}
+sub vcl_recv {                                # à l'arrivée de la requête
+    set req.backend_hint = pool.backend();
+    if (req.method == "PURGE") {
+        if (!client.ip ~ purgers) { return (synth(405, "Not allowed")); }
+        return (purge);                       # retire la page du cache
+    }
+    if (req.url ~ "^/images/") { unset req.http.Cookie; }
+}
+sub vcl_backend_response {                    # à la réponse du backend
+    if (bereq.url ~ "^/images/") { unset beresp.http.Set-Cookie; set beresp.ttl = 1h; }
+}
+sub vcl_deliver {                             # avant d'envoyer au client
+    if (obj.hits > 0) { set resp.http.X-Cache = "HIT"; } else { set resp.http.X-Cache = "MISS"; }
+}
+```
+
+Après vos sous-routines s'exécute le **VCL intégré**, qui applique les règles de prudence : dans
+`vcl_recv`, une requête qui n'est pas un `GET` / `HEAD` ou qui porte `Cookie` / `Authorization` va
+directement au backend (*pass*) ; dans `vcl_backend_response`, une réponse avec `Set-Cookie`, ou avec
+`Cache-Control: private`, `no-cache` ou `no-store`, n'est pas gardée. La durée de vie vient de
+`s-maxage`, `max-age` ou `Expires`, sinon **120 s** par défaut. Pour mettre en cache des pages
+publiques qu'un cookie inutile « empoisonne », on retire le cookie de la requête et le `Set-Cookie`
+de la réponse, **pour ces pages seulement**.
+
+- Une réponse servie du cache porte `Age:` > 0 et deux numéros dans `X-Varnish:` (la requête, et
+  celle qui avait rempli le cache).
+- `systemctl reload varnish` recharge le VCL sans vider le cache (`restart` le vide) ;
+  `varnishadm backend.list` montre l'état des backends ; `varnishlog -g request` suit une requête
+  pas à pas ; `varnishstat` donne les compteurs (`cache_hit`, `cache_miss`).
+- nginx sait aussi faire du cache (`proxy_cache_path`, `proxy_cache`, variable
+  `$upstream_cache_status`), plus simplement et sur disque.
+""": """
+
+A **shared cache**, placed in front of the application, keeps the responses and serves them again without
+disturbing it. The headers of the response say what is allowed:
+
+| header | meaning |
+|---------|------|
+| `Cache-Control: max-age=60` | response reusable for 60 s (`s-maxage`: value for the shared caches) |
+| `Cache-Control: private` | specific to one user: forbidden to shared caches |
+| `Cache-Control: no-store` | never keep |
+| `Expires` | the older form, a date |
+| `ETag`, `Last-Modified` | allow **revalidation** (`If-None-Match` → `304 Not Modified`) |
+| `Vary: Accept-Encoding` | the response depends on this request header |
+| `Age` | added by the cache: age of the response served, in seconds |
+
+A shared cache must **never** serve one user the page of another: as a precaution, a
+request carrying `Cookie` or `Authorization`, or a response carrying `Set-Cookie`, is not
+cached. That is also what makes a cache ineffective when the application sets a cookie on all
+its pages.
+
+### @@sec:varnish@@ Varnish
+
+Varnish is a reverse proxy **specialised in caching**, in memory. On Debian it listens on
+port **6081** (unit `varnish.service`) and reads `/etc/varnish/default.vcl`. It does not do TLS:
+a TLS terminator (nginx, HAProxy) is placed in front of it. Its configuration is a program, in
+**VCL**: declarations, then subroutines called at the steps of the processing of a request.
+
+```vcl
+vcl 4.1;
+import directors;
+
+probe health { .url = "/health"; .interval = 2s; .timeout = 1s; .window = 3; .threshold = 2; }
+backend app1 { .host = "192.0.2.21"; .port = "8080"; .probe = health; }
+backend app2 { .host = "192.0.2.22"; .port = "8080"; .probe = health; }
+acl purgers { "localhost"; "192.0.2.7"; }
+
+sub vcl_init {                                # at load time: a load balancer
+    new pool = directors.round_robin();
+    pool.add_backend(app1);
+    pool.add_backend(app2);
+}
+sub vcl_recv {                                # when the request arrives
+    set req.backend_hint = pool.backend();
+    if (req.method == "PURGE") {
+        if (!client.ip ~ purgers) { return (synth(405, "Not allowed")); }
+        return (purge);                       # removes the page from the cache
+    }
+    if (req.url ~ "^/images/") { unset req.http.Cookie; }
+}
+sub vcl_backend_response {                    # on the response of the backend
+    if (bereq.url ~ "^/images/") { unset beresp.http.Set-Cookie; set beresp.ttl = 1h; }
+}
+sub vcl_deliver {                             # before sending to the client
+    if (obj.hits > 0) { set resp.http.X-Cache = "HIT"; } else { set resp.http.X-Cache = "MISS"; }
+}
+```
+
+After your subroutines the **built-in VCL** runs, which applies the precaution rules: in
+`vcl_recv`, a request that is not a `GET` / `HEAD` or that carries `Cookie` / `Authorization` goes
+straight to the backend (*pass*); in `vcl_backend_response`, a response with `Set-Cookie`, or with
+`Cache-Control: private`, `no-cache` or `no-store`, is not kept. The lifetime comes from
+`s-maxage`, `max-age` or `Expires`, otherwise **120 s** by default. To cache public
+pages that a useless cookie "poisons", the cookie is removed from the request and the `Set-Cookie`
+from the response, **for those pages only**.
+
+- A response served from the cache carries `Age:` > 0 and two numbers in `X-Varnish:` (the request, and
+  the one that had filled the cache).
+- `systemctl reload varnish` reloads the VCL without emptying the cache (`restart` empties it);
+  `varnishadm backend.list` shows the state of the backends; `varnishlog -g request` follows a request
+  step by step; `varnishstat` gives the counters (`cache_hit`, `cache_miss`).
+- nginx can cache too (`proxy_cache_path`, `proxy_cache`, variable
+  `$upstream_cache_status`), more simply and on disk.
+""",
+        "HAProxy": "HAProxy",
+        """
+
+HAProxy est un répartiteur de charge (couches 4 et 7). Son fichier `/etc/haproxy/haproxy.cfg` est
+fait de sections : `global` (le processus), `defaults` (valeurs communes), puis des **`frontend`**
+(ce qui écoute), des **`backend`** (des groupes de serveurs) ou des **`listen`** (les deux en un).
+On garde les sections `global` et `defaults` de Debian. `haproxy -c -f /etc/haproxy/haproxy.cfg`
+vérifie le fichier, `systemctl reload haproxy` l'applique ; journal : `/var/log/haproxy.log`.
+
+### @@sec:haproxy-lb@@ Répartition et tests de vie
+
+```haproxy
+frontend www
+    bind *:80
+    option forwardfor                  # ajoute X-Forwarded-For
+    default_backend app
+
+backend app
+    balance roundrobin
+    option httpchk GET /health         # test de vie HTTP...
+    http-check expect status 200       # ...réussi si la réponse est 200
+    default-server check inter 2s fall 2 rise 2
+    server app1 192.0.2.21:8080 weight 2
+    server app2 192.0.2.22:8080
+    server app3 192.0.2.23:8080 backup
+```
+
+`check` active le test de vie du serveur : sans `option httpchk`, une simple connexion TCP ;
+`option httpchk` seul envoie `OPTIONS /`. `inter` est l'intervalle, `fall` / `rise` les nombres
+d'échecs et de succès qui font retirer ou remettre le serveur.
+
+### @@sec:haproxy-l7@@ Persistance et aiguillage
+
+```haproxy
+backend app
+    cookie SRV insert indirect nocache     # HAProxy pose le cookie SRV=<valeur du serveur>
+    server app1 192.0.2.21:8080 check cookie app1
+    server app2 192.0.2.22:8080 check cookie app2
+
+frontend www
+    acl is_api path_beg /api/              # ACL : une condition nommée
+    acl is_static hdr(host) -i static.example.org
+    use_backend api if is_api
+    default_backend app
+```
+
+Avec `insert`, HAProxy ajoute un `Set-Cookie` à la première réponse ; les requêtes qui reviennent
+avec ce cookie vont au serveur désigné tant qu'il est en vie. `indirect` retire le cookie de la
+requête transmise au serveur, `nocache` empêche un cache de garder la réponse qui le pose.
+D'autres critères d'ACL : `hdr(host)`, `path_end`, `src`, `method`, `ssl_fc` (la connexion du client
+est en TLS).
+
+### @@sec:haproxy-tcp@@ Mode TCP et TLS
+
+```haproxy
+listen ldap
+    bind *:389
+    mode tcp                               # couche 4 : n'importe quel protocole
+    balance source
+    server s1 192.0.2.31:389 check
+    server s2 192.0.2.32:389 check
+
+frontend www
+    bind *:443 ssl crt /etc/haproxy/certs/site.pem
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+```
+
+Pour la terminaison TLS, HAProxy veut **un seul fichier PEM** contenant le certificat (et ses
+intermédiaires) **puis la clé privée** : `cat site.crt site.key > site.pem` (droits `600`).
+
+### @@sec:haproxy-stats@@ Statistiques et pilotage
+
+```haproxy
+listen stats
+    bind *:8404
+    stats enable
+    stats uri /stats
+    stats refresh 5s
+    stats auth admin:motdepasse
+```
+
+La page montre l'état de chaque serveur (vert : `UP`, rouge : `DOWN`), le résultat de son dernier
+test (`L7OK/200`, `L7STS/503`, `L4CON`...) et ses compteurs ; `/stats;csv` en donne la forme CSV.
+La **socket d'administration** (`stats socket` de la section `global`) pilote HAProxy sans le
+recharger :
+
+```
+echo "show stat" | socat stdio /run/haproxy/admin.sock
+echo "set server app/app2 state drain" | socat stdio /run/haproxy/admin.sock    # drain, maint, ready
+hatop -s /run/haproxy/admin.sock
+```
+
+`drain` laisse finir les sessions en cours sans en accepter de nouvelles : c'est ainsi qu'on sort un
+serveur pour une mise à jour.
+""": """
+
+HAProxy is a load balancer (layers 4 and 7). Its file `/etc/haproxy/haproxy.cfg` is
+made of sections: `global` (the process), `defaults` (common values), then **`frontend`** sections
+(what listens), **`backend`** sections (groups of servers) or **`listen`** sections (both in one).
+The `global` and `defaults` sections of Debian are kept. `haproxy -c -f /etc/haproxy/haproxy.cfg`
+checks the file, `systemctl reload haproxy` applies it; log: `/var/log/haproxy.log`.
+
+### @@sec:haproxy-lb@@ Balancing and health checks
+
+```haproxy
+frontend www
+    bind *:80
+    option forwardfor                  # adds X-Forwarded-For
+    default_backend app
+
+backend app
+    balance roundrobin
+    option httpchk GET /health         # HTTP health check...
+    http-check expect status 200       # ...successful if the response is 200
+    default-server check inter 2s fall 2 rise 2
+    server app1 192.0.2.21:8080 weight 2
+    server app2 192.0.2.22:8080
+    server app3 192.0.2.23:8080 backup
+```
+
+`check` enables the health check of the server: without `option httpchk`, a mere TCP connection;
+`option httpchk` alone sends `OPTIONS /`. `inter` is the interval, `fall` / `rise` the numbers
+of failures and of successes that have the server removed or put back.
+
+### @@sec:haproxy-l7@@ Persistence and routing
+
+```haproxy
+backend app
+    cookie SRV insert indirect nocache     # HAProxy sets the cookie SRV=<value of the server>
+    server app1 192.0.2.21:8080 check cookie app1
+    server app2 192.0.2.22:8080 check cookie app2
+
+frontend www
+    acl is_api path_beg /api/              # ACL: a named condition
+    acl is_static hdr(host) -i static.example.org
+    use_backend api if is_api
+    default_backend app
+```
+
+With `insert`, HAProxy adds a `Set-Cookie` to the first response; the requests that come back
+with this cookie go to the designated server as long as it is alive. `indirect` removes the cookie from the
+request passed on to the server, `nocache` prevents a cache from keeping the response that sets it.
+Other ACL criteria: `hdr(host)`, `path_end`, `src`, `method`, `ssl_fc` (the client's connection
+is over TLS).
+
+### @@sec:haproxy-tcp@@ TCP mode and TLS
+
+```haproxy
+listen ldap
+    bind *:389
+    mode tcp                               # layer 4: any protocol
+    balance source
+    server s1 192.0.2.31:389 check
+    server s2 192.0.2.32:389 check
+
+frontend www
+    bind *:443 ssl crt /etc/haproxy/certs/site.pem
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+```
+
+For TLS termination, HAProxy wants **a single PEM file** holding the certificate (and its
+intermediates) **then the private key**: `cat site.crt site.key > site.pem` (mode `600`).
+
+### @@sec:haproxy-stats@@ Statistics and control
+
+```haproxy
+listen stats
+    bind *:8404
+    stats enable
+    stats uri /stats
+    stats refresh 5s
+    stats auth admin:password
+```
+
+The page shows the state of each server (green: `UP`, red: `DOWN`), the result of its last
+check (`L7OK/200`, `L7STS/503`, `L4CON`...) and its counters; `/stats;csv` gives it in CSV form.
+The **administration socket** (`stats socket` of the `global` section) controls HAProxy without
+reloading it:
+
+```
+echo "show stat" | socat stdio /run/haproxy/admin.sock
+echo "set server app/app2 state drain" | socat stdio /run/haproxy/admin.sock    # drain, maint, ready
+hatop -s /run/haproxy/admin.sock
+```
+
+`drain` lets the current sessions finish without accepting new ones: this is how a
+server is taken out for an update.
+""",
+        "Haute disponibilité : VRRP et keepalived": "High availability: VRRP and keepalived",
+        """
+
+Le répartiteur est devenu le **point de défaillance unique**. On en installe deux, identiques, qui
+se partagent une **adresse IP virtuelle** : c'est elle que les clients (le DNS) connaissent.
+
+**VRRP** : les routeurs d'un même groupe (`virtual_router_id`, de 1 à 255) ont chacun une
+**priorité**. Le **maître** porte l'adresse virtuelle et envoie une annonce toutes les `advert_int`
+secondes (IP protocole 112, multidiffusion `224.0.0.18`). Si les annonces cessent (environ trois
+intervalles), le secours de plus haute priorité devient maître : il configure l'adresse sur son
+interface et envoie des **ARP gratuits** pour que les voisins apprennent sa nouvelle adresse MAC.
+Quand l'ancien maître revient, il reprend l'adresse (*préemption*).
+
+```
+vrrp_script chk_service {                 # un test local : code de retour 0 = sain
+    script "/usr/bin/pgrep -x nginx"
+    interval 2
+    fall 2
+    rise 2
+}
+vrrp_instance VI_1 {
+    state MASTER                          # BACKUP sur l'autre machine
+    interface eth0
+    virtual_router_id 51                  # le même sur les deux
+    priority 150                          # plus bas sur l'autre (100)
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass secret                  # 8 caractères au plus, le même sur les deux
+    }
+    virtual_ipaddress {
+        192.0.2.100/24
+    }
+    track_script {
+        chk_service                       # test en échec : la machine cède l'adresse
+    }
+}
+```
+
+`/etc/keepalived/keepalived.conf` n'existe pas à l'installation. Sans `track_script`, keepalived
+ne surveille que lui-même : le service peut être arrêté et l'adresse rester sur la machine.
+Vérifier : `ip addr show eth0` (qui porte l'adresse ?), `tcpdump -n -i eth0 vrrp` (qui annonce, avec
+quelle priorité ?), `journalctl -u keepalived` (`Entering MASTER STATE`, `Entering BACKUP STATE`,
+`Entering FAULT STATE`). Un service qui écoute sur `*:80` reçoit les connexions destinées à l'adresse
+virtuelle dès qu'elle arrive sur la machine.
+""": """
+
+The load balancer has become the **single point of failure**. Two identical ones are installed, which
+share a **virtual IP address**: that is the address the clients (the DNS) know.
+
+**VRRP**: the routers of one group (`virtual_router_id`, from 1 to 255) each have a
+**priority**. The **master** holds the virtual address and sends an advertisement every `advert_int`
+seconds (IP protocol 112, multicast `224.0.0.18`). If the advertisements stop (about three
+intervals), the backup with the highest priority becomes master: it configures the address on its
+interface and sends **gratuitous ARPs** so that the neighbours learn the new MAC address behind it.
+When the former master comes back, it takes the address back (*preemption*).
+
+```
+vrrp_script chk_service {                 # a local check: exit code 0 = healthy
+    script "/usr/bin/pgrep -x nginx"
+    interval 2
+    fall 2
+    rise 2
+}
+vrrp_instance VI_1 {
+    state MASTER                          # BACKUP on the other machine
+    interface eth0
+    virtual_router_id 51                  # the same on both
+    priority 150                          # lower on the other one (100)
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass secret                  # 8 characters at most, the same on both
+    }
+    virtual_ipaddress {
+        192.0.2.100/24
+    }
+    track_script {
+        chk_service                       # failed check: the machine gives up the address
+    }
+}
+```
+
+`/etc/keepalived/keepalived.conf` does not exist after installation. Without `track_script`, keepalived
+only watches itself: the service can be stopped while the address stays on the machine.
+Check: `ip addr show eth0` (who holds the address?), `tcpdump -n -i eth0 vrrp` (who advertises, with
+which priority?), `journalctl -u keepalived` (`Entering MASTER STATE`, `Entering BACKUP STATE`,
+`Entering FAULT STATE`). A service listening on `*:80` receives the connections meant for the virtual
+address as soon as it arrives on the machine.
+""",
+        "Autres outils, mesures": "Other tools, measurements",
+        """
+
+**Apache** fait aussi reverse proxy et répartiteur, avec les modules `proxy`, `proxy_http`,
+`proxy_balancer` et `lbmethod_byrequests` (`a2enmod`) ; le port d'écoute se règle dans
+`/etc/apache2/ports.conf` :
+
+```apache
+<VirtualHost *:8088>
+    ProxyPreserveHost On                  # transmet le Host du client
+    <Proxy "balancer://app">
+        BalancerMember "http://192.0.2.21:8080"
+        BalancerMember "http://192.0.2.22:8080"
+    </Proxy>
+    ProxyPass        "/" "balancer://app/"
+    ProxyPassReverse "/" "balancer://app/"
+</VirtualHost>
+```
+
+**Caddy** vise la simplicité (et obtient seul ses certificats sur l'Internet) ; tout tient dans
+`/etc/caddy/Caddyfile` :
+
+```
+:8089 {
+    reverse_proxy 192.0.2.21:8080 192.0.2.22:8080 {
+        lb_policy round_robin
+    }
+}
+```
+
+Apache et Caddy ajoutent `X-Forwarded-For` d'eux-mêmes. **Traefik** et **Envoy** se configurent
+dynamiquement à partir d'un orchestrateur de conteneurs ; **squid** et **tinyproxy** sont des proxys
+côté clients.
+
+### @@sec:measure@@ Mesurer et observer
+
+- `ab -n 1000 -c 20 http://site/` (Apache Bench) envoie 1000 requêtes, 20 à la fois, et donne le
+  débit et les temps de réponse ; à comparer avec et sans cache.
+- `curl -s -o /dev/null -w '%{http_code} %{time_total}s\\n' URL` : le code et la durée d'une requête.
+- Les journaux : `/var/log/nginx/access.log` et `error.log` (les erreurs `upstream`),
+  `/var/log/haproxy.log`, `varnishlog`, et le journal des serveurs d'application, où l'on vérifie
+  l'adresse du client transmise par le mandataire.
+""": """
+
+**Apache** also works as a reverse proxy and load balancer, with the modules `proxy`, `proxy_http`,
+`proxy_balancer` and `lbmethod_byrequests` (`a2enmod`); the listening port is set in
+`/etc/apache2/ports.conf`:
+
+```apache
+<VirtualHost *:8088>
+    ProxyPreserveHost On                  # passes on the client's Host
+    <Proxy "balancer://app">
+        BalancerMember "http://192.0.2.21:8080"
+        BalancerMember "http://192.0.2.22:8080"
+    </Proxy>
+    ProxyPass        "/" "balancer://app/"
+    ProxyPassReverse "/" "balancer://app/"
+</VirtualHost>
+```
+
+**Caddy** aims at simplicity (and obtains its certificates on the Internet by itself); everything fits in
+`/etc/caddy/Caddyfile`:
+
+```
+:8089 {
+    reverse_proxy 192.0.2.21:8080 192.0.2.22:8080 {
+        lb_policy round_robin
+    }
+}
+```
+
+Apache and Caddy add `X-Forwarded-For` by themselves. **Traefik** and **Envoy** are configured
+dynamically from a container orchestrator; **squid** and **tinyproxy** are client-side
+proxies.
+
+### @@sec:measure@@ Measuring and observing
+
+- `ab -n 1000 -c 20 http://site/` (Apache Bench) sends 1000 requests, 20 at a time, and gives the
+  throughput and the response times; compare with and without a cache.
+- `curl -s -o /dev/null -w '%{http_code} %{time_total}s\\n' URL`: the code and the duration of a request.
+- The logs: `/var/log/nginx/access.log` and `error.log` (the `upstream` errors),
+  `/var/log/haproxy.log`, `varnishlog`, and the log of the application servers, where you check
+  the client's address passed on by the proxy.
+""",
+        "Solution de référence : nginx, Varnish (et Apache, Caddy) sur proxy, HAProxy et keepalived sur lb1 et lb2 ; web4 est remis en panne ; le formulaire est rempli.": "Reference solution: nginx, Varnish (and Apache, Caddy) on proxy, HAProxy and keepalived on lb1 and lb2; web4 is made sick again; the form is filled.",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente HTTP, les mandataires, nginx, la répartition de
+charge, la terminaison TLS, le cache (Varnish), HAProxy et VRRP. Vous êtes l'administrateur de la
+boutique en ligne **`shop.tp`**. Les développeurs ont déployé l'application sur quatre **serveurs
+d'application** `web1` à `web4`, sur le réseau privé `lan` ; vous n'avez **pas de terminal** sur ces
+machines. À vous de construire ce qui se trouve entre les clients (réseau `wan`) et ces serveurs :
+
+- sur **`proxy`** : **nginx** en reverse proxy (parties 2 à 6) et **Varnish** en cache (partie 7) ;
+- sur **`lb1`** et **`lb2`** : **HAProxy** en répartiteur de charge (parties 8 et 9) et **keepalived**
+  pour une adresse virtuelle (partie 10) ;
+- **`client`** est votre poste de test sur `wan` (`curl`, `ab`, Firefox, `hatop`).
+
+Il n'y a **pas de routage** entre `wan` et `lan` : `client` ne peut pas joindre `web1` directement,
+et les serveurs d'application ne voient que l'adresse du mandataire qui leur parle.
+""": """
+Read the **Informations** tab: it presents HTTP, proxies, nginx, load
+balancing, TLS termination, caching (Varnish), HAProxy and VRRP. You are the administrator of the
+online shop **`shop.tp`**. The developers have deployed the application on four **application
+servers** `web1` to `web4`, on the private network `lan`; you have **no terminal** on these
+machines. It is up to you to build what stands between the clients (network `wan`) and these servers:
+
+- on **`proxy`**: **nginx** as a reverse proxy (parts 2 to 6) and **Varnish** as a cache (part 7);
+- on **`lb1`** and **`lb2`**: **HAProxy** as a load balancer (parts 8 and 9) and **keepalived**
+  for a virtual address (part 10);
+- **`client`** is your test host on `wan` (`curl`, `ab`, Firefox, `hatop`).
+
+There is **no routing** between `wan` and `lan`: `client` cannot reach `web1` directly,
+and the application servers only see the address of the proxy that talks to them.
+""",
+        """
+Les noms sont dans `/etc/hosts` (pas de DNS) ; `web1` à `web4` sont connus de `proxy`, `lb1` et `lb2` :
+""": """
+The names are in `/etc/hosts` (no DNS); `web1` to `web4` are known to `proxy`, `lb1` and `lb2`:
+""",
+        """
+**Ce qui est fourni.**
+
+- Sur `proxy`, `lb1` et `lb2` : nginx, Varnish, HAProxy, keepalived, Apache et Caddy sont installés,
+  **arrêtés et non configurés** (`systemctl start|reload|status`, `journalctl -u`).
+- Le certificat de `www.shop.tp` (valable aussi pour `api.shop.tp` et `app.shop.tp`), signé par
+  l'autorité interne de l'entreprise : `/etc/ssl/shop/www.shop.tp.crt`, `/etc/ssl/shop/www.shop.tp.key`
+  et `/etc/ssl/shop/ca.crt` sur `proxy`, `lb1` et `lb2`. `client` fait déjà confiance à cette autorité
+  (`curl` sans `-k`, Firefox).
+- Sur `proxy` : les fichiers statiques du site dans `/var/www/shop/static/`.
+- Le dossier `/shared` est commun à toutes vos machines (pour copier un fichier de `lb1` vers `lb2`).
+
+Les valeurs propres à votre instance du TP :
+""": """
+**What is provided.**
+
+- On `proxy`, `lb1` and `lb2`: nginx, Varnish, HAProxy, keepalived, Apache and Caddy are installed,
+  **stopped and not configured** (`systemctl start|reload|status`, `journalctl -u`).
+- The certificate of `www.shop.tp` (also valid for `api.shop.tp` and `app.shop.tp`), signed by
+  the internal authority of the company: `/etc/ssl/shop/www.shop.tp.crt`, `/etc/ssl/shop/www.shop.tp.key`
+  and `/etc/ssl/shop/ca.crt` on `proxy`, `lb1` and `lb2`. `client` already trusts this authority
+  (`curl` without `-k`, Firefox).
+- On `proxy`: the static files of the site in `/var/www/shop/static/`.
+- The directory `/shared` is common to all your machines (to copy a file from `lb1` to `lb2`).
+
+The values specific to your instance of the lab:
+""",
+        """
+**L'application des développeurs.** Chaque serveur `web1` .. `web4` sert la boutique sur le port
+**8080** et son API sur le port **8081** (et un petit service TCP sur le port 2000). Toute page
+répond en texte par des lignes `CLÉ=valeur` qui disent **quel serveur a répondu et ce qu'il a reçu** :
+
+| ligne | sens |
+|-------|------|
+| `SERVER=`, `APP=` | le serveur qui a répondu (`web1`...), l'application (`shop` ou `api`) |
+| `CLIENT_IP=` | l'adresse de celui qui s'est connecté au serveur : le mandataire |
+| `PATH=`, `HOST=`, `HTTP_VERSION=` | le chemin, l'en-tête `Host` et la version reçus |
+| `HEADER_X_FORWARDED_FOR=`... | chaque en-tête reçu (`HEADER_` + son nom) |
+| `CONN_REQUESTS=` | le nombre de requêtes reçues sur cette connexion TCP |
+| `REQUEST_ID=` | un compteur : deux fois le même numéro, c'est une réponse sortie d'un cache |
+
+| page | réponse |
+|------|---------|
+| `/health` | page de santé : `200` si le serveur va bien, `503` sinon |
+| `/catalog/<article>` | une page du catalogue, lente à calculer, la même pour tous les visiteurs |
+| `/cart` | le panier du visiteur (son cookie `cart`) : une page privée |
+| `/login?user=NOM`, `/account` | ouvre une session, gardée **dans la mémoire de ce serveur** ; le compte : `200` si le serveur connaît la session, `401` sinon |
+| `/slow?ms=N`, `/big` | répond après N millisecondes ; 20 ko de texte |
+| `/_log?n=20` | les dernières lignes du journal d'accès du serveur |
+| `/_admin/health?state=down` (ou `up`) | met le serveur « en panne » (sa page de santé répond `503`) ou le répare |
+| `/_admin/down?seconds=30` | le serveur refuse toute connexion pendant 30 s |
+
+**`web4` est en panne** depuis le début : sa page de santé répond `503` (ses pages répondent encore).
+Laissez-le ainsi, sauf pour vos essais.
+
+## Plan du TP
+
+1. HTTP à la main avec `curl` ;
+2. nginx : un reverse proxy devant la boutique ;
+3. aiguiller par nom et par chemin ;
+4. répartir la charge avec nginx ;
+5. terminaison TLS ;
+6. protéger et fiabiliser ;
+7. un cache : Varnish ;
+8. HAProxy : répartition de charge et tests de vie ;
+9. HAProxy : persistance, aiguillage, mode TCP, TLS ;
+10. haute disponibilité : keepalived ;
+11. en bonus : Apache et Caddy.
+
+Les parties 2 à 6 se suivent ; les parties 7, 8 à 10 et 11 peuvent se faire dans l'ordre que vous
+voulez une fois la partie 2 comprise. L'évaluation (bouton d'évaluation) est **automatique** : un
+client caché de `wan` envoie quelques centaines de requêtes à vos mandataires et lit les réponses
+des serveurs d'application ; elles apparaissent dans vos journaux, c'est normal. Après chaque
+modification, **vérifiez la configuration** (`nginx -t`, `haproxy -c -f ...`) puis rechargez le
+service, et testez depuis `client`.
+""": """
+**The developers' application.** Each server `web1` .. `web4` serves the shop on port
+**8080** and its API on port **8081** (and a small TCP service on port 2000). Every page
+answers in text with `KEY=value` lines that tell **which server answered and what it received**:
+
+| line | meaning |
+|-------|------|
+| `SERVER=`, `APP=` | the server that answered (`web1`...), the application (`shop` or `api`) |
+| `CLIENT_IP=` | the address of whoever connected to the server: the proxy |
+| `PATH=`, `HOST=`, `HTTP_VERSION=` | the path, the `Host` header and the version received |
+| `HEADER_X_FORWARDED_FOR=`... | every header received (`HEADER_` + its name) |
+| `CONN_REQUESTS=` | the number of requests received on this TCP connection |
+| `REQUEST_ID=` | a counter: the same number twice means a response that came out of a cache |
+
+| page | response |
+|------|---------|
+| `/health` | health page: `200` if the server is well, `503` otherwise |
+| `/catalog/<item>` | a page of the catalogue, slow to compute, the same for every visitor |
+| `/cart` | the visitor's cart (their `cart` cookie): a private page |
+| `/login?user=NAME`, `/account` | opens a session, kept **in the memory of this server**; the account: `200` if the server knows the session, `401` otherwise |
+| `/slow?ms=N`, `/big` | answers after N milliseconds; 20 kB of text |
+| `/_log?n=20` | the last lines of the server's access log |
+| `/_admin/health?state=down` (or `up`) | makes the server "sick" (its health page answers `503`) or repairs it |
+| `/_admin/down?seconds=30` | the server refuses every connection for 30 s |
+
+**`web4` is sick** from the start: its health page answers `503` (its pages still answer).
+Leave it that way, except for your own tests.
+
+## Plan of the lab
+
+1. HTTP by hand with `curl`;
+2. nginx: a reverse proxy in front of the shop;
+3. routing by name and by path;
+4. load balancing with nginx;
+5. TLS termination;
+6. protection and reliability;
+7. a cache: Varnish;
+8. HAProxy: load balancing and health checks;
+9. HAProxy: persistence, routing, TCP mode, TLS;
+10. high availability: keepalived;
+11. as a bonus: Apache and Caddy.
+
+Parts 2 to 6 follow one another; parts 7, 8 to 10 and 11 can be done in the order you
+like once part 2 is understood. The evaluation (evaluation button) is **automatic**: a
+hidden client of `wan` sends a few hundred requests to your proxies and reads the responses
+of the application servers; they appear in your logs, that is normal. After each
+change, **check the configuration** (`nginx -t`, `haproxy -c -f ...`), then reload the
+service, and test from `client`.
+""",
+        "Partie 1 — HTTP à la main": "Part 1 — HTTP by hand",
+        "Interroger un serveur d'application avec curl": "Querying an application server with curl",
+        """
+Avant de placer un mandataire devant les serveurs d'application, parlez-leur directement. Depuis
+**`proxy`** (qui est sur `lan`), interrogez `web1` avec `curl` (sections @@ref:http@@ et @@ref:curl@@ de
+l'onglet Informations) :
+
+1. `curl -i http://web1:8080/` : repérez la ligne d'état, les en-têtes de la réponse, puis le corps ;
+   `curl -v` montre aussi la requête envoyée ;
+2. demandez `/old-page` : notez le code et l'en-tête qui l'accompagne ;
+3. les développeurs ont laissé l'application annoncer sa version dans un en-tête de réponse ;
+4. le même serveur héberge un second site, `intranet.shop.tp`, qui n'a aucune entrée dans
+   `/etc/hosts` : demandez sa page d'accueil à `web1` (section @@ref:vhost@@) ;
+5. la page `/form` attend le code de votre instance (première question) dans un champ `code`, envoyé
+   par `POST` ;
+6. comparez la page de santé `/health` de `web1` et celle de `web4`.
+""": """
+Before placing a proxy in front of the application servers, talk to them directly. From
+**`proxy`** (which is on `lan`), query `web1` with `curl` (sections @@ref:http@@ and @@ref:curl@@ of
+the Informations tab):
+
+1. `curl -i http://web1:8080/`: find the status line, the response headers, then the body;
+   `curl -v` also shows the request sent;
+2. request `/old-page`: note the code and the header that comes with it;
+3. the developers have left the application announcing its version in a response header;
+4. the same server hosts a second site, `intranet.shop.tp`, which has no entry in
+   `/etc/hosts`: ask `web1` for its home page (section @@ref:vhost@@);
+5. the page `/form` expects the code of your instance (first question) in a field `code`, sent
+   by `POST`;
+6. compare the health page `/health` of `web1` with that of `web4`.
+""",
+        """
+**Questions.**
+
+- code de la réponse à `GET /old-page` : @@{old_status:>200|301|302|404|405}@@
+- valeur de son en-tête `Location` : @@{old_location:[A-Za-z0-9/_.:-]+}@@
+- version de l'application annoncée par `web1` : @@{version:[0-9.]+}@@
+- mot affiché (`SECRET=`) par le site `intranet.shop.tp` : @@{secret:[A-Za-z]+}@@
+- code de la réponse à `GET /form` : @@{form_get:>200|301|400|404|405}@@
+- jeton (`TOKEN=`) renvoyé quand le code est envoyé par `POST` : @@{form_token:[0-9a-f]+}@@
+- code de la page de santé de `web4` : @@{health_web4:>200|404|500|502|503}@@
+""": """
+**Questions.**
+
+- code of the response to `GET /old-page`: @@{old_status:>200|301|302|404|405}@@
+- value of its `Location` header: @@{old_location:[A-Za-z0-9/_.:-]+}@@
+- version of the application announced by `web1`: @@{version:[0-9.]+}@@
+- word displayed (`SECRET=`) by the site `intranet.shop.tp`: @@{secret:[A-Za-z]+}@@
+- code of the response to `GET /form`: @@{form_get:>200|301|400|404|405}@@
+- token (`TOKEN=`) returned when the code is sent by `POST`: @@{form_token:[0-9a-f]+}@@
+- code of the health page of `web4`: @@{health_web4:>200|404|500|502|503}@@
+""",
+        "la redirection de /old-page : en-tête Location": "the redirection of /old-page: Location header",
+        "la redirection de /old-page : code": "the redirection of /old-page: code",
+        "la version de l'application annoncée par web1": "the version of the application announced by web1",
+        "le code de la page de santé de web4": "the code of the health page of web4",
+        "le mot affiché par le site intranet.shop.tp": "the word displayed by the site intranet.shop.tp",
+        "le formulaire : le jeton pour le POST du code": "the form: the token for the POST of the code",
+        "le formulaire : 405 pour un GET": "the form: 405 for a GET",
+        "Partie 2 — nginx : un reverse proxy devant la boutique": "Part 2 — nginx: a reverse proxy in front of the shop",
+        "Publier la boutique derrière nginx": "Publishing the shop behind nginx",
+        """
+Sur `proxy`, faites de nginx le reverse proxy du site **`www.shop.tp`** (sections @@ref:proxies@@,
+@@ref:nginx@@ et @@ref:proxy-pass@@) :
+
+1. créez `/etc/nginx/sites-available/shop`, activez-le (lien dans `sites-enabled/`) et retirez le site
+   `default` ; un `server` pour `www.shop.tp`, port 80, transmet toutes les requêtes à
+   `http://web1:8080` ;
+2. depuis `client`, `curl http://www.shop.tp/` : lisez `SERVER=`, `CLIENT_IP=` et `HOST=`. Le serveur
+   d'application ne voit ni le nom demandé ni votre adresse : transmettez l'en-tête `Host` du client,
+   `X-Real-IP`, `X-Forwarded-For` et `X-Forwarded-Proto` (un fichier dans `/etc/nginx/snippets/`,
+   inclus dans chaque `server`, vous servira dans toute la suite) ;
+3. un client peut envoyer lui-même ces en-têtes : essayez
+   `curl -H 'X-Forwarded-For: 1.2.3.4' -H 'X-Real-IP: 1.2.3.4' http://www.shop.tp/`. L'adresse réelle
+   du client doit rester le **dernier** élément de `X-Forwarded-For`, et `X-Real-IP` ne doit jamais
+   contenir ce qu'a envoyé le client (section @@ref:forwarded@@) ;
+4. `curl -H 'Host: nimporte.quoi' http://www.shop.tp/` : nginx sert votre site sous n'importe quel
+   nom. Ajoutez un **serveur par défaut** qui ne sert rien (section @@ref:nginx-select@@) ;
+5. `curl -I http://www.shop.tp/` : ni la version de nginx (`Server:`) ni celle de l'application
+   (`X-Powered-By:`) ne doivent apparaître ;
+6. regardez le journal du serveur d'application : `curl http://web1:8080/_log` depuis `proxy`.
+""": """
+On `proxy`, make nginx the reverse proxy of the site **`www.shop.tp`** (sections @@ref:proxies@@,
+@@ref:nginx@@ and @@ref:proxy-pass@@):
+
+1. create `/etc/nginx/sites-available/shop`, enable it (a link in `sites-enabled/`) and remove the
+   `default` site; a `server` for `www.shop.tp`, port 80, passes every request on to
+   `http://web1:8080`;
+2. from `client`, `curl http://www.shop.tp/`: read `SERVER=`, `CLIENT_IP=` and `HOST=`. The application
+   server sees neither the requested name nor your address: pass on the client's `Host` header,
+   `X-Real-IP`, `X-Forwarded-For` and `X-Forwarded-Proto` (a file in `/etc/nginx/snippets/`,
+   included in each `server`, will serve you for the rest of the lab);
+3. a client can send these headers itself: try
+   `curl -H 'X-Forwarded-For: 1.2.3.4' -H 'X-Real-IP: 1.2.3.4' http://www.shop.tp/`. The real address
+   of the client must remain the **last** item of `X-Forwarded-For`, and `X-Real-IP` must never
+   hold what the client sent (section @@ref:forwarded@@);
+4. `curl -H 'Host: any.thing' http://www.shop.tp/`: nginx serves your site under any
+   name. Add a **default server** that serves nothing (section @@ref:nginx-select@@);
+5. `curl -I http://www.shop.tp/`: neither the version of nginx (`Server:`) nor that of the application
+   (`X-Powered-By:`) may appear;
+6. look at the log of the application server: `curl http://web1:8080/_log` from `proxy`.
+""",
+        "www.shop.tp, sur proxy, renvoie une page de la boutique venue d'un serveur d'application": "www.shop.tp, on proxy, returns a page of the shop coming from an application server",
+        "le serveur d'application reçoit l'en-tête Host du client": "the application server receives the client's Host header",
+        "l'adresse du client est le dernier élément de X-Forwarded-For ; X-Real-IP ne peut pas être falsifié": "the client's address is the last item of X-Forwarded-For; X-Real-IP cannot be forged",
+        "X-Forwarded-Proto indique le protocole utilisé par le client": "X-Forwarded-Proto gives the protocol used by the client",
+        "un nom inconnu (nothing.shop.tp) n'est pas servi": "an unknown name (nothing.shop.tp) is not served",
+        "ni la version de nginx ni X-Powered-By dans les réponses": "neither the version of nginx nor X-Powered-By in the responses",
+        "Partie 3 — Aiguiller par nom et par chemin": "Part 3 — Routing by name and by path",
+        "Plusieurs noms, plusieurs chemins": "Several names, several paths",
+        """
+Le reverse proxy est le point d'entrée de tout ce que publie l'entreprise (sections
+@@ref:nginx-select@@ et @@ref:proxy-pass@@) :
+
+1. **`api.shop.tp`** (port 80) publie l'API : l'application du port **8081** de `web2` ; le chemin
+   est transmis tel quel (`http://api.shop.tp/v1/items` → `/v1/items`) ;
+2. l'API est aussi publiée sous **`www.shop.tp/api/`**, chemin transmis tel quel
+   (`/api/v1/items` → `/api/v1/items`) ;
+3. **`/static/`** n'est pas transmis aux serveurs d'application : nginx sert lui-même les fichiers de
+   `/var/www/shop/static/` (essayez `/static/style.css`), en indiquant aux navigateurs qu'ils peuvent
+   les garder **une heure** ;
+4. l'ancienne application était publiée sous `/legacy/` : `www.shop.tp/legacy/orders/42` doit arriver
+   à la boutique comme `/orders/42` (le préfixe est retiré) ;
+5. **`old.shop.tp`** est l'ancien nom du site : toute requête y est redirigée (`301`) vers la même
+   page de `www.shop.tp`, chemin et paramètres compris.
+""": """
+The reverse proxy is the entry point of everything the company publishes (sections
+@@ref:nginx-select@@ and @@ref:proxy-pass@@):
+
+1. **`api.shop.tp`** (port 80) publishes the API: the application on port **8081** of `web2`; the path
+   is passed unchanged (`http://api.shop.tp/v1/items` → `/v1/items`);
+2. the API is also published under **`www.shop.tp/api/`**, path passed unchanged
+   (`/api/v1/items` → `/api/v1/items`);
+3. **`/static/`** is not passed on to the application servers: nginx itself serves the files of
+   `/var/www/shop/static/` (try `/static/style.css`), telling the browsers that they may
+   keep them for **one hour**;
+4. the old application was published under `/legacy/`: `www.shop.tp/legacy/orders/42` must reach
+   the shop as `/orders/42` (the prefix is removed);
+5. **`old.shop.tp`** is the former name of the site: every request to it is redirected (`301`) to the same
+   page of `www.shop.tp`, path and parameters included.
+""",
+        "api.shop.tp publie l'API, chemin transmis tel quel": "api.shop.tp publishes the API, path passed unchanged",
+        "www.shop.tp/api/ publie l'API, chemin transmis tel quel": "www.shop.tp/api/ publishes the API, path passed unchanged",
+        "/static/ est servi par nginx depuis /var/www/shop/static/, avec une durée de validité": "/static/ is served by nginx from /var/www/shop/static/, with an expiry time",
+        "/legacy/ est transmis à la boutique sans son préfixe": "/legacy/ is passed on to the shop without its prefix",
+        "old.shop.tp redirige vers la même page de www.shop.tp": "old.shop.tp redirects to the same page of www.shop.tp",
+        "Partie 4 — Répartir la charge avec nginx": "Part 4 — Load balancing with nginx",
+        "Un groupe de serveurs : upstream": "A group of servers: upstream",
+        """
+Un seul serveur d'application ne suffit plus (sections @@ref:lb@@ et @@ref:nginx-lb@@). Dans
+`/etc/nginx/conf.d/` :
+
+1. déclarez un `upstream` pour la boutique (port 8080) et utilisez-le dans tous les `proxy_pass` de la
+   boutique : **`web1`**, deux fois plus puissant, a un **poids double** de celui de **`web2`** ;
+   **`web3`** est un serveur de **secours** (`backup`) qui ne sert que si les deux autres sont
+   indisponibles ; `web4`, en panne, n'en fait pas partie ;
+2. déclarez un second `upstream` pour l'API (port 8081 de `web2` et `web3`) ;
+3. depuis `client` : `for i in $(seq 12); do curl -s http://www.shop.tp/ | grep SERVER; done` ;
+4. par défaut nginx ouvre une connexion TCP vers le serveur d'application pour chaque requête
+   (`HTTP_VERSION=HTTP/1.0`, `CONN_REQUESTS=1`) : gardez des connexions ouvertes (`keepalive`) ;
+5. simulez une panne : `curl 'http://web1:8080/_admin/down?seconds=30'` depuis `proxy`, puis relancez
+   la boucle : nginx constate l'échec et se rabat sur les autres serveurs (tests de vie **passifs**,
+   section @@ref:health@@) ; lisez `/var/log/nginx/error.log`. Recommencez avec `web1` **et** `web2`.
+""": """
+A single application server is no longer enough (sections @@ref:lb@@ and @@ref:nginx-lb@@). In
+`/etc/nginx/conf.d/`:
+
+1. declare an `upstream` for the shop (port 8080) and use it in every `proxy_pass` of the
+   shop: **`web1`**, twice as powerful, has **twice the weight** of **`web2`**;
+   **`web3`** is a **backup** server (`backup`) that only serves if the other two are
+   unavailable; `web4`, which is sick, is not part of it;
+2. declare a second `upstream` for the API (port 8081 of `web2` and `web3`);
+3. from `client`: `for i in $(seq 12); do curl -s http://www.shop.tp/ | grep SERVER; done`;
+4. by default nginx opens a TCP connection to the application server for each request
+   (`HTTP_VERSION=HTTP/1.0`, `CONN_REQUESTS=1`): keep connections open (`keepalive`);
+5. simulate a failure: `curl 'http://web1:8080/_admin/down?seconds=30'` from `proxy`, then run
+   the loop again: nginx notices the failure and falls back on the other servers (**passive** health checks,
+   section @@ref:health@@); read `/var/log/nginx/error.log`. Do it again with `web1` **and** `web2`.
+""",
+        "web1 et web2 servent tous les deux la boutique (et jamais web4)": "web1 and web2 both serve the shop (and never web4)",
+        "web1 a un poids double de celui de web2 et répond plus souvent": "web1 has twice the weight of web2 and answers more often",
+        "web3 est un serveur de secours : déclaré backup, il ne répond pas": "web3 is a backup server: declared backup, it does not answer",
+        "nginx réutilise ses connexions vers les serveurs d'application (HTTP/1.1, keepalive)": "nginx reuses its connections to the application servers (HTTP/1.1, keepalive)",
+        "Partie 5 — Terminaison TLS": "Part 5 — TLS termination",
+        "HTTPS sur le reverse proxy": "HTTPS on the reverse proxy",
+        """
+Le site doit être servi en HTTPS, les serveurs d'application restant en HTTP (section @@ref:tls@@) :
+
+1. le `server` de `www.shop.tp` écoute sur le port **443** avec le certificat et la clé fournis dans
+   `/etc/ssl/shop/` ; depuis `client`, `curl -v https://www.shop.tp/` doit réussir **sans `-k`** ;
+2. sur le port 80, `www.shop.tp` ne sert plus rien : toute requête est **redirigée** (`301`) vers la
+   même adresse en `https://` (chemin et paramètres compris) ;
+3. les réponses HTTPS portent l'en-tête **HSTS** ;
+4. vérifiez dans la page ce que reçoit le serveur d'application : `HEADER_X_FORWARDED_PROTO=https` ;
+5. activez **HTTP/2** (`curl -sI --http2 https://www.shop.tp/` répond `HTTP/2 200`) ;
+6. le serveur par défaut de la partie 2 doit aussi couvrir le port 443, sans présenter de
+   certificat à un nom inconnu (`ssl_reject_handshake on;`) ; `old.shop.tp` redirige maintenant vers
+   `https://www.shop.tp`.
+
+`api.shop.tp` reste en HTTP dans ce TP.
+""": """
+The site must be served over HTTPS, the application servers remaining on HTTP (section @@ref:tls@@):
+
+1. the `server` of `www.shop.tp` listens on port **443** with the certificate and the key provided in
+   `/etc/ssl/shop/`; from `client`, `curl -v https://www.shop.tp/` must succeed **without `-k`**;
+2. on port 80, `www.shop.tp` no longer serves anything: every request is **redirected** (`301`) to the
+   same address in `https://` (path and parameters included);
+3. the HTTPS responses carry the **HSTS** header;
+4. check in the page what the application server receives: `HEADER_X_FORWARDED_PROTO=https`;
+5. enable **HTTP/2** (`curl -sI --http2 https://www.shop.tp/` answers `HTTP/2 200`);
+6. the default server of part 2 must also cover port 443, without presenting a
+   certificate to an unknown name (`ssl_reject_handshake on;`); `old.shop.tp` now redirects to
+   `https://www.shop.tp`.
+
+`api.shop.tp` stays on HTTP in this lab.
+""",
+        "le port 443 de proxy présente le certificat fourni de www.shop.tp": "port 443 of proxy presents the provided certificate of www.shop.tp",
+        "https://www.shop.tp/, certificat vérifié, renvoie une page de la boutique": "https://www.shop.tp/, certificate verified, returns a page of the shop",
+        "le port 80 redirige vers la même adresse en https": "port 80 redirects to the same address in https",
+        "les réponses HTTPS portent l'en-tête Strict-Transport-Security": "the HTTPS responses carry the Strict-Transport-Security header",
+        "le serveur d'application sait que le client est en HTTPS": "the application server knows that the client is on HTTPS",
+        "le site répond en HTTP/2": "the site answers over HTTP/2",
+        "Partie 6 — Protéger et fiabiliser": "Part 6 — Protection and reliability",
+        "Contrôle d'accès, limitation de débit, délais, compression": "Access control, rate limiting, timeouts, compression",
+        """
+Le reverse proxy protège les serveurs d'application (section @@ref:protect@@). Les valeurs
+(compte, phrase) sont dans la première question.
+
+1. **`/admin/`** (sur `www.shop.tp`) demande une authentification *Basic* : créez le compte avec
+   `htpasswd` dans `/etc/nginx/htpasswd` ;
+2. **`/nginx_status`** (sur `www.shop.tp`) affiche l'état de nginx (`stub_status`) pour l'adresse de
+   **`client` seulement** ; les autres reçoivent `403` ;
+3. l'API (`api.shop.tp`, et `/api/` sur `www.shop.tp`) est limitée à **5 requêtes par seconde et par
+   adresse cliente**, avec une avance tolérée de 5 requêtes servies sans attente ; les requêtes en trop
+   reçoivent **`429`**. Essayez depuis `client` :
+   `curl -s -o /dev/null -w '%{http_code} ' 'http://api.shop.tp/api/ping?i=[1-30]'` ;
+4. **`/reports/`** (sur `www.shop.tp`) était servi par une ancienne application, sur le port **8090**
+   de `web3`, aujourd'hui **arrêtée** : transmettez-lui ce chemin et constatez le `502` de
+   `https://www.shop.tp/reports/monthly`. Les erreurs `502`, `503` et `504` doivent afficher une **page
+   de maintenance** `/var/www/shop/maintenance.html`, à écrire, qui contient la phrase de votre instance ;
+5. les réponses `text/plain` sont **compressées** (essayez `/big` :
+   `curl -s -o /dev/null -D - --compressed https://www.shop.tp/big`) ;
+6. **à observer** (non évalué) : `time curl -s https://www.shop.tp/slow?ms=8000` attend 8 s. Bornez
+   l'attente à 3 s (`proxy_read_timeout`), recommencez, puis demandez aussitôt la page d'accueil :
+   que répond le site pendant les dix secondes qui suivent, et pourquoi ? (`error.log`,
+   section @@ref:nginx-lb@@)
+""": """
+The reverse proxy protects the application servers (section @@ref:protect@@). The values
+(account, sentence) are in the first question.
+
+1. **`/admin/`** (on `www.shop.tp`) asks for *Basic* authentication: create the account with
+   `htpasswd` in `/etc/nginx/htpasswd`;
+2. **`/nginx_status`** (on `www.shop.tp`) shows the state of nginx (`stub_status`) to the address of
+   **`client` only**; the others receive `403`;
+3. the API (`api.shop.tp`, and `/api/` on `www.shop.tp`) is limited to **5 requests per second per
+   client address**, with a tolerated advance of 5 requests served without waiting; the excess requests
+   receive **`429`**. Try from `client`:
+   `curl -s -o /dev/null -w '%{http_code} ' 'http://api.shop.tp/api/ping?i=[1-30]'`;
+4. **`/reports/`** (on `www.shop.tp`) was served by an old application, on port **8090**
+   of `web3`, now **stopped**: pass this path on to it and observe the `502` of
+   `https://www.shop.tp/reports/monthly`. The errors `502`, `503` and `504` must display a **maintenance
+   page** `/var/www/shop/maintenance.html`, to be written, that holds the sentence of your instance;
+5. the `text/plain` responses are **compressed** (try `/big`:
+   `curl -s -o /dev/null -D - --compressed https://www.shop.tp/big`);
+6. **to observe** (not graded): `time curl -s https://www.shop.tp/slow?ms=8000` waits 8 s. Limit
+   the wait to 3 s (`proxy_read_timeout`), try again, then immediately request the home page:
+   what does the site answer during the next ten seconds, and why? (`error.log`,
+   section @@ref:nginx-lb@@)
+""",
+        "/admin/ demande une authentification Basic et accepte le compte donné": "/admin/ asks for Basic authentication and accepts the given account",
+        "/nginx_status : la page d'état pour client seulement": "/nginx_status: the status page for client only",
+        "l'API est limitée à 5 requêtes par seconde et par client (code 429)": "the API is limited to 5 requests per second per client (code 429)",
+        "/reports/, dont le serveur est arrêté, donne 502 et la page de maintenance": "/reports/, whose server is stopped, gives 502 and the maintenance page",
+        "les réponses text/plain sont compressées": "the text/plain responses are compressed",
+        "Partie 7 — Un cache : Varnish": "Part 7 — A cache: Varnish",
+        "Mettre le catalogue en cache": "Caching the catalogue",
+        """
+Les pages du catalogue sont lentes à calculer et identiques pour tous les visiteurs : un cache
+soulagerait les serveurs d'application (sections @@ref:cache@@ et @@ref:varnish@@). Sur `proxy`,
+configurez **Varnish** (`/etc/varnish/default.vcl`, port **6081**, à côté de nginx). Testez depuis
+`client` avec `curl -i --resolve www.shop.tp:6081:<adresse de proxy> http://www.shop.tp:6081/...` ou
+plus simplement `curl -i -H 'Host: www.shop.tp' http://proxy:6081/...`.
+
+1. déclarez les backends **`web1`** et **`web2`** (port 8080), chacun avec une **sonde** sur `/health`,
+   et répartissez les requêtes entre eux en tourniquet (`directors`) ; démarrez Varnish ;
+   `varnishadm backend.list` montre leur état ;
+2. demandez deux fois `/catalog/shoes` : observez `REQUEST_ID=`, `Age:` et `X-Varnish:`. La page
+   n'est **pas** mise en cache : l'application pose un cookie de pistage (`Set-Cookie: tracking=...`)
+   sur chaque page du catalogue, et un navigateur le renvoie ensuite. Faites en sorte que les pages
+   **`/catalog/`** soient gardées **une minute**, que le client envoie un cookie ou non, et que le
+   `Set-Cookie` de ces pages ne parvienne plus au client ;
+3. ajoutez à chaque réponse un en-tête **`X-Cache`** valant `HIT` ou `MISS` ;
+4. **rien d'autre ne change** : `/cart` (le panier, page privée) et les pages portant une session ne
+   doivent jamais être servies depuis le cache. Vérifiez avec
+   `curl -H 'Cookie: cart=alpha' ...` puis `curl -H 'Cookie: cart=beta' ...` ;
+5. la méthode **`PURGE`** retire une page du cache ; elle n'est permise que depuis `proxy` lui-même
+   (`localhost`), les autres reçoivent `405` :
+   `curl -X PURGE -H 'Host: www.shop.tp' http://localhost:6081/catalog/shoes` ;
+6. mesurez : `ab -n 200 -c 10 -H 'Host: www.shop.tp' http://proxy:6081/catalog/shoes` depuis `client`,
+   puis la même page directement sur `web1` depuis `proxy`.
+""": """
+The pages of the catalogue are slow to compute and identical for every visitor: a cache
+would relieve the application servers (sections @@ref:cache@@ and @@ref:varnish@@). On `proxy`,
+configure **Varnish** (`/etc/varnish/default.vcl`, port **6081**, next to nginx). Test from
+`client` with `curl -i --resolve www.shop.tp:6081:<address of proxy> http://www.shop.tp:6081/...` or
+more simply `curl -i -H 'Host: www.shop.tp' http://proxy:6081/...`.
+
+1. declare the backends **`web1`** and **`web2`** (port 8080), each with a **probe** on `/health`,
+   and distribute the requests between them in round robin (`directors`); start Varnish;
+   `varnishadm backend.list` shows their state;
+2. request `/catalog/shoes` twice: observe `REQUEST_ID=`, `Age:` and `X-Varnish:`. The page
+   is **not** cached: the application sets a tracking cookie (`Set-Cookie: tracking=...`)
+   on every page of the catalogue, and a browser then sends it back. Make sure that the
+   **`/catalog/`** pages are kept for **one minute**, whether the client sends a cookie or not, and that the
+   `Set-Cookie` of these pages no longer reaches the client;
+3. add to each response an **`X-Cache`** header equal to `HIT` or `MISS`;
+4. **nothing else changes**: `/cart` (the cart, a private page) and the pages carrying a session must
+   never be served from the cache. Check with
+   `curl -H 'Cookie: cart=alpha' ...` then `curl -H 'Cookie: cart=beta' ...`;
+5. the **`PURGE`** method removes a page from the cache; it is only allowed from `proxy` itself
+   (`localhost`), the others receive `405`:
+   `curl -X PURGE -H 'Host: www.shop.tp' http://localhost:6081/catalog/shoes`;
+6. measure: `ab -n 200 -c 10 -H 'Host: www.shop.tp' http://proxy:6081/catalog/shoes` from `client`,
+   then the same page directly on `web1` from `proxy`.
+""",
+        "Varnish, sur le port 6081 de proxy, renvoie les pages de la boutique": "Varnish, on port 6081 of proxy, returns the pages of the shop",
+        "web1 et web2 en tourniquet, surveillés par une sonde": "web1 and web2 in round robin, watched by a probe",
+        "les pages /catalog/ sont mises en cache malgré les cookies, sans Set-Cookie": "the /catalog/ pages are cached despite the cookies, without Set-Cookie",
+        "l'en-tête X-Cache vaut MISS puis HIT": "the X-Cache header is MISS then HIT",
+        "une page privée (/cart) n'est jamais servie depuis le cache": "a private page (/cart) is never served from the cache",
+        "PURGE retire une page du cache, depuis proxy seulement": "PURGE removes a page from the cache, from proxy only",
+        "Partie 8 — HAProxy : répartition de charge et tests de vie": "Part 8 — HAProxy: load balancing and health checks",
+        "Un répartiteur de charge sur lb1": "A load balancer on lb1",
+        """
+L'application est aussi publiée sous le nom **`app.shop.tp`** par une paire de répartiteurs, `lb1` et
+`lb2`. Commencez par **`lb1`** (sections @@ref:haproxy@@, @@ref:haproxy-lb@@ et
+@@ref:haproxy-stats@@) ; tant que l'adresse virtuelle de la partie 10 n'existe pas, testez avec
+`curl -H 'Host: app.shop.tp' http://lb1/`. Gardez les sections `global` et `defaults` de
+`/etc/haproxy/haproxy.cfg` et ajoutez les vôtres :
+
+1. un `frontend` écoute sur le port **80** ; un `backend` répartit en **tourniquet** entre **`web1`,
+   `web2`, `web3` et `web4`** (port 8080) ; HAProxy ajoute `X-Forwarded-For` ;
+2. `for i in $(seq 8); do curl -s -H 'Host: app.shop.tp' http://lb1/ | grep SERVER; done` : `web4`, en
+   panne, reçoit des clients. Activez un **test de vie HTTP** sur la page **`/health`** de chaque
+   serveur, réussi si elle répond `200`, de sorte qu'un serveur en panne soit retiré **en moins de
+   5 s** : `web4` doit rester déclaré, et ne plus rien recevoir ;
+3. publiez la **page de statistiques** sur le port **8404**, adresse `/stats`, protégée par le compte
+   de la première question : ouvrez-la dans Firefox depuis `client` (`http://lb1:8404/stats`) ;
+4. observez un serveur tomber puis revenir : `curl 'http://web2:8080/_admin/health?state=down'`
+   depuis `lb1`, la page de statistiques, puis `state=up` ; les tests de vie reçus se lisent dans
+   `curl http://web2:8080/_log` ;
+5. sortez `web3` du service **sans recharger HAProxy**, puis remettez-le :
+   `echo "set server <backend>/web3 state drain" | socat stdio /run/haproxy/admin.sock`
+   (puis `state ready`) ; `hatop -s /run/haproxy/admin.sock` montre la même chose en continu.
+""": """
+The application is also published under the name **`app.shop.tp`** by a pair of load balancers, `lb1` and
+`lb2`. Start with **`lb1`** (sections @@ref:haproxy@@, @@ref:haproxy-lb@@ and
+@@ref:haproxy-stats@@); as long as the virtual address of part 10 does not exist, test with
+`curl -H 'Host: app.shop.tp' http://lb1/`. Keep the `global` and `defaults` sections of
+`/etc/haproxy/haproxy.cfg` and add your own:
+
+1. a `frontend` listens on port **80**; a `backend` balances in **round robin** between **`web1`,
+   `web2`, `web3` and `web4`** (port 8080); HAProxy adds `X-Forwarded-For`;
+2. `for i in $(seq 8); do curl -s -H 'Host: app.shop.tp' http://lb1/ | grep SERVER; done`: `web4`, although
+   sick, receives clients. Enable an **HTTP health check** on the **`/health`** page of each
+   server, successful if it answers `200`, so that a sick server is removed **in less than
+   5 s**: `web4` must remain declared, and no longer receive anything;
+3. publish the **statistics page** on port **8404**, path `/stats`, protected by the account
+   of the first question: open it in Firefox from `client` (`http://lb1:8404/stats`);
+4. watch a server go down then come back: `curl 'http://web2:8080/_admin/health?state=down'`
+   from `lb1`, the statistics page, then `state=up`; the health checks received can be read in
+   `curl http://web2:8080/_log`;
+5. take `web3` out of service **without reloading HAProxy**, then put it back:
+   `echo "set server <backend>/web3 state drain" | socat stdio /run/haproxy/admin.sock`
+   (then `state ready`); `hatop -s /run/haproxy/admin.sock` shows the same thing continuously.
+""",
+        "HAProxy, sur le port 80 de lb1, renvoie les pages de la boutique": "HAProxy, on port 80 of lb1, returns the pages of the shop",
+        "les serveurs se partagent les requêtes en tourniquet": "the servers share the requests in round robin",
+        "test de vie HTTP sur /health : web4, en panne, reste déclaré et ne reçoit plus rien": "HTTP health check on /health: web4, which is sick, remains declared and no longer receives anything",
+        "HAProxy transmet l'adresse du client dans X-Forwarded-For": "HAProxy passes on the client's address in X-Forwarded-For",
+        "la page de statistiques, port 8404, protégée par le compte donné": "the statistics page, port 8404, protected by the given account",
+        "Partie 9 — HAProxy : persistance, aiguillage, mode TCP, TLS": "Part 9 — HAProxy: persistence, routing, TCP mode, TLS",
+        "Sessions, API, service TCP et HTTPS": "Sessions, API, TCP service and HTTPS",
+        """
+Toujours sur `lb1` (sections @@ref:sticky@@, @@ref:haproxy-l7@@ et @@ref:haproxy-tcp@@) :
+
+1. **le problème** : depuis `client`,
+   `curl -s -c /tmp/jar -H 'Host: app.shop.tp' 'http://lb1/login?user=moi'` ouvre une session, puis
+   répétez `curl -s -b /tmp/jar -o /dev/null -w '%{http_code}\\n' -H 'Host: app.shop.tp' http://lb1/account` :
+   deux fois sur trois, `401`. La session est dans la mémoire du serveur qui a traité `/login` ;
+2. **persistance par cookie** : HAProxy pose un cookie nommé **`SRV`** dont la valeur est le **nom du
+   serveur** (`web1`, `web2`...) et renvoie au même serveur les requêtes qui le portent. Refaites
+   l'essai : `/account` répond toujours `200` ;
+3. **aiguillage** : les requêtes dont le chemin commence par **`/api/`** vont à un second `backend`,
+   l'API (port **8081** de `web2` et `web3`, avec test de vie) ;
+4. **mode TCP** : les serveurs `web1`, `web2` et `web3` offrent aussi un service qui n'est pas du HTTP,
+   sur le port **2000** (`nc web1 2000` depuis `lb1`). Publiez-le sur le port 2000 de `lb1` en
+   **`mode tcp`**, réparti par **hachage de l'adresse source** : un client retrouve toujours le même
+   serveur (`nc lb1 2000` depuis `client`) ;
+5. **HTTPS** : le `frontend` écoute aussi sur le port **443** avec le certificat fourni (HAProxy veut
+   certificat et clé dans un seul fichier, à construire dans `/etc/haproxy/certs/`), et indique au
+   serveur d'application le protocole du client dans `X-Forwarded-Proto` (`https` ou `http`).
+""": """
+Still on `lb1` (sections @@ref:sticky@@, @@ref:haproxy-l7@@ and @@ref:haproxy-tcp@@):
+
+1. **the problem**: from `client`,
+   `curl -s -c /tmp/jar -H 'Host: app.shop.tp' 'http://lb1/login?user=me'` opens a session, then
+   repeat `curl -s -b /tmp/jar -o /dev/null -w '%{http_code}\\n' -H 'Host: app.shop.tp' http://lb1/account`:
+   two times out of three, `401`. The session is in the memory of the server that handled `/login`;
+2. **cookie persistence**: HAProxy sets a cookie named **`SRV`** whose value is the **name of the
+   server** (`web1`, `web2`...) and sends the requests carrying it back to the same server. Try
+   again: `/account` always answers `200`;
+3. **routing**: the requests whose path starts with **`/api/`** go to a second `backend`,
+   the API (port **8081** of `web2` and `web3`, with a health check);
+4. **TCP mode**: the servers `web1`, `web2` and `web3` also offer a service that is not HTTP,
+   on port **2000** (`nc web1 2000` from `lb1`). Publish it on port 2000 of `lb1` in
+   **`mode tcp`**, balanced by **source address hashing**: a client always gets the same
+   server again (`nc lb1 2000` from `client`);
+5. **HTTPS**: the `frontend` also listens on port **443** with the provided certificate (HAProxy wants
+   certificate and key in a single file, to be built in `/etc/haproxy/certs/`), and tells the
+   application server the client's protocol in `X-Forwarded-Proto` (`https` or `http`).
+""",
+        "persistance par le cookie SRV : la session ouverte par /login reste utilisable": "persistence through the SRV cookie: the session opened by /login remains usable",
+        "les chemins /api/ sont envoyés au backend de l'API": "the /api/ paths are sent to the backend of the API",
+        "le service du port 2000 en mode TCP, réparti par hachage de l'adresse source": "the service of port 2000 in TCP mode, balanced by source address hashing",
+        "HAProxy termine TLS sur le port 443 et l'indique au serveur d'application": "HAProxy terminates TLS on port 443 and tells the application server so",
+        "Partie 10 — Haute disponibilité : keepalived": "Part 10 — High availability: keepalived",
+        "Une adresse virtuelle pour deux répartiteurs": "A virtual address for two load balancers",
+        """
+`lb1` est maintenant le point de défaillance unique (section @@ref:vrrp@@). L'adresse virtuelle, le
+numéro de routeur virtuel et le mot de passe sont dans la première question ; `app.shop.tp` désigne
+déjà l'adresse virtuelle dans `/etc/hosts`.
+
+1. **`lb2`** devient le jumeau de `lb1` : même `haproxy.cfg` (copiez-le par `/shared`), même fichier
+   de certificat ; vérifiez avec `curl -H 'Host: app.shop.tp' http://lb2/` ;
+2. sur `lb1` et `lb2`, écrivez `/etc/keepalived/keepalived.conf` : une instance VRRP sur l'interface de
+   `wan` (`eth0`) porte l'**adresse virtuelle** ; **`lb1` est le maître** (priorité la plus haute),
+   `lb2` le secours ; annonces chaque seconde, authentification par le mot de passe donné ;
+3. démarrez keepalived sur les deux machines : `ip addr show eth0` (qui porte l'adresse ?),
+   `tcpdump -n -i eth0 vrrp` (qui annonce ?), `journalctl -u keepalived` ; depuis `client`,
+   `curl http://app.shop.tp/` ;
+4. arrêtez HAProxy sur `lb1` (`systemctl stop haproxy`) : l'adresse reste sur `lb1`, le service est
+   coupé. Faites **surveiller HAProxy** par keepalived (`vrrp_script` et `track_script`) sur les deux
+   machines : l'adresse doit passer sur `lb2` en quelques secondes, puis revenir quand HAProxy est
+   relancé sur `lb1`. Pendant l'essai, laissez tourner sur `client` :
+   `while sleep 1; do curl -s -m 1 http://app.shop.tp/ | grep SERVER || echo PANNE; done` ;
+5. recommencez en arrêtant keepalived sur `lb1`, puis remettez tout en service.
+""": """
+`lb1` is now the single point of failure (section @@ref:vrrp@@). The virtual address, the
+virtual router number and the password are in the first question; `app.shop.tp` already
+points to the virtual address in `/etc/hosts`.
+
+1. **`lb2`** becomes the twin of `lb1`: the same `haproxy.cfg` (copy it through `/shared`), the same
+   certificate file; check with `curl -H 'Host: app.shop.tp' http://lb2/`;
+2. on `lb1` and `lb2`, write `/etc/keepalived/keepalived.conf`: a VRRP instance on the interface of
+   `wan` (`eth0`) holds the **virtual address**; **`lb1` is the master** (highest priority),
+   `lb2` the backup; advertisements every second, authentication with the given password;
+3. start keepalived on both machines: `ip addr show eth0` (who holds the address?),
+   `tcpdump -n -i eth0 vrrp` (who advertises?), `journalctl -u keepalived`; from `client`,
+   `curl http://app.shop.tp/`;
+4. stop HAProxy on `lb1` (`systemctl stop haproxy`): the address stays on `lb1`, the service is
+   down. Have keepalived **track HAProxy** (`vrrp_script` and `track_script`) on both
+   machines: the address must move to `lb2` within a few seconds, then come back when HAProxy is
+   restarted on `lb1`. During the test, leave this running on `client`:
+   `while sleep 1; do curl -s -m 1 http://app.shop.tp/ | grep SERVER || echo DOWN; done`;
+5. do it again by stopping keepalived on `lb1`, then put everything back in service.
+""",
+        "lb2 répartit la boutique comme lb1": "lb2 balances the shop like lb1",
+        "l'adresse virtuelle est portée par une seule machine : lb1 tant que son HAProxy fonctionne, lb2 sinon": "the virtual address is held by a single machine: lb1 as long as its HAProxy works, lb2 otherwise",
+        "app.shop.tp, sur l'adresse virtuelle, renvoie les pages de la boutique": "app.shop.tp, on the virtual address, returns the pages of the shop",
+        "la machine qui porte l'adresse envoie les annonces VRRP du routeur virtuel demandé": "the machine holding the address sends the VRRP advertisements of the requested virtual router",
+        "keepalived surveille HAProxy sur lb1 et sur lb2": "keepalived tracks HAProxy on lb1 and on lb2",
+        "Bonus — Apache, Caddy, nginx devant Varnish": "Bonus — Apache, Caddy, nginx in front of Varnish",
+        "D'autres reverse proxys": "Other reverse proxies",
+        """
+Trois exercices facultatifs sur `proxy` (section @@ref:others@@), sans rien retirer de ce qui précède :
+
+1. **Apache** (`mod_proxy_balancer`) écoute sur le port **8088** et répartit la boutique entre `web1`
+   et `web2` (port 8080), en transmettant l'en-tête `Host` du client. Le port 80 est pris par nginx :
+   voyez `/etc/apache2/ports.conf` ;
+2. **Caddy** fait la même chose sur le port **8089** (`/etc/caddy/Caddyfile`, quelques lignes) ;
+3. **nginx devant Varnish** : sur `www.shop.tp`, les pages `/catalog/` passent par le cache Varnish du
+   port 6081 (HTTPS chez nginx, cache chez Varnish, application derrière).
+
+Testez depuis `client` : `curl -H 'Host: www.shop.tp' http://proxy:8088/`.
+""": """
+Three optional exercises on `proxy` (section @@ref:others@@), without removing anything of what precedes:
+
+1. **Apache** (`mod_proxy_balancer`) listens on port **8088** and balances the shop between `web1`
+   and `web2` (port 8080), passing on the client's `Host` header. Port 80 is taken by nginx:
+   see `/etc/apache2/ports.conf`;
+2. **Caddy** does the same on port **8089** (`/etc/caddy/Caddyfile`, a few lines);
+3. **nginx in front of Varnish**: on `www.shop.tp`, the `/catalog/` pages go through the Varnish cache of
+   port 6081 (HTTPS at nginx, cache at Varnish, application behind).
+
+Test from `client`: `curl -H 'Host: www.shop.tp' http://proxy:8088/`.
+""",
+        "Apache, port 8088 : répartition entre web1 et web2, Host et X-Forwarded-For": "Apache, port 8088: balancing between web1 and web2, Host and X-Forwarded-For",
+        "Caddy, port 8089 : répartition entre web1 et web2, X-Forwarded-For": "Caddy, port 8089: balancing between web1 and web2, X-Forwarded-For",
+        "https://www.shop.tp/catalog/ passe par le cache Varnish": "https://www.shop.tp/catalog/ goes through the Varnish cache",
     },
 }

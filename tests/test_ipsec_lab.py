@@ -1,7 +1,7 @@
 """Offline tests of the IPsec / IKEv2 lab (lab/sre/_DRAFT_misc/ipsec.py): data generation, topology, the
 ops of the states, the reference texts, the two-pass grading contract with synthetic outputs
-(nothing done: 0, the reference solution: 100), the texts and the instructor fragments, English
-identifiers.
+(nothing done: 0, the reference solution: 100), the texts and the instructor fragments, the English
+translations, English identifiers.
 
 No Docker: the outputs of `swanctl --raw`, `ip xfrm`, `nft`, `tcpdump` and the probe are rendered
 from the generated data in the shapes captured in tests/mock_data/ipsec/.
@@ -557,6 +557,51 @@ def test_instructor_fragments(lab, data, tmp_pub_dir):
             assert not has_instructor(_text(getattr(q, 'description', '')))
 
 
+def _instructor_literals():
+    """The tr() literals inside the instructor() calls of the lab file."""
+    import ast
+    return {sub.args[0].value for node in ast.walk(ast.parse(_LAB_PATH.read_text()))
+            if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor'
+            for sub in ast.walk(node) if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr'
+            and sub.args and isinstance(sub.args[0], ast.Constant)}
+
+
+def test_translations(lab, data, tmp_pub_dir):
+    """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+    every lab of the directory by test_draft_misc_translations.py); the English forms store the French
+    options; the instructor texts print the right answers with the labels of their language."""
+    import ast
+    import check_sre_translations as cst
+    from SRE import form_spec
+    from SRE.instructor_text import markdown_to_html
+    assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+    english = lab._TRANSLATIONS['en']
+    assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+    assert all(value and value != key for key, value in english.items())
+    assert _text(lab.title, 'en') == "IPsec and IKEv2: ESP, site-to-site tunnels, road warrior, certificates"
+    literals = _instructor_literals()
+    assert len(literals) == 8 and literals <= set(english)
+    for french, value in english.items():
+        if '@@{' in french:
+            assert form_spec.form_fields(value) == form_spec.form_fields(french)
+    grade, _ = _simulate(lab, data, tmp_pub_dir, Nothing, cheat=False, instructor_mode=True)
+    questions = grade.get_questions_ordered()
+    texts = {lang: '\n'.join(_text(q.description, lang) for q in questions) for lang in ('fr', 'en')}
+    for q in questions:
+        en = _text(q.description, 'en')
+        assert has_instructor(en) and ('**Solution.**' in en or '**For the instructor.**' in en), _text(q.title)
+        markdown_to_html(en, show_instructor=True)
+    labels = lab._option_labels('en')
+    # the 31 answers picked from a dropdown: the French option in French, its English label in English
+    answers = [v for fields in grade.get_cheat_answers('final').values() for v in json.loads(fields).values()
+               if v in labels]
+    assert len(answers) == 31
+    english_prose = re.sub(r"@@\{[^}]*\}@@", "", texts['en'])
+    for answer in answers:
+        assert answer in texts['fr'] and labels[answer] in english_prose and answer not in english_prose, answer
+    assert "Answers: ESP, IP protocol 50 (no port); finding the SA" in texts['en']
+
+
 def test_course_sections_and_references(lab, data):
     ns = lab.NetScheme(data=data, running_lab_name=_running_name())
     from SRE.informations import resolve_informations
@@ -584,7 +629,7 @@ def test_english_identifiers(lab, data, tmp_pub_dir):
     assert not re.search(r"no_tr\(\"[^\"]*[éèàçù]", source)
 
 
-def test_strip_instructor_removes_every_fragment(tmp_path):
+def test_strip_instructor_removes_every_fragment(lab, tmp_path):
     out = tmp_path / 'stripped.py'
     result = strip_instructor.strip_file(_LAB_PATH, out) if hasattr(strip_instructor, 'strip_file') else None
     if result is None:
@@ -595,3 +640,9 @@ def test_strip_instructor_removes_every_fragment(tmp_path):
     assert not re.search(r"\+ instructor\(|instructor\(tr\(", text)
     assert "import" in text and "instructor" not in re.search(r"from SRE\.lib_sre import ([^\n]+)", text).group(1)
     compile(text, str(out), 'exec')
+    # the English of the instructor texts goes with them, that of the other texts stays
+    spec = importlib.util.spec_from_file_location('ipsec_lab_stripped', out)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    kept, literals = module._TRANSLATIONS['en'], _instructor_literals()
+    assert not set(kept) & literals and len(kept) == len(lab._TRANSLATIONS['en']) - len(literals)

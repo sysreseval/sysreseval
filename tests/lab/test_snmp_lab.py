@@ -3,7 +3,8 @@ machines, the router without terminal, two hidden machines, the pinned MAC addre
 (the router's agent and the constant bit rate of `initial`, the whole solution of `final`, every
 command on one line), the multi-pass grading contract with synthetic outputs (nothing done: 0,
 everything done: 100, each part left out loses its own points, a few scoring details), the
-instructor texts, the numbered course, the stripped lab file and the English identifiers.
+instructor texts, the numbered course, the English translations, the stripped lab file and the English
+identifiers.
 
 No Docker: a small model of the agents (communities with their sources and views, the SNMPv3 user,
 the trap log) answers the grader's commands in the formats of Net-SNMP 5.9.3 (the fixtures of
@@ -375,6 +376,19 @@ def _set_answer(grade, field, value):
             grade._answers[q.question_hash] = json.dumps(form)
             return
     raise AssertionError(f"no form field {field}")
+
+
+def _instructor_literals():
+    """The tr() literals inside the instructor() calls of the lab file."""
+    import ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 def _all_texts(grade, ns, lang='fr'):
@@ -758,6 +772,31 @@ class TestTexts:
             for m in re.finditer(r'@@\{([^:}]+):([^}]*)\}@@', _text(q.description)):
                 assert '}' not in m.group(2)
 
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py)."""
+        import ast
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+        assert all(value and value != key for key, value in english.items())
+        literals = _instructor_literals()
+        assert len(literals) == 12 and set(literals) <= set(english)
+        assert lab.title.resolve('en') == "SNMP: querying, configuring and securing agents"
+        assert lab.NetScheme.final._sre_state_description.resolve('en').startswith('Reference solution:')
+        g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert has_instructor(en) and fr != en
+            assert '**Solution.**' in en or '**For the instructor.**' in en, _text(q.title)
+        for where, text in _all_texts(g1, ns1, 'en'):
+            assert "{'" not in text, where
+            assert not re.search(r"(?<!\{)\{[a-z_][a-z_0-9]*\}(?!\})", re.sub(r"@@\{[^}]*\}@@", "", text)), where
+            markdown_to_html(text, show_instructor=True)
+        resolved, numbering = resolve_informations(ns1.informations)
+        assert '## <a id="traps"></a>10. Notifications: traps and informs' in _text(resolved, 'en')
+
     def test_strip_instructor(self, lab, data, tmp_pub_dir, tmp_path):
         from strip_instructor import strip_source
         result = strip_source(_LAB_PATH.read_bytes())
@@ -768,6 +807,10 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('snmp_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the instructor texts goes with them, the rest stays
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=True, module=module)
         assert _totals(grade) == (100, 100)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())

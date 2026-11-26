@@ -730,6 +730,19 @@ def _simulate_with_answers(lab, data, tmp_pub_dir, cheat):
 # ---------------------------------------------------------------------------
 
 
+def _instructor_literals():
+    """The tr() literals inside the instructor() calls of the lab."""
+    import ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 def _all_texts(grade, ns):
     texts = [('informations', _text(ns.informations))]
     for q in grade.get_questions_ordered():
@@ -801,7 +814,8 @@ class TestTexts:
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 10 and result.warnings == []
+        assert result.calls == len(_instructor_literals()) == 10 and result.warnings == []
+        assert source.count(b'instructor(tr(') + source.count(b'instructor(_by_language(tr(') == 10
         assert b'**Solution.**' not in result.data and b"Pour l'enseignant" not in result.data
         stripped = tmp_path / 'mpls_stripped.py'
         stripped.write_bytes(result.data)
@@ -811,6 +825,44 @@ class TestTexts:
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 6)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())
+        # the English of the instructor texts goes with them, the rest stays
+        literals = _instructor_literals()
+        kept = module._TRANSLATIONS['en']
+        assert len(literals) == len(set(literals)) == 10 and not set(kept) & set(literals)
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(literals)
+        assert not any(has_instructor(_text(q.description, 'en')) for q in grade.get_questions_ordered())
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py)."""
+        import ast
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        assert set(_instructor_literals()) <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 10
+        assert lab.title.resolve('en') == "MPLS: label switching, LDP and segment routing"
+        assert lab.NetScheme.solve_fix._sre_state_description.resolve('en') == "Part 4: solution (troubleshooting)"
+        # every question reads in English, its instructor solution included
+        g1, _ns = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert fr != en and has_instructor(en), _text(q.title)
+            assert "{'" not in en and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", en), _text(q.title)
+            markdown_to_html(en, show_instructor=True)
+        # the table of the sites (built in code, one per language) and the values of the instance
+        first = {lang: _text(g1.get_questions_ordered()[0].description, lang) for lang in ('fr', 'en')}
+        assert "| 4 — dépannage | `fix_*` |" in first['fr'] and "les hôtes `st_h1` et `st_h2`" in first['fr']
+        assert "| 4 — troubleshooting | `fix_*` |" in first['en'] and "les hôtes" not in first['en']
+        assert f"**{data.sr_srgb_r3} to {data.sr_srgb_r3 + 7999}**" in first['en']
+        # the header of each router's block in the solutions follows the typography of the language
+        texts = {lang: "\n".join(_text(q.description, lang) for q in g1.get_questions_ordered())
+                 for lang in ('fr', 'en')}
+        for router in ('st_pe1', 'ldp_p2', 'sr_r4', 'fix_p2', 'fix_pe2', 'tl_r1'):
+            assert f"`{router}` :\n\n```" in texts['fr'], router
+            assert f"`{router}`:\n\n```" in texts['en'], router
+        assert " :" not in texts['en']
 
     def test_english_identifiers(self, lab, data):
         """Machines, networks, states, data fields, grade elements, part keys and form fields are English."""

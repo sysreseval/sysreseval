@@ -1533,7 +1533,8 @@ spec:
             self.cmd('control', rollout_cmd(ns, target, 150), step=4, timeout=160, allow_error=True)
 
     @sre_state(user_allowed=True, description=tr(
-        "Recrée le Deployment `api` de la partie 3 tel qu'il était au départ (son historique est perdu)."))
+        "Recrée le Deployment `api` de la partie 3 tel qu'il était au départ (son historique est perdu).",
+        en="Recreates the Deployment `api` of part 3 as it was at the start (its history is lost)."))
     def reset_release(self):
         self.cmd('control', "kubectl delete namespace release --wait=true >/dev/null 2>&1; true", timeout=120)
         self.file('control', f"{GIVEN_DIR}/release.yaml", self.given_release_yaml())
@@ -1541,7 +1542,8 @@ spec:
         self.cmd('control', rollout_cmd('release', 'deploy/api', 150), timeout=160, allow_error=True)
 
     @sre_state(user_allowed=True, description=tr(
-        "Recrée les pods donnés de la partie 8 (`secure` et `guest`), sans toucher à vos NetworkPolicy."))
+        "Recrée les pods donnés de la partie 8 (`secure` et `guest`), sans toucher à vos NetworkPolicy.",
+        en="Recreates the given pods of part 8 (`secure` and `guest`), without touching your NetworkPolicies."))
     def reset_secure(self):
         self.file('control', f"{GIVEN_DIR}/secure.yaml", self.given_secure_yaml())
         self.cmd('control', f"{apply_cmd(GIVEN_DIR + '/secure.yaml')} >/dev/null", timeout=60)
@@ -2798,4 +2800,1507 @@ puis `kubectl -n batch create job backup-now --from=cronjob/backup` et `kubectl 
 {yaml}
 then `kubectl -n batch create job backup-now --from=cronjob/backup` and `kubectl -n batch logs job/backup-now`.
 """,
+    "Kubernetes : déploiements, services et réseau d'un cluster": "Kubernetes: deployments, services and the network of a cluster",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "Pourquoi un orchestrateur": "Why an orchestrator",
+    """
+
+Docker lance des conteneurs sur **une** machine. En production, on veut davantage : répartir les
+conteneurs sur plusieurs machines, les relancer quand ils meurent ou quand une machine tombe, en
+lancer plus quand la charge monte, les mettre à jour sans interruption, leur donner un nom stable
+et un équilibrage de charge, leur fournir configuration, secrets et stockage. C'est le rôle d'un
+**orchestrateur** ; **Kubernetes** (né chez Google, maintenu par la CNCF) est devenu la référence.
+
+Son principe est **déclaratif** : on ne dit pas « lance trois conteneurs », on décrit un **état
+voulu** (« il doit exister trois copies de ce pod ») dans un **objet** envoyé à l'API. Des
+**contrôleurs** comparent sans cesse l'état voulu (`spec`) à l'état observé (`status`) et agissent
+pour les rapprocher : c'est la **boucle de réconciliation**. Supprimez un pod d'un Deployment : le
+contrôleur en recrée un aussitôt, parce que l'état voulu n'a pas changé.
+""": """
+
+Docker runs containers on **one** machine. In production, more is wanted: spreading the containers
+over several machines, restarting them when they die or when a machine fails, starting more of them
+when the load rises, updating them without interruption, giving them a stable name and load
+balancing, providing them with configuration, secrets and storage. That is the role of an
+**orchestrator**; **Kubernetes** (born at Google, maintained by the CNCF) has become the reference.
+
+Its principle is **declarative**: you do not say "start three containers", you describe a **desired
+state** ("there must be three copies of this pod") in an **object** sent to the API.
+**Controllers** constantly compare the desired state (`spec`) with the observed state (`status`)
+and act to bring them together: this is the **reconciliation loop**. Delete a pod of a Deployment:
+the controller recreates one at once, because the desired state has not changed.
+""",
+    "Architecture d'un cluster": "Architecture of a cluster",
+    """
+
+Un cluster est un ensemble de **nœuds** (machines physiques ou virtuelles, ici des machines du TP).
+
+Le **plan de contrôle** (*control plane*) :
+
+- **kube-apiserver** : l'API REST (port 6443, HTTPS) ; tout passe par lui, les clients (`kubectl`)
+  comme les autres composants ; il authentifie, autorise (RBAC), valide et enregistre les objets ;
+- **etcd** : la base clé-valeur où sont stockés tous les objets (le seul composant qui a un état) ;
+- **kube-scheduler** : choisit un nœud pour chaque nouveau pod (ressources libres, contraintes,
+  affinités, *taints*) ;
+- **kube-controller-manager** : les contrôleurs (Deployment, ReplicaSet, nœuds, Endpoints...).
+
+Sur **chaque nœud** :
+
+- **kubelet** : l'agent du nœud ; il lit les pods que le scheduler lui a attribués et demande au
+  **runtime de conteneurs** (containerd, via l'interface CRI) de les créer, surveille leurs sondes et
+  remonte leur état ;
+- **kube-proxy** : traduit les Services en règles du noyau (iptables ou nftables) ;
+- le **plugin réseau** (CNI) qui donne une adresse à chaque pod et relie les nœuds.
+""": """
+
+A cluster is a set of **nodes** (physical or virtual machines, here machines of the lab).
+
+The **control plane**:
+
+- **kube-apiserver**: the REST API (port 6443, HTTPS); everything goes through it, the clients
+  (`kubectl`) as well as the other components; it authenticates, authorises (RBAC), validates and
+  stores the objects;
+- **etcd**: the key-value database where all the objects are stored (the only component that has a
+  state);
+- **kube-scheduler**: chooses a node for each new pod (free resources, constraints, affinities,
+  *taints*);
+- **kube-controller-manager**: the controllers (Deployment, ReplicaSet, nodes, Endpoints...).
+
+On **every node**:
+
+- **kubelet**: the agent of the node; it reads the pods the scheduler has assigned to it and asks
+  the **container runtime** (containerd, through the CRI interface) to create them, watches their
+  probes and reports their state;
+- **kube-proxy**: translates the Services into kernel rules (iptables or nftables);
+- the **network plugin** (CNI), which gives an address to each pod and links the nodes.
+""",
+    "k3s": "k3s",
+    """
+
+Ce TP utilise **k3s**, une distribution Kubernetes certifiée et légère : un seul binaire contient
+tous les composants. `k3s server` fait tourner le plan de contrôle (avec **SQLite** à la place
+d'etcd, à travers *kine*) **et** un kubelet ; `k3s agent` fait un nœud de travail. k3s fournit en
+plus : containerd, le CNI **flannel**, **CoreDNS**, l'Ingress controller **Traefik**, un
+répartiteur pour les Services `LoadBalancer` (**ServiceLB**), le stockage **local-path**,
+**metrics-server** et un contrôleur de NetworkPolicy. Ces composants tournent eux-mêmes comme des
+pods de l'espace de noms `kube-system`.
+
+- configuration : `/etc/rancher/k3s/config.yaml` (une option de la ligne de commande par clé :
+  `server:`, `token:`, `node-ip:`...), complétée par les fichiers de `/etc/rancher/k3s/config.yaml.d/` ;
+- services systemd : `k3s` (serveur) et `k3s-agent` (agent) ; journaux : `journalctl -u k3s-agent` ;
+- un agent rejoint le cluster avec l'adresse du serveur (`https://<serveur>:6443`) et le **jeton**
+  des nœuds, lu sur le serveur dans `/var/lib/rancher/k3s/server/node-token` ;
+- `kubectl` est le binaire k3s lui-même ; sur le serveur, il lit `/etc/rancher/k3s/k3s.yaml`, le
+  *kubeconfig* administrateur écrit par k3s ;
+- les images des conteneurs sont celles du containerd de k3s : `crictl images`, `crictl ps`.
+""": """
+
+This lab uses **k3s**, a certified and lightweight Kubernetes distribution: a single binary contains
+all the components. `k3s server` runs the control plane (with **SQLite** instead of etcd, through
+*kine*) **and** a kubelet; `k3s agent` makes a worker node. k3s also provides: containerd, the
+**flannel** CNI, **CoreDNS**, the **Traefik** Ingress controller, a load balancer for the
+`LoadBalancer` Services (**ServiceLB**), the **local-path** storage, **metrics-server** and a
+NetworkPolicy controller. These components themselves run as pods of the `kube-system` namespace.
+
+- configuration: `/etc/rancher/k3s/config.yaml` (one command-line option per key: `server:`,
+  `token:`, `node-ip:`...), completed by the files of `/etc/rancher/k3s/config.yaml.d/`;
+- systemd services: `k3s` (server) and `k3s-agent` (agent); logs: `journalctl -u k3s-agent`;
+- an agent joins the cluster with the address of the server (`https://<server>:6443`) and the
+  **token** of the nodes, read on the server in `/var/lib/rancher/k3s/server/node-token`;
+- `kubectl` is the k3s binary itself; on the server, it reads `/etc/rancher/k3s/k3s.yaml`, the
+  administrator *kubeconfig* written by k3s;
+- the container images are those of the containerd of k3s: `crictl images`, `crictl ps`.
+""",
+    "L'API et ses objets": "The API and its objects",
+    """
+
+Chaque objet a un `apiVersion`, un `kind`, des `metadata` (nom, espace de noms, **labels**,
+annotations), une `spec` (l'état voulu) et un `status` (rempli par Kubernetes). On les écrit en
+YAML :
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+  namespace: demo
+  labels:
+    app: hello
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello
+  template:
+    metadata:
+      labels:
+        app: hello
+    spec:
+      containers:
+      - name: hello
+        image: nginx:1.30-alpine
+        ports:
+        - containerPort: 80
+```
+
+Plusieurs objets se séparent par une ligne `---` dans un même fichier.
+
+- **Espaces de noms** (*namespaces*) : des dossiers d'objets ; les noms sont uniques dans un
+  espace de noms. `kubectl create namespace demo`, puis `-n demo` sur chaque commande (ou
+  `--all-namespaces` / `-A` pour tout voir).
+- **Labels et sélecteurs** : des paires clé-valeur libres (`app: hello`) ; un objet en désigne
+  d'autres par un **sélecteur** sur leurs labels, jamais par leur nom (un Deployment ses pods, un
+  Service ses pods de destination, une NetworkPolicy les pods qu'elle protège).
+""": """
+
+Every object has an `apiVersion`, a `kind`, `metadata` (name, namespace, **labels**,
+annotations), a `spec` (the desired state) and a `status` (filled in by Kubernetes). They are
+written in YAML:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+  namespace: demo
+  labels:
+    app: hello
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello
+  template:
+    metadata:
+      labels:
+        app: hello
+    spec:
+      containers:
+      - name: hello
+        image: nginx:1.30-alpine
+        ports:
+        - containerPort: 80
+```
+
+Several objects are separated by a `---` line in the same file.
+
+- **Namespaces**: folders of objects; names are unique within a namespace.
+  `kubectl create namespace demo`, then `-n demo` on every command (or `--all-namespaces` / `-A` to
+  see everything).
+- **Labels and selectors**: free key-value pairs (`app: hello`); an object designates others by a
+  **selector** on their labels, never by their name (a Deployment its pods, a Service its
+  destination pods, a NetworkPolicy the pods it protects).
+""",
+    "kubectl": "kubectl",
+    """
+
+| commande | rôle |
+|---|---|
+| `kubectl apply -f fichier.yaml` | crée ou met à jour les objets décrits (déclaratif) |
+| `kubectl get pods -n demo -o wide` | liste (`-o yaml` / `-o json` : l'objet complet) |
+| `kubectl describe pod p -n demo` | détails et **événements** (la première chose à lire) |
+| `kubectl logs p -n demo` | sortie du conteneur (`-f` pour suivre, `--previous`) |
+| `kubectl exec -it p -n demo -- sh` | commande dans un conteneur (`deploy/hello` : un de ses pods) |
+| `kubectl delete -f fichier.yaml` | supprime |
+| `kubectl explain deployment.spec.strategy` | la documentation d'un champ |
+| `kubectl create deployment ... --dry-run=client -o yaml` | un squelette YAML à compléter |
+
+`kubectl edit` ouvre l'objet dans un éditeur ; `kubectl label`, `kubectl annotate`,
+`kubectl scale`, `kubectl set image` modifient un champ. `kubectl get events -n demo
+--sort-by=.lastTimestamp` montre ce qui s'est passé.
+""": """
+
+| command | role |
+|---|---|
+| `kubectl apply -f file.yaml` | creates or updates the objects described (declarative) |
+| `kubectl get pods -n demo -o wide` | lists (`-o yaml` / `-o json`: the whole object) |
+| `kubectl describe pod p -n demo` | details and **events** (the first thing to read) |
+| `kubectl logs p -n demo` | output of the container (`-f` to follow, `--previous`) |
+| `kubectl exec -it p -n demo -- sh` | a command in a container (`deploy/hello`: one of its pods) |
+| `kubectl delete -f file.yaml` | deletes |
+| `kubectl explain deployment.spec.strategy` | the documentation of a field |
+| `kubectl create deployment ... --dry-run=client -o yaml` | a YAML skeleton to complete |
+
+`kubectl edit` opens the object in an editor; `kubectl label`, `kubectl annotate`,
+`kubectl scale`, `kubectl set image` change a field.
+`kubectl get events -n demo --sort-by=.lastTimestamp` shows what happened.
+""",
+    "Les pods": "Pods",
+    """
+
+Le **pod** est la plus petite unité : un ou plusieurs conteneurs qui partagent **une adresse IP**,
+leurs ports (ils se joignent par `localhost`) et des volumes. Chaque pod a sa propre adresse, prise
+dans le réseau des pods du nœud. Un conteneur invisible, *pause*, tient les namespaces du pod.
+
+Un pod est **éphémère** : s'il meurt ou si son nœud tombe, il n'est pas réparé mais **remplacé** par
+un autre pod (autre nom, autre adresse), créé par le contrôleur qui le possède. On ne crée donc
+presque jamais de pod seul : on crée un Deployment, un StatefulSet, un DaemonSet ou un Job.
+
+Phases : `Pending` (pas encore de nœud ou image en cours de téléchargement), `Running`,
+`Succeeded` / `Failed` (conteneurs terminés). `restartPolicy` (`Always` par défaut) : le kubelet
+relance un conteneur qui s'arrête, avec un délai croissant (`CrashLoopBackOff`).
+
+Le champ `image` désigne une image d'un registre (`traefik/whoami:v1.12.0` =
+`docker.io/traefik/whoami:v1.12.0`). `imagePullPolicy` vaut `IfNotPresent` pour un tag fixe
+(l'image locale suffit) et `Always` pour `latest` (ou sans tag) : **sans accès à Internet, n'utilisez
+jamais `latest`**.
+""": """
+
+The **pod** is the smallest unit: one or more containers that share **one IP address**, their
+ports (they reach each other through `localhost`) and volumes. Each pod has its own address, taken
+from the pod network of its node. An invisible container, *pause*, holds the kernel namespaces of
+the pod.
+
+A pod is **ephemeral**: if it dies or if its node fails, it is not repaired but **replaced** by
+another pod (another name, another address), created by the controller that owns it. So a pod is
+almost never created on its own: you create a Deployment, a StatefulSet, a DaemonSet or a Job.
+
+Phases: `Pending` (no node yet, or image being downloaded), `Running`, `Succeeded` / `Failed`
+(containers finished). `restartPolicy` (`Always` by default): the kubelet restarts a container that
+stops, with an increasing delay (`CrashLoopBackOff`).
+
+The `image` field designates an image of a registry (`traefik/whoami:v1.12.0` =
+`docker.io/traefik/whoami:v1.12.0`). `imagePullPolicy` is `IfNotPresent` for a fixed tag (the local
+image is enough) and `Always` for `latest` (or no tag): **without Internet access, never use
+`latest`**.
+""",
+    "Deployments et ReplicaSets": "Deployments and ReplicaSets",
+    """
+
+Un **ReplicaSet** maintient un nombre de pods identiques (`replicas`), créés depuis son `template`
+et retrouvés par son `selector` (les labels du template doivent correspondre au sélecteur). Un
+**Deployment** gère des ReplicaSets : un par version du template. On ne manipule que le Deployment.
+
+`kubectl scale deploy/hello --replicas=5` change le nombre de copies ; supprimer un pod en fait
+recréer un autre.
+""": """
+
+A **ReplicaSet** maintains a number of identical pods (`replicas`), created from its `template` and
+found by its `selector` (the labels of the template must match the selector). A **Deployment**
+manages ReplicaSets: one per version of the template. Only the Deployment is handled directly.
+
+`kubectl scale deploy/hello --replicas=5` changes the number of copies; deleting a pod makes
+another one be created.
+""",
+    "Mise à jour progressive et retour arrière": "Rolling update and rollback",
+    """
+
+Modifier le template (l'image, une variable...) crée un **nouveau ReplicaSet** et une nouvelle
+**révision** ; la stratégie `RollingUpdate` (par défaut) fait monter le nouveau ReplicaSet et
+descendre l'ancien progressivement :
+
+- `maxSurge` : combien de pods **en plus** de `replicas` pendant la mise à jour (25 % par défaut) ;
+- `maxUnavailable` : combien de pods peuvent **manquer** (25 % par défaut) ; à 0, un ancien pod
+  n'est arrêté qu'une fois un nouveau **prêt** (*Ready*) : une version qui ne démarre pas ne
+  remplace jamais l'ancienne, la mise à jour reste bloquée.
+
+```
+kubectl set image deploy/hello hello=nginx:1.31-alpine -n demo
+kubectl annotate deploy/hello kubernetes.io/change-cause="nginx 1.31" -n demo
+kubectl rollout status deploy/hello -n demo
+kubectl rollout history deploy/hello -n demo
+kubectl rollout undo deploy/hello -n demo     # (--to-revision=N)
+```
+
+Les anciens ReplicaSets sont gardés à 0 pod (`revisionHistoryLimit`, 10 par défaut) : ils sont
+l'historique. Un retour arrière **réutilise** l'ancien ReplicaSet, qui prend alors le numéro de
+révision suivant (l'historique ne recule jamais). L'annotation `kubernetes.io/change-cause` du
+Deployment est recopiée sur la révision et affichée par `rollout history`.
+
+Le tag d'une image absente du registre fait échouer le téléchargement : `ErrImagePull` puis
+`ImagePullBackOff` (nouvelles tentatives espacées).
+""": """
+
+Changing the template (the image, a variable...) creates a **new ReplicaSet** and a new
+**revision**; the `RollingUpdate` strategy (the default) scales the new ReplicaSet up and the old
+one down progressively:
+
+- `maxSurge`: how many pods **in addition to** `replicas` during the update (25% by default);
+- `maxUnavailable`: how many pods may be **missing** (25% by default); at 0, an old pod is stopped
+  only once a new one is **ready** (*Ready*): a version that does not start never replaces the old
+  one, the update stays stuck.
+
+```
+kubectl set image deploy/hello hello=nginx:1.31-alpine -n demo
+kubectl annotate deploy/hello kubernetes.io/change-cause="nginx 1.31" -n demo
+kubectl rollout status deploy/hello -n demo
+kubectl rollout history deploy/hello -n demo
+kubectl rollout undo deploy/hello -n demo     # (--to-revision=N)
+```
+
+The old ReplicaSets are kept with 0 pods (`revisionHistoryLimit`, 10 by default): they are the
+history. A rollback **reuses** the old ReplicaSet, which then takes the next revision number (the
+history never goes backwards). The `kubernetes.io/change-cause` annotation of the Deployment is
+copied onto the revision and shown by `rollout history`.
+
+The tag of an image absent from the registry makes the download fail: `ErrImagePull`, then
+`ImagePullBackOff` (new attempts, further and further apart).
+""",
+    "Les Services": "Services",
+    """
+
+Les pods changent d'adresse à chaque re-création. Un **Service** donne un point d'entrée stable à un
+ensemble de pods choisis par **sélecteur** : une adresse virtuelle, la **ClusterIP** (prise dans
+10.43.0.0/16 avec k3s), et un nom DNS.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello
+  namespace: demo
+spec:
+  selector:
+    app: hello
+  ports:
+  - port: 9090         # le port du Service
+    targetPort: 80     # le port des pods (un numéro ou le nom d'un containerPort)
+```
+
+Le contrôleur d'**EndpointSlices** tient la liste des adresses des pods choisis, en distinguant ceux
+qui sont prêts (`kubectl get endpointslices -n demo`). **kube-proxy**, sur chaque nœud, transforme le
+Service en règles du noyau : un paquet vers `ClusterIP:port` est **traduit (DNAT)** vers l'adresse
+d'un des pods prêts, tiré au hasard. Aucun processus n'écoute sur la ClusterIP : elle n'existe que
+dans ces règles (`iptables-save -t nat | grep KUBE-SVC` sur un nœud).
+
+Un Service **headless** (`clusterIP: None`) n'a pas d'adresse virtuelle : son nom DNS donne
+directement les adresses des pods.
+""": """
+
+Pods change address every time they are recreated. A **Service** gives a stable entry point to a set
+of pods chosen by a **selector**: a virtual address, the **ClusterIP** (taken from 10.43.0.0/16 with
+k3s), and a DNS name.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello
+  namespace: demo
+spec:
+  selector:
+    app: hello
+  ports:
+  - port: 9090         # the port of the Service
+    targetPort: 80     # the port of the pods (a number or the name of a containerPort)
+```
+
+The **EndpointSlices** controller keeps the list of the addresses of the chosen pods, telling apart
+those that are ready (`kubectl get endpointslices -n demo`). **kube-proxy**, on every node, turns
+the Service into kernel rules: a packet to `ClusterIP:port` is **translated (DNAT)** to the address
+of one of the ready pods, drawn at random. No process listens on the ClusterIP: it exists only in
+these rules (`iptables-save -t nat | grep KUBE-SVC` on a node).
+
+A **headless** Service (`clusterIP: None`) has no virtual address: its DNS name gives the addresses
+of the pods directly.
+""",
+    "Le DNS du cluster": "The cluster DNS",
+    """
+
+**CoreDNS** (Service `kube-dns` de `kube-system`, adresse `{dns}`) répond pour la zone
+`cluster.local` ; chaque pod l'a comme serveur dans son `/etc/resolv.conf`, avec les domaines de
+recherche de son espace de noms :
+
+- `<service>.<namespace>.svc.cluster.local` → la ClusterIP du Service (depuis le même espace de
+  noms, `<service>` suffit ; d'un autre, `<service>.<namespace>`) ;
+- `<pod>.<service>.<namespace>.svc.cluster.local` → l'adresse d'un pod d'un StatefulSet derrière un
+  Service headless ;
+- les autres noms sont transmis aux serveurs du nœud (ici aucun : pas d'accès à Internet).
+
+Depuis un nœud, qui n'utilise pas CoreDNS : `dig @{dns} hello.demo.svc.cluster.local`.
+""": """
+
+**CoreDNS** (Service `kube-dns` of `kube-system`, address `{dns}`) answers for the `cluster.local`
+zone; every pod has it as its server in its `/etc/resolv.conf`, with the search domains of its
+namespace:
+
+- `<service>.<namespace>.svc.cluster.local` → the ClusterIP of the Service (from the same
+  namespace, `<service>` is enough; from another one, `<service>.<namespace>`);
+- `<pod>.<service>.<namespace>.svc.cluster.local` → the address of a pod of a StatefulSet behind a
+  headless Service;
+- the other names are forwarded to the servers of the node (none here: no Internet access).
+
+From a node, which does not use CoreDNS: `dig @{dns} hello.demo.svc.cluster.local`.
+""",
+    "Le réseau du cluster": "The cluster network",
+    """
+
+Le modèle de Kubernetes : **chaque pod a sa propre adresse, et tout pod joint tout autre pod sans
+NAT**, quel que soit son nœud. Kubernetes ne le réalise pas lui-même : c'est le travail du **plugin
+CNI** (Calico, Cilium, flannel...).
+
+Avec **flannel** (k3s) :
+
+- le réseau des pods `10.42.0.0/16` est découpé en un **/24 par nœud** (`spec.podCIDR` du nœud :
+  `kubectl get node <nœud> -o jsonpath='{.spec.podCIDR}'`) ;
+- sur chaque nœud, les pods sont reliés par des paires veth à un pont Linux `cni0` (la passerelle
+  `.1` du /24 du nœud) ;
+- entre nœuds, flannel encapsule les paquets des pods dans du **VXLAN** (UDP 8472) sur le réseau
+  des nœuds, par l'interface `flannel.1` ; chaque nœud a une route vers le /24 des autres
+  (`ip route` sur un nœud).
+""": """
+
+The Kubernetes model: **every pod has its own address, and every pod reaches every other pod
+without NAT**, whatever its node. Kubernetes does not implement this itself: it is the job of the
+**CNI plugin** (Calico, Cilium, flannel...).
+
+With **flannel** (k3s):
+
+- the pod network `10.42.0.0/16` is cut into one **/24 per node** (`spec.podCIDR` of the node:
+  `kubectl get node <node> -o jsonpath='{.spec.podCIDR}'`);
+- on each node, the pods are linked by veth pairs to a Linux bridge `cni0` (the gateway `.1` of the
+  /24 of the node);
+- between nodes, flannel encapsulates the packets of the pods in **VXLAN** (UDP 8472) over the
+  network of the nodes, through the `flannel.1` interface; every node has a route to the /24 of the
+  others (`ip route` on a node).
+""",
+    "Exposer vers l'extérieur": "Exposing to the outside",
+    """
+
+Une ClusterIP n'est joignable que depuis le cluster. Pour l'extérieur :
+
+- **NodePort** (`type: NodePort`) : le Service ouvre en plus un port (30000-32767 par défaut, imposé
+  par `nodePort:` ou tiré au hasard) **sur chaque nœud** ; `http://<n'importe quel nœud>:<nodePort>`
+  arrive à un pod du Service, même s'il tourne sur un autre nœud ;
+- **LoadBalancer** (`type: LoadBalancer`) : un NodePort, plus une adresse externe donnée par un
+  répartiteur : celui du fournisseur de cloud, MetalLB sur un réseau local, ou ici **ServiceLB** de
+  k3s, qui écoute sur le `port` du Service **sur les adresses des nœuds** (un pod `svclb-...` par
+  nœud) et les publie dans `status.loadBalancer.ingress` (colonne `EXTERNAL-IP`) ;
+- **Ingress** : des règles HTTP (nom d'hôte, chemin) vers des Services, appliquées par un **Ingress
+  controller**, un proxy inverse lui-même exposé (ici **Traefik**, en LoadBalancer sur les ports 80
+  et 443 des nœuds, `ingressClassName: traefik`) :
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hello
+  namespace: demo
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: hello.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hello
+            port:
+              number: 9090
+```
+
+Le choix de la règle se fait sur l'en-tête `Host` : `curl -H 'Host: hello.example.test'
+http://<nœud>/`. L'API **Gateway** (`Gateway`, `HTTPRoute`) est la remplaçante, plus riche, de
+l'Ingress.
+""": """
+
+A ClusterIP can only be reached from inside the cluster. For the outside:
+
+- **NodePort** (`type: NodePort`): the Service also opens a port (30000-32767 by default, set by
+  `nodePort:` or drawn at random) **on every node**; `http://<any node>:<nodePort>` reaches a pod of
+  the Service, even if it runs on another node;
+- **LoadBalancer** (`type: LoadBalancer`): a NodePort, plus an external address given by a load
+  balancer: that of the cloud provider, MetalLB on a local network, or here the **ServiceLB** of
+  k3s, which listens on the `port` of the Service **on the addresses of the nodes** (one `svclb-...`
+  pod per node) and publishes them in `status.loadBalancer.ingress` (column `EXTERNAL-IP`);
+- **Ingress**: HTTP rules (host name, path) to Services, applied by an **Ingress controller**, a
+  reverse proxy that is itself exposed (here **Traefik**, as a LoadBalancer on ports 80 and 443 of
+  the nodes, `ingressClassName: traefik`):
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hello
+  namespace: demo
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: hello.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hello
+            port:
+              number: 9090
+```
+
+The rule is chosen on the `Host` header: `curl -H 'Host: hello.example.test' http://<node>/`. The
+**Gateway** API (`Gateway`, `HTTPRoute`) is the richer successor of Ingress.
+""",
+    "Configuration : ConfigMap et Secret": "Configuration: ConfigMap and Secret",
+    """
+
+Une image ne doit pas contenir la configuration propre à un environnement. Une **ConfigMap** porte
+des paires clé-valeur (des valeurs courtes ou des fichiers entiers) ; un **Secret** aussi, pour les
+données sensibles :
+
+```
+kubectl create configmap demo-settings --from-literal=COLOR=blue --from-file=page.html -n demo
+kubectl create secret generic demo-db --from-literal=password=s3cret -n demo
+```
+
+Un conteneur les reçoit :
+
+- en **variables d'environnement** : `env` → `valueFrom` → `configMapKeyRef` / `secretKeyRef`
+  (`name`, `key`), ou toutes les clés avec `envFrom` ;
+- en **fichiers** : un volume `configMap:` / `secret:` (`items` pour choisir les clés,
+  `defaultMode` pour les droits, en octal : `0400`) monté par `volumeMounts` ; un fichier par clé ;
+  les fichiers suivent les modifications de l'objet (pas les variables, lues au démarrage).
+
+**Un Secret n'est pas chiffré** : ses valeurs sont seulement encodées en **base64** dans l'API
+(`kubectl get secret demo-db -o yaml`, puis `base64 -d`). Sa protection vient du contrôle d'accès
+(RBAC), éventuellement du chiffrement de la base sur disque, et du fait qu'il n'apparaît pas dans la
+spec des pods.
+""": """
+
+An image must not contain the configuration specific to an environment. A **ConfigMap** carries
+key-value pairs (short values or whole files); so does a **Secret**, for sensitive data:
+
+```
+kubectl create configmap demo-settings --from-literal=COLOR=blue --from-file=page.html -n demo
+kubectl create secret generic demo-db --from-literal=password=s3cret -n demo
+```
+
+A container receives them:
+
+- as **environment variables**: `env` → `valueFrom` → `configMapKeyRef` / `secretKeyRef`
+  (`name`, `key`), or all the keys with `envFrom`;
+- as **files**: a `configMap:` / `secret:` volume (`items` to choose the keys, `defaultMode` for
+  the permissions, in octal: `0400`) mounted by `volumeMounts`; one file per key; the files follow
+  the changes of the object (the variables do not: they are read at start-up).
+
+**A Secret is not encrypted**: its values are only encoded in **base64** in the API
+(`kubectl get secret demo-db -o yaml`, then `base64 -d`). Its protection comes from access control
+(RBAC), possibly from the encryption of the database on disk, and from the fact that it does not
+appear in the spec of the pods.
+""",
+    "Santé et ressources": "Health and resources",
+    """
+
+Le kubelet surveille chaque conteneur par des **sondes** (*probes*), une requête `httpGet` (code
+200-399 attendu), une connexion `tcpSocket` ou une commande `exec`, toutes les `periodSeconds`
+(10 s par défaut), en échec après `failureThreshold` (3) essais ratés :
+
+- **readinessProbe** : le conteneur est-il prêt à recevoir du trafic ? En échec, le pod reste
+  vivant mais devient *non prêt* : il **sort des EndpointSlices**, les Services ne lui envoient plus
+  rien (et une mise à jour avec `maxUnavailable: 0` attend qu'il soit prêt) ;
+- **livenessProbe** : le conteneur est-il vivant ? En échec, le kubelet le **redémarre**
+  (`RESTARTS` augmente) ;
+- **startupProbe** : laisse le temps de démarrer avant les deux autres.
+
+**Ressources** : `resources.requests` (ce que le scheduler **réserve** sur le nœud pour placer le
+pod) et `resources.limits` (le plafond appliqué par le noyau : au-delà de sa limite de mémoire le
+conteneur est tué, `OOMKilled` ; au-delà de sa limite de CPU il est freiné). CPU en cœurs ou
+millicœurs (`250m` = un quart de cœur), mémoire en octets (`128Mi`). La **classe de QoS** du pod en
+découle : `Guaranteed` (requests = limits pour tout), `Burstable` (des requests, moins que les
+limits), `BestEffort` (rien : premiers évincés).
+""": """
+
+The kubelet watches each container through **probes**: an `httpGet` request (code 200-399
+expected), a `tcpSocket` connection or an `exec` command, every `periodSeconds` (10 s by default),
+failed after `failureThreshold` (3) missed attempts:
+
+- **readinessProbe**: is the container ready to receive traffic? On failure, the pod stays alive
+  but becomes *not ready*: it **leaves the EndpointSlices**, the Services no longer send it
+  anything (and an update with `maxUnavailable: 0` waits until it is ready);
+- **livenessProbe**: is the container alive? On failure, the kubelet **restarts** it (`RESTARTS`
+  increases);
+- **startupProbe**: leaves time to start before the other two.
+
+**Resources**: `resources.requests` (what the scheduler **reserves** on the node to place the pod)
+and `resources.limits` (the ceiling enforced by the kernel: beyond its memory limit the container is
+killed, `OOMKilled`; beyond its CPU limit it is throttled). CPU in cores or millicores (`250m` = a
+quarter of a core), memory in bytes (`128Mi`). The **QoS class** of the pod follows from them:
+`Guaranteed` (requests = limits for everything), `Burstable` (some requests, lower than the
+limits), `BestEffort` (nothing: evicted first).
+""",
+    "Stockage": "Storage",
+    """
+
+Le système de fichiers d'un conteneur disparaît avec lui. Un **volume** est déclaré dans le pod
+(`volumes:`) et monté dans ses conteneurs (`volumeMounts:`) : `emptyDir` (vide, vit autant que le
+pod), `configMap`, `secret`, ou un stockage durable :
+
+- un **PersistentVolume** (PV) est un morceau de stockage du cluster (disque, partage NFS, volume
+  du cloud...) ;
+- une **PersistentVolumeClaim** (PVC) est une **demande** de stockage (taille, mode d'accès
+  `ReadWriteOnce`...) d'un espace de noms ; Kubernetes la **lie** (`Bound`) à un PV ;
+- une **StorageClass** crée les PV à la demande (*provisionnement dynamique*) ; celle de k3s,
+  `local-path` (par défaut), crée un répertoire sur le nœud du pod
+  (`/var/lib/rancher/k3s/storage/...`) et attache ensuite le pod à ce nœud.
+
+Le pod monte la PVC par `persistentVolumeClaim: claimName: ...` ; les données survivent au pod.
+""": """
+
+The file system of a container disappears with it. A **volume** is declared in the pod
+(`volumes:`) and mounted in its containers (`volumeMounts:`): `emptyDir` (empty, lives as long as
+the pod), `configMap`, `secret`, or durable storage:
+
+- a **PersistentVolume** (PV) is a piece of storage of the cluster (disk, NFS share, cloud
+  volume...);
+- a **PersistentVolumeClaim** (PVC) is a **request** for storage (size, access mode
+  `ReadWriteOnce`...) made in a namespace; Kubernetes **binds** it (`Bound`) to a PV;
+- a **StorageClass** creates PVs on demand (*dynamic provisioning*); that of k3s, `local-path` (the
+  default), creates a directory on the node of the pod (`/var/lib/rancher/k3s/storage/...`) and then
+  ties the pod to that node.
+
+The pod mounts the PVC through `persistentVolumeClaim: claimName: ...`; the data survive the pod.
+""",
+    "StatefulSet": "StatefulSet",
+    """
+
+Un **StatefulSet** est fait pour les applications à état (bases de données) : ses pods ont un
+**nom stable** (`<nom>-0`, `<nom>-1`...), créés et arrêtés dans l'ordre, et **chacun sa PVC**, créée
+depuis `volumeClaimTemplates` (nom `<modèle>-<nom>-<n>`), qui lui revient s'il est recréé. Il se
+déclare avec un Service headless (`serviceName:`) qui donne à chaque pod un nom DNS
+(`<nom>-0.<service>.<namespace>.svc.cluster.local`).
+
+```yaml
+spec:
+  serviceName: demo-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-db
+  template:
+    ...           # comme un Deployment, avec un volumeMounts de name: data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 50Mi
+```
+""": """
+
+A **StatefulSet** is made for stateful applications (databases): its pods have a **stable name**
+(`<name>-0`, `<name>-1`...), are created and stopped in order, and **each has its own PVC**, created
+from `volumeClaimTemplates` (name `<template>-<name>-<n>`), which comes back to it if it is
+recreated. It is declared with a headless Service (`serviceName:`) that gives each pod a DNS name
+(`<name>-0.<service>.<namespace>.svc.cluster.local`).
+
+```yaml
+spec:
+  serviceName: demo-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-db
+  template:
+    ...           # like a Deployment, with a volumeMounts of name: data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 50Mi
+```
+""",
+    "NetworkPolicy": "NetworkPolicy",
+    """
+
+Par défaut, **tout pod accepte le trafic de tous les pods** du cluster, tous espaces de noms
+confondus. Une **NetworkPolicy** restreint le trafic des pods qu'elle **choisit**
+(`podSelector`, `{}` = tous les pods de l'espace de noms) :
+
+- dès qu'un pod est choisi par une politique de type `Ingress`, il **refuse** tout trafic entrant
+  sauf celui qu'une politique autorise (`ingress: - from: ... ports: ...`) ; de même pour `Egress`
+  (trafic sortant) ;
+- les politiques s'**additionnent** (union des autorisations) ; pas de règle de refus explicite ;
+- `from` / `to` : `podSelector` (pods du même espace de noms), `namespaceSelector` (pods d'autres
+  espaces de noms, par les labels de l'espace de noms, comme `kubernetes.io/metadata.name: kube-system`),
+  ou `ipBlock` ;
+- le trafic de retour d'une connexion autorisée passe toujours.
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+  namespace: demo
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+```
+
+Une politique `Egress` doit penser au **DNS** : les pods choisis ne peuvent plus joindre CoreDNS
+(UDP et TCP 53 vers `kube-system`) si on ne l'autorise pas, et plus aucun nom ne se résout.
+
+Les NetworkPolicy sont appliquées par le plugin réseau (ici le contrôleur de k3s, par iptables et
+ipset) ; avec un CNI qui ne les gère pas, elles sont acceptées par l'API mais sans effet.
+""": """
+
+By default, **every pod accepts the traffic of every pod** of the cluster, whatever their
+namespaces. A **NetworkPolicy** restricts the traffic of the pods it **selects**
+(`podSelector`, `{}` = all the pods of the namespace):
+
+- as soon as a pod is selected by a policy of type `Ingress`, it **refuses** all incoming traffic
+  except what a policy allows (`ingress: - from: ... ports: ...`); likewise for `Egress`
+  (outgoing traffic);
+- policies **add up** (union of the permissions); there is no explicit deny rule;
+- `from` / `to`: `podSelector` (pods of the same namespace), `namespaceSelector` (pods of other
+  namespaces, by the labels of the namespace, such as `kubernetes.io/metadata.name: kube-system`),
+  or `ipBlock`;
+- the return traffic of an allowed connection always passes.
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+  namespace: demo
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+```
+
+An `Egress` policy must not forget **DNS**: the selected pods can no longer reach CoreDNS (UDP and
+TCP 53 to `kube-system`) unless it is allowed, and no name resolves any more.
+
+NetworkPolicies are enforced by the network plugin (here the controller of k3s, with iptables and
+ipset); with a CNI that does not support them, they are accepted by the API but have no effect.
+""",
+    "Ordonnancement": "Scheduling",
+    """
+
+Le scheduler place chaque pod sur un nœud qui a assez de ressources (`requests`) et qui respecte
+ses contraintes :
+
+- **nodeSelector** : des labels que le nœud doit porter (`kubectl label node n disktype=ssd`) ;
+  l'**affinité de nœud** (`affinity.nodeAffinity`) en est la forme riche ;
+- **affinité / anti-affinité de pods** (`affinity.podAffinity` / `podAntiAffinity`) : placer près
+  ou loin d'autres pods (choisis par labels), à l'échelle d'une `topologyKey` : le nœud
+  (`kubernetes.io/hostname`), la zone (`topology.kubernetes.io/zone`) ;
+  `requiredDuringSchedulingIgnoredDuringExecution` est impératif (sinon le pod reste `Pending`),
+  `preferred...` une préférence ;
+- **taints et tolerations** : un nœud **marqué** (`kubectl taint node n clé=valeur:NoSchedule`)
+  refuse les pods qui ne **tolèrent** pas la marque (`tolerations:` du pod) ; c'est ainsi qu'on
+  réserve le plan de contrôle (`node-role.kubernetes.io/control-plane:NoSchedule`). `NoSchedule`
+  n'affecte que les nouveaux pods (`NoExecute` chasse aussi les pods présents) ;
+- **DaemonSet** : un pod sur **chaque** nœud (agents de supervision, de journaux, le réseau...),
+  y compris les nouveaux nœuds ; les nœuds marqués seulement si le pod tolère leur marque.
+
+Les labels `kubernetes.io/hostname` et `topology.kubernetes.io/zone` sont des **labels bien
+connus** : le scheduler et d'autres composants s'en servent.
+""": """
+
+The scheduler places each pod on a node that has enough resources (`requests`) and that respects
+its constraints:
+
+- **nodeSelector**: labels the node must carry (`kubectl label node n disktype=ssd`); **node
+  affinity** (`affinity.nodeAffinity`) is its richer form;
+- **pod affinity / anti-affinity** (`affinity.podAffinity` / `podAntiAffinity`): placing a pod near
+  other pods or away from them (chosen by labels), at the scale of a `topologyKey`: the node
+  (`kubernetes.io/hostname`), the zone (`topology.kubernetes.io/zone`);
+  `requiredDuringSchedulingIgnoredDuringExecution` is a hard constraint (if it cannot be met, the
+  pod stays `Pending`), `preferred...` a preference;
+- **taints and tolerations**: a **tainted** node (`kubectl taint node n key=value:NoSchedule`)
+  refuses the pods that do not **tolerate** the taint (`tolerations:` of the pod); this is how the
+  control plane is reserved (`node-role.kubernetes.io/control-plane:NoSchedule`). `NoSchedule`
+  only affects new pods (`NoExecute` also evicts the pods already there);
+- **DaemonSet**: one pod on **every** node (monitoring agents, log collectors, the network...), new
+  nodes included; tainted nodes only if the pod tolerates their taint.
+
+The labels `kubernetes.io/hostname` and `topology.kubernetes.io/zone` are **well-known labels**:
+the scheduler and other components use them.
+""",
+    "Accès à l'API : kubeconfig et RBAC": "API access: kubeconfig and RBAC",
+    """
+
+Chaque requête à l'API est **authentifiée** (qui ?) puis **autorisée** (a-t-il le droit ?).
+
+- Un **kubeconfig** (`~/.kube/config`, ou `--kubeconfig` / `KUBECONFIG`) décrit des `clusters`
+  (adresse de l'API et certificat de son autorité, `certificate-authority-data`), des `users`
+  (certificat client, jeton...) et des `contexts` (un cluster + un utilisateur + un espace de noms
+  par défaut), dont un `current-context`. `kubectl config view`, `kubectl config use-context`.
+- Les programmes s'authentifient avec un **ServiceAccount** (un compte d'un espace de noms,
+  `system:serviceaccount:<ns>:<nom>`) et son **jeton** : `kubectl create token <sa>` (jeton à durée
+  limitée) ou un Secret de type `kubernetes.io/service-account-token` (durable). Un pod reçoit le
+  jeton de son ServiceAccount dans `/var/run/secrets/kubernetes.io/serviceaccount/`.
+- **RBAC** : un **Role** (un espace de noms) ou un **ClusterRole** (tout le cluster) liste des
+  règles `apiGroups` / `resources` / `verbs` (`get`, `list`, `watch`, `create`, `update`, `patch`,
+  `delete`) ; un **RoleBinding** / **ClusterRoleBinding** les accorde à des utilisateurs, groupes ou
+  ServiceAccounts. Tout ce qui n'est pas accordé est refusé (`Forbidden`). Les Deployments sont dans
+  le groupe `apps`, les pods dans le groupe vide `""` ; les journaux sont la sous-ressource
+  `pods/log`.
+
+```
+kubectl auth can-i list secrets -n demo --as=system:serviceaccount:demo:robot
+kubectl auth whoami
+```
+""": """
+
+Every API request is **authenticated** (who?) then **authorised** (is it allowed?).
+
+- A **kubeconfig** (`~/.kube/config`, or `--kubeconfig` / `KUBECONFIG`) describes `clusters`
+  (address of the API and certificate of its authority, `certificate-authority-data`), `users`
+  (client certificate, token...) and `contexts` (a cluster + a user + a default namespace), one of
+  which is the `current-context`. `kubectl config view`, `kubectl config use-context`.
+- Programs authenticate with a **ServiceAccount** (an account of a namespace,
+  `system:serviceaccount:<ns>:<name>`) and its **token**: `kubectl create token <sa>` (a
+  short-lived token) or a Secret of type `kubernetes.io/service-account-token` (durable). A pod
+  receives the token of its ServiceAccount in `/var/run/secrets/kubernetes.io/serviceaccount/`.
+- **RBAC**: a **Role** (one namespace) or a **ClusterRole** (the whole cluster) lists rules
+  `apiGroups` / `resources` / `verbs` (`get`, `list`, `watch`, `create`, `update`, `patch`,
+  `delete`); a **RoleBinding** / **ClusterRoleBinding** grants them to users, groups or
+  ServiceAccounts. Everything that is not granted is refused (`Forbidden`). Deployments are in the
+  `apps` group, pods in the empty group `""`; logs are the `pods/log` subresource.
+
+```
+kubectl auth can-i list secrets -n demo --as=system:serviceaccount:demo:robot
+kubectl auth whoami
+```
+""",
+    "Mise à l'échelle et tâches": "Scaling and jobs",
+    """
+
+- **HorizontalPodAutoscaler** (HPA, `autoscaling/v2`) : ajuste `replicas` d'un Deployment entre
+  `minReplicas` et `maxReplicas` pour tenir une cible, par exemple une utilisation moyenne du CPU de
+  60 % **des requests** (sans `resources.requests.cpu`, pas de pourcentage possible). Les mesures
+  viennent de **metrics-server** (`kubectl top nodes`, `kubectl top pods`) ;
+  `kubectl get hpa` montre la mesure courante. `kubectl autoscale deploy/hello --cpu-percent=60
+  --min=1 --max=5` en crée un.
+- **Job** : des pods qui doivent **se terminer** avec succès (`completions`, `parallelism`,
+  `backoffLimit`), `restartPolicy: Never` ou `OnFailure`.
+- **CronJob** : crée un Job selon un horaire au format cron (`schedule: "0 3 * * *"`) ;
+  `concurrencyPolicy` (`Allow`, `Forbid`, `Replace`) ; `successfulJobsHistoryLimit` /
+  `failedJobsHistoryLimit` : combien de Jobs terminés garder. `kubectl create job --from=cronjob/<nom>
+  <job>` lance un Job tout de suite depuis son modèle.
+""": """
+
+- **HorizontalPodAutoscaler** (HPA, `autoscaling/v2`): adjusts the `replicas` of a Deployment
+  between `minReplicas` and `maxReplicas` to meet a target, for example an average CPU utilisation
+  of 60% **of the requests** (without `resources.requests.cpu`, no percentage is possible). The
+  metrics come from **metrics-server** (`kubectl top nodes`, `kubectl top pods`);
+  `kubectl get hpa` shows the current value.
+  `kubectl autoscale deploy/hello --cpu-percent=60 --min=1 --max=5` creates one.
+- **Job**: pods that must **terminate** successfully (`completions`, `parallelism`,
+  `backoffLimit`), `restartPolicy: Never` or `OnFailure`.
+- **CronJob**: creates a Job on a cron-format schedule (`schedule: "0 3 * * *"`);
+  `concurrencyPolicy` (`Allow`, `Forbid`, `Replace`); `successfulJobsHistoryLimit` /
+  `failedJobsHistoryLimit`: how many finished Jobs to keep.
+  `kubectl create job --from=cronjob/<name> <job>` starts a Job at once from its template.
+""",
+    "Dépannage": "Troubleshooting",
+    """
+
+| symptôme | à regarder |
+|---|---|
+| pod `Pending` | `kubectl describe pod` : pas de nœud convenable (ressources, nodeSelector, taint, anti-affinité), PVC non liée |
+| `ErrImagePull`, `ImagePullBackOff` | nom ou tag de l'image (ici, seules les images préchargées existent) |
+| `CrashLoopBackOff` | `kubectl logs --previous` : le conteneur démarre puis meurt |
+| `Running` mais `0/1 READY` | la readinessProbe échoue (`describe` : *Readiness probe failed*) |
+| Service muet | `kubectl get endpointslices` : le sélecteur ne choisit aucun pod prêt, ou mauvais `targetPort` |
+| nœud `NotReady` | `journalctl -u k3s-agent` sur le nœud |
+
+`kubectl get events -A --sort-by=.lastTimestamp` et `kubectl describe` racontent presque toujours ce
+qui ne va pas.
+""": """
+
+| symptom | what to look at |
+|---|---|
+| pod `Pending` | `kubectl describe pod`: no suitable node (resources, nodeSelector, taint, anti-affinity), PVC not bound |
+| `ErrImagePull`, `ImagePullBackOff` | name or tag of the image (here, only the preloaded images exist) |
+| `CrashLoopBackOff` | `kubectl logs --previous`: the container starts, then dies |
+| `Running` but `0/1 READY` | the readinessProbe fails (`describe`: *Readiness probe failed*) |
+| silent Service | `kubectl get endpointslices`: the selector chooses no ready pod, or wrong `targetPort` |
+| node `NotReady` | `journalctl -u k3s-agent` on the node |
+
+`kubectl get events -A --sort-by=.lastTimestamp` and `kubectl describe` almost always tell what is
+wrong.
+""",
+    "Recrée le Deployment `api` de la partie 3 tel qu'il était au départ (son historique est perdu).": "Recreates the Deployment `api` of part 3 as it was at the start (its history is lost).",
+    "Recrée les pods donnés de la partie 8 (`secure` et `guest`), sans toucher à vos NetworkPolicy.": "Recreates the given pods of part 8 (`secure` and `guest`), without touching your NetworkPolicies.",
+    """
+| machine | rôle | adresse |
+|---------|------|---------|
+| `control` | serveur k3s (plan de contrôle et nœud) : **vous travaillez ici** avec `kubectl` | `{control}` |
+| `worker1` | nœud (agent k3s) | `{worker1}` |
+| `worker2` | nœud à faire rejoindre le cluster (partie 1) | `{worker2}` |
+| `gw` | routeur entre `cluster` et `outside` | `{gw}` (`cluster`), `{gw_out}` (`outside`) |
+| `admin` | poste extérieur : essais HTTP, `kubectl` à distance (bonus) | `{admin}` |
+""": """
+| machine | role | address |
+|---------|------|---------|
+| `control` | k3s server (control plane and node): **you work here** with `kubectl` | `{control}` |
+| `worker1` | node (k3s agent) | `{worker1}` |
+| `worker2` | node to join to the cluster (part 1) | `{worker2}` |
+| `gw` | router between `cluster` and `outside` | `{gw}` (`cluster`), `{gw_out}` (`outside`) |
+| `admin` | outside host: HTTP tests, remote `kubectl` (bonus) | `{admin}` |
+""",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente l'architecture de Kubernetes et de k3s, les objets de
+l'API, les Services et le réseau du cluster, la configuration, le stockage, les NetworkPolicy,
+l'ordonnancement et le contrôle d'accès.
+
+**Le réseau.** Le réseau `cluster` (`{cluster}`, un commutateur) relie les trois nœuds et le routeur
+`gw`, leur passerelle par défaut ; `gw` le relie au réseau `outside` (`{outside}`) de `admin`. Les
+machines se connaissent par leur nom (`/etc/hosts`).
+""": """
+Read the **Informations** tab: it presents the architecture of Kubernetes and k3s, the objects of
+the API, the Services and the network of the cluster, configuration, storage, NetworkPolicies,
+scheduling and access control.
+
+**The network.** The `cluster` network (`{cluster}`, a switch) links the three nodes and the router
+`gw`, their default gateway; `gw` links it to the `outside` network (`{outside}`) of `admin`. The
+machines know each other by name (`/etc/hosts`).
+""",
+    """
+- Le cluster k3s {version} tourne déjà sur `control` et `worker1` (`kubectl get nodes` sur
+  `control`, en root). Les pods du système sont dans l'espace de noms `kube-system`.
+- **Pas d'accès à Internet** : seules les images préchargées sur les nœuds existent. Écrivez-les
+  **exactement** ainsi : `{whoami_old}`, `{whoami_new}`, `{busybox}`, `{redis}` (jamais `latest`).
+  `traefik/whoami` est un petit serveur HTTP (port 80) qui répond le nom du pod (`Hostname:`), ses
+  adresses et les en-têtes reçus ; `busybox` contient `wget`, `nslookup`, et un serveur `httpd`.
+- Chaque partie se fait dans **son espace de noms** (`shop`, `release`, `config`, `health`, `expose`,
+  `data`, `secure`, `ops`, puis `team`, `scale` et `batch` pour les bonus) ; créez ceux qui
+  n'existent pas. Les noms des objets donnés dans les questions sont **imposés**.
+- Le TP a déjà créé le Deployment `api` (espace `release`) et les pods de la partie 8 (espaces
+  `secure` et `guest`) ; leurs manifestes sont dans `{given}` sur `control`. Les états
+  **`reset_release`** et **`reset_secure`** les recréent si vous les avez abîmés.
+- Écrivez vos manifestes dans des fichiers (par exemple `/root/k8s/<partie>.yaml`) et appliquez-les
+  avec `kubectl apply -f` : c'est plus simple à corriger qu'une suite de commandes.
+
+**Consignes.** Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une
+partie terminée rapporte tous ses points, quel que soit l'état des autres.
+
+**Évaluation.** Chaque évaluation lit les objets du cluster depuis `control` (`kubectl get ... -o
+json`), lance quelques commandes dans vos pods (`kubectl exec`), des `wget` entre les pods de la
+partie 8, des requêtes HTTP et `kubectl` depuis `admin`.
+""": """
+- The k3s {version} cluster already runs on `control` and `worker1` (`kubectl get nodes` on
+  `control`, as root). The system pods are in the `kube-system` namespace.
+- **No Internet access**: only the images preloaded on the nodes exist. Write them **exactly** like
+  this: `{whoami_old}`, `{whoami_new}`, `{busybox}`, `{redis}` (never `latest`).
+  `traefik/whoami` is a small HTTP server (port 80) that answers with the name of the pod
+  (`Hostname:`), its addresses and the headers it received; `busybox` contains `wget`, `nslookup`,
+  and an `httpd` server.
+- Each part is done in **its own namespace** (`shop`, `release`, `config`, `health`, `expose`,
+  `data`, `secure`, `ops`, then `team`, `scale` and `batch` for the bonus parts); create those that
+  do not exist. The names of the objects given in the questions are **imposed**.
+- The lab has already created the Deployment `api` (namespace `release`) and the pods of part 8
+  (namespaces `secure` and `guest`); their manifests are in `{given}` on `control`. The states
+  **`reset_release`** and **`reset_secure`** recreate them if you have damaged them.
+- Write your manifests in files (for example `/root/k8s/<part>.yaml`) and apply them with
+  `kubectl apply -f`: they are easier to correct than a series of commands.
+
+**Instructions.** The parts are **independent**: do them in the order you like. A completed part
+gives all its points, whatever the state of the others.
+
+**Evaluation.** Each evaluation reads the objects of the cluster from `control`
+(`kubectl get ... -o json`), runs a few commands in your pods (`kubectl exec`) and `wget` between
+the pods of part 8, and sends HTTP requests and `kubectl` commands from `admin`.
+""",
+    "Partie 1 — les nœuds": "Part 1 — the nodes",
+    "Faire rejoindre worker2": "Joining worker2 to the cluster",
+    """
+`worker2` a k3s mais ne fait pas encore partie du cluster (section @@ref:k3s@@).
+
+1. Sur `worker2`, écrivez `/etc/rancher/k3s/config.yaml` : l'adresse du serveur (`server:
+   https://control:6443`) et le **jeton** des nœuds (`token:`), lu sur `control` dans
+   `{node_token}`. (Le TP a déjà mis dans `/etc/rancher/k3s/config.yaml.d/` les réglages communs à
+   tous les nœuds : ne les modifiez pas.)
+2. Démarrez l'agent et faites-le **redémarrer avec la machine** : service systemd `k3s-agent`.
+3. Vérifiez sur `control` que `worker2` est `Ready` (`kubectl get nodes -o wide`).
+4. Donnez aux nœuds de travail leur zone par le label bien connu `{zone}` (section
+   @@ref:scheduling@@) : `zone-a` pour `worker1`, `zone-b` pour `worker2`.
+5. Réservez `control` au plan de contrôle : une marque (*taint*) `{taint}` d'effet `NoSchedule`.
+
+L'évaluation lit les nœuds (`kubectl get nodes`) et l'état du service sur `worker2`.
+""": """
+`worker2` has k3s but is not yet part of the cluster (section @@ref:k3s@@).
+
+1. On `worker2`, write `/etc/rancher/k3s/config.yaml`: the address of the server
+   (`server: https://control:6443`) and the **token** of the nodes (`token:`), read on `control` in
+   `{node_token}`. (The lab has already put in `/etc/rancher/k3s/config.yaml.d/` the settings
+   common to all the nodes: do not change them.)
+2. Start the agent and make it **start at every boot of the machine**: systemd service `k3s-agent`.
+3. Check on `control` that `worker2` is `Ready` (`kubectl get nodes -o wide`).
+4. Give the worker nodes their zone through the well-known label `{zone}` (section
+   @@ref:scheduling@@): `zone-a` for `worker1`, `zone-b` for `worker2`.
+5. Reserve `control` for the control plane: a *taint* `{taint}` with the effect `NoSchedule`.
+
+The evaluation reads the nodes (`kubectl get nodes`) and the state of the service on `worker2`.
+""",
+    "Le réseau des pods d'un nœud": "The pod network of a node",
+    """
+- Le bloc d'adresses des pods attribué à `worker1` (`spec.podCIDR` du nœud, section
+  @@ref:network@@), sous la forme `a.b.c.d/n` : @@{podcidr:.+}@@
+- Le composant de `worker2` qui demande au runtime (containerd) de créer les conteneurs des pods
+  que le scheduler lui a attribués : @@{kubelet:>kube-proxy>>>kube-proxy|kubelet>>>kubelet|kube-scheduler>>>kube-scheduler|flannel>>>flannel}@@
+""": """
+- The block of pod addresses assigned to `worker1` (`spec.podCIDR` of the node, section
+  @@ref:network@@), in the form `a.b.c.d/n`: @@{podcidr:.+}@@
+- The component of `worker2` that asks the runtime (containerd) to create the containers of the
+  pods the scheduler has assigned to it: @@{kubelet:>kube-proxy>>>kube-proxy|kubelet>>>kubelet|kube-scheduler>>>kube-scheduler|flannel>>>flannel}@@
+""",
+    "worker2 a rejoint le cluster et est Ready": "worker2 has joined the cluster and is Ready",
+    "le service k3s-agent démarre avec worker2": "the k3s-agent service starts with worker2",
+    "worker1 est dans la zone zone-a": "worker1 is in the zone zone-a",
+    "worker2 est dans la zone zone-b": "worker2 is in the zone zone-b",
+    "control porte la marque control-plane:NoSchedule": "control carries the taint control-plane:NoSchedule",
+    "bloc des pods de worker1": "pod block of worker1",
+    "le composant qui crée les conteneurs d'un nœud": "the component that creates the containers of a node",
+    "Partie 2 — Deployment et Service": "Part 2 — Deployment and Service",
+    "Une application répliquée": "A replicated application",
+    """
+Dans l'espace de noms **`shop`** (à créer) :
+
+1. Un Deployment **`web`** de **3** réplicas de l'image `{image}` (port 80), dont les pods portent
+   le label `app: web` (sections @@ref:objects@@ et @@ref:deployments@@).
+2. Un Service **`web`** de type ClusterIP, qui reçoit sur le port **8080** et envoie vers le port 80
+   des pods de `web` (section @@ref:services@@).
+3. Vérifiez sur `control` : `kubectl get pods -n shop -o wide` (sur quels nœuds ?), `kubectl get
+   endpointslices -n shop`, puis plusieurs `curl http://<ClusterIP>:8080/` : quel pod répond ?
+
+L'évaluation lit le Deployment, le Service et ses EndpointSlices, demande le nom du Service à
+CoreDNS et l'interroge huit fois depuis `control`.
+""": """
+In the **`shop`** namespace (to be created):
+
+1. A Deployment **`web`** of **3** replicas of the image `{image}` (port 80), whose pods carry the
+   label `app: web` (sections @@ref:objects@@ and @@ref:deployments@@).
+2. A Service **`web`** of type ClusterIP, which receives on port **8080** and sends to port 80 of
+   the pods of `web` (section @@ref:services@@).
+3. Check on `control`: `kubectl get pods -n shop -o wide` (on which nodes?),
+   `kubectl get endpointslices -n shop`, then several `curl http://<ClusterIP>:8080/`: which pod
+   answers?
+
+The evaluation reads the Deployment, the Service and its EndpointSlices, asks CoreDNS for the name
+of the Service and queries the Service eight times from `control`.
+""",
+    "Le nom et l'adresse du Service": "The name and the address of the Service",
+    """
+- Le nom DNS complet du Service `web`, que CoreDNS résout depuis n'importe quel espace de noms
+  (section @@ref:dns@@) : @@{fqdn:.+}@@
+- Un paquet envoyé à la ClusterIP de `web` atteint un pod parce que :
+  @@{kubeproxy:>un pod proxy de kube-system écoute sur la ClusterIP>>>proxy|kube-proxy a mis sur chaque nœud des règles qui traduisent l'adresse de destination (DNAT) vers un pod prêt>>>dnat|CoreDNS renvoie l'adresse d'un pod à chaque requête>>>dns|flannel annonce la ClusterIP sur le réseau des nœuds>>>flannel}@@
+""": """
+- The full DNS name of the Service `web`, which CoreDNS resolves from any namespace
+  (section @@ref:dns@@): @@{fqdn:.+}@@
+- A packet sent to the ClusterIP of `web` reaches a pod because:
+  @@{kubeproxy:>a proxy pod of kube-system listens on the ClusterIP>>>proxy|kube-proxy has put rules on every node that translate the destination address (DNAT) to a ready pod>>>dnat|CoreDNS returns the address of a pod for each query>>>dns|flannel announces the ClusterIP on the network of the nodes>>>flannel}@@
+""",
+    "web : 3 réplicas prêts de {image}": "web: 3 ready replicas of {image}",
+    "les pods de web portent le label app: web": "the pods of web carry the label app: web",
+    "Service web ClusterIP : port 8080 vers le port 80 des pods de web": "Service web ClusterIP: port 8080 to port 80 of the pods of web",
+    "trois adresses prêtes dans les EndpointSlices de web": "three ready addresses in the EndpointSlices of web",
+    "CoreDNS résout web.shop.svc.cluster.local en la ClusterIP": "CoreDNS resolves web.shop.svc.cluster.local to the ClusterIP",
+    "la ClusterIP répartit les requêtes entre plusieurs pods de web": "the ClusterIP spreads the requests over several pods of web",
+    "nom DNS complet du Service": "full DNS name of the Service",
+    "le rôle de kube-proxy": "the role of kube-proxy",
+    "Partie 3 — mise à jour et retour arrière": "Part 3 — update and rollback",
+    "Mettre à jour api sans interruption": "Updating api without interruption",
+    """
+Le Deployment **`api`** de l'espace `release` (4 réplicas de `{old}`, conteneur `whoami`) est déjà
+en service (section @@ref:rollout@@).
+
+1. Changez sa stratégie : mise à jour progressive avec **au plus un pod en plus** et **aucun pod en
+   moins** pendant la mise à jour.
+2. Mettez-le à jour vers `{new}`, en notant la raison du changement (`kubernetes.io/change-cause`).
+3. Une collègue se trompe de version : mettez-le à jour vers **`{bad}`** (qui n'existe pas).
+   Observez : `kubectl rollout status`, `kubectl get pods -n release`, `kubectl describe` du nouveau
+   pod. Combien de pods de `api` restent prêts ?
+4. Revenez à la version précédente **par un retour arrière** (`kubectl rollout undo`), puis lisez
+   `kubectl rollout history deploy/api -n release`.
+
+(Si `api` est trop abîmé, l'état `reset_release` le recrée tel qu'au départ, sans historique.)
+""": """
+The Deployment **`api`** of the namespace `release` (4 replicas of `{old}`, container `whoami`) is
+already in service (section @@ref:rollout@@).
+
+1. Change its strategy: rolling update with **at most one extra pod** and **no missing pod**
+   during the update.
+2. Update it to `{new}`, recording the reason for the change (`kubernetes.io/change-cause`).
+3. A colleague picks the wrong version: update it to **`{bad}`** (which does not exist).
+   Observe: `kubectl rollout status`, `kubectl get pods -n release`, `kubectl describe` of the new
+   pod. How many pods of `api` stay ready?
+4. Go back to the previous version **with a rollback** (`kubectl rollout undo`), then read
+   `kubectl rollout history deploy/api -n release`.
+
+(If `api` is too damaged, the state `reset_release` recreates it as it was at the start, without
+its history.)
+""",
+    "L'historique de api": "The history of api",
+    """
+- Le numéro de révision de la version actuelle de `api`, après le retour arrière (`kubectl rollout
+  history`) : @@{revision:[0-9]+}@@
+- Le nombre de pods de `api` restés **prêts** pendant la mise à jour ratée : @@{serving:[0-9]+}@@
+""": """
+- The revision number of the current version of `api`, after the rollback
+  (`kubectl rollout history`): @@{revision:[0-9]+}@@
+- The number of pods of `api` that stayed **ready** during the failed update: @@{serving:[0-9]+}@@
+""",
+    "api : 4 pods prêts de {new}": "api: 4 ready pods of {new}",
+    "stratégie : maxSurge 1, maxUnavailable 0": "strategy: maxSurge 1, maxUnavailable 0",
+    "la mise à jour vers {bad} figure dans l'historique": "the update to {bad} is in the history",
+    "retour arrière : la version {new} est revenue après {bad}": "rollback: version {new} came back after {bad}",
+    "la version actuelle a une raison de changement": "the current version has a change cause",
+    "numéro de la révision actuelle": "number of the current revision",
+    "pods restés prêts pendant la mise à jour ratée": "pods that stayed ready during the failed update",
+    "Partie 4 — ConfigMap et Secret": "Part 4 — ConfigMap and Secret",
+    "Configurer une application": "Configuring an application",
+    """
+Dans l'espace de noms **`config`** (section @@ref:config@@) :
+
+1. Une ConfigMap **`app-settings`** avec deux clés : `MESSAGE` = `{message}`, et `motd.txt`, un
+   fichier qui contient la ligne `{motd}`.
+2. Un Secret **`db-credentials`** avec `username` = `app` et `password` = `{password}`.
+3. Un Deployment **`app`** (1 réplica, image `{busybox}`, par exemple `httpd -f -p 80 -h /etc/app`
+   comme commande) dont le conteneur reçoit :
+   - la variable `MESSAGE`, depuis la clé `MESSAGE` de la ConfigMap ;
+   - la variable `DB_PASSWORD`, depuis la clé `password` du Secret ;
+   - le fichier `/etc/app/motd.txt`, depuis la clé `motd.txt` de la ConfigMap ;
+   - le fichier `/etc/secret/password`, depuis le Secret, lisible par son seul propriétaire
+     (droits `0400`).
+4. Vérifiez : `kubectl exec -n config deploy/app -- env`, `ls -lL /etc/secret`.
+
+L'évaluation lit les objets et lance `env`, `cat` et `stat` dans le pod.
+""": """
+In the **`config`** namespace (section @@ref:config@@):
+
+1. A ConfigMap **`app-settings`** with two keys: `MESSAGE` = `{message}`, and `motd.txt`, a file
+   that contains the line `{motd}`.
+2. A Secret **`db-credentials`** with `username` = `app` and `password` = `{password}`.
+3. A Deployment **`app`** (1 replica, image `{busybox}`, with for example
+   `httpd -f -p 80 -h /etc/app` as its command) whose container receives:
+   - the variable `MESSAGE`, from the key `MESSAGE` of the ConfigMap;
+   - the variable `DB_PASSWORD`, from the key `password` of the Secret;
+   - the file `/etc/app/motd.txt`, from the key `motd.txt` of the ConfigMap;
+   - the file `/etc/secret/password`, from the Secret, readable by its owner only
+     (permissions `0400`).
+4. Check: `kubectl exec -n config deploy/app -- env`, `ls -lL /etc/secret`.
+
+The evaluation reads the objects and runs `env`, `cat` and `stat` in the pod.
+""",
+    "Ce que protège un Secret": "What a Secret protects",
+    """
+- Dans l'API (`kubectl get secret db-credentials -n config -o yaml`), la valeur de `password` est :
+  @@{base64:>chiffrée avec la clé du cluster>>>encrypted|seulement encodée en base64>>>encoded|remplacée par son empreinte (hash)>>>hashed}@@
+""": """
+- In the API (`kubectl get secret db-credentials -n config -o yaml`), the value of `password` is:
+  @@{base64:>encrypted with the key of the cluster>>>encrypted|only encoded in base64>>>encoded|replaced by its digest (hash)>>>hashed}@@
+""",
+    "ConfigMap app-settings : MESSAGE et motd.txt": "ConfigMap app-settings: MESSAGE and motd.txt",
+    "Secret db-credentials : username et password": "Secret db-credentials: username and password",
+    "MESSAGE vient de la ConfigMap": "MESSAGE comes from the ConfigMap",
+    "DB_PASSWORD vient du Secret (pas d'une valeur écrite dans le Deployment)": "DB_PASSWORD comes from the Secret (not from a value written in the Deployment)",
+    "/etc/app/motd.txt vient de la ConfigMap": "/etc/app/motd.txt comes from the ConfigMap",
+    "/etc/secret/password vient du Secret, en mode 0400": "/etc/secret/password comes from the Secret, with mode 0400",
+    "un Secret est encodé, pas chiffré": "a Secret is encoded, not encrypted",
+    "Partie 5 — sondes et ressources": "Part 5 — probes and resources",
+    "Des pods surveillés": "Monitored pods",
+    """
+Dans l'espace de noms **`health`** (section @@ref:health@@) :
+
+1. Un Deployment **`probe`** de **3** réplicas de `{image}` (port 80, label `app: probe`) dont le
+   conteneur a :
+   - une **readinessProbe** HTTP sur le chemin `/health` du port 80, toutes les **2 secondes** au
+     plus (`periodSeconds` ≤ 3) ;
+   - une **livenessProbe** par simple connexion TCP au port 80 ;
+   - des **requests** de `50m` de CPU et `32Mi` de mémoire, des **limits** de `200m` et `64Mi`.
+2. Un Service **`probe`** (port 80 vers le port 80 des pods).
+3. `traefik/whoami` répond 200 sur `/health` ; une requête `POST /health` dont le corps est un code
+   HTTP lui fait répondre ce code ensuite. Rendez **un seul** des trois pods malade :
+   `curl -X POST -d 500 http://<adresse du pod>/health` depuis `control`. Observez `kubectl get pods`
+   et les EndpointSlices du Service. Laissez-le ainsi.
+
+L'évaluation lit le Deployment, l'état des pods (prêts, redémarrages, classe de QoS) et les
+EndpointSlices.
+""": """
+In the **`health`** namespace (section @@ref:health@@):
+
+1. A Deployment **`probe`** of **3** replicas of `{image}` (port 80, label `app: probe`) whose
+   container has:
+   - an HTTP **readinessProbe** on the path `/health` of port 80, with a period of **2 seconds**
+     (`periodSeconds` ≤ 3);
+   - a **livenessProbe** by a simple TCP connection to port 80;
+   - **requests** of `50m` of CPU and `32Mi` of memory, **limits** of `200m` and `64Mi`.
+2. A Service **`probe`** (port 80 to port 80 of the pods).
+3. `traefik/whoami` answers 200 on `/health`; a `POST /health` request whose body is an HTTP code
+   makes it answer that code from then on. Make **only one** of the three pods sick:
+   `curl -X POST -d 500 http://<pod address>/health` from `control`. Watch `kubectl get pods` and
+   the EndpointSlices of the Service. Leave it that way.
+
+The evaluation reads the Deployment, the state of the pods (ready, restarts, QoS class) and the
+EndpointSlices.
+""",
+    "Readiness ou liveness": "Readiness or liveness",
+    """
+- Si la **livenessProbe** de `probe` interrogeait elle aussi `/health`, le pod rendu malade serait :
+  @@{liveness:>retiré des EndpointSlices, sans autre effet>>>unready|redémarré par le kubelet, en boucle tant qu'il répond 500>>>restart|supprimé et recréé sur un autre nœud par le Deployment>>>rescheduled}@@
+""": """
+- If the **livenessProbe** of `probe` also queried `/health`, the pod made sick would be:
+  @@{liveness:>removed from the EndpointSlices, with no other effect>>>unready|restarted by the kubelet, in a loop as long as it answers 500>>>restart|deleted and recreated on another node by the Deployment>>>rescheduled}@@
+""",
+    "probe : 3 pods de whoami en marche": "probe: 3 whoami pods running",
+    "readinessProbe HTTP sur /health, période de 3 s au plus": "HTTP readinessProbe on /health, period of 3 s at most",
+    "livenessProbe TCP sur le port 80": "TCP livenessProbe on port 80",
+    "requests 50m / 32Mi, limits 200m / 64Mi": "requests 50m / 32Mi, limits 200m / 64Mi",
+    "classe de QoS Burstable": "QoS class Burstable",
+    "un pod non prêt, sorti des EndpointSlices mais pas redémarré": "one pod not ready, out of the EndpointSlices but not restarted",
+    "effet d'une livenessProbe en échec": "effect of a failing livenessProbe",
+    "Partie 6 — exposer vers l'extérieur": "Part 6 — exposing to the outside",
+    "Atteindre front depuis admin": "Reaching front from admin",
+    """
+Dans l'espace de noms **`expose`** (section @@ref:exposure@@) :
+
+1. Un Deployment **`front`** de 2 réplicas de `{image}` (label `app: front`).
+2. Un Service **`front`** de type **NodePort** : port 80 vers le port 80 des pods, sur le port
+   **{node_port}** des nœuds. Essayez depuis `admin` : `curl http://worker1:{node_port}/`.
+3. Un Service **`front-lb`** de type **LoadBalancer** sur le port **{lb_port}** (vers le port 80 des
+   pods). Quelle adresse externe ServiceLB lui donne-t-il ? Essayez depuis `admin` :
+   `curl http://control:{lb_port}/`.
+4. Un Ingress **`front`** (classe `traefik`) qui envoie les requêtes pour l'hôte **`{host}`** vers
+   le Service `front`. Essayez depuis `admin` : `curl -H 'Host: {host}' http://worker1/`, puis sans
+   l'en-tête.
+
+L'évaluation lit les objets et fait les trois requêtes depuis `admin` (NodePort sur `worker1`,
+LoadBalancer sur `control`, Ingress sur `worker1`).
+""": """
+In the **`expose`** namespace (section @@ref:exposure@@):
+
+1. A Deployment **`front`** of 2 replicas of `{image}` (label `app: front`).
+2. A Service **`front`** of type **NodePort**: port 80 to port 80 of the pods, on port
+   **{node_port}** of the nodes. Try from `admin`: `curl http://worker1:{node_port}/`.
+3. A Service **`front-lb`** of type **LoadBalancer** on port **{lb_port}** (to port 80 of the
+   pods). Which external address does ServiceLB give it? Try from `admin`:
+   `curl http://control:{lb_port}/`.
+4. An Ingress **`front`** (class `traefik`) that sends the requests for the host **`{host}`** to
+   the Service `front`. Try from `admin`: `curl -H 'Host: {host}' http://worker1/`, then without
+   the header.
+
+The evaluation reads the objects and makes the three requests from `admin` (NodePort on `worker1`,
+LoadBalancer on `control`, Ingress on `worker1`).
+""",
+    "Les ports des nœuds": "The ports of the nodes",
+    """
+- La plage dans laquelle Kubernetes prend, par défaut, les ports d'un Service NodePort :
+  @@{range:>1-1023>>>1-1023|1024-65535>>>1024-65535|30000-32767>>>30000-32767|49152-65535>>>49152-65535}@@
+""": """
+- The range from which Kubernetes takes, by default, the ports of a NodePort Service:
+  @@{range:>1-1023>>>1-1023|1024-65535>>>1024-65535|30000-32767>>>30000-32767|49152-65535>>>49152-65535}@@
+""",
+    "front : 2 pods prêts de whoami": "front: 2 ready whoami pods",
+    "Service front NodePort sur le port {port}": "Service front NodePort on port {port}",
+    "admin atteint front par worker1:{port}": "admin reaches front through worker1:{port}",
+    "Service front-lb LoadBalancer sur le port {port}, avec une adresse externe": "Service front-lb LoadBalancer on port {port}, with an external address",
+    "admin atteint front par control:{port}": "admin reaches front through control:{port}",
+    "Ingress front : hôte {host} vers le Service front": "Ingress front: host {host} to the Service front",
+    "admin atteint front par Traefik avec l'en-tête Host: {host}": "admin reaches front through Traefik with the header Host: {host}",
+    "plage des ports NodePort": "range of the NodePort ports",
+    "Partie 7 — un StatefulSet et son volume": "Part 7 — a StatefulSet and its volume",
+    "Une base Redis persistante": "A persistent Redis database",
+    """
+Dans l'espace de noms **`data`** (sections @@ref:storage@@ et @@ref:statefulset@@) :
+
+1. Un Service **headless** **`redis`** (port 6379, pods `app: redis`).
+2. Un StatefulSet **`redis`** (1 réplica, image `{redis}`, label `app: redis`, Service `redis`)
+   lancé avec les arguments `--appendonly yes` (Redis écrit chaque modification dans `/data`), dont
+   le répertoire `/data` est un volume de **100Mi** créé depuis un modèle de PVC nommé `data`, de la
+   StorageClass `local-path`.
+3. Écrivez la clé **`{key}`** = **`{value}`** : `kubectl exec -n data redis-0 -- redis-cli set ...`.
+4. Supprimez le pod `redis-0` ; le StatefulSet le recrée : la clé est-elle toujours là ? Sur quel
+   nœud, dans quel répertoire, sont les fichiers (`kubectl get pv -o yaml`) ?
+
+L'évaluation lit les objets, la valeur de la clé et la configuration de Redis, et demande à CoreDNS
+le nom de `redis-0`.
+""": """
+In the **`data`** namespace (sections @@ref:storage@@ and @@ref:statefulset@@):
+
+1. A **headless** Service **`redis`** (port 6379, pods `app: redis`).
+2. A StatefulSet **`redis`** (1 replica, image `{redis}`, label `app: redis`, Service `redis`)
+   started with the arguments `--appendonly yes` (Redis writes every change to `/data`), whose
+   directory `/data` is a volume of **100Mi** created from a PVC template named `data`, of the
+   StorageClass `local-path`.
+3. Write the key **`{key}`** = **`{value}`**: `kubectl exec -n data redis-0 -- redis-cli set ...`.
+4. Delete the pod `redis-0`; the StatefulSet recreates it: is the key still there? On which node,
+   in which directory, are the files (`kubectl get pv -o yaml`)?
+
+The evaluation reads the objects, the value of the key and the configuration of Redis, and asks
+CoreDNS for the name of `redis-0`.
+""",
+    "Le provisionnement": "Provisioning",
+    """
+- Le nom de la StorageClass par défaut de ce cluster (`kubectl get storageclass`) : @@{storageclass:.+}@@
+""": """
+- The name of the default StorageClass of this cluster (`kubectl get storageclass`): @@{storageclass:.+}@@
+""",
+    "StatefulSet redis prêt, Service redis": "StatefulSet redis ready, Service redis",
+    "Service redis headless": "Service redis is headless",
+    "PVC créée depuis le modèle, liée, StorageClass local-path": "PVC created from the template, bound, StorageClass local-path",
+    "/data de redis-0 est cette PVC": "/data of redis-0 is this PVC",
+    "Redis en mode appendonly": "Redis in appendonly mode",
+    "la clé {key} a la valeur demandée": "the key {key} has the requested value",
+    "redis-0 a été recréé et a gardé la clé": "redis-0 was recreated and kept the key",
+    "redis-0.redis.data.svc.cluster.local donne l'adresse du pod": "redis-0.redis.data.svc.cluster.local gives the address of the pod",
+    "StorageClass par défaut": "default StorageClass",
+    "Partie 8 — NetworkPolicy": "Part 8 — NetworkPolicy",
+    "Cloisonner une application à trois étages": "Isolating a three-tier application",
+    """
+L'espace `secure` contient trois Deployments donnés, `frontend`, `backend` et `db` (des serveurs
+`httpd` de busybox sur le port 80, labels `app: frontend`, `app: backend`, `app: db`) et les
+Services `backend` et `db` ; l'espace `guest` contient `intruder` (même chose) et son Service.
+Pour l'instant, tout le monde joint tout le monde : essayez
+`kubectl exec -n guest deploy/intruder -- wget -qO- http://db.secure/`.
+
+Écrivez des NetworkPolicy dans `secure` (section @@ref:netpol@@) pour que :
+
+1. par défaut, **aucun** pod de `secure` n'accepte de trafic entrant ;
+2. `backend` accepte `frontend`, sur le port 80 seulement ;
+3. `db` accepte `backend`, sur le port 80 seulement ;
+4. `frontend` ne puisse **sortir** que vers `backend` (port 80) et vers le DNS du cluster.
+
+Vérifiez avec des `wget -T 2` depuis les pods (`kubectl exec -n secure deploy/frontend -- ...`).
+
+L'évaluation lit vos NetworkPolicy et lance des `wget` : frontend → backend, backend → db
+(autorisés), frontend → db, intruder → backend, intruder → db, frontend → intruder (refusés).
+""": """
+The namespace `secure` contains three given Deployments, `frontend`, `backend` and `db` (busybox
+`httpd` servers on port 80, labels `app: frontend`, `app: backend`, `app: db`) and the Services
+`backend` and `db`; the namespace `guest` contains `intruder` (the same) and its Service.
+For now, everyone reaches everyone: try
+`kubectl exec -n guest deploy/intruder -- wget -qO- http://db.secure/`.
+
+Write NetworkPolicies in `secure` (section @@ref:netpol@@) so that:
+
+1. by default, **no** pod of `secure` accepts incoming traffic;
+2. `backend` accepts `frontend`, on port 80 only;
+3. `db` accepts `backend`, on port 80 only;
+4. `frontend` can **go out** only to `backend` (port 80) and to the DNS of the cluster.
+
+Check with `wget -T 2` from the pods (`kubectl exec -n secure deploy/frontend -- ...`).
+
+The evaluation reads your NetworkPolicies and runs `wget`: frontend → backend, backend → db
+(allowed), frontend → db, intruder → backend, intruder → db, frontend → intruder (refused).
+""",
+    "Le comportement par défaut et le DNS": "The default behaviour and DNS",
+    """
+- Sans aucune NetworkPolicy, un pod accepte le trafic :
+  @@{default:>de tous les pods du cluster, tous espaces de noms confondus>>>all|des seuls pods de son espace de noms>>>namespace|de personne : il faut une politique qui l'autorise>>>none}@@
+- Sans la règle DNS de la politique de sortie de `frontend` :
+  @@{dns:>rien ne change : le DNS n'est pas filtré>>>nothing|frontend ne résout plus aucun nom, `wget http://backend/` échoue>>>resolve|frontend ne joint plus backend même par son adresse>>>address}@@
+""": """
+- Without any NetworkPolicy, a pod accepts the traffic:
+  @@{default:>of every pod of the cluster, whatever its namespace>>>all|of the pods of its own namespace only>>>namespace|of nobody: a policy must allow it>>>none}@@
+- Without the DNS rule of the egress policy of `frontend`:
+  @@{dns:>nothing changes: DNS is not filtered>>>nothing|frontend no longer resolves any name, `wget http://backend/` fails>>>resolve|frontend no longer reaches backend, even by its address>>>address}@@
+""",
+    "une politique refuse par défaut le trafic entrant des pods de secure": "a policy refuses by default the incoming traffic of the pods of secure",
+    "backend accepte frontend, refuse intruder": "backend accepts frontend, refuses intruder",
+    "db accepte backend, refuse frontend et intruder": "db accepts backend, refuses frontend and intruder",
+    "frontend ne sort que vers backend (et le DNS)": "frontend only goes out to backend (and DNS)",
+    "comportement sans NetworkPolicy": "behaviour without a NetworkPolicy",
+    "le DNS dans une politique de sortie": "DNS in an egress policy",
+    "Partie 9 — ordonnancement": "Part 9 — scheduling",
+    "Placer les pods": "Placing the pods",
+    """
+Dans l'espace de noms **`ops`** (section @@ref:scheduling@@) :
+
+1. Un DaemonSet **`node-agent`** (image `{busybox}`, par exemple `httpd -f -p 9100 -h /tmp`) qui
+   tourne sur **tous** les nœuds, `control` compris, même marqué `{taint}:NoSchedule`.
+2. Le label `disktype=ssd` sur `worker1`, et un Deployment **`pinned`** (1 réplica, `{busybox}`)
+   dont le pod ne peut aller que sur un nœud qui porte ce label.
+3. Un Deployment **`spread`** de 2 réplicas de `{whoami}` (label `app: spread`) dont les deux pods
+   sont **obligatoirement** sur deux nœuds différents (anti-affinité sur `{hostname}`).
+
+L'évaluation lit les objets et les nœuds des pods.
+""": """
+In the **`ops`** namespace (section @@ref:scheduling@@):
+
+1. A DaemonSet **`node-agent`** (image `{busybox}`, for example `httpd -f -p 9100 -h /tmp`) that
+   runs on **all** the nodes, `control` included, even though it is tainted `{taint}:NoSchedule`.
+2. The label `disktype=ssd` on `worker1`, and a Deployment **`pinned`** (1 replica, `{busybox}`)
+   whose pod can only go to a node that carries this label.
+3. A Deployment **`spread`** of 2 replicas of `{whoami}` (label `app: spread`) whose two pods are
+   **necessarily** on two different nodes (anti-affinity on `{hostname}`).
+
+The evaluation reads the objects and the nodes of the pods.
+""",
+    "node-agent tourne sur chaque nœud prêt, control compris": "node-agent runs on every ready node, control included",
+    "node-agent tolère la marque du plan de contrôle": "node-agent tolerates the taint of the control plane",
+    "seul worker1 porte disktype=ssd": "only worker1 carries disktype=ssd",
+    "pinned : nodeSelector disktype=ssd, pod sur worker1": "pinned: nodeSelector disktype=ssd, pod on worker1",
+    "spread : anti-affinité obligatoire, deux pods sur deux nœuds": "spread: mandatory anti-affinity, two pods on two nodes",
+    "Bonus — accès restreint à l'API": "Bonus — restricted access to the API",
+    "Un compte de déploiement": "A deployment account",
+    """
+Dans l'espace de noms **`team`** (section @@ref:rbac@@) :
+
+1. Un ServiceAccount **`deployer`**, un Role et un RoleBinding qui lui permettent, dans `team`
+   seulement : toutes les opérations sur les **Deployments** (`get`, `list`, `watch`, `create`,
+   `update`, `patch`, `delete`), la lecture des **pods** (`get`, `list`, `watch`) et de leurs
+   journaux (`pods/log`, `get`). Rien d'autre (pas les Secrets).
+2. Sur `admin`, un kubeconfig **`{kubeconfig}`** (le fichier par défaut de root) qui utilise un
+   jeton de `deployer` pour joindre l'API de `control` (`https://control:6443`, en vérifiant son
+   certificat), avec `team` comme espace de noms par défaut.
+3. Vérifiez depuis `admin` : `kubectl auth whoami`, `kubectl get deployments`, `kubectl get secrets`.
+
+L'évaluation lance `kubectl auth can-i --as=...` sur `control`, et `kubectl` depuis `admin`.
+""": """
+In the **`team`** namespace (section @@ref:rbac@@):
+
+1. A ServiceAccount **`deployer`**, a Role and a RoleBinding that allow it, in `team` only: every
+   operation on **Deployments** (`get`, `list`, `watch`, `create`, `update`, `patch`, `delete`),
+   reading **pods** (`get`, `list`, `watch`) and their logs (`pods/log`, `get`). Nothing else (not
+   the Secrets).
+2. On `admin`, a kubeconfig **`{kubeconfig}`** (the default file of root) that uses a token of
+   `deployer` to reach the API of `control` (`https://control:6443`, checking its certificate),
+   with `team` as its default namespace.
+3. Check from `admin`: `kubectl auth whoami`, `kubectl get deployments`, `kubectl get secrets`.
+
+The evaluation runs `kubectl auth can-i --as=...` on `control`, and `kubectl` from `admin`.
+""",
+    "deployer : Deployments et lecture des pods dans team, rien d'autre": "deployer: Deployments and reading pods in team, nothing else",
+    "admin interroge l'API en tant que deployer": "admin queries the API as deployer",
+    "les Secrets de team sont refusés à admin": "the Secrets of team are refused to admin",
+    "Bonus — mise à l'échelle automatique": "Bonus — autoscaling",
+    "Un HorizontalPodAutoscaler": "A HorizontalPodAutoscaler",
+    """
+Dans l'espace de noms **`scale`** (section @@ref:scaling@@) : un Deployment **`cpu`** (1 réplica de
+`{whoami}`) dont le conteneur demande `50m` de CPU, et un HorizontalPodAutoscaler **`cpu`**
+(`autoscaling/v2`) qui garde entre **1 et 4** réplicas pour une utilisation moyenne du CPU de
+**50 %**. Attendez que `kubectl get hpa -n scale` affiche une mesure (pas `<unknown>`) ;
+`kubectl top pods -n scale`.
+""": """
+In the **`scale`** namespace (section @@ref:scaling@@): a Deployment **`cpu`** (1 replica of
+`{whoami}`) whose container requests `50m` of CPU, and a HorizontalPodAutoscaler **`cpu`**
+(`autoscaling/v2`) that keeps between **1 and 4** replicas for an average CPU utilisation of
+**50%**. Wait until `kubectl get hpa -n scale` shows a measurement (not `<unknown>`);
+`kubectl top pods -n scale`.
+""",
+    "cpu demande 50m de CPU": "cpu requests 50m of CPU",
+    "HPA cpu : 1 à 4 réplicas, 50 % de CPU": "HPA cpu: 1 to 4 replicas, 50% CPU",
+    "l'HPA reçoit les mesures de metrics-server": "the HPA receives the metrics of metrics-server",
+    "Bonus — tâches planifiées": "Bonus — scheduled jobs",
+    "Un CronJob": "A CronJob",
+    """
+Dans l'espace de noms **`batch`** (section @@ref:scaling@@) : un CronJob **`backup`** qui lance toutes
+les **dix minutes** (`{schedule}`) un pod de `{busybox}` affichant la date, **sans jamais lancer un
+Job tant que le précédent tourne**, et qui ne garde que les **2** derniers Jobs réussis. Puis lancez
+tout de suite un Job **`backup-now`** depuis ce CronJob, et lisez son journal.
+""": """
+In the **`batch`** namespace (section @@ref:scaling@@): a CronJob **`backup`** that starts every
+**ten minutes** (`{schedule}`) a pod of `{busybox}` printing the date, **never starting a Job
+while the previous one is still running**, and that keeps only the last **2** successful Jobs. Then
+start a Job **`backup-now`** from this CronJob right away, and read its log.
+""",
+    "CronJob backup toutes les dix minutes, sans chevauchement": "CronJob backup every ten minutes, without overlap",
+    "2 Jobs réussis gardés": "2 successful Jobs kept",
+    "le Job backup-now, lancé depuis le CronJob, a réussi": "the Job backup-now, started from the CronJob, succeeded",
 }}

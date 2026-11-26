@@ -5,6 +5,7 @@ everything done: 100, tampering not rewarded), instructor texts, English identif
 No Docker: the outputs of the containers are rendered from the generated data in the format of
 the real tools (dig, kdig, nsupdate, rndc, journalctl, ss) captured in tests/mock_data/dns/.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -14,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from SRE import params
+from SRE import form_spec, params
 from SRE.instructor_text import has_instructor
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
@@ -51,6 +52,22 @@ def _running_name():
 
 def _text(t, lang='fr'):
     return t.resolve(lang) if hasattr(t, 'resolve') else str(t)
+
+
+def _tr_literals():
+    import check_sre_translations
+    return check_sre_translations.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+
+
+def _instructor_literals():
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 def _state_ops(ns, name):
@@ -341,7 +358,17 @@ def test_topology_and_machines(lab, data):
             assert all(net.prefixlen > 0 for net, _ in routes), (m, routes)
     assert ns.net_config['m1'][0][1] == [(data.nets.net2, data.ips.r1_net1.ip)]
     assert ns.reverse_zone == dns.reverse_zone_name(data.nets.net1) and ns.reverse_file.startswith(lab.ZONE_DIR)
-    assert lab.allow_user_states and not lab.export_kathara_project and lab._TRANSLATIONS == {}
+    assert lab.allow_user_states and not lab.export_kathara_project
+    # every tr() text has its English (the markup is checked for every lab of the directory by
+    # tests/lab/test_draft_misc_translations.py)
+    english = lab._TRANSLATIONS['en']
+    assert set(lab._TRANSLATIONS) == {'en'} and set(english) == _tr_literals() and all(english.values())
+    assert set(_instructor_literals()) <= set(english)
+    assert _text(lab.title, 'en') != _text(lab.title, 'fr')
+    # the dropdowns of part 10 show English labels in English and store the French causes
+    assert len(lab.FAULT_CHOICES_EN) == len(lab.FAULT_CHOICES)
+    assert form_spec.form_fields(f"@@{{f:>{lab._fault_choices('en')}}}@@") == \
+        form_spec.form_fields(f"@@{{f:>{lab._fault_choices()}}}@@")
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +550,10 @@ def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir):
     assert dns.unbound_default_local_zone(data.nets.net1) in first
     with_instructor = [q for q in questions if has_instructor(_text(q.description))]
     assert len(with_instructor) == 20
+    for q in questions:
+        en = _text(q.description, 'en')
+        assert has_instructor(en) and en != _text(q.description) and '**Pour l' not in en, _text(q.title)
+        assert "{'" not in en and not re.search(r"\{[a-z_]+\}", en), _text(q.title, 'en')
     all_text = info + "".join(_text(q.description) for q in questions)
     assert "{'" not in all_text and not re.search(r"\{[a-z_]+\}", all_text)
     assert data.tld_admin_secret in all_text and data.probe_token in all_text
@@ -549,13 +580,23 @@ def test_cheat_answers_fill_every_form(lab, data, tmp_pub_dir):
                 assert answers[field['name']] in field['choices'], (field['name'], answers[field['name']])
 
 
-def test_stripped_lab_file(lab):
+def test_stripped_lab_file(lab, tmp_path):
     source = _LAB_PATH.read_bytes()
     result = strip_instructor.strip_source(source)
     stripped = result.data if hasattr(result, 'data') else result[0]
     warnings = result.warnings if hasattr(result, 'warnings') else result[1]
     assert b'instructor(' not in stripped and not warnings, warnings
     compile(stripped, 'dns2_stripped', 'exec')
+    # the stripped module keeps the English of every text but the instructor ones
+    path = tmp_path / 'dns2_stripped.py'
+    path.write_bytes(stripped)
+    spec = importlib.util.spec_from_file_location('dns2_lab_stripped', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    kept = module._TRANSLATIONS['en']
+    instructor_texts = set(_instructor_literals())
+    assert len(instructor_texts) == 20 and not set(kept) & instructor_texts
+    assert len(kept) == len(lab._TRANSLATIONS['en']) - len(instructor_texts)
 
 
 def test_english_identifiers(lab, data):

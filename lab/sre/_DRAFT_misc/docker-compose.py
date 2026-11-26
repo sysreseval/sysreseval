@@ -760,7 +760,8 @@ fichier (`content:`).
         self.cmd('docker2', "chmod 700 /root/.ssh && systemctl start ssh", step=2)
 
     @sre_state(user_allowed=True, description=tr(
-        "Recharge les images du TP (après un `docker system prune -a` par exemple)."))
+        "Recharge les images du TP (après un `docker system prune -a` par exemple).",
+        en="Loads the images of the lab again (after a `docker system prune -a`, for example)."))
     def restore_docker(self):
         for m in ('docker1', 'docker2'):
             load_images(self, m)
@@ -819,31 +820,38 @@ fichier (`content:`).
         self.cmd('docker1', f"cd {COMPOSE_DIR}/remote && timeout 120 docker --context {CONTEXT} compose up -d --wait "
                             ">/dev/null 2>&1; true", step=2, timeout=130)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 seule : le projet hello."))
+    @sre_state(user_allowed=False, description=tr("Partie 1 seule : le projet hello.",
+                                                  en="Part 1 alone: the hello project."))
     def solve_hello(self):
         self._solve_hello()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 seule : le projet counter."))
+    @sre_state(user_allowed=False, description=tr("Partie 2 seule : le projet counter.",
+                                                  en="Part 2 alone: the counter project."))
     def solve_counter(self):
         self._solve_counter()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 seule : le projet shop."))
+    @sre_state(user_allowed=False, description=tr("Partie 3 seule : le projet shop.",
+                                                  en="Part 3 alone: the shop project."))
     def solve_shop(self):
         self._solve_shop()
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 seule : le projet config."))
+    @sre_state(user_allowed=False, description=tr("Partie 4 seule : le projet config.",
+                                                  en="Part 4 alone: the config project."))
     def solve_config(self):
         self._solve_config()
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 seule : le projet health."))
+    @sre_state(user_allowed=False, description=tr("Partie 5 seule : le projet health.",
+                                                  en="Part 5 alone: the health project."))
     def solve_health(self):
         self._solve_health()
 
-    @sre_state(user_allowed=False, description=tr("Partie 6 seule : le projet scale."))
+    @sre_state(user_allowed=False, description=tr("Partie 6 seule : le projet scale.",
+                                                  en="Part 6 alone: the scale project."))
     def solve_scale(self):
         self._solve_scale()
 
-    @sre_state(user_allowed=False, description=tr("Bonus seul : le projet remote déployé sur docker2."))
+    @sre_state(user_allowed=False, description=tr("Bonus seul : le projet remote déployé sur docker2.",
+                                                  en="Bonus alone: the remote project deployed on docker2."))
     def solve_remote(self):
         self._solve_remote()
 
@@ -1655,5 +1663,1029 @@ added after nginx).
 **Solution.** On `docker1`:
 {cmds}
 """,
+        "Docker Compose : applications multi-conteneurs": "Docker Compose: multi-container applications",
+        """**Sommaire**
+""": """**Contents**
+""",
+        "Pourquoi Compose": "Why Compose",
+        """
+
+Une application réelle assemble plusieurs conteneurs : un serveur web, l'application, une base de
+données, un cache, chacun avec ses ports, ses volumes, ses variables, ses réseaux. Les lancer à
+la main, c'est une longue suite de `docker network create`, `docker volume create` et
+`docker run` aux options interminables, à retaper à l'identique sur chaque machine.
+
+**Docker Compose** décrit toute l'application dans **un fichier YAML**, `compose.yaml`, et la
+crée, la met à jour ou la supprime d'une seule commande : `docker compose up -d`. Le fichier se
+versionne avec le code ; c'est l'outil classique du poste de développement, des tests et des
+petits déploiements sur un seul hôte. Compose est un greffon du client Docker (`docker compose`,
+avec une espace ; l'ancien programme Python `docker-compose` n'est plus maintenu) : il traduit le
+fichier en appels à l'API du démon, exactement les mêmes que ceux de `docker run`.
+
+Compose suit la **spécification Compose** (*compose-spec*) : le fichier n'a plus de champ
+`version:` (il est ignoré s'il est présent).
+""": """
+
+A real application assembles several containers: a web server, the application, a database, a
+cache, each with its ports, its volumes, its variables, its networks. Starting them by hand means
+a long series of `docker network create`, `docker volume create` and `docker run` commands with
+endless options, to be typed again identically on every machine.
+
+**Docker Compose** describes the whole application in **one YAML file**, `compose.yaml`, and
+creates, updates or removes it with a single command: `docker compose up -d`. The file is versioned
+with the code; it is the classic tool of the development workstation, of tests and of small
+deployments on a single host. Compose is a plugin of the Docker client (`docker compose`, with a
+space; the former Python program `docker-compose` is no longer maintained): it translates the file
+into calls to the daemon's API, exactly the same calls as those of `docker run`.
+
+Compose follows the **Compose Specification** (*compose-spec*): the file no longer has a
+`version:` field (it is ignored when present).
+""",
+        "Le fichier compose.yaml": "The compose.yaml file",
+        """
+
+```yaml
+services:                     # les conteneurs de l'application
+  web:
+    image: nginx:alpine       # l'image à lancer
+    ports:
+      - "8080:80"             # port de l'hôte : port du conteneur
+    volumes:
+      - ./html:/usr/share/nginx/html:ro    # montage lié, chemin relatif au fichier
+    restart: unless-stopped
+  app:
+    build: ./app              # construire l'image à partir de ./app/Dockerfile
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+  redis:
+    image: redis:alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data      # volume nommé, déclaré plus bas
+
+volumes:
+  redis-data:
+```
+
+Chaque clé d'un service correspond à une option de `docker run` : `image`, `build`, `command`,
+`entrypoint`, `environment`, `env_file`, `ports`, `expose`, `volumes`, `networks`, `restart`,
+`user`, `healthcheck`, `depends_on`, `deploy`, `container_name`... Les sections de premier niveau
+`volumes:`, `networks:`, `secrets:` et `configs:` déclarent les ressources partagées.
+
+YAML : l'indentation (des espaces, jamais de tabulation) donne la structure ; une liste s'écrit avec
+des tirets ; mettez entre guillemets les valeurs qu'YAML pourrait mal lire (`"8080:80"`, `"yes"`).
+`docker compose config` lit le fichier, le complète et l'affiche normalisé : la meilleure façon de
+vérifier une syntaxe.
+""": """
+
+```yaml
+services:                     # the containers of the application
+  web:
+    image: nginx:alpine       # the image to run
+    ports:
+      - "8080:80"             # host port: container port
+    volumes:
+      - ./html:/usr/share/nginx/html:ro    # bind mount, path relative to the file
+    restart: unless-stopped
+  app:
+    build: ./app              # build the image from ./app/Dockerfile
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+  redis:
+    image: redis:alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data      # named volume, declared below
+
+volumes:
+  redis-data:
+```
+
+Each key of a service corresponds to an option of `docker run`: `image`, `build`, `command`,
+`entrypoint`, `environment`, `env_file`, `ports`, `expose`, `volumes`, `networks`, `restart`,
+`user`, `healthcheck`, `depends_on`, `deploy`, `container_name`... The top-level sections
+`volumes:`, `networks:`, `secrets:` and `configs:` declare the shared resources.
+
+YAML: the indentation (spaces, never a tab) gives the structure; a list is written with dashes;
+put in quotes the values that YAML could misread (`"8080:80"`, `"yes"`). `docker compose config`
+reads the file, completes it and prints it in a normalised form: the best way to check a syntax.
+""",
+        "Projet, services et conteneurs": "Project, services and containers",
+        """
+
+- Le **projet** porte par défaut le nom du **répertoire** du fichier (`/root/compose/hello` →
+  projet `hello`) ; `-p nom` ou la clé de premier niveau `name:` le changent.
+- Chaque **service** donne un ou plusieurs **conteneurs**, nommés `<projet>-<service>-<n>`
+  (`hello-web-1`) ; `container_name:` impose un nom (mais interdit les répliques).
+- Compose crée un réseau `<projet>_default` pour les services sans `networks:`, et préfixe de même
+  les réseaux et volumes déclarés : `counter_redis-data`.
+- Compose retrouve ses conteneurs par leurs **étiquettes** : `com.docker.compose.project`,
+  `com.docker.compose.service`, `com.docker.compose.container-number`,
+  `com.docker.compose.project.working_dir`, `com.docker.compose.project.config_files`
+  (`docker inspect -f '{{json .Config.Labels}}' hello-web-1`).
+
+`docker compose up` compare l'état voulu (le fichier) à l'état réel : il crée ce qui manque,
+recrée les conteneurs dont la configuration a changé et ne touche pas aux autres.
+""": """
+
+- The **project** is named by default after the **directory** of the file (`/root/compose/hello` →
+  project `hello`); `-p name` or the top-level key `name:` change it.
+- Each **service** gives one or more **containers**, named `<project>-<service>-<n>`
+  (`hello-web-1`); `container_name:` imposes a name (but forbids replicas).
+- Compose creates a network `<project>_default` for the services without `networks:`, and prefixes
+  the declared networks and volumes the same way: `counter_redis-data`.
+- Compose finds its containers again by their **labels**: `com.docker.compose.project`,
+  `com.docker.compose.service`, `com.docker.compose.container-number`,
+  `com.docker.compose.project.working_dir`, `com.docker.compose.project.config_files`
+  (`docker inspect -f '{{json .Config.Labels}}' hello-web-1`).
+
+`docker compose up` compares the desired state (the file) with the actual state: it creates what
+is missing, recreates the containers whose configuration has changed and leaves the others alone.
+""",
+        "Les commandes": "The commands",
+        """
+
+Toutes se lancent dans le répertoire du projet (ou avec `-f fichier`, `-p projet`) :
+
+| commande | rôle |
+|----------|------|
+| `docker compose up -d` | créer / mettre à jour et démarrer en arrière-plan |
+| `docker compose up -d --build` | reconstruire d'abord les images des services `build:` |
+| `docker compose up -d --wait` | attendre que les services soient démarrés, et sains s'ils ont un healthcheck |
+| `docker compose ps` / `docker compose ls` | les conteneurs du projet / les projets |
+| `docker compose logs -f app` | les journaux d'un service |
+| `docker compose exec app sh` | une commande dans le conteneur d'un service |
+| `docker compose run --rm app sh` | un conteneur de plus, éphémère, du service |
+| `docker compose stop` / `start` / `restart` | arrêter / démarrer sans supprimer |
+| `docker compose down` | supprimer conteneurs et réseaux du projet (**pas** les volumes nommés) |
+| `docker compose down -v` | ... et les volumes nommés du projet : les données sont perdues |
+| `docker compose config` | le fichier final, variables remplacées et surcharges fusionnées |
+| `docker compose build` / `pull` | construire / télécharger les images |
+""": """
+
+All of them are run in the project directory (or with `-f file`, `-p project`):
+
+| command | role |
+|----------|------|
+| `docker compose up -d` | create / update and start in the background |
+| `docker compose up -d --build` | first rebuild the images of the `build:` services |
+| `docker compose up -d --wait` | wait until the services are started, and healthy if they have a healthcheck |
+| `docker compose ps` / `docker compose ls` | the containers of the project / the projects |
+| `docker compose logs -f app` | the logs of a service |
+| `docker compose exec app sh` | a command in the container of a service |
+| `docker compose run --rm app sh` | one more container of the service, an ephemeral one |
+| `docker compose stop` / `start` / `restart` | stop / start without removing |
+| `docker compose down` | remove the containers and networks of the project (**not** the named volumes) |
+| `docker compose down -v` | ... and the named volumes of the project: the data is lost |
+| `docker compose config` | the final file, variables replaced and overrides merged |
+| `docker compose build` / `pull` | build / download the images |
+""",
+        "Construire les images": "Building the images",
+        """
+
+```yaml
+services:
+  app:
+    build: ./app                 # contexte de construction ; Dockerfile par défaut
+    image: counter-app:1.2.0     # le nom donné à l'image construite
+```
+
+Avec `build:` et `image:` à la fois, Compose construit l'image et lui donne ce nom ; sans `image:`,
+elle s'appelle `<projet>-<service>`. La forme longue précise le fichier et des arguments :
+`build: {context: ./app, dockerfile: Dockerfile, args: {VERSION: "1.2"}}`. `docker compose up`
+ne reconstruit pas une image qui existe déjà : `--build` (ou `docker compose build`) après une
+modification du code.
+""": """
+
+```yaml
+services:
+  app:
+    build: ./app                 # build context; Dockerfile by default
+    image: counter-app:1.2.0     # the name given to the built image
+```
+
+With both `build:` and `image:`, Compose builds the image and gives it that name; without
+`image:`, it is called `<project>-<service>`. The long form specifies the file and arguments:
+`build: {context: ./app, dockerfile: Dockerfile, args: {VERSION: "1.2"}}`. `docker compose up`
+does not rebuild an image that already exists: use `--build` (or `docker compose build`) after a
+change to the code.
+""",
+        "Réseaux et noms": "Networks and names",
+        """
+
+Tous les services d'un projet sont par défaut sur `<projet>_default`, un réseau défini par
+l'utilisateur : chaque service est joignable **par son nom de service** grâce au DNS intégré de
+Docker (`127.0.0.11`). L'application parle donc à `redis:6379`, sans adresse.
+
+On sépare les rôles avec plusieurs réseaux :
+
+```yaml
+services:
+  proxy:
+    networks: [front]
+  app:
+    networks: [front, back]      # le seul service sur les deux réseaux
+  db:
+    networks:
+      back:
+        ipv4_address: 10.30.0.10     # adresse fixe (le réseau doit avoir un sous-réseau)
+
+networks:
+  front:
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24
+  back:
+    internal: true               # pas d'accès à l'extérieur
+    ipam:
+      config:
+        - subnet: 10.30.0.0/24
+```
+
+Deux services sans réseau commun ne se voient pas (ni par le nom, ni par l'adresse). Seuls les
+services qui ont des `ports:` sont accessibles depuis l'extérieur de l'hôte ; `expose:` ne fait que
+documenter un port pour les autres services.
+
+Un **reverse proxy** nginx devant l'application :
+
+```
+server {
+    listen 80;
+    location / {
+        proxy_pass http://app:8080;
+    }
+}
+```
+""": """
+
+By default all the services of a project are on `<project>_default`, a user-defined network: each
+service can be reached **by its service name** thanks to Docker's embedded DNS (`127.0.0.11`).
+The application therefore talks to `redis:6379`, without any address.
+
+Roles are separated with several networks:
+
+```yaml
+services:
+  proxy:
+    networks: [front]
+  app:
+    networks: [front, back]      # the only service on both networks
+  db:
+    networks:
+      back:
+        ipv4_address: 10.30.0.10     # fixed address (the network must have a subnet)
+
+networks:
+  front:
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24
+  back:
+    internal: true               # no access to the outside
+    ipam:
+      config:
+        - subnet: 10.30.0.0/24
+```
+
+Two services without a common network do not see each other (neither by name nor by address).
+Only the services that have `ports:` can be reached from outside the host; `expose:` merely
+documents a port for the other services.
+
+An nginx **reverse proxy** in front of the application:
+
+```
+server {
+    listen 80;
+    location / {
+        proxy_pass http://app:8080;
+    }
+}
+```
+""",
+        "Volumes": "Volumes",
+        """
+
+- `- ./html:/usr/share/nginx/html:ro` : un **montage lié**, chemin relatif au répertoire du fichier ;
+- `- redis-data:/data` : un **volume nommé**, déclaré dans la section `volumes:` du premier
+  niveau, créé par Compose sous le nom `<projet>_redis-data` ;
+- `docker compose down` garde les volumes nommés : un `up` suivant retrouve les données ;
+  `down -v` les supprime.
+""": """
+
+- `- ./html:/usr/share/nginx/html:ro`: a **bind mount**, path relative to the directory of the file;
+- `- redis-data:/data`: a **named volume**, declared in the top-level `volumes:` section, created
+  by Compose under the name `<project>_redis-data`;
+- `docker compose down` keeps the named volumes: a following `up` finds the data again;
+  `down -v` removes them.
+""",
+        "Variables et configuration": "Variables and configuration",
+        """
+
+Deux mécanismes à ne pas confondre :
+
+- l'**interpolation** : `${VARIABLE}` (ou `${VARIABLE:-défaut}`) dans le fichier est remplacé par
+  Compose, à la lecture, par la variable de l'environnement du shell ou, à défaut, du fichier
+  **`.env`** du répertoire du projet (lignes `NOM=valeur`). `.env` paramètre le **fichier** ;
+- l'**environnement des conteneurs** : `environment:` (une table ou une liste `NOM=valeur`) et
+  `env_file: app.env` (un fichier de lignes `NOM=valeur`) définissent les variables **dans** le
+  conteneur.
+
+```yaml
+services:
+  app:
+    environment:
+      APP_VERSION: ${APP_VERSION}       # vient de .env, à la lecture du fichier
+    env_file: app.env                   # APP_COLOR=red, chargé dans le conteneur
+    ports:
+      - "${APP_PORT}:8080"
+```
+
+Pour écrire un `$` littéral dans le fichier (une commande shell), doublez-le : `$$`.
+`docker compose config` montre le résultat de l'interpolation.
+""": """
+
+Two mechanisms not to be confused:
+
+- **interpolation**: `${VARIABLE}` (or `${VARIABLE:-default}`) in the file is replaced by Compose,
+  when it reads the file, with the variable of the shell environment or, failing that, of the
+  **`.env`** file of the project directory (lines `NAME=value`). `.env` parameterises the **file**;
+- the **environment of the containers**: `environment:` (a mapping or a list of `NAME=value`) and
+  `env_file: app.env` (a file of `NAME=value` lines) define the variables **inside** the
+  container.
+
+```yaml
+services:
+  app:
+    environment:
+      APP_VERSION: ${APP_VERSION}       # comes from .env, when the file is read
+    env_file: app.env                   # APP_COLOR=red, loaded into the container
+    ports:
+      - "${APP_PORT}:8080"
+```
+
+To write a literal `$` in the file (a shell command), double it: `$$`.
+`docker compose config` shows the result of the interpolation.
+""",
+        "Secrets et configs": "Secrets and configs",
+        """
+
+Un mot de passe dans `environment:` se voit dans `docker inspect`, dans les journaux de
+débogage, dans l'environnement de tous les processus du conteneur. Un **secret** est un fichier
+monté en lecture seule dans `/run/secrets/<nom>` des seuls services qui le demandent :
+
+```yaml
+services:
+  app:
+    environment:
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password    # le chemin, pas le mot de passe
+    secrets: [redis_password]
+  redis:
+    image: redis:alpine
+    command: ["sh", "-c", "exec redis-server --requirepass \\"$$(cat /run/secrets/redis_password)\\""]
+    secrets: [redis_password]
+
+secrets:
+  redis_password:
+    file: ./secrets/redis_password.txt
+```
+
+Les images officielles acceptent souvent une variable `..._FILE` qui désigne un tel fichier. Les
+**configs** (`configs:`) fonctionnent de même pour des fichiers non secrets, montés où l'on veut
+(`target:`) ; une config peut être écrite dans le fichier compose lui-même (`content:`).
+""": """
+
+A password in `environment:` shows in `docker inspect`, in the debug logs, in the environment of
+every process of the container. A **secret** is a file mounted read-only at `/run/secrets/<name>`
+in only the services that ask for it:
+
+```yaml
+services:
+  app:
+    environment:
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password    # the path, not the password
+    secrets: [redis_password]
+  redis:
+    image: redis:alpine
+    command: ["sh", "-c", "exec redis-server --requirepass \\"$$(cat /run/secrets/redis_password)\\""]
+    secrets: [redis_password]
+
+secrets:
+  redis_password:
+    file: ./secrets/redis_password.txt
+```
+
+The official images often accept a `..._FILE` variable that points to such a file. **Configs**
+(`configs:`) work the same way for files that are not secret, mounted wherever you want
+(`target:`); a config can be written in the compose file itself (`content:`).
+""",
+        "Fichiers de surcharge et profils": "Override files and profiles",
+        """
+
+Sans `-f`, Compose lit `compose.yaml` **puis** `compose.override.yaml` s'il existe, et fusionne le
+second dans le premier (les listes comme `ports:` s'ajoutent, les valeurs simples sont remplacées).
+On garde ainsi dans `compose.yaml` ce qui est commun, et dans la surcharge ce qui est propre à un
+poste (ports publiés, montages du code pour le développement). `-f a.yaml -f b.yaml` choisit les
+fichiers et leur ordre (`compose.prod.yaml`...).
+
+Un **profil** (`profiles: [debug]`) réserve un service aux commandes qui le demandent
+(`docker compose --profile debug up -d`) : outils d'administration, données de test.
+""": """
+
+Without `-f`, Compose reads `compose.yaml` **then** `compose.override.yaml` if it exists, and merges
+the second into the first (lists such as `ports:` are added together, simple values are replaced).
+`compose.yaml` thus keeps what is common, and the override what is specific to one host
+(published ports, mounts of the code for development). `-f a.yaml -f b.yaml` chooses the files
+and their order (`compose.prod.yaml`...).
+
+A **profile** (`profiles: [debug]`) reserves a service for the commands that ask for it
+(`docker compose --profile debug up -d`): administration tools, test data.
+""",
+        "Santé et ordre de démarrage": "Health and start order",
+        """
+
+`depends_on: [redis]` démarre `redis` avant `app`, mais n'attend pas que Redis soit **prêt**. Avec
+un **healthcheck** et une **condition**, Compose attend qu'il soit sain :
+
+```yaml
+services:
+  app:
+    depends_on:
+      db:
+        condition: service_healthy      # ou service_started, service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      start_interval: 1s
+    restart: on-failure
+  db:
+    image: redis:alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+```
+
+La forme `["CMD", ...]` lance la commande directement, `["CMD-SHELL", "..."]` par un shell.
+`docker compose ps` montre l'état (`healthy`, `starting`, `unhealthy`) ; `docker compose up -d
+--wait` ne rend la main que quand tout est démarré et sain (ou échoue).
+""": """
+
+`depends_on: [redis]` starts `redis` before `app`, but does not wait for Redis to be **ready**.
+With a **healthcheck** and a **condition**, Compose waits until it is healthy:
+
+```yaml
+services:
+  app:
+    depends_on:
+      db:
+        condition: service_healthy      # or service_started, service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      start_interval: 1s
+    restart: on-failure
+  db:
+    image: redis:alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+```
+
+The form `["CMD", ...]` runs the command directly, `["CMD-SHELL", "..."]` through a shell.
+`docker compose ps` shows the state (`healthy`, `starting`, `unhealthy`);
+`docker compose up -d --wait` returns only once everything is started and healthy (or fails).
+""",
+        "Plusieurs répliques": "Several replicas",
+        """
+
+```yaml
+services:
+  app:
+    build: ./app
+    deploy:
+      replicas: 3        # ou : docker compose up -d --scale app=3
+```
+
+Les répliques sont `scale-app-1`, `scale-app-2`, `scale-app-3` : pas de `container_name`, et pas de
+port fixe publié par le service (trois conteneurs ne peuvent pas publier le même port de l'hôte).
+Le DNS intégré répond au nom `app` par **une adresse par réplique** (`dig @127.0.0.11 app` dans un
+conteneur du réseau). Un nginx devant eux répartit la charge :
+
+```
+upstream app {
+    server app:8080;        # résolu au démarrage de nginx : une entrée par adresse
+}
+server {
+    listen 80;
+    location / {
+        proxy_pass http://app;
+        proxy_connect_timeout 2s;   # une réplique arrêtée est vite écartée (60 s par défaut)
+    }
+}
+```
+
+nginx résout le nom **à son démarrage** : des répliques ajoutées ensuite ne sont pas vues tant que
+nginx n'est pas rechargé (`docker compose restart proxy`) ; `depends_on: [app]` fait démarrer
+nginx après les répliques. Chaque processus *worker* de nginx alterne entre les serveurs (*round
+robin*) : plusieurs requêtes sur une même connexion passent par un seul worker et touchent les
+répliques à tour de rôle.
+""": """
+
+```yaml
+services:
+  app:
+    build: ./app
+    deploy:
+      replicas: 3        # or: docker compose up -d --scale app=3
+```
+
+The replicas are `scale-app-1`, `scale-app-2`, `scale-app-3`: no `container_name`, and no fixed
+port published by the service (three containers cannot publish the same port of the host). The
+embedded DNS answers the name `app` with **one address per replica** (`dig @127.0.0.11 app` in a
+container of the network). An nginx in front of them balances the load:
+
+```
+upstream app {
+    server app:8080;        # resolved when nginx starts: one entry per address
+}
+server {
+    listen 80;
+    location / {
+        proxy_pass http://app;
+        proxy_connect_timeout 2s;   # a stopped replica is quickly set aside (60 s by default)
+    }
+}
+```
+
+nginx resolves the name **when it starts**: replicas added afterwards are not seen until nginx is
+reloaded (`docker compose restart proxy`); `depends_on: [app]` makes nginx start after the
+replicas. Each nginx *worker* process alternates between the servers (*round robin*): several
+requests on the same connection go through a single worker and reach the replicas in turn.
+""",
+        "Déployer sur un autre hôte : les contextes": "Deploying on another host: contexts",
+        """
+
+Le client `docker` peut piloter un démon **distant**. Un **contexte** enregistre le point d'accès :
+
+```
+docker context create prod --docker host=ssh://root@docker2
+docker context ls
+docker --context prod ps                      # une commande sur docker2
+docker --context prod compose up -d           # le projet du répertoire courant, déployé sur docker2
+docker context use prod                       # ou : contexte par défaut de toutes les commandes
+```
+
+Avec `ssh://`, le client ouvre une connexion SSH (clé sans phrase de passe ou agent, clé d'hôte
+déjà connue : faites un premier `ssh root@docker2` pour l'accepter) et lance `docker system
+dial-stdio` sur l'hôte distant. Le fichier compose est lu **localement**, mais les conteneurs, les
+images et les chemins des montages liés sont ceux de l'hôte **distant** : un `./html` désignerait un
+répertoire de `docker2`. On préfère alors des images complètes, ou des `configs:` écrites dans le
+fichier (`content:`).
+""": """
+
+The `docker` client can drive a **remote** daemon. A **context** records the endpoint:
+
+```
+docker context create prod --docker host=ssh://root@docker2
+docker context ls
+docker --context prod ps                      # a command on docker2
+docker --context prod compose up -d           # the project of the current directory, deployed on docker2
+docker context use prod                       # or: the default context of every command
+```
+
+With `ssh://`, the client opens an SSH connection (a key without a passphrase or an agent, a host
+key already known: run a first `ssh root@docker2` to accept it) and runs
+`docker system dial-stdio` on the remote host. The compose file is read **locally**, but the
+containers, the images and the paths of the bind mounts are those of the **remote** host: a
+`./html` would designate a directory of `docker2`. Complete images are then preferred, or
+`configs:` written in the file (`content:`).
+""",
+        "Aide-mémoire": "Cheat sheet",
+        """
+
+| besoin | dans compose.yaml / commande |
+|--------|------------------------------|
+| lancer, mettre à jour | `docker compose up -d` (`--build` après une modification du code, `--wait`) |
+| état, journaux | `docker compose ps`, `docker compose logs -f service` |
+| vérifier le fichier | `docker compose config` |
+| tout supprimer | `docker compose down` (`-v` : les volumes aussi) |
+| image construite | `build: ./app` + `image: nom:étiquette` |
+| port publié | `ports: ["8080:80"]` |
+| montage lié en lecture seule | `volumes: ["./html:/usr/share/nginx/html:ro"]` |
+| volume nommé | `volumes: ["data:/data"]` + section `volumes: {data: {}}` |
+| réseaux | `networks: [front, back]` ; `internal: true` ; `ipam: {config: [{subnet: ...}]}` ; `ipv4_address` |
+| variables du fichier | `.env` + `${NOM}` ; dans le conteneur : `environment:`, `env_file:` |
+| secret | `secrets: [nom]` + section `secrets: {nom: {file: ./f}}` → `/run/secrets/nom` |
+| surcharge | `compose.override.yaml`, lu automatiquement |
+| attendre un service sain | `healthcheck:` + `depends_on: {db: {condition: service_healthy}}` |
+| répliques | `deploy: {replicas: 3}` ou `--scale app=3` |
+| hôte distant | `docker context create prod --docker host=ssh://root@docker2`, `docker --context prod compose up -d` |
+""": """
+
+| need | in compose.yaml / command |
+|--------|------------------------------|
+| start, update | `docker compose up -d` (`--build` after a change to the code, `--wait`) |
+| state, logs | `docker compose ps`, `docker compose logs -f service` |
+| check the file | `docker compose config` |
+| remove everything | `docker compose down` (`-v`: the volumes too) |
+| built image | `build: ./app` + `image: name:tag` |
+| published port | `ports: ["8080:80"]` |
+| read-only bind mount | `volumes: ["./html:/usr/share/nginx/html:ro"]` |
+| named volume | `volumes: ["data:/data"]` + section `volumes: {data: {}}` |
+| networks | `networks: [front, back]`; `internal: true`; `ipam: {config: [{subnet: ...}]}`; `ipv4_address` |
+| variables of the file | `.env` + `${NOM}`; in the container: `environment:`, `env_file:` |
+| secret | `secrets: [name]` + section `secrets: {name: {file: ./f}}` → `/run/secrets/name` |
+| override | `compose.override.yaml`, read automatically |
+| wait for a healthy service | `healthcheck:` + `depends_on: {db: {condition: service_healthy}}` |
+| replicas | `deploy: {replicas: 3}` or `--scale app=3` |
+| remote host | `docker context create prod --docker host=ssh://root@docker2`, `docker --context prod compose up -d` |
+""",
+        "Recharge les images du TP (après un `docker system prune -a` par exemple).": "Loads the images of the lab again (after a `docker system prune -a`, for example).",
+        "Partie 1 seule : le projet hello.": "Part 1 alone: the hello project.",
+        "Partie 2 seule : le projet counter.": "Part 2 alone: the counter project.",
+        "Partie 3 seule : le projet shop.": "Part 3 alone: the shop project.",
+        "Partie 4 seule : le projet config.": "Part 4 alone: the config project.",
+        "Partie 5 seule : le projet health.": "Part 5 alone: the health project.",
+        "Partie 6 seule : le projet scale.": "Part 6 alone: the scale project.",
+        "Bonus seul : le projet remote déployé sur docker2.": "Bonus alone: the remote project deployed on docker2.",
+        "Toute la solution (bonus compris) et les réponses.": "The whole solution (bonus included) and the answers.",
+        """
+| machine | rôle | adresse |
+|---------|------|---------|
+| `docker1` | hôte Docker : **vous travaillez ici**, dans `{dir}` | `{docker1}` |
+| `docker2` | second hôte Docker (bonus) | `{docker2}` |
+| `gw` | routeur entre `lan` et `ext` | `{gw}` (`lan`), `{gw_ext}` (`ext`) |
+| `client` | poste extérieur : vos essais de connexion | `{client}` |
+""": """
+| machine | role | address |
+|---------|------|---------|
+| `docker1` | Docker host: **you work here**, in `{dir}` | `{docker1}` |
+| `docker2` | second Docker host (bonus) | `{docker2}` |
+| `gw` | router between `lan` and `ext` | `{gw}` (`lan`), `{gw_ext}` (`ext`) |
+| `client` | outside host: your connection tests | `{client}` |
+""",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente le fichier `compose.yaml`, les projets, les
+commandes, les réseaux, les volumes, les variables, les secrets, les healthchecks, les répliques
+et les contextes.
+
+**Le réseau.** Le réseau local `lan` (`{lan}`, un commutateur) relie les deux hôtes Docker et le
+routeur `gw` ; `gw` le relie au réseau `ext` (`{ext}`) de `client`. Les machines se connaissent par
+leur nom (`/etc/hosts`) ; les conteneurs, eux, utilisent les noms des services.
+""": """
+Read the **Informations** tab: it presents the `compose.yaml` file, the projects, the commands,
+the networks, the volumes, the variables, the secrets, the healthchecks, the replicas and the
+contexts.
+
+**The network.** The local network `lan` (`{lan}`, a switch) links the two Docker hosts and the
+router `gw`; `gw` links it to the network `ext` (`{ext}`) of `client`. The machines know each other
+by their names (`/etc/hosts`); the containers, for their part, use the names of the services.
+""",
+        """
+- Docker {version} et `docker compose` tournent sur `docker1` et `docker2`, en root. **Pas d'accès
+  à Internet** : `docker pull` depuis Docker Hub échoue. Les images utiles sont déjà chargées
+  (`docker images`) : `nginx:alpine`, `python:alpine`, `redis:alpine`, `alpine`, `busybox`.
+- Chaque partie a son répertoire, donc son **projet** Compose : `{dir}/hello`, `counter`, `shop`,
+  `config`, `health`, `scale` (et `remote` pour le bonus). Les répertoires `app/` y contiennent
+  l'application de l'exemple (`app.py`, en Python, port {port} : `GET /` renvoie une ligne JSON avec
+  la version, le nom de machine et un compteur de visites gardé dans Redis quand `REDIS_HOST` est
+  défini ; `GET /health` répond `OK` si son stockage répond) et son `Dockerfile` : ne les modifiez
+  pas. Écrivez chaque fois un fichier **`compose.yaml`** dans le répertoire du projet et lancez
+  `docker compose up -d` depuis ce répertoire.
+- Les noms des projets, services, réseaux et volumes donnés dans les questions sont **imposés** ;
+  les ports et les valeurs à utiliser sont propres à votre TP.
+- Ne lancez pas `docker system prune -a` : les images ne se téléchargent pas. Si c'est fait,
+  appliquez l'état **`restore_docker`**, qui les recharge.
+
+**Consignes.** Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une
+partie terminée rapporte tous ses points, quel que soit l'état des autres.
+
+**Évaluation.** Chaque évaluation lit l'état des démons Docker (les conteneurs d'un projet sont
+retrouvés par leurs étiquettes Compose), regarde dans les namespaces de quelques conteneurs depuis
+`docker1` et lance des requêtes HTTP depuis `client`.
+""": """
+- Docker {version} and `docker compose` run on `docker1` and `docker2`, as root. **No Internet
+  access**: `docker pull` from Docker Hub fails. The useful images are already loaded
+  (`docker images`): `nginx:alpine`, `python:alpine`, `redis:alpine`, `alpine`, `busybox`.
+- Each part has its own directory, hence its own Compose **project**: `{dir}/hello`, `counter`,
+  `shop`, `config`, `health`, `scale` (and `remote` for the bonus). Their `app/` directories
+  contain the example application (`app.py`, in Python, port {port}: `GET /` returns a JSON line
+  with the version, the host name and a visit counter kept in Redis when `REDIS_HOST` is set;
+  `GET /health` answers `OK` if its storage answers) and its `Dockerfile`: do not modify them. Each
+  time, write a **`compose.yaml`** file in the project directory and run `docker compose up -d`
+  from that directory.
+- The names of the projects, services, networks and volumes given in the questions are
+  **imposed**; the ports and the values to use are specific to your lab.
+- Do not run `docker system prune -a`: the images cannot be downloaded. If it has been done, apply
+  the **`restore_docker`** state, which loads them again.
+
+**Instructions.** The parts are **independent**: do them in the order you like. A completed part
+gives all its points, whatever the state of the others.
+
+**Evaluation.** Each evaluation reads the state of the Docker daemons (the containers of a project
+are found by their Compose labels), looks into the namespaces of a few containers from `docker1`
+and sends HTTP requests from `client`.
+""",
+        "Partie 1 — un premier compose.yaml": "Part 1 — a first compose.yaml",
+        "Le projet hello": "The hello project",
+        """
+Dans `{root}` (sections @@ref:file@@ et @@ref:project@@) :
+
+1. Écrivez une page `html/index.html` qui contient le texte **`{token}`**.
+2. Écrivez `compose.yaml` avec un service **`web`** de l'image `nginx:alpine` qui publie le port
+   **{port}** de `docker1` vers le port 80, monte `./html` sur `{nginx}` **en lecture seule**, et
+   redémarre de lui-même sauf s'il a été arrêté à la main.
+3. Lancez le projet, puis vérifiez depuis `client` : `curl http://docker1:{port}/`.
+""": """
+In `{root}` (sections @@ref:file@@ and @@ref:project@@):
+
+1. Write a page `html/index.html` that contains the text **`{token}`**.
+2. Write `compose.yaml` with a service **`web`** of the image `nginx:alpine` that publishes port
+   **{port}** of `docker1` to port 80, mounts `./html` on `{nginx}` **read-only**, and restarts by
+   itself unless it was stopped by hand.
+3. Start the project, then check from `client`: `curl http://docker1:{port}/`.
+""",
+        "Les noms que Compose a choisis": "The names Compose chose",
+        """
+- Le nom du réseau créé par Compose pour ce projet : @@{network:[A-Za-z0-9_.-]+}@@
+- Le nom du conteneur du service `web` : @@{container:[A-Za-z0-9_.-]+}@@
+""": """
+- The name of the network Compose created for this project: @@{network:[A-Za-z0-9_.-]+}@@
+- The name of the container of the `web` service: @@{container:[A-Za-z0-9_.-]+}@@
+""",
+        "le service web du projet hello tourne (nginx)": "the web service of the hello project is running (nginx)",
+        "port {p} publié vers 80": "port {p} published to 80",
+        "./html monté en lecture seule": "./html mounted read-only",
+        "restart: unless-stopped": "restart: unless-stopped",
+        "client reçoit la page avec le texte demandé": "client receives the page with the requested text",
+        "nom du réseau du projet": "name of the project's network",
+        "nom du conteneur": "name of the container",
+        "Partie 2 — l'application et son cache": "Part 2 — the application and its cache",
+        "Le projet counter": "The counter project",
+        """
+Dans `{root}`, écrivez `compose.yaml` avec deux services (sections @@ref:build@@, @@ref:networks@@ et
+@@ref:volumes@@) :
+
+- **`app`** : l'image construite à partir de `./app`, nommée **`counter-app:{version}`** ; le port
+  **{port}** de `docker1` publié vers le port {app_port} ; la variable `REDIS_HOST` qui désigne le
+  service Redis par son nom ; démarré après Redis ;
+- **`redis`** : l'image `redis:alpine` lancée avec `redis-server --appendonly yes`, le **volume
+  nommé `redis-data`** sur `/data`, **aucun port publié**.
+
+Lancez le projet, demandez plusieurs fois `http://docker1:{port}/` depuis `client` (le compteur
+de visites augmente), puis faites `docker compose down` et `docker compose up -d` : le compteur
+doit reprendre où il en était.
+""": """
+In `{root}`, write `compose.yaml` with two services (sections @@ref:build@@, @@ref:networks@@ and
+@@ref:volumes@@):
+
+- **`app`**: the image built from `./app`, named **`counter-app:{version}`**; port **{port}** of
+  `docker1` published to port {app_port}; the variable `REDIS_HOST` that designates the Redis
+  service by its name; started after Redis;
+- **`redis`**: the image `redis:alpine` run with `redis-server --appendonly yes`, the **named
+  volume `redis-data`** on `/data`, **no published port**.
+
+Start the project, request `http://docker1:{port}/` several times from `client` (the visit counter
+goes up), then run `docker compose down` and `docker compose up -d`: the counter must resume where
+it was.
+""",
+        "Le volume et down": "The volume and down",
+        """
+- Le nom complet du volume que Compose a créé : @@{volume:[A-Za-z0-9_.-]+}@@
+- `docker compose down` @@{down:>garde le volume et ses données>>>keeps|supprime le volume>>>deletes}@@
+- `docker compose down -v` @@{down_v:>garde le volume et ses données>>>keeps|supprime le volume>>>deletes}@@
+""": """
+- The full name of the volume that Compose created: @@{volume:[A-Za-z0-9_.-]+}@@
+- `docker compose down` @@{down:>keeps the volume and its data>>>keeps|removes the volume>>>deletes}@@
+- `docker compose down -v` @@{down_v:>keeps the volume and its data>>>keeps|removes the volume>>>deletes}@@
+""",
+        "les services app et redis du projet counter tournent": "the app and redis services of the counter project are running",
+        "app tourne sur l'image construite counter-app:{v}": "app runs on the built image counter-app:{v}",
+        "Redis en mode appendonly": "Redis in appendonly mode",
+        "le volume nommé redis-data sur /data": "the named volume redis-data on /data",
+        "redis ne publie aucun port": "redis publishes no port",
+        "REDIS_HOST=redis": "REDIS_HOST=redis",
+        "client voit le compteur de visites augmenter (gardé dans Redis)": "client sees the visit counter go up (kept in Redis)",
+        "le compteur est écrit dans les fichiers du volume": "the counter is written into the files of the volume",
+        "nom du volume": "name of the volume",
+        "down et down -v": "down and down -v",
+        "Partie 3 — réseaux et reverse proxy": "Part 3 — networks and reverse proxy",
+        "Le projet shop": "The shop project",
+        """
+Dans `{root}` (section @@ref:networks@@) :
+
+1. Écrivez `nginx/default.conf`, une configuration de nginx qui écoute sur le port 80 et relaie
+   toutes les requêtes vers le service `app`, port {app_port}.
+2. Écrivez `compose.yaml` avec deux réseaux et trois services :
+   - le réseau **`front`** de sous-réseau **`{front}`** ;
+   - le réseau **`back`**, de sous-réseau **`{back}`**, **interne** ;
+   - **`proxy`** : `nginx:alpine`, sur `front` seulement, la configuration montée en lecture seule
+     sur `/etc/nginx/conf.d/default.conf`, le port **{port}** de `docker1` publié vers 80 ;
+   - **`app`** : l'image construite à partir de `./app`, sur `front` et `back`, avec `REDIS_HOST`
+     qui désigne le service `db` ;
+   - **`db`** : `redis:alpine`, sur `back` seulement, à l'adresse fixe **`{db}`**.
+   Seul `proxy` publie un port.
+3. Lancez le projet et vérifiez depuis `client` : `curl http://docker1:{port}/`.
+""": """
+In `{root}` (section @@ref:networks@@):
+
+1. Write `nginx/default.conf`, an nginx configuration that listens on port 80 and relays every
+   request to the `app` service, port {app_port}.
+2. Write `compose.yaml` with two networks and three services:
+   - the network **`front`** with subnet **`{front}`**;
+   - the network **`back`**, with subnet **`{back}`**, **internal**;
+   - **`proxy`**: `nginx:alpine`, on `front` only, the configuration mounted read-only on
+     `/etc/nginx/conf.d/default.conf`, port **{port}** of `docker1` published to 80;
+   - **`app`**: the image built from `./app`, on `front` and `back`, with `REDIS_HOST` that
+     designates the `db` service;
+   - **`db`**: `redis:alpine`, on `back` only, at the fixed address **`{db}`**.
+   Only `proxy` publishes a port.
+3. Start the project and check from `client`: `curl http://docker1:{port}/`.
+""",
+        "proxy et db": "proxy and db",
+        """
+- `proxy` ne peut joindre `db` ni par son nom ni par son adresse, parce que
+  @@{proxy_db:>ils n'ont aucun réseau en commun>>>no_common_network|db ne publie pas de port>>>no_port|back est interne>>>internal}@@
+""": """
+- `proxy` can reach `db` neither by its name nor by its address, because
+  @@{proxy_db:>they have no network in common>>>no_common_network|db publishes no port>>>no_port|back is internal>>>internal}@@
+""",
+        "front ({f}) et back ({b}, interne)": "front ({f}) and back ({b}, internal)",
+        "proxy sur front, app sur les deux, db sur back": "proxy on front, app on both, db on back",
+        "db à l'adresse {a}": "db at the address {a}",
+        "seul proxy publie un port ({p})": "only proxy publishes a port ({p})",
+        "client reçoit la page de app par proxy": "client receives the page of app through proxy",
+        "app joint Redis sur db": "app reaches Redis on db",
+        "proxy ne joint pas db": "proxy does not reach db",
+        "isolation par les réseaux": "isolation by the networks",
+        "Partie 4 — configuration, secret et surcharge": "Part 4 — configuration, secret and override",
+        "Le projet config": "The config project",
+        """
+Dans `{root}` (sections @@ref:variables@@, @@ref:secrets@@ et @@ref:override@@) :
+
+1. Écrivez le fichier **`.env`** avec `APP_VERSION={version}` et `APP_PORT={port}`, le fichier
+   **`app.env`** avec `APP_COLOR={color}`, et le fichier `secrets/{secret}.txt` qui contient le mot
+   de passe **`{password}`**.
+2. Écrivez `compose.yaml` avec deux services, **sans aucun port publié** :
+   - **`app`** : l'image construite à partir de `./app`, avec la variable `APP_VERSION` prise dans
+     `.env` par interpolation, les variables de `app.env` (`env_file`), `REDIS_HOST` qui désigne le
+     service `redis`, et le secret **`{secret}`** ; l'application lit le mot de passe dans le
+     fichier que désigne `REDIS_PASSWORD_FILE` ;
+   - **`redis`** : `redis:alpine`, avec le même secret, qui exige ce mot de passe
+     (`redis-server --requirepass ...`, le mot de passe lu dans le fichier du secret).
+   Le mot de passe ne doit apparaître ni dans `compose.yaml` ni dans les variables d'environnement.
+3. Écrivez **`compose.override.yaml`**, qui publie le port `${{APP_PORT}}` de `docker1` vers le port
+   {app_port} de `app`.
+4. Lancez le projet et vérifiez depuis `client` : `curl http://docker1:{port}/` (la version, la
+   couleur, le compteur).
+""": """
+In `{root}` (sections @@ref:variables@@, @@ref:secrets@@ and @@ref:override@@):
+
+1. Write the file **`.env`** with `APP_VERSION={version}` and `APP_PORT={port}`, the file
+   **`app.env`** with `APP_COLOR={color}`, and the file `secrets/{secret}.txt` that contains the
+   password **`{password}`**.
+2. Write `compose.yaml` with two services, **without any published port**:
+   - **`app`**: the image built from `./app`, with the variable `APP_VERSION` taken from `.env` by
+     interpolation, the variables of `app.env` (`env_file`), `REDIS_HOST` that designates the
+     `redis` service, and the secret **`{secret}`**; the application reads the password from the
+     file that `REDIS_PASSWORD_FILE` designates;
+   - **`redis`**: `redis:alpine`, with the same secret, which requires this password
+     (`redis-server --requirepass ...`, the password read from the file of the secret).
+   The password must appear neither in `compose.yaml` nor in the environment variables.
+3. Write **`compose.override.yaml`**, which publishes port `${{APP_PORT}}` of `docker1` to port
+   {app_port} of `app`.
+4. Start the project and check from `client`: `curl http://docker1:{port}/` (the version, the
+   colour, the counter).
+""",
+        "La surcharge": "The override",
+        """
+- Le nom du fichier que `docker compose` lit automatiquement, sans option, après `compose.yaml` :
+  @@{override:[A-Za-z0-9_.-]+}@@
+""": """
+- The name of the file that `docker compose` reads automatically, without any option, after
+  `compose.yaml`: @@{override:[A-Za-z0-9_.-]+}@@
+""",
+        "le fichier .env": "the .env file",
+        "APP_VERSION et APP_COLOR dans app": "APP_VERSION and APP_COLOR in app",
+        "compose.override.yaml publie le port {p}": "compose.override.yaml publishes port {p}",
+        "le secret dans /run/secrets de app et redis": "the secret in /run/secrets of app and redis",
+        "redis exige le mot de passe": "redis requires the password",
+        "le mot de passe n'apparaît pas dans docker inspect": "the password does not appear in docker inspect",
+        "client reçoit la page de app (version, couleur, compteur)": "client receives the page of app (version, colour, counter)",
+        "fichier de surcharge": "override file",
+        "Partie 5 — santé et ordre de démarrage": "Part 5 — health and start order",
+        "Le projet health": "The health project",
+        """
+Dans `{root}`, écrivez `compose.yaml` avec deux services (section @@ref:health@@) :
+
+- **`db`** : `redis:alpine`, avec un **healthcheck** `redis-cli ping` ;
+- **`app`** : l'image construite à partir de `./app`, `REDIS_HOST` qui désigne `db`, un
+  **healthcheck** qui interroge `http://127.0.0.1:{port}/health` (avec `wget`), redémarré **en cas
+  d'échec**, et qui ne démarre que quand **`db` est sain**.
+
+Choisissez des intervalles courts (quelques secondes). Lancez le projet avec
+`docker compose up -d --wait` et vérifiez que les deux services sont `healthy`.
+""": """
+In `{root}`, write `compose.yaml` with two services (section @@ref:health@@):
+
+- **`db`**: `redis:alpine`, with a **healthcheck** `redis-cli ping`;
+- **`app`**: the image built from `./app`, `REDIS_HOST` that designates `db`, a **healthcheck**
+  that queries `http://127.0.0.1:{port}/health` (with `wget`), restarted **on failure**, and that
+  starts only once **`db` is healthy**.
+
+Choose short intervals (a few seconds). Start the project with `docker compose up -d --wait` and
+check that both services are `healthy`.
+""",
+        "L'option --wait": "The --wait option",
+        """
+- `docker compose up -d --wait` rend la main
+  @@{wait:>dès que les conteneurs sont créés>>>created|quand les services sont démarrés, et sains pour ceux qui ont un healthcheck>>>healthy|après le premier healthcheck de chaque service, réussi ou non>>>first}@@
+""": """
+- `docker compose up -d --wait` returns
+  @@{wait:>as soon as the containers are created>>>created|when the services are started, and healthy for those that have a healthcheck>>>healthy|after the first healthcheck of each service, successful or not>>>first}@@
+""",
+        "healthcheck redis-cli de db": "redis-cli healthcheck of db",
+        "healthcheck /health de app": "/health healthcheck of app",
+        "db et app sont healthy": "db and app are healthy",
+        "app attend que db soit sain": "app waits until db is healthy",
+        "app : restart on-failure": "app: restart on-failure",
+        "l'option --wait": "the --wait option",
+        "le projet health tourne": "the health project is running",
+        "Partie 6 — plusieurs répliques": "Part 6 — several replicas",
+        "Le projet scale": "The scale project",
+        """
+Dans `{root}` (section @@ref:scale@@) :
+
+1. Écrivez `compose.yaml` avec deux services :
+   - **`app`** : l'image construite à partir de `./app`, en **{replicas} répliques** (sans Redis :
+     chaque réplique compte ses visites en mémoire) ;
+   - **`proxy`** : `nginx:alpine`, le port **{port}** de `docker1` publié vers 80, une configuration
+     `nginx/default.conf` (à écrire) montée en lecture seule qui répartit les requêtes entre les
+     répliques de `app` (port {app_port}).
+2. Lancez le projet. Depuis `client`, `curl -s 'http://docker1:{port}/?i=[1-6]'` (six requêtes sur
+   une même connexion) doit montrer les noms de machine des {replicas} répliques.
+""": """
+In `{root}` (section @@ref:scale@@):
+
+1. Write `compose.yaml` with two services:
+   - **`app`**: the image built from `./app`, as **{replicas} replicas** (without Redis: each
+     replica counts its visits in memory);
+   - **`proxy`**: `nginx:alpine`, port **{port}** of `docker1` published to 80, a configuration
+     `nginx/default.conf` (to be written) mounted read-only that spreads the requests over the
+     replicas of `app` (port {app_port}).
+2. Start the project. From `client`, `curl -s 'http://docker1:{port}/?i=[1-6]'` (six requests on
+   the same connection) must show the host names of the {replicas} replicas.
+""",
+        "Le nom app": "The name app",
+        """
+- Le DNS intégré de Docker répond au nom `app`
+  @@{dns:>par l'adresse de la première réplique>>>first|par une adresse par réplique>>>one_per_replica|par l'adresse de docker1>>>host}@@
+- La commande qui passe à 5 répliques sans modifier le fichier : @@{scale:.+}@@
+""": """
+- Docker's embedded DNS answers the name `app`
+  @@{dns:>with the address of the first replica>>>first|with one address per replica>>>one_per_replica|with the address of docker1>>>host}@@
+- The command that goes to 5 replicas without modifying the file: @@{scale:.+}@@
+""",
+        "{n} répliques de app tournent": "{n} replicas of app are running",
+        "les répliques ne publient pas de port": "the replicas publish no port",
+        "proxy publie le port {p}": "proxy publishes port {p}",
+        "client voit les {n} répliques à travers proxy": "client sees the {n} replicas through proxy",
+        "réponse du DNS intégré": "answer of the embedded DNS",
+        "commande --scale": "--scale command",
+        "Bonus — déployer sur docker2": "Bonus — deploying on docker2",
+        "Le projet remote": "The remote project",
+        """
+`{root}/compose.yaml` décrit un petit site (sa page est écrite dans le fichier lui-même, une
+`config`). Depuis `docker1`, **sans copier aucun fichier sur `docker2`**, déployez-le sur
+`docker2` (section @@ref:contexts@@) :
+
+1. Créez le contexte **`{context}`** qui désigne le démon de `docker2` par SSH, en root (la clé SSH
+   de root sur `docker1` est déjà acceptée par `docker2` ; acceptez d'abord la clé d'hôte de
+   `docker2` par un premier `ssh root@docker2`).
+2. Lancez le projet sur `docker2` par ce contexte, depuis `{root}`.
+3. Vérifiez depuis `client` : `curl http://docker2:{port}/`.
+""": """
+`{root}/compose.yaml` describes a small site (its page is written in the file itself, as a
+`config`). From `docker1`, **without copying any file to `docker2`**, deploy it on `docker2`
+(section @@ref:contexts@@):
+
+1. Create the context **`{context}`** that designates the daemon of `docker2` over SSH, as root
+   (root's SSH key on `docker1` is already accepted by `docker2`; first accept the host key of
+   `docker2` with an initial `ssh root@docker2`).
+2. Start the project on `docker2` through this context, from `{root}`.
+3. Check from `client`: `curl http://docker2:{port}/`.
+""",
+        "le contexte {c} désigne docker2 par SSH": "the context {c} designates docker2 over SSH",
+        "le projet remote tourne sur docker2": "the remote project is running on docker2",
+        "déployé depuis le répertoire de docker1": "deployed from the directory of docker1",
+        "client reçoit la page de docker2": "client receives the page of docker2",
     },
 }

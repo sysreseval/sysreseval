@@ -561,7 +561,42 @@ def _all_texts(grade, ns):
     return texts
 
 
+def _instructor_literals():
+    """The tr() literals written inside the instructor(...) calls (removed with them by strip-instructor)."""
+    import ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 class TestTexts:
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py), the instructor texts included."""
+        import ast
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        literals = _instructor_literals()
+        assert len(literals) == 10 and set(literals) <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 8
+        assert lab.title.resolve('en') == "NTP and chrony: time synchronisation"
+        for state in [f'solve_{part}' for part in PARTS] + ['final']:
+            description = getattr(lab.NetScheme, state)._sre_state_description
+            assert _text(description, 'en') != _text(description, 'fr'), state
+        g1, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert has_instructor(fr) and has_instructor(en) and fr != en, _text(q.title)
+            assert '**Solution.**' in en or '**For the instructor.**' in en, _text(q.title)
+            markdown_to_html(en, show_instructor=True)
+
     def test_hashes_and_fragments(self, lab, data, tmp_pub_dir):
         g0, ns0 = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)
         g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
@@ -636,6 +671,9 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('ntp_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (81, 6)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())

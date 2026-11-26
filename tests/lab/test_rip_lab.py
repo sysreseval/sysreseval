@@ -10,6 +10,7 @@ pings and the document of the hidden probe.  Covers the data, the topology, the 
 two-pass grading contract (nothing done: 0; the final state: 100 + 6 bonus points; variants) and
 the texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -1140,13 +1141,25 @@ class TestGrading:
 # ---------------------------------------------------------------------------
 
 
-def _all_texts(grade, ns):
-    texts = [('informations', _text(ns.informations))]
+def _all_texts(grade, ns, lang='fr'):
+    texts = [('informations', _text(ns.informations, lang))]
     for q in grade.get_questions_ordered():
-        texts.append((_text(q.title), _text(q.description)))
+        texts.append((_text(q.title, lang), _text(q.description, lang)))
     for e in grade.get_grade_list():
-        texts.append((str(e.title), _text(e.description) if e.description else ''))
+        texts.append((str(e.title), _text(e.description, lang) if e.description else ''))
     return texts
+
+
+def _instructor_literals():
+    """The literals of the tr() calls inside instructor(...), one per call."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 class TestTexts:
@@ -1216,14 +1229,45 @@ class TestTexts:
         result = strip_source(source)
         assert result.calls == source.count(b'instructor(tr(') == 18 and result.warnings == []
         assert b'Solution' not in result.data and b"Pour l'enseignant" not in result.data
+        assert b'For the instructor' not in result.data
         stripped = tmp_path / 'rip_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('rip_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the instructor texts goes with them, every other entry stays
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 6)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py); the English texts are formatted, render,
+        and never name the hidden machines to a student."""
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+        assert all(english.values())
+        # two titles read the same in both languages
+        assert {key for key, value in english.items() if value == key} == {"Observations", "RIPng (bonus)"}
+        literals = _instructor_literals()
+        assert len(literals) == 18 and set(literals) <= set(english)
+        assert all(english[t].lstrip().startswith(('**Solution.**', '**For the instructor.**')) for t in literals)
+        assert lab.title.resolve('en') == "RIP: dynamic routing"
+        g0, ns0 = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)
+        student = "\n".join(text for _where, text in _all_texts(g0, ns0, 'en'))
+        for secret in (str(data.ips.intruder.ip), str(data.nets.ghost), 'intruder', 'probe'):
+            assert secret not in student, secret
+        g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for (where, fr), (_, en) in zip(_all_texts(g1, ns1), _all_texts(g1, ns1, 'en')):
+            assert en != fr, where
+            assert "{'" not in en and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", en), where
+            markdown_to_html(en, show_instructor=True)
+            markdown_to_html(en, show_instructor=False)
 
     def test_english_identifiers(self, lab, data):
         """Machines, networks, states, data fields, grade elements and part keys are English."""

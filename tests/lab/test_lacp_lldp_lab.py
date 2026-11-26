@@ -720,9 +720,29 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('lacp_lldp_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - 14
+        assert not any(v.lstrip().startswith(('**Solution', '**For the instructor.**')) for v in kept.values())
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 6)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py)."""
+        import ast
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        assert sum(v.lstrip().startswith(('**Solution', '**For the instructor.**')) for v in english.values()) == 14
+        assert _text(lab.title, 'en') == "LACP and LLDP: link aggregation (bonding) and neighbour discovery"
+        assert _text(lab.NetScheme.ab_cut._sre_state_description, 'en').startswith('Part 2: silently cut')
+        g1, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert fr != en and has_instructor(fr) and has_instructor(en), _text(q.title)
+            assert "{'" not in en and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", en), _text(q.title)
 
     def test_english_identifiers(self, lab, data):
         """Machines, networks, states, data fields, grade elements, part keys and form fields are English."""

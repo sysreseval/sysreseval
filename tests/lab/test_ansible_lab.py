@@ -11,6 +11,7 @@ needs a new capture (live).  Covers the data, the topology, the states, the two-
 contract (nothing done: 0; everything: 95 + 6 bonus points; **each part alone gives exactly its
 points and everything but one part the rest**) and the texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -73,6 +74,18 @@ def _running_name():
 
 def _text(t, lang='fr'):
     return t.resolve(lang) if hasattr(t, 'resolve') else str(t)
+
+
+def _instructor_literals():
+    """The tr() strings of the instructor() calls."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 def _state_ops(ns, name):
@@ -418,17 +431,40 @@ class TestTexts:
         names = [f['name'] for q in grade.get_questions_ordered() for f in getattr(q, 'fields', None) or []]
         assert names == ['serial_web1', 'serial_web2', 'serial_lb', 'serial_gw', 'which', 'merged', 'when', 'ok']
 
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked
+        for every lab of the directory by test_draft_misc_translations.py)."""
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        assert len(set(_instructor_literals())) == 11 and set(_instructor_literals()) <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 11
+        assert lab.title.resolve('en') == "Ansible: configuration automation"
+        assert lab.NetScheme.solve_vault._sre_state_description.resolve('en') == "Part 5: solution (Ansible Vault)"
+        # the comments of the solution commands follow the language, the French text is unchanged
+        grade, _ = _simulate(lab, data, instructor_mode=True)
+        fr = "\n".join(_text(q.description, 'fr') for q in grade.get_questions_ordered())
+        en = "\n".join(_text(q.description, 'en') for q in grade.get_questions_ordered())
+        assert f"# mot de passe : {data.ansible_password}\n" in fr and "# dans [defaults]\n" in fr
+        assert f"# password: {data.ansible_password}\n" in en and "# in [defaults]\n" in en
+        assert "mot de passe" not in en and "dans [defaults]" not in en
+
     def test_strip_instructor(self, lab, data, tmp_pub_dir, tmp_path):
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 11 and result.warnings == []
+        assert result.calls == source.count(b'instructor(tr(') + source.count(b'instructor(_by_language(tr(') == 11
+        assert result.warnings == []
         assert b'**Solution' not in result.data and b"Pour l'enseignant" not in result.data
         stripped = tmp_path / 'ansible_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('ansible_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(module, data, instructor_mode=True)
         assert _totals(grade) == (95, 6)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())

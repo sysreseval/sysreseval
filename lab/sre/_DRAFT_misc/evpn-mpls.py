@@ -22,6 +22,7 @@ Grading reads the EVPN and VPNv4 json of vtysh (lib/frr.py), the VXLAN devices a
 databases (lib/vxlan.py), the VRF tables, the MPLS counters, the fragmentation counters of the PEs and
 real pings.  The states ``solve_<part>`` apply the reference solution of one part, ``final`` all of
 them.  Facts checked live: ``.claude/rules/lib-vxlan.md``, ``.claude/rules/lib-mpls.md``.
+Texts are French (``tr()``) with their English in ``_TRANSLATIONS``, identifiers English.
 """
 import random
 import re
@@ -30,6 +31,7 @@ from ipaddress import IPv4Address, IPv4Interface, IPv4Network
 from typing import Dict, List
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks
@@ -46,6 +48,7 @@ from vxlan import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
+# evaluated at import time, before _TRANSLATIONS (end of the file): the English inline too
 title = tr("EVPN et MPLS : interconnexion de data centres", en="EVPN and MPLS: data centre interconnection")
 shared_path = True
 allow_self_grade = True
@@ -866,22 +869,26 @@ Après une correction, une session BGP qui attendait peut mettre jusqu'à deux m
             self.file(r, "/etc/frr/frr.conf", self._frr_conf(r), permissions=0o640, owner="frr:frr")
             self.cmd(r, "systemctl start frr", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (VNI étendu au-dessus du L3VPN)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (VNI étendu au-dessus du L3VPN)",
+                                                  en="Part 1: solution (VNI stretched over the L3VPN)"))
     def solve_stretch(self):
         self._apply_stretch()
         self.cmd('st_p', f"sleep {OSPF_WAIT}", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (passerelle EVPN - L3VPN)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (passerelle EVPN - L3VPN)",
+                                                  en="Part 2: solution (EVPN - L3VPN gateway)"))
     def solve_gateway(self):
         self._apply_gateway()
         self.cmd('gw_border', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (dépannage)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (dépannage)",
+                                                  en="Part 3: solution (troubleshooting)"))
     def solve_fix(self):
         self._apply_fix()
         self.cmd('fix_dc1', f"sleep {CONVERGE_WAIT}", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (routes exportées vers le VPN, bonus)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (routes exportées vers le VPN, bonus)",
+                                                  en="Part 4: solution (routes exported to the VPN, bonus)"))
     def solve_aggregate(self):
         self._apply_aggregate()
         self.cmd('ag_border', f"sleep {CONVERGE_WAIT}", step=2)
@@ -916,25 +923,42 @@ def _rt(s) -> str:
     return found[0] if found else ''
 
 
-def _vtysh_text(solution: Dict[str, List[str]]) -> str:
+# the colon after the name of a router in the solutions: French typography puts a space before it
+_COLONS = (('fr', " :"), ('en', ":"))
+
+
+def _vtysh_text(solution: Dict[str, List[str]]) -> Dict[str, str]:
+    """The reference configuration of a part, as vtysh sessions (one block per router), one text per
+    language for _by_language()."""
     blocks = []
     for router, cmds in solution.items():
         body = "\n".join(["configure terminal"] + [f" {c}" for c in cmds] + ["end", "write"])
-        blocks.append(f"`{router}` :\n\n```\n{body}\n```")
-    return "\n\n".join(blocks)
+        blocks.append((router, f"\n\n```\n{body}\n```"))
+    return {lang: "\n\n".join(f"`{router}`{colon}{text}" for router, text in blocks) for lang, colon in _COLONS}
 
 
-def _mixed_text(solution: Dict[str, Dict[str, List[str]]]) -> str:
+def _mixed_text(solution: Dict[str, Dict[str, List[str]]]) -> Dict[str, str]:
+    """The reference solution of a part, shell commands then a vtysh session per router, one text per
+    language for _by_language()."""
     blocks = []
     for router, parts in solution.items():
-        text = f"`{router}` :\n\n"
+        text = "\n\n"
         if parts['sh']:
             text += "```\n" + "\n".join(parts['sh']) + "\n```\n\n"
         if parts['vtysh']:
             text += "```\n" + "\n".join(["configure terminal"] + [f" {c}" for c in parts['vtysh']]
                                         + ["end", "write"]) + "\n```"
-        blocks.append(text.rstrip())
-    return "\n\n".join(blocks)
+        blocks.append((router, text.rstrip()))
+    return {lang: "\n\n".join(f"`{router}`{colon}{text}" for router, text in blocks) for lang, colon in _COLONS}
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value gives one value per language (the
+    tables of the sites and of the addressing plan, with their texts in French or in English; the
+    solutions of _mixed_text and _vtysh_text, French typography)."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
 
 
 def _vpn_paths(vpn: Dict[str, Dict[str, list]], prefix, nexthop=None) -> List[dict]:
@@ -1044,17 +1068,21 @@ class Grade(Grade0):
         ag_ping = self._ping('ag_h1', ip('ag_h2'), step=2)
 
         # ---------------- texts shared by the questions ---------------------------
-        sites = [('st', "1 — VNI étendu au-dessus d'un L3VPN",
-                  "les VTEP `st_dc1` (AS 65101), `st_dc2` (AS 65102), l'opérateur `st_pe1`, `st_p`, `st_pe2`, les "
-                  "hôtes `st_h1`, `st_h2`"),
-                 ('gw', "2 — passerelle EVPN ↔ L3VPN",
-                  "le leaf `gw_leaf`, la passerelle `gw_border`, `gw_p`, `gw_pe`, les hôtes `gw_h1` (data centre), "
-                  "`gw_h2` (site distant)"),
-                 ('fix', "3 — dépannage", "`fix_dc1`, `fix_dc2`, `fix_pe1`, `fix_p`, `fix_pe2`, les hôtes `fix_h1`, "
-                                          "`fix_h2`"),
-                 ('ag', "4 — ce qui part vers le VPN (bonus)", "`ag_leaf`, `ag_border`, `ag_p`, `ag_pe`, les hôtes "
-                                                              "`ag_h1`, `ag_h2`")]
-        site_rows = "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites)
+        sites = [('st', tr("1 — VNI étendu au-dessus d'un L3VPN"),
+                  tr("les VTEP `st_dc1` (AS 65101), `st_dc2` (AS 65102), l'opérateur `st_pe1`, `st_p`, `st_pe2`, "
+                     "les hôtes `st_h1`, `st_h2`")),
+                 ('gw', tr("2 — passerelle EVPN ↔ L3VPN"),
+                  tr("le leaf `gw_leaf`, la passerelle `gw_border`, `gw_p`, `gw_pe`, les hôtes `gw_h1` (data "
+                     "centre), `gw_h2` (site distant)")),
+                 ('fix', tr("3 — dépannage"), tr("`fix_dc1`, `fix_dc2`, `fix_pe1`, `fix_p`, `fix_pe2`, les hôtes "
+                                                 "`fix_h1`, `fix_h2`")),
+                 ('ag', tr("4 — ce qui part vers le VPN (bonus)"), tr("`ag_leaf`, `ag_border`, `ag_p`, `ag_pe`, les "
+                                                                      "hôtes `ag_h1`, `ag_h2`"))]
+        # one table per language (its cells are tr() texts)
+        languages = ('fr', 'en')
+        site_rows = {lang: "\n".join(f"| {part.resolve(lang)} | `{site}_*` | {machines.resolve(lang)} |"
+                                     for site, part, machines in sites)
+                     for lang in languages}
         members: Dict[str, List[str]] = {n: [] for n in LINKS}
         for r, nets in ROUTER_IFACES.items():
             for i, n in enumerate(nets):
@@ -1064,22 +1092,27 @@ class Grade(Grade0):
         rows += [f"| `{site}_lo` | `{net(site + '_lo')}` | "
                  + ", ".join(f"`{r}` `{lo(r)}/32`" for r in LOOPBACKS if site_of(r) == site) + " |"
                  for site in SITE_NUMBER]
-        labels = {'st_net': "site 1, VNI étendu", 'gw_net': "site 2, data centre", 'gw_remote_net': "site 2, site distant",
-                  'fix_net': "site 3, VNI étendu", 'ag_net': "site 4, data centre", 'ag_remote_net': "site 4, site distant"}
-        for subnet, label in labels.items():
-            hosts = ", ".join(f"`{h}` (`{ip(h)}`)" for h, (_n, s, _g) in HOSTS.items() if s == subnet)
-            gws = {'gw_net': ('gw_leaf', 'gw_leaf_gw'), 'gw_remote_net': ('gw_pe', 'gw_pe_gw'),
-                   'ag_net': ('ag_leaf', 'ag_leaf_gw'), 'ag_remote_net': ('ag_pe', 'ag_pe_gw')}
-            if subnet in gws:
-                router, key = gws[subnet]
-                hosts += f", `{router}` (`{getattr(d.ips, key).ip}`, passerelle)"
-            rows.append(f"| {label} | `{net(subnet)}` | {hosts} |")
-        addressing = "\n".join(rows)
+        labels = {'st_net': tr("site 1, VNI étendu"), 'gw_net': tr("site 2, data centre"),
+                  'gw_remote_net': tr("site 2, site distant"), 'fix_net': tr("site 3, VNI étendu"),
+                  'ag_net': tr("site 4, data centre"), 'ag_remote_net': tr("site 4, site distant")}
+        gateway = tr("passerelle")
+        gws = {'gw_net': ('gw_leaf', 'gw_leaf_gw'), 'gw_remote_net': ('gw_pe', 'gw_pe_gw'),
+               'ag_net': ('ag_leaf', 'ag_leaf_gw'), 'ag_remote_net': ('ag_pe', 'ag_pe_gw')}
+        addressing = {}
+        for lang in languages:
+            subnet_rows = []
+            for subnet, label in labels.items():
+                hosts = ", ".join(f"`{h}` (`{ip(h)}`)" for h, (_n, s, _g) in HOSTS.items() if s == subnet)
+                if subnet in gws:
+                    router, key = gws[subnet]
+                    hosts += f", `{router}` (`{getattr(d.ips, key).ip}`, {gateway.resolve(lang)})"
+                subnet_rows.append(f"| {label.resolve(lang)} | `{net(subnet)}` | {hosts} |")
+            addressing[lang] = "\n".join(rows + subnet_rows)
 
         self.question_dummy(
             title=tr("Organisation du TP"),
             hash="a6c8fad83747c685",
-            description=tr("""
+            description=_by_language(tr("""
 Lisez l'onglet **Informations** : il présente l'interconnexion de data centres au-dessus d'un réseau
 MPLS, avec Linux et FRR. Le TP suppose connus VXLAN et EVPN (TP « VXLAN et EVPN dans un data
 centre ») et les VPN BGP/MPLS (TP « VPN MPLS/BGP »).
@@ -1127,7 +1160,7 @@ sur le schéma. L'opérateur est l'AS **{pas}** :
 
 **Évaluation.** Chaque évaluation lit vos réponses, l'état de BGP (EVPN, VPNv4), les tables du noyau,
 les compteurs MPLS et de fragmentation, puis envoie des `ping`. Elle dure une vingtaine de secondes.
-""").format(site_rows=site_rows, addressing=addressing, pas=PROVIDER_AS, dci=VRF_DCI, vrf=VRF, st_vni=d.st_vni,
+"""), site_rows=site_rows, addressing=addressing, pas=PROVIDER_AS, dci=VRF_DCI, vrf=VRF, st_vni=d.st_vni,
             rt_dci=rt(d.rt_dci), gw_vni=d.gw_vni, gw_l3=d.gw_l3vni, rt_t=rt(d.rt_tenant), rd_pe=rt(d.rd_pe),
             rd_b=rt(d.rd_border), fix_vni=d.fix_vni, ag_vni=d.ag_vni, ag_l3=d.ag_l3vni)
             + instructor(tr("""
@@ -1167,7 +1200,7 @@ apprentissage) dans un pont avec `eth1`, vers son hôte (`st_h1`, `st_h2`, sous-
 3. Faites passer les paquets de 1500 octets des hôtes (`ping -M do -s 1472`) **sans fragmentation**,
    sans changer la MTU des hôtes.
 """).format(dci=VRF_DCI, vni=d.st_vni, subnet=net('st_net'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1183,7 +1216,7 @@ la route de type 3 de l'autre et l'adresse MAC de l'hôte distant en type 2), `s
 (2 : `st_p` reçoit des paquets étiquetés pendant le ping), `st_mtu` (6 : ping de 1500 octets avec DF,
 sans fragment créé par `st_pe1` ni `st_pe2`) ; `st_q_labels`, `st_q_overhead`, `st_q_rt` (1 chacun) ;
 pour l'enseignant seulement : `st_q_import`, `st_q_core`, `st_q_policy` (1 chacun).
-""").format(solution=_mixed_text(ns.solution_stretch()), vni=d.st_vni)),
+"""), solution=_mixed_text(ns.solution_stretch()), vni=d.st_vni)),
         )
         cheat_st = {'labels': '2', 'overhead': '58', 'rt': f"{DC_AS['dc2']}:{d.st_vni}", 'import': 'vni',
                     'core': 'none', 'policy': 'nothing'}
@@ -1285,7 +1318,7 @@ L3VNI. `gw_pe` a la VRF `{vrf}` du site distant (sous-réseau `{remote}`, hôte 
    paquets sur `gw_u1` et `gw_l1`.
 """).format(dc=net('gw_net'), vrf=VRF, l3=d.gw_l3vni, remote=net('gw_remote_net'), rt_t=rt(d.rt_tenant),
             rd_b=rt(d.rd_border))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1301,7 +1334,7 @@ centre en VPNv4 par `gw_border`, et sa route dans la VRF avec deux labels), `gw_
 `gw_border`), `gw_border_routes` (2 : sur `gw_border`, la route du site distant avec deux labels),
 `gw_ping` (6), `gw_mpls` (2 : `gw_p` reçoit des paquets étiquetés pendant le ping) ; `gw_q_labels`,
 `gw_q_vni` (1 chacun) ; pour l'enseignant seulement : `gw_q_reoriginate`, `gw_q_core` (1 chacun).
-""").format(solution=_mixed_text(ns.solution_gateway()), l3=d.gw_l3vni)),
+"""), solution=_mixed_text(ns.solution_gateway()), l3=d.gw_l3vni)),
         )
         cheat_gw = {'labels': '2', 'vni': str(d.gw_l3vni), 'reoriginate': 'type5_self', 'core': 'none'}
         q2 = self.question_form(
@@ -1389,7 +1422,7 @@ data centres et côté opérateur (section @@ref:debug@@).
 Trouvez et corrigez chaque panne sans tout reconfigurer : vérifiez de bas en haut, des interfaces
 de bouclage des VTEP jusqu'aux routes EVPN.
 """).format(dci=VRF_DCI, vni=d.fix_vni, subnet=net('fix_net'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1401,7 +1434,7 @@ EVPN sur `fix_dc2`), `fix_loopback` (3 : `fix_dc1` a une route vers l'interface 
 `fix_dc2`), `fix_mpls_input` (3 : entrée MPLS de `{fix_if}` sur `fix_p`), `fix_session` (2 : session
 EVPN établie, avec politique), `fix_ping` (4) ; pour l'enseignant seulement : `fix_q_multihop`,
 `fix_q_input` (1 chacun).
-""").format(solution=_mixed_text(ns.solution_fix()), fix_if=iface('fix_p', 'fix_l2'))),
+"""), solution=_mixed_text(ns.solution_fix()), fix_if=iface('fix_p', 'fix_l2'))),
         )
         cheat_fix = {'multihop': 'connected', 'input': 'dropped'}
         q3 = self.question_form(
@@ -1478,7 +1511,7 @@ centre, une route /32 par hôte connu de `ag_leaf` (section @@ref:leak@@).
 2. Sur `ag_border`, n'exportez plus vers le VPN que les préfixes plus courts qu'un /32, sans toucher
    à `ag_leaf` ni à `ag_pe`. `ag_h1` doit toujours joindre `ag_h2`.
 """).format(dc=net('ag_net'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1486,7 +1519,7 @@ centre, une route /32 par hôte connu de `ag_leaf` (section @@ref:leak@@).
 Évaluation (bonus) : `ag_no_host` (4 : `ag_pe` a le sous-réseau du data centre par `ag_border`, et
 aucune route /32 de ce sous-réseau, juste après un `ping` d'`ag_h1` vers sa passerelle), `ag_ping` (2 :
 `ag_h1` joint `ag_h2`, les /32 filtrées).
-""").format(solution=_vtysh_text(ns.solution_aggregate()))),
+"""), solution=_vtysh_text(ns.solution_aggregate()))),
         )
         # the subnet is exported from the start: it only counts with the host routes gone
         subnet_ok = bool(_vpn_paths(ag_vpn, net('ag_net'), lo('ag_border')))
@@ -1501,4 +1534,933 @@ aucune route /32 de ce sous-réseau, juste après un `ping` d'`ag_h1` vers sa pa
         )
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "EVPN et MPLS : interconnexion de data centres": "EVPN and MPLS: data centre interconnection",
+    """
+**Sommaire**
+""": """
+**Contents**
+""",
+    "Interconnecter des data centres": "Interconnecting data centres",
+    """
+Une entreprise ou un hébergeur exploite souvent plusieurs data centres : pour la redondance, pour
+rapprocher les services des utilisateurs. L'**interconnexion de data centres** (DCI, *Data Centre
+Interconnect*) doit transporter :
+
+- du **niveau 2** : un même VNI (un même sous-réseau) de part et d'autre, pour déplacer une machine
+  virtuelle d'un site à l'autre sans changer son adresse, ou pour un cluster qui exige un segment
+  commun ;
+- du **niveau 3** : les sous-réseaux d'un client (une VRF) joignables depuis ses autres sites,
+  y compris des sites qui ne sont pas des data centres (agences, sièges).
+
+Entre les sites, le transport est souvent le réseau d'un **opérateur**, et ce réseau est un cœur
+**MPLS** qui vend des VPN de niveau 3 (L3VPN BGP/MPLS) ou de niveau 2.
+
+| solution | ce qui traverse l'opérateur | plan de données |
+|----------|-----------------------------|-----------------|
+| fibre noire, longueur d'onde | les trames, telles quelles | celui du data centre |
+| VXLAN au-dessus d'un L3VPN | des paquets IP entre VTEP (UDP 4789), étiquetés dans le cœur | VXLAN puis MPLS |
+| EVPN-MPLS (RFC 7432) | des trames étiquetées : un label par segment (EVI) au lieu d'un VNI | MPLS |
+| VPLS, pseudowires (RFC 4761, 4762, 4448) | des trames étiquetées, émulation d'un commutateur ou d'un câble | MPLS |
+| passerelle EVPN ↔ L3VPN | des paquets IP du client, dans le VPN | VXLAN dans le data centre, MPLS chez l'opérateur |
+
+EVPN décrit les deux plans de données, VXLAN et MPLS, avec le même plan de contrôle BGP (les mêmes
+types de route). Le noyau Linux sait commuter des labels pour IP (routes `encap mpls`, table des
+labels), mais **pas pour des trames Ethernet** : ni EVPN-MPLS, ni VPLS, ni pseudowires. Ce TP réalise
+donc les deux solutions qui reposent sur VXLAN : un VNI étendu au-dessus d'un L3VPN (section
+@@ref:vxlan-over-l3vpn@@), et une passerelle EVPN ↔ L3VPN (section @@ref:gateway@@).
+""": """
+A company or a hosting provider often runs several data centres: for redundancy, to bring the
+services closer to the users. The **data centre interconnection** (DCI, *Data Centre
+Interconnect*) must carry:
+
+- **layer 2**: the same VNI (the same subnet) on both sides, to move a virtual machine from one
+  site to the other without changing its address, or for a cluster that requires a common
+  segment;
+- **layer 3**: the subnets of a customer (a VRF) reachable from its other sites, including sites
+  that are not data centres (branches, headquarters).
+
+Between the sites, the transport is often the network of an **operator**, and this network is an
+**MPLS** core that sells layer-3 VPNs (BGP/MPLS L3VPN) or layer-2 VPNs.
+
+| solution | what crosses the operator | data plane |
+|----------|---------------------------|------------|
+| dark fibre, wavelength | the frames, as they are | that of the data centre |
+| VXLAN over an L3VPN | IP packets between VTEPs (UDP 4789), labelled in the core | VXLAN then MPLS |
+| EVPN-MPLS (RFC 7432) | labelled frames: one label per segment (EVI) instead of a VNI | MPLS |
+| VPLS, pseudowires (RFC 4761, 4762, 4448) | labelled frames, emulation of a switch or of a cable | MPLS |
+| EVPN ↔ L3VPN gateway | IP packets of the customer, in the VPN | VXLAN in the data centre, MPLS at the operator |
+
+EVPN describes both data planes, VXLAN and MPLS, with the same BGP control plane (the same route
+types). The Linux kernel can switch labels for IP (`encap mpls` routes, label table), but **not for
+Ethernet frames**: neither EVPN-MPLS, nor VPLS, nor pseudowires. This lab therefore builds the two
+solutions that rely on VXLAN: a VNI stretched over an L3VPN (section @@ref:vxlan-over-l3vpn@@), and
+an EVPN ↔ L3VPN gateway (section @@ref:gateway@@).
+""",
+    "Rappels : VXLAN, EVPN, L3VPN": "Reminders: VXLAN, EVPN, L3VPN",
+    """
+- **VXLAN** (RFC 7348) transporte une trame Ethernet dans UDP (port 4789) entre deux **VTEP** ; le
+  **VNI** (24 bits) désigne le segment. Linux : une interface `vxlan` (`id`, `local`, `dstport 4789`,
+  `nolearning` avec EVPN) dans un pont avec les interfaces des hôtes.
+- **EVPN** (RFC 7432, 8365) annonce par MP-BGP, famille **L2VPN EVPN**, les VNI de chaque VTEP (type 3 :
+  la liste d'inondation), les adresses MAC et IP des hôtes (type 2) et des préfixes (type 5). Avec FRR :
+  `advertise-all-vni` dans `address-family l2vpn evpn`. RT automatique d'un VNI : `AS:VNI`.
+- **IRB symétrique** : les sous-réseaux d'un client forment une VRF ; entre VTEP, les paquets routés
+  utilisent le **L3VNI** de la VRF (`vrf X` / ` vni N` dans FRR, une interface `vxlan` et un pont dans
+  la VRF), avec la *router MAC* de chaque VTEP.
+- **L3VPN BGP/MPLS** (RFC 4364) : chaque PE range les routes d'un client dans une VRF ; les PE les
+  échangent en **VPNv4** (RD, RT, label VPN) ; un paquet traverse le cœur avec deux labels, le label
+  de transport vers le PE de sortie (LDP) et le label VPN qui désigne la VRF. Le CE parle IP (ici eBGP)
+  avec son PE.
+""": """
+- **VXLAN** (RFC 7348) carries an Ethernet frame in UDP (port 4789) between two **VTEPs**; the
+  **VNI** (24 bits) identifies the segment. Linux: a `vxlan` interface (`id`, `local`, `dstport 4789`,
+  `nolearning` with EVPN) in a bridge with the interfaces towards the hosts.
+- **EVPN** (RFC 7432, 8365) advertises through MP-BGP, family **L2VPN EVPN**, the VNIs of each VTEP
+  (type 3: the flood list), the MAC and IP addresses of the hosts (type 2) and prefixes (type 5). With
+  FRR: `advertise-all-vni` in `address-family l2vpn evpn`. Automatic RT of a VNI: `AS:VNI`.
+- **Symmetric IRB**: the subnets of a customer form a VRF; between VTEPs, the routed packets use the
+  **L3VNI** of the VRF (`vrf X` / ` vni N` in FRR, a `vxlan` interface and a bridge in the VRF), with
+  the *router MAC* of each VTEP.
+- **BGP/MPLS L3VPN** (RFC 4364): each PE stores the routes of a customer in a VRF; the PEs exchange
+  them as **VPNv4** (RD, RT, VPN label); a packet crosses the core with two labels, the transport
+  label towards the egress PE (LDP) and the VPN label that identifies the VRF. The CE speaks IP (here
+  eBGP) with its PE.
+""",
+    "VXLAN au-dessus d'un L3VPN": "VXLAN over an L3VPN",
+    """
+Les deux data centres sont deux **sites d'un même L3VPN** : chaque VTEP est un CE, qui annonce son
+interface de bouclage à son PE par eBGP. Pour le VPN, les paquets VXLAN ne sont que des paquets IP
+entre deux adresses de bouclage de clients. Sur le lien entre le PE d'entrée et le routeur P :
+
+```
+| Ethernet | label LDP | label VPN | IPv4 VTEP -> VTEP | UDP 4789 | VXLAN (VNI) | trame de l'hôte |
+| 14       | 4         | 4         | 20                | 8        | 8           | 14 + IP         |
+```
+
+- Le cœur ne voit ni le VNI, ni les adresses MAC : il commute des labels vers le PE de sortie. Le
+  PE ne voit qu'un paquet IP de client.
+- Le plan de contrôle EVPN des VTEP passe lui aussi dans le VPN : une session BGP entre les deux
+  interfaces de bouclage, que le VPN transporte comme le reste.
+- L'opérateur ne sait rien d'EVPN : ajouter un VNI ne change rien chez lui.
+""": """
+The two data centres are two **sites of the same L3VPN**: each VTEP is a CE, which announces its
+loopback interface to its PE over eBGP. For the VPN, the VXLAN packets are just IP packets between
+two loopback addresses of customers. On the link between the ingress PE and the P router:
+
+```
+| Ethernet | LDP label | VPN label | IPv4 VTEP -> VTEP | UDP 4789 | VXLAN (VNI) | host's frame    |
+| 14       | 4         | 4         | 20                | 8        | 8           | 14 + IP         |
+```
+
+- The core sees neither the VNI nor the MAC addresses: it switches labels towards the egress PE. The
+  PE only sees an IP packet of a customer.
+- The EVPN control plane of the VTEPs goes through the VPN too: a BGP session between the two
+  loopback interfaces, which the VPN carries like everything else.
+- The operator knows nothing about EVPN: adding a VNI changes nothing on its side.
+""",
+    "Une session EVPN entre deux AS": "An EVPN session between two ASes",
+    """
+Chaque data centre a son propre AS : la session EVPN entre les VTEP est une session **eBGP**, entre
+deux adresses qui ne sont pas sur le même lien. Trois points à régler :
+
+- **`ebgp-multihop`** : par défaut, FRR n'établit une session eBGP qu'avec un voisin directement
+  connecté, et envoie ses paquets avec un TTL de 1 ; `neighbor X ebgp-multihop 5` lève les deux ;
+- **`update-source lo`** : la session part de l'interface de bouclage, que l'autre VTEP connaît ;
+- **une politique d'entrée et de sortie** : la RFC 8212 s'applique aussi à la famille L2VPN EVPN :
+  sans route-map, FRR établit la session mais n'échange rien (`(Policy)` dans `show bgp l2vpn evpn
+  summary`).
+
+```
+configure terminal
+route-map ALL permit 10
+exit
+router bgp 65101
+ neighbor 10.0.31.12 remote-as 65102
+ neighbor 10.0.31.12 ebgp-multihop 5
+ neighbor 10.0.31.12 update-source lo
+ address-family l2vpn evpn
+  neighbor 10.0.31.12 activate
+  neighbor 10.0.31.12 route-map ALL in
+  neighbor 10.0.31.12 route-map ALL out
+  advertise-all-vni
+ exit-address-family
+exit
+end
+write
+```
+
+La RT automatique d'un VNI vaut `AS:VNI` : les deux VTEP exportent donc des RT différentes
+(`65101:100` et `65102:100`). FRR importe tout de même les routes : pour une RT automatique, il ne
+compare que la partie VNI. Avec des RT fixées à la main (bloc `vni N` / `route-target`), il faut
+qu'elles correspondent.
+
+Avec `no bgp default ipv4-unicast`, le voisin n'est actif que dans la famille EVPN : le VTEP n'échange
+pas de routes IPv4 avec l'autre data centre par cette session (le VPN s'en charge).
+""": """
+Each data centre has its own AS: the EVPN session between the VTEPs is an **eBGP** session, between
+two addresses that are not on the same link. Three points to settle:
+
+- **`ebgp-multihop`**: by default, FRR only establishes an eBGP session with a directly connected
+  neighbour, and sends its packets with a TTL of 1; `neighbor X ebgp-multihop 5` lifts both;
+- **`update-source lo`**: the session starts from the loopback interface, which the other VTEP knows;
+- **an inbound and outbound policy**: RFC 8212 also applies to the L2VPN EVPN family: without a
+  route-map, FRR establishes the session but exchanges nothing (`(Policy)` in `show bgp l2vpn evpn
+  summary`).
+
+```
+configure terminal
+route-map ALL permit 10
+exit
+router bgp 65101
+ neighbor 10.0.31.12 remote-as 65102
+ neighbor 10.0.31.12 ebgp-multihop 5
+ neighbor 10.0.31.12 update-source lo
+ address-family l2vpn evpn
+  neighbor 10.0.31.12 activate
+  neighbor 10.0.31.12 route-map ALL in
+  neighbor 10.0.31.12 route-map ALL out
+  advertise-all-vni
+ exit-address-family
+exit
+end
+write
+```
+
+The automatic RT of a VNI is `AS:VNI`: the two VTEPs therefore export different RTs (`65101:100` and
+`65102:100`). FRR imports the routes all the same: for an automatic RT, it only compares the VNI
+part. With RTs set by hand (a `vni N` / `route-target` block), they must match.
+
+With `no bgp default ipv4-unicast`, the neighbour is only active in the EVPN family: the VTEP does
+not exchange IPv4 routes with the other data centre over this session (the VPN takes care of that).
+""",
+    "La MTU de bout en bout": "The end-to-end MTU",
+    """
+Une trame dont le paquet IP fait 1500 octets donne un paquet VXLAN de **1550** octets, puis, dans le
+cœur, **1558** octets avec ses deux labels. Ce qui arrive sur des liens à 1500 octets :
+
+- le **VTEP** répond à l'hôte par un ICMP *fragmentation needed* (l'hôte garde une PMTU de 1450
+  pendant une dizaine de minutes : `ip route flush cache` pour l'oublier) ;
+- le **PE** fragmente le paquet VXLAN (son bit DF n'est pas mis) **avant** de l'étiqueter ; les
+  fragments sont réassemblés par le VTEP d'arrivée ;
+- le **routeur P** ne fragmente pas un paquet étiqueté : il le **jette** si son lien de sortie est trop
+  petit.
+
+Pour transporter sans fragmentation les paquets de 1500 octets des hôtes : au moins 1550 sur les
+liens VTEP – PE (dans les deux sens), au moins 1558 sur les liens du cœur. En pratique, l'opérateur
+offre une MTU de 9000 (ou 1600) dans son cœur et sur les accès de ses clients data centre.
+
+```
+ip link set eth0 mtu 1600                  # sur les deux extrémités de chaque lien
+ping -M do -s 1472 <dest>                  # depuis un hôte : 1500 octets avec DF
+nstat -az IpFragCreates                    # les fragments créés par un PE
+ip -s -s link show eth0                    # erreurs et paquets perdus d'une interface
+```
+
+OSPF compare la MTU des deux extrémités d'un lien : changer la MTU d'une interface relance ses
+adjacences (plusieurs dizaines de secondes), et elles restent bloquées tant que les deux extrémités
+diffèrent.
+""": """
+A frame whose IP packet is 1500 bytes long gives a VXLAN packet of **1550** bytes, then, in the core,
+**1558** bytes with its two labels. What happens on 1500-byte links:
+
+- the **VTEP** answers the host with an ICMP *fragmentation needed* (the host keeps a PMTU of 1450
+  for about ten minutes: `ip route flush cache` to forget it);
+- the **PE** fragments the VXLAN packet (its DF bit is not set) **before** labelling it; the
+  fragments are reassembled by the receiving VTEP;
+- the **P router** does not fragment a labelled packet: it **drops** it if its outgoing link is too
+  small.
+
+To carry the 1500-byte packets of the hosts without fragmentation: at least 1550 on the VTEP – PE
+links (in both directions), at least 1558 on the core links. In practice, the operator offers an MTU
+of 9000 (or 1600) in its core and on the access links of its data centre customers.
+
+```
+ip link set eth0 mtu 1600                  # on both ends of each link
+ping -M do -s 1472 <dest>                  # from a host: 1500 bytes with DF
+nstat -az IpFragCreates                    # the fragments created by a PE
+ip -s -s link show eth0                    # errors and lost packets of an interface
+```
+
+OSPF compares the MTU of both ends of a link: changing the MTU of an interface restarts its
+adjacencies (several tens of seconds), and they stay stuck as long as the two ends differ.
+""",
+    "La passerelle EVPN ↔ L3VPN": "The EVPN ↔ L3VPN gateway",
+    """
+Le client a, dans le data centre, une VRF en IRB symétrique (L3VNI, routes de type 2 et 5) ; ailleurs,
+il a des sites reliés par le L3VPN de l'opérateur. Un routeur de bordure, à la fois *border leaf* de
+la fabrique et **PE** de l'opérateur, relie les deux mondes dans **la même VRF** :
+
+- il importe les routes EVPN de la VRF (routes de type 5 des sous-réseaux, routes MAC/IP des hôtes)
+  et les **exporte en VPNv4**, avec son RD, ses RT VPN et un label VPN ;
+- il importe les routes VPNv4 de la VRF et les **ré-annonce en EVPN** comme routes de **type 5**, avec
+  sa propre adresse de VTEP comme prochain saut et le L3VNI.
+
+Ces routes sont **ré-originées** : la route qui sort a d'autres RD et RT que celle qui est entrée, un
+autre prochain saut (la passerelle elle-même), une autre encapsulation (VNI ou label). Le plan de
+données suit :
+
+```
+hôte DC -- leaf ==(VXLAN, L3VNI)==> passerelle ==(MPLS : LDP + label VPN)==> PE distant -- site
+```
+
+La passerelle termine les deux tunnels : elle décapsule le paquet VXLAN, cherche la destination dans
+la VRF, et l'étiquette vers le PE distant ; dans l'autre sens, elle retire le label VPN, cherche dans
+la VRF et encapsule en VXLAN vers le leaf.
+
+Avec FRR, sur la passerelle, tout tient dans l'instance BGP de la VRF :
+
+```
+configure terminal
+router bgp 65000 vrf TENANT
+ bgp router-id 10.0.47.1
+ address-family ipv4 unicast
+  label vpn export auto
+  rd vpn export 65000:1
+  rt vpn both 65000:500
+  export vpn
+  import vpn
+ exit-address-family
+ address-family l2vpn evpn
+  advertise ipv4 unicast
+ exit-address-family
+exit
+end
+write
+```
+
+plus, dans l'instance principale, la session VPNv4 avec les autres PE (voisin activé dans
+`address-family ipv4 vpn`). FRR ré-exporte en VPNv4 une route importée d'EVPN, et en EVPN une route
+importée de VPNv4 ; il ne ré-exporte jamais en VPNv4 une route importée de VPNv4.
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `show bgp vrf TENANT ipv4 unicast` | la table BGP de la VRF : routes d'EVPN et routes du VPN |
+| `show bgp ipv4 vpn` | ce qui part et arrive en VPNv4 |
+| `show bgp l2vpn evpn route type prefix` | les routes de type 5, dont celles que la passerelle ré-origine |
+| `ip route show vrf TENANT` | sur la passerelle : `encap mpls X/Y` vers le site distant, `dev brL3 onlink` vers le data centre |
+""": """
+The customer has, in the data centre, a VRF in symmetric IRB (L3VNI, type-2 and type-5 routes);
+elsewhere, it has sites connected by the operator's L3VPN. A border router, both *border leaf* of
+the fabric and **PE** of the operator, joins the two worlds in **the same VRF**:
+
+- it imports the EVPN routes of the VRF (type-5 routes of the subnets, MAC/IP routes of the hosts)
+  and **exports them as VPNv4**, with its RD, its VPN RTs and a VPN label;
+- it imports the VPNv4 routes of the VRF and **re-advertises them in EVPN** as **type-5** routes,
+  with its own VTEP address as next hop and the L3VNI.
+
+These routes are **re-originated**: the route that goes out has other RDs and RTs than the one that
+came in, another next hop (the gateway itself), another encapsulation (VNI or label). The data plane
+follows:
+
+```
+DC host -- leaf ==(VXLAN, L3VNI)==> gateway ==(MPLS: LDP + VPN label)==> remote PE -- site
+```
+
+The gateway terminates both tunnels: it decapsulates the VXLAN packet, looks the destination up in
+the VRF, and labels it towards the remote PE; in the other direction, it removes the VPN label,
+looks up in the VRF and encapsulates in VXLAN towards the leaf.
+
+With FRR, on the gateway, everything fits in the BGP instance of the VRF:
+
+```
+configure terminal
+router bgp 65000 vrf TENANT
+ bgp router-id 10.0.47.1
+ address-family ipv4 unicast
+  label vpn export auto
+  rd vpn export 65000:1
+  rt vpn both 65000:500
+  export vpn
+  import vpn
+ exit-address-family
+ address-family l2vpn evpn
+  advertise ipv4 unicast
+ exit-address-family
+exit
+end
+write
+```
+
+plus, in the main instance, the VPNv4 session with the other PEs (neighbour activated in
+`address-family ipv4 vpn`). FRR re-exports as VPNv4 a route imported from EVPN, and into EVPN a
+route imported from VPNv4; it never re-exports as VPNv4 a route imported from VPNv4.
+
+| command | what it shows |
+|---------|---------------|
+| `show bgp vrf TENANT ipv4 unicast` | the BGP table of the VRF: routes from EVPN and routes from the VPN |
+| `show bgp ipv4 vpn` | what leaves and arrives as VPNv4 |
+| `show bgp l2vpn evpn route type prefix` | the type-5 routes, including those the gateway re-originates |
+| `ip route show vrf TENANT` | on the gateway: `encap mpls X/Y` towards the remote site, `dev brL3 onlink` towards the data centre |
+""",
+    "Ce qui fuit vers le VPN": "What leaks into the VPN",
+    """
+Une VRF en IRB symétrique contient, en plus des sous-réseaux (type 5), **une route /32 par hôte**
+connu (les routes MAC/IP de type 2). La passerelle les exporte toutes en VPNv4 : les PE de l'opérateur
+reçoivent une route par machine du data centre, et une mise à jour à chaque fois qu'un hôte apparaît
+ou que son entrée ARP vieillit chez son leaf.
+
+On ne garde vers le VPN que les préfixes utiles avec une **route-map d'export** :
+
+```
+configure terminal
+ip prefix-list NO-HOST seq 5 deny 0.0.0.0/0 ge 32
+ip prefix-list NO-HOST seq 10 permit 0.0.0.0/0 le 32
+route-map VPN-OUT permit 10
+ match ip address prefix-list NO-HOST
+exit
+router bgp 65000 vrf TENANT
+ address-family ipv4 unicast
+  route-map vpn export VPN-OUT
+ exit-address-family
+exit
+end
+write
+```
+
+`aggregate-address … summary-only` ne suffit pas ici : il cache les routes plus spécifiques aux
+voisins BGP de la VRF, mais pas à l'export VPN.
+""": """
+A VRF in symmetric IRB contains, in addition to the subnets (type 5), **one /32 route per known
+host** (the type-2 MAC/IP routes). The gateway exports them all as VPNv4: the PEs of the operator
+receive one route per machine of the data centre, and an update every time a host appears or its
+ARP entry ages on its leaf.
+
+Only the useful prefixes are kept towards the VPN, with an **export route-map**:
+
+```
+configure terminal
+ip prefix-list NO-HOST seq 5 deny 0.0.0.0/0 ge 32
+ip prefix-list NO-HOST seq 10 permit 0.0.0.0/0 le 32
+route-map VPN-OUT permit 10
+ match ip address prefix-list NO-HOST
+exit
+router bgp 65000 vrf TENANT
+ address-family ipv4 unicast
+  route-map vpn export VPN-OUT
+ exit-address-family
+exit
+end
+write
+```
+
+`aggregate-address … summary-only` is not enough here: it hides the more specific routes from the
+BGP neighbours of the VRF, but not from the VPN export.
+""",
+    "Dépannage": "Troubleshooting",
+    """
+Pour un VNI étendu au-dessus d'un L3VPN, de bas en haut :
+
+1. chaque VTEP annonce-t-il son interface de bouclage à son PE, et le PE l'exporte-t-il dans le VPN
+   (`show bgp vrf DCI ipv4 unicast`, `show bgp ipv4 vpn`) ?
+2. les deux interfaces de bouclage se joignent-elles (`ping -I lo`, `traceroute`) ? Sinon, le VPN :
+   labels des routes de la VRF (`ip route show vrf DCI`), LDP, entrée MPLS des interfaces du cœur
+   (`sysctl net.mpls.conf.ethX.input`, compteurs `ip -s link`, `ip stats show group afstats subgroup
+   mpls`) ;
+3. la session EVPN est-elle établie (`ebgp-multihop`, `update-source`), et échange-t-elle des routes
+   (politique d'entrée et de sortie) ?
+4. les routes de type 3 et 2 arrivent-elles, et sont-elles installées dans le noyau (`bridge fdb show
+   dev vxlanN`) ?
+5. les petits paquets passent mais pas les gros : la MTU d'un lien.
+
+| symptôme | cause probable |
+|----------|----------------|
+| session EVPN `Active` alors que les interfaces de bouclage se joignent | pas d'`ebgp-multihop` |
+| session établie, `(Policy)` | pas de route-map d'entrée ou de sortie |
+| un VTEP n'a pas de route vers l'autre | interface de bouclage non annoncée au PE, ou route non exportée par le PE |
+| les routes sont là, les paquets se perdent dans le cœur | entrée MPLS désactivée, LSP absent |
+
+Après une correction, une session BGP qui attendait peut mettre jusqu'à deux minutes à réessayer :
+`clear bgp *` la relance aussitôt.
+""": """
+For a VNI stretched over an L3VPN, from the bottom up:
+
+1. does each VTEP announce its loopback interface to its PE, and does the PE export it into the VPN
+   (`show bgp vrf DCI ipv4 unicast`, `show bgp ipv4 vpn`)?
+2. do the two loopback interfaces reach each other (`ping -I lo`, `traceroute`)? If not, the VPN:
+   labels of the routes of the VRF (`ip route show vrf DCI`), LDP, MPLS input of the core interfaces
+   (`sysctl net.mpls.conf.ethX.input`, `ip -s link` counters, `ip stats show group afstats subgroup
+   mpls`);
+3. is the EVPN session established (`ebgp-multihop`, `update-source`), and does it exchange routes
+   (inbound and outbound policy)?
+4. do the type-3 and type-2 routes arrive, and are they installed in the kernel (`bridge fdb show
+   dev vxlanN`)?
+5. small packets get through but not big ones: the MTU of a link.
+
+| symptom | probable cause |
+|---------|----------------|
+| EVPN session `Active` although the loopback interfaces reach each other | no `ebgp-multihop` |
+| session established, `(Policy)` | no inbound or outbound route-map |
+| a VTEP has no route to the other | loopback interface not announced to the PE, or route not exported by the PE |
+| the routes are there, the packets get lost in the core | MPLS input disabled, LSP missing |
+
+After a fix, a BGP session that was waiting may take up to two minutes to try again: `clear bgp *`
+restarts it at once.
+""",
+    "Partie 1 : solution (VNI étendu au-dessus du L3VPN)": "Part 1: solution (VNI stretched over the L3VPN)",
+    "Partie 2 : solution (passerelle EVPN - L3VPN)": "Part 2: solution (EVPN - L3VPN gateway)",
+    "Partie 3 : solution (dépannage)": "Part 3: solution (troubleshooting)",
+    "Partie 4 : solution (routes exportées vers le VPN, bonus)": "Part 4: solution (routes exported to the VPN, bonus)",
+    "1 — VNI étendu au-dessus d'un L3VPN": "1 — VNI stretched over an L3VPN",
+    "les VTEP `st_dc1` (AS 65101), `st_dc2` (AS 65102), l'opérateur `st_pe1`, `st_p`, `st_pe2`, les hôtes `st_h1`, `st_h2`": "the VTEPs `st_dc1` (AS 65101), `st_dc2` (AS 65102), the operator `st_pe1`, `st_p`, `st_pe2`, the hosts `st_h1`, `st_h2`",
+    "2 — passerelle EVPN ↔ L3VPN": "2 — EVPN ↔ L3VPN gateway",
+    "le leaf `gw_leaf`, la passerelle `gw_border`, `gw_p`, `gw_pe`, les hôtes `gw_h1` (data centre), `gw_h2` (site distant)": "the leaf `gw_leaf`, the gateway `gw_border`, `gw_p`, `gw_pe`, the hosts `gw_h1` (data centre), `gw_h2` (remote site)",
+    "3 — dépannage": "3 — troubleshooting",
+    "`fix_dc1`, `fix_dc2`, `fix_pe1`, `fix_p`, `fix_pe2`, les hôtes `fix_h1`, `fix_h2`": "`fix_dc1`, `fix_dc2`, `fix_pe1`, `fix_p`, `fix_pe2`, the hosts `fix_h1`, `fix_h2`",
+    "4 — ce qui part vers le VPN (bonus)": "4 — what goes to the VPN (bonus)",
+    "`ag_leaf`, `ag_border`, `ag_p`, `ag_pe`, les hôtes `ag_h1`, `ag_h2`": "`ag_leaf`, `ag_border`, `ag_p`, `ag_pe`, the hosts `ag_h1`, `ag_h2`",
+    "site 1, VNI étendu": "site 1, stretched VNI",
+    "site 2, data centre": "site 2, data centre",
+    "site 2, site distant": "site 2, remote site",
+    "site 3, VNI étendu": "site 3, stretched VNI",
+    "site 4, data centre": "site 4, data centre",
+    "site 4, site distant": "site 4, remote site",
+    "passerelle": "gateway",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente l'interconnexion de data centres au-dessus d'un réseau
+MPLS, avec Linux et FRR. Le TP suppose connus VXLAN et EVPN (TP « VXLAN et EVPN dans un data
+centre ») et les VPN BGP/MPLS (TP « VPN MPLS/BGP »).
+
+**Le réseau.** Il est fait de **quatre sites indépendants**, un par partie ; chaque site a sa couleur
+sur le schéma. L'opérateur est l'AS **{pas}** :
+
+| partie | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- Les routeurs font tourner **FRRouting** (FRR) : configurez-les avec `vtysh`. Dans le cœur de
+  l'opérateur, **OSPF et LDP fonctionnent** ; MPLS est activé dans les noyaux (table des labels,
+  entrée MPLS des interfaces du cœur).
+- Sites 1 et 3 : le L3VPN `{dci}` relie les deux data centres ; chaque VTEP annonce son interface de
+  bouclage à son PE par eBGP ; l'interface `vxlan` du VNI étendu et son pont existent sur les VTEP.
+- Sites 2 et 4 : le leaf est en IRB symétrique (VRF `{vrf}`, L3VNI, passerelle des hôtes, ses
+  sous-réseaux annoncés en type 5) ; sa session EVPN avec la passerelle fonctionne ; le PE a la VRF
+  `{vrf}` du site distant et sa session VPNv4 avec la passerelle. Tout est dans l'AS {pas}.
+- Les fichiers `/etc/hosts` contiennent les noms : `st_p-eth1` désigne l'adresse de l'interface
+  `eth1` de `st_p`, `st_dc2-lo` l'adresse de bouclage de `st_dc2`.
+
+**Plan d'adressage.**
+
+| réseau | préfixe | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Valeurs propres à votre instance.**
+
+- Partie 1 : VNI **{st_vni}** ; VRF `{dci}` des PE : RD et RT {rt_dci}.
+- Partie 2 : VNI du data centre **{gw_vni}**, L3VNI **{gw_l3}** ; VRF `{vrf}` : RT VPN **{rt_t}**, RD du
+  PE {rd_pe}, RD à utiliser sur la passerelle **{rd_b}**.
+- Partie 3 : VNI **{fix_vni}** ; VRF `{dci}` : RD et RT {rt_dci}.
+- Partie 4 : VNI du data centre {ag_vni}, L3VNI {ag_l3} ; RT VPN {rt_t}.
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Enregistrez la configuration de FRR (`write` dans `vtysh`). Les commandes `ip` et `sysctl` ne sont
+  pas enregistrées : ne redémarrez pas les machines.
+- Après un changement de MTU, OSPF met plusieurs dizaines de secondes à rétablir ses adjacences ;
+  une session BGP qui attendait peut mettre deux minutes à réessayer (`clear bgp *`).
+
+**Évaluation.** Chaque évaluation lit vos réponses, l'état de BGP (EVPN, VPNv4), les tables du noyau,
+les compteurs MPLS et de fragmentation, puis envoie des `ping`. Elle dure une vingtaine de secondes.
+""": """
+Read the **Informations** tab: it presents data centre interconnection over an MPLS network, with
+Linux and FRR. The lab assumes you know VXLAN and EVPN (lab "VXLAN and EVPN in a data centre") and
+BGP/MPLS VPNs (lab "MPLS/BGP VPN").
+
+**The network.** It is made of **four independent sites**, one per part; each site has its colour on
+the diagram. The operator is AS **{pas}**:
+
+| part | site | machines |
+|------|------|----------|
+{site_rows}
+
+- The routers run **FRRouting** (FRR): configure them with `vtysh`. In the operator's core, **OSPF
+  and LDP are running**; MPLS is enabled in the kernels (label table, MPLS input of the core
+  interfaces).
+- Sites 1 and 3: the L3VPN `{dci}` connects the two data centres; each VTEP announces its loopback
+  interface to its PE over eBGP; the `vxlan` interface of the stretched VNI and its bridge exist on
+  the VTEPs.
+- Sites 2 and 4: the leaf is in symmetric IRB (VRF `{vrf}`, L3VNI, gateway of the hosts, its subnets
+  advertised as type 5); its EVPN session with the gateway works; the PE has the VRF `{vrf}` of the
+  remote site and its VPNv4 session with the gateway. Everything is in AS {pas}.
+- The `/etc/hosts` files contain the names: `st_p-eth1` is the address of the interface `eth1` of
+  `st_p`, `st_dc2-lo` the loopback address of `st_dc2`.
+
+**Addressing plan.**
+
+| network | prefix | interfaces |
+|---------|--------|------------|
+{addressing}
+
+**Values of your instance.**
+
+- Part 1: VNI **{st_vni}**; VRF `{dci}` of the PEs: RD and RT {rt_dci}.
+- Part 2: VNI of the data centre **{gw_vni}**, L3VNI **{gw_l3}**; VRF `{vrf}`: VPN RT **{rt_t}**, RD of
+  the PE {rd_pe}, RD to use on the gateway **{rd_b}**.
+- Part 3: VNI **{fix_vni}**; VRF `{dci}`: RD and RT {rt_dci}.
+- Part 4: VNI of the data centre {ag_vni}, L3VNI {ag_l3}; VPN RT {rt_t}.
+
+**Instructions.**
+
+- The parts are **independent**: do them in any order. A completed part gives all its points,
+  whatever the state of the others.
+- Save the FRR configuration (`write` in `vtysh`). The `ip` and `sysctl` commands are not saved: do
+  not restart the machines.
+- After an MTU change, OSPF takes several tens of seconds to restore its adjacencies; a BGP session
+  that was waiting may take two minutes to try again (`clear bgp *`).
+
+**Evaluation.** Each evaluation reads your answers, the state of BGP (EVPN, VPNv4), the kernel
+tables, the MPLS and fragmentation counters, then sends `ping`s. It lasts about twenty seconds.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_stretch`, `solve_gateway`, `solve_fix` et `solve_aggregate` (onglet
+*Appliquer une configuration*) appliquent la solution d'une seule partie et remplissent ses
+formulaires. L'état `final` les applique toutes, attend {wait} s (les adjacences OSPF relancées par
+le changement de MTU) puis remplit tous les formulaires : une évaluation lancée dès son retour donne
+tous les points, bonus compris.
+
+Les pannes du site `fix` : pas d'`ebgp-multihop` sur `fix_dc1`, pas de route-map de sortie EVPN sur
+`fix_dc2`, `fix_dc2` n'annonce pas son interface de bouclage à `fix_pe2`, entrée MPLS désactivée sur
+l'interface `{fix_if}` de `fix_p` (vers `fix_pe2`).
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance. The
+states `solve_stretch`, `solve_gateway`, `solve_fix` and `solve_aggregate` (*Apply Configuration*
+tab) apply the solution of a single part and fill its forms. The state `final` applies them all,
+waits {wait} s (the OSPF adjacencies restarted by the MTU change) then fills every form: an
+evaluation run as soon as it returns gives every point, bonus included.
+
+The faults of the `fix` site: no `ebgp-multihop` on `fix_dc1`, no outbound EVPN route-map on
+`fix_dc2`, `fix_dc2` does not announce its loopback interface to `fix_pe2`, MPLS input disabled on
+the interface `{fix_if}` of `fix_p` (towards `fix_pe2`).
+""",
+    "Partie 1 — un VNI étendu au-dessus d'un L3VPN (site st)": "Part 1 — a VNI stretched over an L3VPN (site st)",
+    "Étendre un VNI entre deux data centres": "Stretching a VNI between two data centres",
+    """
+Les VTEP `st_dc1` (AS 65101) et `st_dc2` (AS 65102) sont deux sites du L3VPN `{dci}` de l'opérateur :
+`st_pe1`, `st_p`, `st_pe2`. Chacun annonce son interface de bouclage à son PE, et ces adresses se
+joignent déjà à travers le VPN. Chaque VTEP a l'interface `vxlan` du VNI **{vni}** (sans
+apprentissage) dans un pont avec `eth1`, vers son hôte (`st_h1`, `st_h2`, sous-réseau `{subnet}`)
+(sections @@ref:vxlan-over-l3vpn@@ à @@ref:mtu@@).
+
+1. Établissez une session EVPN entre `st_dc1` et `st_dc2`, entre leurs interfaces de bouclage, avec
+   une politique d'entrée et de sortie qui laisse tout passer (une route-map `ALL` existe déjà).
+   Vérifiez que `st_h1` joint `st_h2` ; regardez les RT des routes reçues.
+2. Regardez les paquets sur le lien `st_l1` (`tcpdump -nei eth0 mpls` sur `st_p`) : combien de labels,
+   quels en-têtes ?
+3. Faites passer les paquets de 1500 octets des hôtes (`ping -M do -s 1472`) **sans fragmentation**,
+   sans changer la MTU des hôtes.
+""": """
+The VTEPs `st_dc1` (AS 65101) and `st_dc2` (AS 65102) are two sites of the operator's L3VPN `{dci}`:
+`st_pe1`, `st_p`, `st_pe2`. Each one announces its loopback interface to its PE, and these addresses
+already reach each other through the VPN. Each VTEP has the `vxlan` interface of the VNI **{vni}**
+(without learning) in a bridge with `eth1`, towards its host (`st_h1`, `st_h2`, subnet `{subnet}`)
+(sections @@ref:vxlan-over-l3vpn@@ to @@ref:mtu@@).
+
+1. Establish an EVPN session between `st_dc1` and `st_dc2`, between their loopback interfaces, with
+   an inbound and outbound policy that lets everything through (a route-map `ALL` already exists).
+   Check that `st_h1` reaches `st_h2`; look at the RTs of the routes received.
+2. Look at the packets on the link `st_l1` (`tcpdump -nei eth0 mpls` on `st_p`): how many labels,
+   which headers?
+3. Get the 1500-byte packets of the hosts (`ping -M do -s 1472`) through **without fragmentation**,
+   without changing the MTU of the hosts.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Les deux VTEP exportent des RT automatiques différentes (`65101:{vni}`, `65102:{vni}`) ; FRR importe
+tout de même les routes (il ne compare que le VNI). Sur `st_l1`, un paquet porte deux labels (LDP puis
+VPN), puis l'en-tête IP des VTEP, UDP 4789, VXLAN et la trame de l'hôte : 58 octets de plus que le
+paquet de l'hôte. Avec la MTU du cœur seule à 1500, `st_pe1` fragmente les paquets VXLAN ; avec celle
+des VTEP, ils répondent par un ICMP *fragmentation needed*.
+
+Évaluation : `st_session` (4 : session EVPN établie, avec politique), `st_routes` (4 : chaque VTEP a
+la route de type 3 de l'autre et l'adresse MAC de l'hôte distant en type 2), `st_ping` (4), `st_mpls`
+(2 : `st_p` reçoit des paquets étiquetés pendant le ping), `st_mtu` (6 : ping de 1500 octets avec DF,
+sans fragment créé par `st_pe1` ni `st_pe2`) ; `st_q_labels`, `st_q_overhead`, `st_q_rt` (1 chacun) ;
+pour l'enseignant seulement : `st_q_import`, `st_q_core`, `st_q_policy` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+The two VTEPs export different automatic RTs (`65101:{vni}`, `65102:{vni}`); FRR imports the routes
+all the same (it only compares the VNI). On `st_l1`, a packet carries two labels (LDP then VPN), then
+the IP header of the VTEPs, UDP 4789, VXLAN and the host's frame: 58 bytes more than the host's
+packet. With only the core MTU at 1500, `st_pe1` fragments the VXLAN packets; with that of the VTEPs
+at 1500, the VTEPs answer with an ICMP *fragmentation needed*.
+
+Evaluation: `st_session` (4: EVPN session established, with policy), `st_routes` (4: each VTEP has
+the type-3 route of the other and the MAC address of the remote host as type 2), `st_ping` (4),
+`st_mpls` (2: `st_p` receives labelled packets during the ping), `st_mtu` (6: 1500-byte ping with
+DF, without any fragment created by `st_pe1` or `st_pe2`); `st_q_labels`, `st_q_overhead`, `st_q_rt`
+(1 each); for the instructor only: `st_q_import`, `st_q_core`, `st_q_policy` (1 each).
+""",
+    "Observations sur le site st": "Observations on the st site",
+    """
+- nombre de labels des paquets de `st_h1` vers `st_h2` sur le lien `st_l1` : @@{labels:[0-9]+}@@
+- octets ajoutés sur ce lien au paquet IP de `st_h1` (VXLAN et labels) : @@{overhead:[0-9]+}@@
+- route target des routes EVPN du VNI que `st_dc1` reçoit de `st_dc2` : @@{rt:[0-9: ]+}@@
+- `st_dc1` importe ces routes parce que :
+  @@{import:>FRR ne compare que le VNI d'une RT automatique>>>vni|les RT sont égales>>>equal|le RD est le même>>>rd|toute route EVPN reçue est importée>>>all}@@
+- ce que `st_p` sait du VNI étendu :
+  @@{core:>rien : il commute des labels vers le PE de sortie>>>none|il connaît le VNI par EVPN>>>evpn|il apprend les adresses MAC>>>mac|il connaît les adresses des VTEP>>>vtep}@@
+- sans route-map sur la session EVPN, les deux VTEP :
+  @@{policy:>établissent la session mais n'échangent rien>>>nothing|n'établissent pas la session>>>down|échangent tout>>>all|n'échangent que les routes de type 3>>>type3}@@
+""": """
+- number of labels of the packets from `st_h1` to `st_h2` on the link `st_l1`: @@{labels:[0-9]+}@@
+- bytes added on this link to the IP packet of `st_h1` (VXLAN and labels): @@{overhead:[0-9]+}@@
+- route target of the EVPN routes of the VNI that `st_dc1` receives from `st_dc2`: @@{rt:[0-9: ]+}@@
+- `st_dc1` imports these routes because:
+  @@{import:>FRR only compares the VNI of an automatic RT>>>vni|the RTs are equal>>>equal|the RD is the same>>>rd|every EVPN route received is imported>>>all}@@
+- what `st_p` knows about the stretched VNI:
+  @@{core:>nothing: it switches labels towards the egress PE>>>none|it knows the VNI through EVPN>>>evpn|it learns the MAC addresses>>>mac|it knows the addresses of the VTEPs>>>vtep}@@
+- without a route-map on the EVPN session, the two VTEPs:
+  @@{policy:>establish the session but exchange nothing>>>nothing|do not establish the session>>>down|exchange everything>>>all|only exchange the type-3 routes>>>type3}@@
+""",
+    """
+**Solution.** **2** ; **58** ; **`{rt}`** ; FRR ne compare que le VNI d'une RT automatique ; rien ;
+ils établissent la session mais n'échangent rien (RFC 8212).
+
+Évaluation : `st_q_labels`, `st_q_overhead`, `st_q_rt` (1 chacun) ; pour l'enseignant seulement :
+`st_q_import`, `st_q_core`, `st_q_policy` (1 chacun).
+""": """
+**Solution.** **2**; **58**; **`{rt}`**; FRR only compares the VNI of an automatic RT; nothing; they
+establish the session but exchange nothing (RFC 8212).
+
+Evaluation: `st_q_labels`, `st_q_overhead`, `st_q_rt` (1 each); for the instructor only:
+`st_q_import`, `st_q_core`, `st_q_policy` (1 each).
+""",
+    "session EVPN entre les VTEP": "EVPN session between the VTEPs",
+    "routes de type 3 et 2 échangées": "type-3 and type-2 routes exchanged",
+    "st_h1 joint st_h2": "st_h1 reaches st_h2",
+    "trafic étiqueté dans le cœur": "labelled traffic in the core",
+    "paquets de 1500 octets sans fragmentation": "1500-byte packets without fragmentation",
+    "labels dans le cœur": "labels in the core",
+    "surcoût VXLAN et MPLS": "VXLAN and MPLS overhead",
+    "RT automatique de st_dc2": "automatic RT of st_dc2",
+    "import des RT automatiques": "import of the automatic RTs",
+    "ce que sait le cœur": "what the core knows",
+    "RFC 8212": "RFC 8212",
+    "Partie 2 — une passerelle EVPN ↔ L3VPN (site gw)": "Part 2 — an EVPN ↔ L3VPN gateway (site gw)",
+    "Relier la VRF du data centre au VPN de l'opérateur": "Connecting the VRF of the data centre to the operator's VPN",
+    """
+Dans le data centre, `gw_leaf` route le sous-réseau `{dc}` de `gw_h1` en IRB symétrique (VRF `{vrf}`,
+L3VNI **{l3}**) et l'annonce en type 5 à `gw_border`, son voisin EVPN. `gw_border` est aussi un **PE**
+de l'opérateur : OSPF et LDP fonctionnent avec `gw_p` et `gw_pe`, et il a la VRF `{vrf}` avec le même
+L3VNI. `gw_pe` a la VRF `{vrf}` du site distant (sous-réseau `{remote}`, hôte `gw_h2`), avec la RT
+**{rt_t}**, et attend une session VPNv4 de `gw_border` (section @@ref:gateway@@).
+
+1. Sur `gw_border`, établissez la session VPNv4 avec `gw_pe` (entre interfaces de bouclage).
+2. Toujours sur `gw_border`, dans l'instance BGP de la VRF `{vrf}` : exportez la VRF en VPNv4 (label,
+   RD **{rd_b}**, RT {rt_t}), importez les routes VPNv4 de cette RT, et annoncez le contenu de la VRF
+   en routes de type 5.
+3. Vérifiez que `gw_h1` joint `gw_h2`. Regardez la table EVPN de `gw_leaf`, la table VPNv4 de
+   `gw_pe`, la table de la VRF sur chacun des trois routeurs (`ip route show vrf {vrf}`), et les
+   paquets sur `gw_u1` et `gw_l1`.
+""": """
+In the data centre, `gw_leaf` routes the subnet `{dc}` of `gw_h1` in symmetric IRB (VRF `{vrf}`,
+L3VNI **{l3}**) and advertises it as type 5 to `gw_border`, its EVPN neighbour. `gw_border` is also a
+**PE** of the operator: OSPF and LDP are running with `gw_p` and `gw_pe`, and it has the VRF `{vrf}`
+with the same L3VNI. `gw_pe` has the VRF `{vrf}` of the remote site (subnet `{remote}`, host
+`gw_h2`), with the RT **{rt_t}**, and expects a VPNv4 session from `gw_border` (section
+@@ref:gateway@@).
+
+1. On `gw_border`, establish the VPNv4 session with `gw_pe` (between loopback interfaces).
+2. Still on `gw_border`, in the BGP instance of the VRF `{vrf}`: export the VRF as VPNv4 (label,
+   RD **{rd_b}**, RT {rt_t}), import the VPNv4 routes of this RT, and advertise the content of the
+   VRF as type-5 routes.
+3. Check that `gw_h1` reaches `gw_h2`. Look at the EVPN table of `gw_leaf`, the VPNv4 table of
+   `gw_pe`, the table of the VRF on each of the three routers (`ip route show vrf {vrf}`), and the
+   packets on `gw_u1` and `gw_l1`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+`gw_leaf` reçoit le sous-réseau distant en type 5, avec `gw_border` comme prochain saut et le L3VNI ;
+`gw_pe` reçoit en VPNv4 le sous-réseau du data centre (et les /32 des hôtes connus), avec `gw_border`
+comme prochain saut et le label VPN de la VRF. Sur `gw_u1`, les paquets sont en VXLAN (VNI {l3}) ;
+sur `gw_l1`, ils portent deux labels.
+
+Évaluation : `gw_vpnv4` (4 : session VPNv4 établie), `gw_to_vpn` (5 : `gw_pe` a le sous-réseau du data
+centre en VPNv4 par `gw_border`, et sa route dans la VRF avec deux labels), `gw_to_evpn` (5 :
+`gw_leaf` a le sous-réseau distant en type 5 par `gw_border`, et sa route dans la VRF vers
+`gw_border`), `gw_border_routes` (2 : sur `gw_border`, la route du site distant avec deux labels),
+`gw_ping` (6), `gw_mpls` (2 : `gw_p` reçoit des paquets étiquetés pendant le ping) ; `gw_q_labels`,
+`gw_q_vni` (1 chacun) ; pour l'enseignant seulement : `gw_q_reoriginate`, `gw_q_core` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+`gw_leaf` receives the remote subnet as type 5, with `gw_border` as next hop and the L3VNI; `gw_pe`
+receives as VPNv4 the subnet of the data centre (and the /32s of the known hosts), with `gw_border`
+as next hop and the VPN label of the VRF. On `gw_u1`, the packets are in VXLAN (VNI {l3}); on
+`gw_l1`, they carry two labels.
+
+Evaluation: `gw_vpnv4` (4: VPNv4 session established), `gw_to_vpn` (5: `gw_pe` has the subnet of the
+data centre as VPNv4 through `gw_border`, and its route in the VRF with two labels), `gw_to_evpn` (5:
+`gw_leaf` has the remote subnet as type 5 through `gw_border`, and its route in the VRF towards
+`gw_border`), `gw_border_routes` (2: on `gw_border`, the route of the remote site with two labels),
+`gw_ping` (6), `gw_mpls` (2: `gw_p` receives labelled packets during the ping); `gw_q_labels`,
+`gw_q_vni` (1 each); for the instructor only: `gw_q_reoriginate`, `gw_q_core` (1 each).
+""",
+    "Ce que fait la passerelle": "What the gateway does",
+    """
+- nombre de labels des paquets de `gw_h1` vers `gw_h2` sur le lien `gw_l1` : @@{labels:[0-9]+}@@
+- VNI des paquets VXLAN de `gw_h1` vers `gw_h2` sur le lien `gw_u1` : @@{vni:[0-9]+}@@
+- `gw_border` reçoit en VPNv4 la route du site distant ; il annonce à `gw_leaf` :
+  @@{reoriginate:>une route de type 5, avec sa propre adresse de VTEP comme prochain saut>>>type5_self|la route VPNv4 telle quelle>>>vpnv4|une route de type 5 avec gw_pe comme prochain saut>>>type5_pe|une route de type 2>>>type2}@@
+- ce que `gw_p` sait des sous-réseaux du client :
+  @@{core:>rien : il commute des labels vers les PE>>>none|il les apprend par OSPF>>>ospf|il les apprend en EVPN>>>evpn|il les apprend en VPNv4>>>vpnv4}@@
+""": """
+- number of labels of the packets from `gw_h1` to `gw_h2` on the link `gw_l1`: @@{labels:[0-9]+}@@
+- VNI of the VXLAN packets from `gw_h1` to `gw_h2` on the link `gw_u1`: @@{vni:[0-9]+}@@
+- `gw_border` receives the route of the remote site as VPNv4; it advertises to `gw_leaf`:
+  @@{reoriginate:>a type-5 route, with its own VTEP address as next hop>>>type5_self|the VPNv4 route as it is>>>vpnv4|a type-5 route with gw_pe as next hop>>>type5_pe|a type-2 route>>>type2}@@
+- what `gw_p` knows about the subnets of the customer:
+  @@{core:>nothing: it switches labels towards the PEs>>>none|it learns them through OSPF>>>ospf|it learns them through EVPN>>>evpn|it learns them through VPNv4>>>vpnv4}@@
+""",
+    """
+**Solution.** **2** ; **{l3}** (le L3VNI) ; une route de type 5, avec sa propre adresse de VTEP comme
+prochain saut ; rien.
+
+Évaluation : `gw_q_labels`, `gw_q_vni` (1 chacun) ; pour l'enseignant seulement : `gw_q_reoriginate`,
+`gw_q_core` (1 chacun).
+""": """
+**Solution.** **2**; **{l3}** (the L3VNI); a type-5 route, with its own VTEP address as next hop;
+nothing.
+
+Evaluation: `gw_q_labels`, `gw_q_vni` (1 each); for the instructor only: `gw_q_reoriginate`,
+`gw_q_core` (1 each).
+""",
+    "session VPNv4 de la passerelle": "VPNv4 session of the gateway",
+    "routes du data centre exportées en VPNv4": "routes of the data centre exported as VPNv4",
+    "route du site distant ré-originée en type 5": "route of the remote site re-originated as type 5",
+    "route du site distant étiquetée sur la passerelle": "route of the remote site labelled on the gateway",
+    "gw_h1 joint gw_h2": "gw_h1 reaches gw_h2",
+    "VNI dans le data centre": "VNI in the data centre",
+    "ré-origination": "re-origination",
+    "Partie 3 — dépannage (site fix)": "Part 3 — troubleshooting (site fix)",
+    "Une interconnexion en panne": "A broken interconnection",
+    """
+Le site `fix` reproduit le site 1, une fois la session EVPN configurée : les VTEP `fix_dc1` (AS
+65101) et `fix_dc2` (AS 65102), le L3VPN `{dci}` (`fix_pe1`, `fix_p`, `fix_pe2`), le VNI **{vni}** entre
+`fix_h1` et `fix_h2` (sous-réseau `{subnet}`). Les MTU sont restées à 1500, ce qui suffit pour des
+`ping` ordinaires. Pourtant `fix_h1` ne joint pas `fix_h2` : **quatre pannes** ont été glissées, côté
+data centres et côté opérateur (section @@ref:debug@@).
+
+Trouvez et corrigez chaque panne sans tout reconfigurer : vérifiez de bas en haut, des interfaces
+de bouclage des VTEP jusqu'aux routes EVPN.
+""": """
+The `fix` site reproduces site 1, once the EVPN session is configured: the VTEPs `fix_dc1` (AS
+65101) and `fix_dc2` (AS 65102), the L3VPN `{dci}` (`fix_pe1`, `fix_p`, `fix_pe2`), the VNI **{vni}**
+between `fix_h1` and `fix_h2` (subnet `{subnet}`). The MTUs have stayed at 1500, which is enough for
+ordinary `ping`s. Yet `fix_h1` does not reach `fix_h2`: **four faults** have been slipped in, on the
+data centre side and on the operator side (section @@ref:debug@@).
+
+Find and fix each fault without reconfiguring everything: check from the bottom up, from the
+loopback interfaces of the VTEPs up to the EVPN routes.
+""",
+    """
+**Solution.**
+
+{solution}
+
+puis `clear bgp *` sur les VTEP (la session réessaie sinon au bout de deux minutes).
+
+Évaluation : `fix_multihop` (3 : `ebgp-multihop` sur `fix_dc1`), `fix_policy` (3 : route-map de sortie
+EVPN sur `fix_dc2`), `fix_loopback` (3 : `fix_dc1` a une route vers l'interface de bouclage de
+`fix_dc2`), `fix_mpls_input` (3 : entrée MPLS de `{fix_if}` sur `fix_p`), `fix_session` (2 : session
+EVPN établie, avec politique), `fix_ping` (4) ; pour l'enseignant seulement : `fix_q_multihop`,
+`fix_q_input` (1 chacun).
+""": """
+**Solution.**
+
+{solution}
+
+then `clear bgp *` on the VTEPs (otherwise the session only tries again after two minutes).
+
+Evaluation: `fix_multihop` (3: `ebgp-multihop` on `fix_dc1`), `fix_policy` (3: outbound EVPN
+route-map on `fix_dc2`), `fix_loopback` (3: `fix_dc1` has a route to the loopback interface of
+`fix_dc2`), `fix_mpls_input` (3: MPLS input of `{fix_if}` on `fix_p`), `fix_session` (2: EVPN
+session established, with policy), `fix_ping` (4); for the instructor only: `fix_q_multihop`,
+`fix_q_input` (1 each).
+""",
+    "Ce que montraient les pannes": "What the faults showed",
+    """
+- sans `ebgp-multihop`, `fix_dc1` :
+  @@{multihop:>refuse un voisin eBGP qui n'est pas directement connecté>>>connected|établit la session sans échanger de routes>>>policy|établit la session normalement>>>ok|attend une session iBGP>>>ibgp}@@
+- les paquets étiquetés reçus par `fix_p` sur l'interface dont l'entrée MPLS est désactivée sont :
+  @@{input:>comptés en réception puis jetés>>>dropped|routés sans leurs labels>>>popped|renvoyés au PE>>>returned|rejetés avec un ICMP>>>icmp}@@
+""": """
+- without `ebgp-multihop`, `fix_dc1`:
+  @@{multihop:>refuses an eBGP neighbour that is not directly connected>>>connected|establishes the session without exchanging routes>>>policy|establishes the session normally>>>ok|waits for an iBGP session>>>ibgp}@@
+- the labelled packets received by `fix_p` on the interface whose MPLS input is disabled are:
+  @@{input:>counted as received then dropped>>>dropped|routed without their labels>>>popped|sent back to the PE>>>returned|rejected with an ICMP message>>>icmp}@@
+""",
+    """
+**Solution.** Il refuse un voisin eBGP qui n'est pas directement connecté ; comptés en réception puis
+jetés (`rx_dropped` des compteurs MPLS).
+
+Évaluation, pour l'enseignant seulement : `fix_q_multihop`, `fix_q_input` (1 chacun).
+""": """
+**Solution.** It refuses an eBGP neighbour that is not directly connected; counted as received then
+dropped (`rx_dropped` of the MPLS counters).
+
+Evaluation, for the instructor only: `fix_q_multihop`, `fix_q_input` (1 each).
+""",
+    "ebgp-multihop sur fix_dc1": "ebgp-multihop on fix_dc1",
+    "route-map de sortie EVPN sur fix_dc2": "outbound EVPN route-map on fix_dc2",
+    "interface de bouclage de fix_dc2 annoncée": "loopback interface of fix_dc2 announced",
+    "entrée MPLS de fix_p": "MPLS input of fix_p",
+    "session EVPN établie": "EVPN session established",
+    "fix_h1 joint fix_h2": "fix_h1 reaches fix_h2",
+    "eBGP multihop": "eBGP multihop",
+    "entrée MPLS désactivée": "MPLS input disabled",
+    "Partie 4 — ce qui part vers le VPN (site ag, bonus)": "Part 4 — what goes to the VPN (site ag, bonus)",
+    "Ne pas exporter les routes des hôtes (bonus)": "Not exporting the host routes (bonus)",
+    """
+Le site `ag` est une passerelle complète, comme le site 2 une fois résolu : `ag_h1` (data centre,
+`{dc}`) joint `ag_h2` (site distant). Mais `ag_pe` reçoit en VPNv4, en plus du sous-réseau du data
+centre, une route /32 par hôte connu de `ag_leaf` (section @@ref:leak@@).
+
+1. Regardez la table VPNv4 de `ag_pe` après un `ping` de `ag_h1` vers sa passerelle.
+2. Sur `ag_border`, n'exportez plus vers le VPN que les préfixes plus courts qu'un /32, sans toucher
+   à `ag_leaf` ni à `ag_pe`. `ag_h1` doit toujours joindre `ag_h2`.
+""": """
+The `ag` site is a complete gateway, like site 2 once solved: `ag_h1` (data centre, `{dc}`) reaches
+`ag_h2` (remote site). But `ag_pe` receives as VPNv4, in addition to the subnet of the data centre,
+one /32 route per host known to `ag_leaf` (section @@ref:leak@@).
+
+1. Look at the VPNv4 table of `ag_pe` after a `ping` from `ag_h1` to its gateway.
+2. On `ag_border`, export to the VPN only the prefixes shorter than a /32, without touching
+   `ag_leaf` or `ag_pe`. `ag_h1` must still reach `ag_h2`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Évaluation (bonus) : `ag_no_host` (4 : `ag_pe` a le sous-réseau du data centre par `ag_border`, et
+aucune route /32 de ce sous-réseau, juste après un `ping` d'`ag_h1` vers sa passerelle), `ag_ping` (2 :
+`ag_h1` joint `ag_h2`, les /32 filtrées).
+""": """
+**Solution.**
+
+{solution}
+
+Evaluation (bonus): `ag_no_host` (4: `ag_pe` has the subnet of the data centre through `ag_border`,
+and no /32 route of this subnet, just after a `ping` from `ag_h1` to its gateway), `ag_ping` (2:
+`ag_h1` reaches `ag_h2`, the /32s filtered).
+""",
+    "le sous-réseau du data centre, sans les routes des hôtes": "the subnet of the data centre, without the host routes",
+    "ag_h1 joint ag_h2": "ag_h1 reaches ag_h2",
+}}

@@ -28,6 +28,7 @@ from typing import Dict, List
 
 import utils
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks
@@ -860,32 +861,38 @@ Documentation : [FRR — IS-IS](https://docs.frrouting.org/en/latest/isisd.html)
             self.file(r, "/etc/frr/frr.conf", self._frr_conf(r), permissions=0o640, owner="frr:frr", step=2)
             self.cmd(r, "systemctl start frr", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (premier domaine)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (premier domaine)",
+                                                  en="Part 1: solution (first domain)"))
     def solve_basics(self):
         self._apply_vtysh(self.solution_basics())
         self.cmd('bas_r3', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (niveaux et aires)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (niveaux et aires)",
+                                                  en="Part 2: solution (levels and areas)"))
     def solve_levels(self):
         self._apply_vtysh(self.solution_levels())
         self.cmd('lvl_r1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (DIS, métriques, surcharge)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (DIS, métriques, surcharge)",
+                                                  en="Part 3: solution (DIS, metrics, overload)"))
     def solve_lan(self):
         self._apply_vtysh(self.solution_lan())
         self.cmd('lan_r1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (authentification)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (authentification)",
+                                                  en="Part 4: solution (authentication)"))
     def solve_auth(self):
         self._apply_vtysh(self.solution_auth())
         self.cmd('auth_r1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (dépannage)"))
+    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (dépannage)",
+                                                  en="Part 5: solution (troubleshooting)"))
     def solve_fix(self):
         self._apply_fix()
         self.cmd('fix_r1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (routes externes)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (routes externes)",
+                                                  en="Bonus: solution (external routes)"))
     def solve_external(self):
         self._apply_vtysh(self.solution_external())
         self.cmd('ext_r1', f"sleep {CONVERGE_WAIT}", step=2)
@@ -919,9 +926,9 @@ def _int(s):
         return None
 
 
-def _vtysh_text(solution: Dict[str, List[str]]) -> str:
-    """The reference configuration of a part, as vtysh sessions (one block per router); the lines
-    inside a ``router`` / ``interface`` block are indented."""
+def _vtysh_text(solution: Dict[str, List[str]]) -> Dict[str, str]:
+    """The reference configuration of a part, as vtysh sessions (one block per router), one text per
+    language for _by_language(); the lines inside a ``router`` / ``interface`` block are indented."""
     blocks = []
     for router, cmds in solution.items():
         body, depth = ["configure terminal"], 1
@@ -933,8 +940,17 @@ def _vtysh_text(solution: Dict[str, List[str]]) -> str:
             body.append(" " * depth + c)
             if c.startswith(("router ", "interface ")):
                 depth += 1
-        blocks.append(f"`{router}` :\n\n```\n" + "\n".join(body + ["end", "write"]) + "\n```")
-    return "\n\n".join(blocks)
+        blocks.append((router, "\n".join(body + ["end", "write"])))
+    return {lang: "\n\n".join(f"`{router}`{colon}\n\n```\n{text}\n```" for router, text in blocks)
+            for lang, colon in (('fr', " :"), ('en', ":"))}
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value gives one value per language (a table
+    of French labels, French typography)."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
 
 
 def _running_config(grade: Grade0, router: str) -> Dict:
@@ -1023,7 +1039,17 @@ class Grade(Grade0):
                                                   "`auth_h2`"),
                  ('fix', "5 — dépannage", "`fix_r1` à `fix_r4`, les hôtes `fix_h1` et `fix_h4`"),
                  ('ext', "bonus — routes externes", "`ext_r1`, `ext_r2`, l'hôte `ext_h2`, `ext_isp` (sans terminal)")]
-        site_rows = "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites)
+        sites_en = {'bas': ("1 — first domain", "`bas_r1` to `bas_r4`, the hosts `bas_h1` and `bas_h4`"),
+                    'lvl': ("2 — levels and areas", "`lvl_r1` to `lvl_r5`, the hosts `lvl_h1` and `lvl_h5`"),
+                    'lan': ("3 — DIS, metrics, overload", "`lan_r1` to `lan_r4`, the hosts `lan_h2` and `lan_h4`"),
+                    'auth': ("4 — authentication", "`auth_r1`, `auth_r2` (no terminal), the hosts `auth_h1` and "
+                                                   "`auth_h2`"),
+                    'fix': ("5 — troubleshooting", "`fix_r1` to `fix_r4`, the hosts `fix_h1` and `fix_h4`"),
+                    'ext': ("bonus — external routes", "`ext_r1`, `ext_r2`, the host `ext_h2`, `ext_isp` "
+                                                       "(no terminal)")}
+        site_rows = {'fr': "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites),
+                     'en': "\n".join(f"| {sites_en[site][0]} | `{site}_*` | {sites_en[site][1]} |"
+                                      for site, _part, _machines in sites)}
         members: Dict[str, List[str]] = {n: [] for n in list(LINKS) + LANS}
         for r, nets in ROUTER_IFACES.items():
             for i, n in enumerate(nets):
@@ -1041,7 +1067,7 @@ class Grade(Grade0):
         self.question_dummy(
             title=tr("Organisation du TP"),
             hash="81dee02ea4a5d7e4",
-            description=tr("""
+            description=_by_language(tr("""
 Lisez l'onglet **Informations** : il présente IS-IS (NET, PDU, adjacences, niveaux et aires, DIS,
 métriques, surcharge, authentification), sa configuration avec FRR et les commandes de diagnostic.
 
@@ -1081,7 +1107,7 @@ des /24.
 **Évaluation.** Chaque évaluation lit vos réponses, l'état d'IS-IS sur les routeurs (adjacences,
 interfaces, base de données, configuration), les tables de routage, et lance des `ping` entre les
 hôtes.
-""").format(site_rows=site_rows, addressing=addressing, name=ISIS_NAME)
+"""), site_rows=site_rows, addressing=addressing, name=ISIS_NAME)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
 instance. Les états `solve_basics`, `solve_levels`, `solve_lan`, `solve_auth`, `solve_fix` et
@@ -1122,7 +1148,7 @@ Les routeurs `bas_r1`, `bas_r2`, `bas_r3` et `bas_r4` forment un carré (liens `
 3. Vérifiez les adjacences (des deux côtés), la base de données, les routes de `bas_r2` vers le
    réseau `bas_lan4` (combien de prochains sauts ?), et que `bas_h1` joint `bas_h4`.
 """).format(area=d.bas_area)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1134,7 +1160,7 @@ Les routeurs `bas_r1`, `bas_r2`, `bas_r3` et `bas_r4` forment un carré (liens `
 `bas_net` (2 : le NET de chaque routeur), `bas_level2` (1), `bas_p2p` (2), `bas_passive` (1 :
 `lo` des deux routeurs et `eth0` de `bas_r4`), `bas_loopbacks` (1 : `bas_r1` a une route IS-IS vers les
 deux adresses de bouclage), `bas_ping` (3), `bas_ecmp` (2 : deux prochains sauts sur `bas_r2`).
-""").format(solution=_vtysh_text(ns.solution_basics()), lan4=net('bas_lan4'))),
+"""), solution=_vtysh_text(ns.solution_basics()), lan4=net('bas_lan4'))),
         )
         cheat_bas = {'sysid': sysid('bas_r3'), 'hold': '30', 'metric': '20', 'afi': '49',
                      'transport': 'llc', 'mac': '09:00:2b:00:00:05'}
@@ -1276,7 +1302,7 @@ Les réseaux de l'aire `{a}` sont tous dans `{block_a}`, ceux de l'aire `{c}` da
    de `lvl_r1` (que sait-il de l'aire `{c}` ?), celle de `lvl_r3`, et que `lvl_h1` joint `lvl_h5`.
 """).format(a=d.lvl_area_a, b=d.lvl_area_b, c=d.lvl_area_c, block_a=net('lvl_area_a_block'),
             block_c=net('lvl_area_c_block'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1293,7 +1319,7 @@ niveau 2 seulement, vu des deux côtés), `lvl_circuit_type` (2), `lvl_summary` 
 `lvl_r3` vers `{block_a}` par `lvl_r2`), `lvl_default` (3 : route par défaut d'IS-IS sur `lvl_r1` vers
 `lvl_r2`), `lvl_l1_only` (1 : pas de route précise vers `lvl_lan5` sur `lvl_r1`, compté avec la route
 par défaut), `lvl_ping` (3).
-""").format(solution=_vtysh_text(ns.solution_levels()), block_a=net('lvl_area_a_block'))),
+"""), solution=_vtysh_text(ns.solution_levels()), block_a=net('lvl_area_a_block'))),
         )
         cheat_lvl = {'bit': 'att', 'l2_lsps': '3', 'default_metric': '10', 'databases': '2', 'l1_areas': 'no'}
         q2 = self.question_form(
@@ -1415,7 +1441,7 @@ l'hôte `lan_h4` derrière `lan_r4`. IS-IS fonctionne déjà partout (aire `{are
    surcharge. Vérifiez dans la base de `lan_r2` le bit `OL`, et que `lan_h4` joint encore
    l'adresse de bouclage de `lan_r1`.
 """).format(area=d.lan_area, prio=d.lan_priority, metric=d.lan_metric)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1430,7 +1456,7 @@ contre {via_l14} par `lan_l14`). La surcharge de `lan_r1` ne change rien à ses 
 `lan_r1_path` (2 : `lan_r1` vers `lan_lan4` par `lan_r3`), `lan_r2_path` (2 : un seul chemin, par
 `lan_r3`), `lan_overload` (3 : bit OL de la LSP de `lan_r1` dans la base de `lan_r2`),
 `lan_overload_own` (1 : `lan_h4` joint `lan_r1-lo`, compté avec le bit OL).
-""").format(solution=_vtysh_text(ns.solution_lan()), r1prio=LAN_R1_PRIORITY, prio=d.lan_priority,
+"""), solution=_vtysh_text(ns.solution_lan()), r1prio=LAN_R1_PRIORITY, prio=d.lan_priority,
             via_l14=d.lan_metric + 10)),
         )
         cheat_lan = {'csnp': '10', 'preemptive': 'yes', 'metric': '30', 'narrow': '63', 'pseudonode': '0'}
@@ -1534,7 +1560,7 @@ authentification (section @@ref:auth@@) :
    voisinage et la base de données de `auth_r1`. Que manque-t-il encore ?
 3. Configurez le mot de passe des PDU de niveau 2 et vérifiez que `auth_h1` joint `auth_h2`.
 """).format(area=d.auth_area, hello=d.auth_hello_key, domain=d.auth_domain_key)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1548,7 +1574,7 @@ mot de passe des IIH, l'adjacence est `Up` des deux côtés et `auth_r1` apprend
 Évaluation : `auth_adj` (4 : l'adjacence vue par `auth_r2`), `auth_lsdb` (3 : `auth_r2` a une route
 IS-IS vers `auth_lan1`), `auth_md5` (2 : les deux mots de passe en `md5` sur `auth_r1`), `auth_ping`
 (1).
-""").format(solution=_vtysh_text(ns.solution_auth()))),
+"""), solution=_vtysh_text(ns.solution_auth()))),
         )
         cheat_auth = {'tlv': '10', 'domain': 'l2_lsp_snp'}
         q4 = self.question_form(
@@ -1618,7 +1644,7 @@ l'adjacence **des deux côtés** (`show isis neighbor`) ; lisez la configuration
 running-config`), les interfaces (`show isis interface detail`, `ip link`), la base de données, et le
 journal `/var/log/frr/frr.log`.
 """).format(area=d.fix_area)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1633,24 +1659,26 @@ lui).
 
 Évaluation : `fix_adj_12`, `fix_adj_23`, `fix_adj_34` (4 chacun : l'adjacence vue des deux côtés),
 `fix_overload` (3 : la LSP de `fix_r3` sans bit OL), `fix_ping` (3).
-""").format(solution=_vtysh_text({r: c for r, items in ns.solution_fix().items() for kind, c in items
-                                  if kind == 'vtysh'}),
+"""), solution=_vtysh_text({r: c for r, items in ns.solution_fix().items() for kind, c in items
+                            if kind == 'vtysh'}),
             mtu_cmd=ns.solution_fix()['fix_r4'][0][1], wrong=d.fix_wrong_area, mtu=FIX_MTU)),
         )
         cheat_fix = {'f12': 'area', 'f23': 'network', 'f34': 'mtu', 'transit': 'overload'}
-        causes = ("aires différentes>>>area|types de réseau différents>>>network|MTU différentes>>>mtu|"
-                  "mots de passe différents>>>password|bit de surcharge>>>overload")
+        causes = {'fr': "aires différentes>>>area|types de réseau différents>>>network|MTU différentes>>>mtu|"
+                        "mots de passe différents>>>password|bit de surcharge>>>overload",
+                  'en': "different areas>>>area|different network types>>>network|different MTUs>>>mtu|"
+                        "different passwords>>>password|overload bit>>>overload"}
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Les causes des pannes"),
             hash="edfa9678500abc96",
-            description=tr("""
+            description=_by_language(tr("""
 - cause de l'absence d'adjacence entre `fix_r1` et `fix_r2` : @@{{f12:>{causes}}}@@
 - cause de l'absence d'adjacence entre `fix_r2` et `fix_r3` : @@{{f23:>{causes}}}@@
 - cause de l'adjacence vue d'un seul côté entre `fix_r3` et `fix_r4` : @@{{f34:>{causes}}}@@
 - cause de l'absence de chemin à travers `fix_r3` une fois les adjacences rétablies :
   @@{{transit:>{causes}}}@@
-""").format(causes=causes)
+"""), causes=causes)
             + instructor(tr("""
 **Solution.** Aires différentes ; types de réseau différents ; MTU différentes ; bit de surcharge.
 
@@ -1709,7 +1737,7 @@ Faites annoncer par `ext_r1`, au niveau 2, sa route statique vers `{public}` et 
 défaut (section @@ref:external@@), puis vérifiez les routes de `ext_r2` et que `ext_h2` joint
 `internet`.
 """).format(area=d.ext_area, server=EXT_SERVER, public=EXT_PUBLIC)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1719,7 +1747,7 @@ défaut (section @@ref:external@@), puis vérifiez les routes de `ext_r2` et que
 
 Évaluation (bonus) : `ext_static` (2 : route IS-IS de `ext_r2` vers `{public}`), `ext_default`
 (2 : route par défaut IS-IS sur `ext_r2`), `ext_ping` (2 : `ext_h2` joint `internet`).
-""").format(solution=_vtysh_text(ns.solution_external()), public=EXT_PUBLIC)),
+"""), solution=_vtysh_text(ns.solution_external()), public=EXT_PUBLIC)),
         )
         self.add_grade_element(
             title=no_tr("ext_static"), max_grade=2, grade_part=part6, bonus=True,
@@ -1737,4 +1765,1294 @@ défaut (section @@ref:external@@), puis vérifiez les routes de `ext_r2` et que
         )
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "IS-IS : routage dynamique": "IS-IS: dynamic routing",
+    """
+**Sommaire**
+""": """
+**Contents**
+""",
+    "Principe d'IS-IS": "Principles of IS-IS",
+    """
+**IS-IS** (*Intermediate System to Intermediate System*, norme ISO/IEC 10589, étendue à IP par la
+RFC 1195) est, comme OSPF, un protocole de routage **intérieur** (IGP) à **état de liens** : chaque
+routeur décrit ses voisins et ses préfixes dans des **LSP** (*Link State PDU*), les LSP sont
+**inondées** à tous les routeurs, chacun possède la même base de données (LSDB) et calcule ses
+routes avec l'algorithme de **Dijkstra** (SPF). Le vocabulaire vient de l'OSI : un routeur est un
+**IS** (*Intermediate System*), un hôte un **ES** (*End System*), un paquet une **PDU**.
+
+Deux particularités le distinguent d'OSPF :
+
+- IS-IS **n'est pas transporté par IP** : ses PDU sont posées directement dans des trames Ethernet
+  (encapsulation LLC 802.2, SAP `0xFE`, premier octet de la PDU `0x83`), envoyées à des adresses
+  MAC multicast. Un routeur IS-IS n'a pas besoin d'adresse IP pour trouver ses voisins, et une
+  machine d'un autre réseau ne peut pas lui envoyer de PDU ;
+- ses PDU sont des listes de **TLV** (*Type, Length, Value*) : ajouter une fonction (IPv6,
+  métriques larges, segment routing…) consiste à définir un TLV, que les routeurs plus anciens
+  ignorent. IS-IS n'a pas eu besoin d'une nouvelle version pour IPv6.
+
+Il est très utilisé par les opérateurs (cœurs de réseau, avec MPLS) et dans les centres de données.
+
+| | OSPF (v2) | IS-IS |
+|---|---|---|
+| transport | IP, protocole 89 | trames de niveau 2 (LLC) |
+| identifiant | router-id (32 bits) | system-id (48 bits), dans le NET |
+| hiérarchie | aires autour de l'aire 0, ABR à cheval sur deux aires | niveaux 1 et 2, frontière des aires sur les liens |
+| réseau à diffusion | DR et BDR, élection non préemptive | DIS, élection préemptive, sans secours |
+| métrique par défaut | référence ÷ bande passante | 10 sur toutes les interfaces |
+| extensions | nouveaux types de LSA, OSPFv3 pour IPv6 | nouveaux TLV, même protocole pour IPv6 |
+| temporisateurs | identiques aux deux extrémités | chacun annonce le délai qu'il impose |
+""": """
+**IS-IS** (*Intermediate System to Intermediate System*, standard ISO/IEC 10589, extended to IP by
+RFC 1195) is, like OSPF, an **interior** routing protocol (IGP) of the **link-state** family: each
+router describes its neighbours and its prefixes in **LSPs** (*Link State PDU*), the LSPs are
+**flooded** to every router, each one holds the same database (LSDB) and computes its routes with
+the **Dijkstra** algorithm (SPF). The vocabulary comes from OSI: a router is an **IS**
+(*Intermediate System*), a host an **ES** (*End System*), a packet a **PDU**.
+
+Two features set it apart from OSPF:
+
+- IS-IS **is not carried over IP**: its PDUs are placed directly in Ethernet frames (802.2 LLC
+  encapsulation, SAP `0xFE`, first byte of the PDU `0x83`), sent to multicast MAC addresses. An
+  IS-IS router needs no IP address to find its neighbours, and a machine on another network cannot
+  send it a PDU;
+- its PDUs are lists of **TLVs** (*Type, Length, Value*): adding a feature (IPv6, wide metrics,
+  segment routing…) means defining a TLV, which older routers ignore. IS-IS did not need a new
+  version for IPv6.
+
+It is widely used by operators (network cores, with MPLS) and in data centres.
+
+| | OSPF (v2) | IS-IS |
+|---|---|---|
+| transport | IP, protocol 89 | layer 2 frames (LLC) |
+| identifier | router-id (32 bits) | system-id (48 bits), in the NET |
+| hierarchy | areas around area 0, ABRs straddling two areas | levels 1 and 2, area boundaries on the links |
+| broadcast network | DR and BDR, non-preemptive election | DIS, preemptive election, no backup |
+| default metric | reference ÷ bandwidth | 10 on every interface |
+| extensions | new LSA types, OSPFv3 for IPv6 | new TLVs, the same protocol for IPv6 |
+| timers | identical at both ends | each router announces the delay it imposes |
+""",
+    "Adresses : le NET": "Addresses: the NET",
+    """
+Un routeur IS-IS est identifié par son **NET** (*Network Entity Title*), une adresse OSI (NSAP)
+écrite en hexadécimal par groupes séparés de points :
+
+```
+49.0001.0100.0003.1002.00
+\\_____/ \\____________/ \\/
+  aire     system-id   NSEL
+```
+
+- **l'aire** (*area address*, 1 à 13 octets) : ici `49.0001`. Son premier octet est l'**AFI** ;
+  `49` désigne des adresses **privées** (l'équivalent de la RFC 1918), utilisées par presque tous
+  les réseaux IS-IS ;
+- **le system-id** (6 octets) : l'identifiant **unique** du routeur dans le domaine, l'équivalent
+  du router-id d'OSPF ;
+- **le NSEL** (1 octet) : toujours `00` pour un routeur.
+
+Une convention répandue fabrique le system-id à partir de l'adresse de l'interface de bouclage :
+chaque octet est écrit sur trois chiffres décimaux, puis les douze chiffres sont regroupés par
+quatre : `10.0.31.2` → `010.000.031.002` → `0100.0003.1002`.
+
+Un routeur peut avoir jusqu'à trois NET, avec le même system-id et des aires différentes (pour
+renuméroter ou fusionner des aires sans coupure). Les commandes de FRR affichent les routeurs par
+leur nom (TLV *dynamic hostname*) quand ils l'annoncent, sinon par leur system-id.
+""": """
+An IS-IS router is identified by its **NET** (*Network Entity Title*), an OSI address (NSAP)
+written in hexadecimal, in groups separated by dots:
+
+```
+49.0001.0100.0003.1002.00
+\\_____/ \\____________/ \\/
+  area     system-id   NSEL
+```
+
+- **the area** (*area address*, 1 to 13 bytes): here `49.0001`. Its first byte is the **AFI**;
+  `49` denotes **private** addresses (the equivalent of RFC 1918), used by almost every IS-IS
+  network;
+- **the system-id** (6 bytes): the **unique** identifier of the router in the domain, the
+  equivalent of the OSPF router-id;
+- **the NSEL** (1 byte): always `00` for a router.
+
+A widespread convention builds the system-id from the address of the loopback interface: each
+byte is written as three decimal digits, then the twelve digits are grouped by four:
+`10.0.31.2` → `010.000.031.002` → `0100.0003.1002`.
+
+A router may have up to three NETs, with the same system-id and different areas (to renumber or
+merge areas without an outage). The FRR commands show the routers by their name (TLV *dynamic
+hostname*) when they announce it, otherwise by their system-id.
+""",
+    "PDU, TLV et inondation": "PDUs, TLVs and flooding",
+    """
+| PDU | rôle |
+|-----|------|
+| **IIH** (*IS-IS Hello*) | découverte des voisins et maintien des adjacences : sur un réseau à diffusion un type par niveau (L1, L2), sur un lien point à point un seul |
+| **LSP** (*Link State PDU*) | description d'un routeur : ses voisins avec la métrique, ses préfixes, ses aires, son nom… Identifiée par son **LSP-ID** : `system-id.pseudo-nœud-fragment`, par exemple `0100.0003.1002.00-00` |
+| **CSNP** (*Complete Sequence Numbers PDU*) | la liste de toutes les LSP connues (identifiant, numéro de séquence), pour comparer les bases |
+| **PSNP** (*Partial SNP*) | demande d'une LSP manquante, ou accusé de réception d'une LSP sur un lien point à point |
+
+Une LSP porte un numéro de séquence (la plus récente l'emporte) et une durée de vie restante
+(1200 s au plus) ; son auteur la rafraîchit avant qu'elle n'expire, et la régénère quand quelque
+chose change (FRR attend jusqu'à 30 s entre deux générations d'une même LSP : un nouveau préfixe
+peut mettre ce temps à apparaître chez les voisins). `show isis database` affiche la base :
+la colonne `ATT/P/OL` donne trois bits de la LSP (sections @@ref:att@@ et @@ref:overload@@).
+
+| TLV | contenu |
+|-----|---------|
+| 1 | adresses d'aire |
+| 10 | authentification |
+| 22 | voisins IS avec leur métrique (*extended IS reachability*) |
+| 129 | protocoles supportés (NLPID : `0xCC` pour IPv4, `0x8E` pour IPv6) |
+| 132 | adresses IPv4 de l'interface |
+| 135 | préfixes IPv4 avec leur métrique (*extended IP reachability*) |
+| 137 | nom du routeur (*dynamic hostname*) |
+| 240 | état de l'adjacence sur un lien point à point (*three-way handshake*) |
+""": """
+| PDU | role |
+|-----|------|
+| **IIH** (*IS-IS Hello*) | discovering neighbours and maintaining adjacencies: on a broadcast network one type per level (L1, L2), on a point-to-point link a single one |
+| **LSP** (*Link State PDU*) | description of a router: its neighbours with the metric, its prefixes, its areas, its name… Identified by its **LSP-ID**: `system-id.pseudonode-fragment`, for example `0100.0003.1002.00-00` |
+| **CSNP** (*Complete Sequence Numbers PDU*) | the list of every known LSP (identifier, sequence number), to compare the databases |
+| **PSNP** (*Partial SNP*) | request for a missing LSP, or acknowledgement of an LSP on a point-to-point link |
+
+An LSP carries a sequence number (the most recent one wins) and a remaining lifetime (1200 s at
+most); its author refreshes it before it expires, and regenerates it when something changes (FRR
+waits up to 30 s between two generations of the same LSP: a new prefix may take that long to
+appear at the neighbours). `show isis database` shows the database: the `ATT/P/OL` column gives
+three bits of the LSP (sections @@ref:att@@ and @@ref:overload@@).
+
+| TLV | content |
+|-----|---------|
+| 1 | area addresses |
+| 10 | authentication |
+| 22 | IS neighbours with their metric (*extended IS reachability*) |
+| 129 | supported protocols (NLPID: `0xCC` for IPv4, `0x8E` for IPv6) |
+| 132 | IPv4 addresses of the interface |
+| 135 | IPv4 prefixes with their metric (*extended IP reachability*) |
+| 137 | name of the router (*dynamic hostname*) |
+| 240 | state of the adjacency on a point-to-point link (*three-way handshake*) |
+""",
+    "Adjacences": "Adjacencies",
+    """
+Chaque interface où IS-IS est actif envoie des **IIH** à une adresse MAC multicast :
+`01:80:c2:00:00:14` (IIH de niveau 1 sur un réseau à diffusion), `01:80:c2:00:00:15` (niveau 2),
+`09:00:2b:00:00:05` (lien point à point). Deux routeurs forment une **adjacence** quand leurs IIH
+sont compatibles : niveaux compatibles, une aire commune pour le niveau 1, même type de réseau,
+même authentification, et des IIH qui passent. Sur un lien point à point, l'état passe de `Down` à
+`Initializing` (j'entends le voisin) puis `Up` (il m'entend aussi).
+
+### @@sec:timers@@ Temporisateurs
+
+FRR envoie un IIH toutes les **3 s** (`isis hello-interval`) et déclare un voisin mort au bout de
+`hello-interval × hello-multiplier` = 3 × 10 = **30 s** sans IIH. Ce délai (*holding time*) est
+annoncé dans chaque IIH : c'est le voisin qui l'impose, et les deux extrémités n'ont pas besoin des
+mêmes réglages (au contraire d'OSPF). `show isis neighbor` affiche le temps restant.
+
+### @@sec:padding@@ Remplissage des IIH
+
+IS-IS remplit ses IIH jusqu'à la MTU de l'interface (*hello padding* : avec une MTU de 1500, des
+trames de 1500 octets). Une interface dont la MTU est plus petite jette ces trames : le routeur qui
+a la petite MTU ne voit pas son voisin. Un écart de MTU est ainsi détecté dès la formation de
+l'adjacence, avant qu'il ne coupe le trafic. Il apparaît **d'un seul côté** : le routeur qui a la
+grande MTU reçoit les IIH (plus petites) de son voisin et l'affiche `Initializing` (ou le garde
+`Up` si l'adjacence existait quand la MTU a changé), l'autre ne voit rien. Vérifiez toujours une
+adjacence des deux côtés.
+""": """
+Each interface where IS-IS is active sends **IIHs** to a multicast MAC address:
+`01:80:c2:00:00:14` (level 1 IIHs on a broadcast network), `01:80:c2:00:00:15` (level 2),
+`09:00:2b:00:00:05` (point-to-point link). Two routers form an **adjacency** when their IIHs are
+compatible: compatible levels, a common area for level 1, the same network type, the same
+authentication, and IIHs that get through. On a point-to-point link, the state goes from `Down` to
+`Initializing` (I hear the neighbour) then `Up` (it hears me too).
+
+### @@sec:timers@@ Timers
+
+FRR sends an IIH every **3 s** (`isis hello-interval`) and declares a neighbour dead after
+`hello-interval × hello-multiplier` = 3 × 10 = **30 s** without an IIH. This delay (*holding time*)
+is announced in every IIH: it is set by the neighbour, and the two ends do not need the same
+settings (unlike OSPF). `show isis neighbor` shows the remaining time.
+
+### @@sec:padding@@ Padding of the IIHs
+
+IS-IS pads its IIHs up to the MTU of the interface (*hello padding*: with an MTU of 1500, frames of
+1500 bytes). An interface with a smaller MTU drops these frames: the router with the small MTU
+does not see its neighbour. An MTU mismatch is thus detected as soon as the adjacency forms, before
+it cuts any traffic. It shows **on one side only**: the router with the large MTU receives the
+(smaller) IIHs of its neighbour and shows it `Initializing` (or keeps it `Up` if the adjacency
+existed when the MTU changed), the other one sees nothing. Always check an adjacency on both
+sides.
+""",
+    "Niveaux et aires": "Levels and areas",
+    """
+Un domaine IS-IS a une hiérarchie à **deux niveaux** :
+
+- le **niveau 1** (L1) : le routage à l'intérieur d'une **aire** ; un routeur L1 ne connaît que
+  les routeurs et les préfixes de son aire ;
+- le **niveau 2** (L2) : le routage entre les aires, la **dorsale** (*backbone*). L'ensemble des
+  routeurs L2 doit être **connexe**.
+
+Chaque routeur a un type (`is-type`) : `level-1`, `level-2-only` ou `level-1-2` (la valeur par
+défaut de FRR). Un routeur L1/L2 tient **deux bases**, une par niveau, et fait deux calculs SPF ; il
+remplit le rôle de l'ABR d'OSPF. Différence essentielle avec OSPF : **un routeur appartient tout
+entier à une aire, la frontière entre les aires passe sur les liens**.
+
+| adjacence | condition |
+|-----------|-----------|
+| niveau 1 | les deux routeurs font du L1 et ont **au moins une aire en commun** |
+| niveau 2 | les deux routeurs font du L2, **quelles que soient leurs aires** |
+
+Un routeur L1 et un routeur L1/L2 d'aires différentes ne forment donc **aucune** adjacence. Sur un
+routeur L1/L2, `isis circuit-type level-1 | level-2-only | level-1-2` (mode interface) limite les
+niveaux d'une interface : inutile d'envoyer des IIH de niveau 1 à un routeur qui ne fait que du
+niveau 2, ou l'inverse.
+
+### @@sec:att@@ Le bit ATT et la route par défaut
+
+Un routeur L1 ne connaît pas les autres aires. Un routeur L1/L2 relié au niveau 2 positionne le
+bit **ATT** (*attached*) dans sa LSP de niveau 1 (la norme le demande quand il joint une autre aire ;
+FRR le fait dès qu'il a une adjacence de niveau 2). Les routeurs L1 de l'aire installent alors une
+**route par défaut** vers le routeur L1/L2 le plus proche, avec pour métrique la distance jusqu'à
+lui. C'est l'équivalent d'une aire *totally stubby* d'OSPF, et c'est le fonctionnement normal d'une
+aire IS-IS.
+
+Un routeur L1 qui a plusieurs sorties prend la plus proche, pas forcément celle qui mène au
+meilleur chemin vers la destination. Pour l'éviter, un routeur L1/L2 peut injecter des préfixes L2
+choisis dans le niveau 1 (*route leaking*, RFC 5302, avec un bit *up/down* qui empêche les
+boucles) ; FRR ne le propose pas.
+
+### @@sec:l1-to-l2@@ Les préfixes d'une aire au niveau 2
+
+Dans l'autre sens, la norme veut qu'un routeur L1/L2 annonce au niveau 2 les préfixes qu'il a
+appris au niveau 1 : le niveau 2 connaît ainsi toutes les aires. **FRR ne le fait pas** : un
+routeur L1/L2 n'annonce au niveau 2 que ses propres réseaux, et les réseaux des routeurs de niveau
+1 sont injoignables depuis les autres aires. Il faut lui faire annoncer les préfixes de son aire, de
+préférence sous la forme d'un **résumé** : une route statique sans issue (`blackhole`) vers un
+préfixe qui couvre toute l'aire, redistribuée au niveau 2 (section @@ref:external@@) :
+
+```
+ip route 10.0.36.0/22 blackhole
+router isis CORE
+ redistribute ipv4 static level-2
+```
+
+Les routeurs de niveau 2 lui envoient alors tout le trafic destiné à l'aire, et il l'achemine avec
+ses routes de niveau 1, plus précises (la route `blackhole` ne sert qu'aux adresses de l'aire qui
+n'existent pas). Le plan d'adressage doit s'y prêter : les réseaux d'une aire contigus, dans un
+préfixe qui ne contient rien d'autre. Une route statique vers un seul réseau, par le routeur de
+niveau 1 qui y mène, convient aussi.
+""": """
+An IS-IS domain has a **two-level** hierarchy:
+
+- **level 1** (L1): routing inside an **area**; an L1 router knows only the routers and the
+  prefixes of its own area;
+- **level 2** (L2): routing between the areas, the **backbone**. The set of L2 routers must be
+  **contiguous**.
+
+Each router has a type (`is-type`): `level-1`, `level-2-only` or `level-1-2` (FRR's default
+value). An L1/L2 router keeps **two databases**, one per level, and runs two SPF computations; it
+plays the role of the OSPF ABR. An essential difference with OSPF: **a router belongs entirely to
+one area, the boundary between the areas runs over the links**.
+
+| adjacency | condition |
+|-----------|-----------|
+| level 1 | both routers run L1 and have **at least one area in common** |
+| level 2 | both routers run L2, **whatever their areas** |
+
+An L1 router and an L1/L2 router of different areas therefore form **no** adjacency at all. On an
+L1/L2 router, `isis circuit-type level-1 | level-2-only | level-1-2` (interface mode) restricts the
+levels of an interface: there is no point in sending level 1 IIHs to a router that runs level 2
+only, or the reverse.
+
+### @@sec:att@@ The ATT bit and the default route
+
+An L1 router does not know the other areas. An L1/L2 router connected to level 2 sets the **ATT**
+(*attached*) bit in its level 1 LSP (the standard asks for it when the router reaches another
+area; FRR does it as soon as it has a level 2 adjacency). The L1 routers of the area then install a
+**default route** towards the nearest L1/L2 router, with the distance to it as the metric. It is
+the equivalent of an OSPF *totally stubby* area, and it is the normal operation of an IS-IS area.
+
+An L1 router with several exits takes the nearest one, not necessarily the one leading to the best
+path towards the destination. To avoid this, an L1/L2 router can inject chosen L2 prefixes into
+level 1 (*route leaking*, RFC 5302, with an *up/down* bit that prevents loops); FRR does not offer
+it.
+
+### @@sec:l1-to-l2@@ The prefixes of an area in level 2
+
+In the other direction, the standard wants an L1/L2 router to announce in level 2 the prefixes it
+learnt in level 1: level 2 thus knows every area. **FRR does not do it**: an L1/L2 router
+announces in level 2 only its own networks, and the networks of the level 1 routers are
+unreachable from the other areas. It has to be told to announce the prefixes of its area,
+preferably as a **summary**: a dead-end static route (`blackhole`) to a prefix covering the whole
+area, redistributed in level 2 (section @@ref:external@@):
+
+```
+ip route 10.0.36.0/22 blackhole
+router isis CORE
+ redistribute ipv4 static level-2
+```
+
+The level 2 routers then send it all the traffic for the area, and it forwards that traffic with
+its level 1 routes, which are more specific (the `blackhole` route only serves the addresses of the
+area that do not exist). The addressing plan must lend itself to this: the networks of an area
+contiguous, within a prefix that contains nothing else. A static route to a single network, via
+the level 1 router leading to it, also works.
+""",
+    "Réseaux à diffusion : le DIS": "Broadcast networks: the DIS",
+    """
+Sur un réseau à diffusion où se trouvent plusieurs routeurs, IS-IS élit un **DIS** (*Designated
+Intermediate System*), un par niveau :
+
+- l'élection se fait sur la **priorité** de l'interface (`isis priority N [level-1 | level-2]`,
+  de 0 à 127, **64** par défaut), puis sur l'adresse MAC (SNPA) la plus grande ;
+- elle est **préemptive** : un routeur qui arrive avec une meilleure priorité devient DIS aussitôt
+  (au contraire du DR d'OSPF), et il n'y a pas de DIS de secours ;
+- **tous** les routeurs du réseau forment une adjacence avec tous les autres (pas d'équivalent des
+  `DROther` restés en `2-Way` dans OSPF) ;
+- le DIS crée un **pseudo-nœud** qui représente le réseau : une LSP dont l'octet de pseudo-nœud du
+  LSP-ID n'est pas nul (`r2.4d-00` : le DIS est `r2`), qui liste les routeurs du réseau avec une
+  métrique **0**. Chaque routeur du réseau ne déclare qu'un voisin pour ce réseau : le pseudo-nœud ;
+- le DIS envoie un **CSNP** toutes les **10 s** : les autres comparent avec leur base et demandent
+  par PSNP les LSP qui leur manquent.
+
+Sur un lien qui ne relie que **deux** routeurs, l'élection et le pseudo-nœud ne servent à rien :
+`isis network point-to-point` (aux **deux** extrémités) en fait un lien point à point — adjacence
+plus rapide, base plus simple. Les deux extrémités doivent avoir le même type de réseau : un IIH
+point à point reçu sur une interface à diffusion (ou l'inverse) est ignoré.
+""": """
+On a broadcast network with several routers, IS-IS elects a **DIS** (*Designated Intermediate
+System*), one per level:
+
+- the election is based on the **priority** of the interface (`isis priority N [level-1 | level-2]`,
+  from 0 to 127, **64** by default), then on the highest MAC address (SNPA);
+- it is **preemptive**: a router arriving with a better priority becomes DIS at once (unlike the
+  OSPF DR), and there is no backup DIS;
+- **every** router of the network forms an adjacency with every other one (no equivalent of the
+  `DROther` routers left in `2-Way` in OSPF);
+- the DIS creates a **pseudonode** that represents the network: an LSP whose pseudonode byte in the
+  LSP-ID is not zero (`r2.4d-00`: the DIS is `r2`), which lists the routers of the network with a
+  metric of **0**. Each router of the network declares a single neighbour for this network: the
+  pseudonode;
+- the DIS sends a **CSNP** every **10 s**: the others compare it with their database and request
+  the LSPs they are missing with PSNPs.
+
+On a link that joins only **two** routers, the election and the pseudonode serve no purpose:
+`isis network point-to-point` (at **both** ends) makes it a point-to-point link — faster
+adjacency, simpler database. Both ends must have the same network type: a point-to-point IIH
+received on a broadcast interface (or the reverse) is ignored.
+""",
+    "Métriques": "Metrics",
+    """
+Le **coût** d'un chemin est la somme des métriques des interfaces de sortie traversées, plus la
+métrique avec laquelle le préfixe de destination est annoncé (10 pour un réseau connecté). FRR
+donne la métrique **10** à toute interface, quelle que soit sa vitesse : `isis metric N
+[level-1 | level-2]` (mode interface) la change, sur une extrémité seulement — chaque sens d'un lien
+a sa métrique.
+
+| style | TLV | métrique d'une interface | métrique d'un chemin |
+|-------|-----|--------------------------|----------------------|
+| `narrow` (ISO 10589 d'origine) | 2 et 128 | 6 bits : **1 à 63** | 1023 au plus |
+| `wide` (RFC 5305) | 22 et 135 | 24 bits : jusqu'à 16 777 215 | 32 bits |
+
+FRR utilise le style **wide** par défaut (`metric-style wide` en mode `router isis` ; `transition`
+émet les deux) : il refuse de passer en `narrow` tant qu'une interface a une métrique supérieure à
+63. Tous les routeurs d'un domaine doivent comprendre le même style. À coût égal, une route a
+plusieurs prochains sauts (ECMP). `show isis route` affiche le coût de chaque route ; dans le noyau
+(`ip route`), les routes d'IS-IS portent `proto isis` et une métrique 20 sans rapport avec le coût.
+""": """
+The **cost** of a path is the sum of the metrics of the outgoing interfaces crossed, plus the
+metric with which the destination prefix is announced (10 for a connected network). FRR gives the
+metric **10** to every interface, whatever its speed: `isis metric N
+[level-1 | level-2]` (interface mode) changes it, at one end only — each direction of a link has
+its own metric.
+
+| style | TLV | metric of an interface | metric of a path |
+|-------|-----|--------------------------|----------------------|
+| `narrow` (original ISO 10589) | 2 and 128 | 6 bits: **1 to 63** | 1023 at most |
+| `wide` (RFC 5305) | 22 and 135 | 24 bits: up to 16,777,215 | 32 bits |
+
+FRR uses the **wide** style by default (`metric-style wide` in `router isis` mode; `transition`
+sends both): it refuses to switch to `narrow` while an interface has a metric above 63. Every
+router of a domain must understand the same style. With equal costs, a route has several next hops
+(ECMP). `show isis route` shows the cost of each route; in the kernel (`ip route`), the IS-IS
+routes carry `proto isis` and a metric of 20 that has nothing to do with the cost.
+""",
+    "Le bit de surcharge": "The overload bit",
+    """
+Un routeur qui positionne le bit **OL** (*overload*) dans sa LSP (`set-overload-bit`, mode
+`router isis`) n'est plus utilisé **comme transit** : les autres routeurs calculent leurs chemins
+sans passer par lui. Ses propres préfixes (interface de bouclage, réseaux connectés) restent
+joignables. On s'en sert pour retirer un routeur du trafic avant une maintenance, ou à son démarrage
+le temps que BGP ait convergé (`set-overload-bit on-startup N`). Oublié après la maintenance, il
+coupe tous les chemins qui passaient par ce routeur, alors que toutes les adjacences sont `Up`.
+""": """
+A router that sets the **OL** (*overload*) bit in its LSP (`set-overload-bit`, `router isis`
+mode) is no longer used **as a transit**: the other routers compute their paths without going
+through it. Its own prefixes (loopback interface, connected networks) remain reachable. It is used
+to take a router out of the traffic before maintenance, or at start-up until BGP has converged
+(`set-overload-bit on-startup N`). Forgotten after the maintenance, it cuts every path that went
+through that router, while all the adjacencies are `Up`.
+""",
+    "Authentification": "Authentication",
+    """
+IS-IS peut signer ses PDU avec un mot de passe, en clair (`clear`, lisible dans les trames) ou avec
+**HMAC-MD5** (`md5`, RFC 5304), dans le TLV 10. Trois réglages indépendants :
+
+| réglage (FRR) | mode | protège |
+|---------------|------|---------|
+| `isis password md5 SECRET` | interface | les **IIH** de l'interface : sans le bon mot de passe, pas d'adjacence |
+| `area-password md5 SECRET` | `router isis` | les **LSP, CSNP et PSNP de niveau 1** (toute l'aire) |
+| `domain-password md5 SECRET` | `router isis` | les **LSP, CSNP et PSNP de niveau 2** (tout le domaine) |
+
+- Un routeur qui a un mot de passe rejette les PDU qui n'ont pas le bon. Un routeur **sans** mot de
+  passe accepte les PDU signées : il voit son voisin (`Initializing`), qui, lui, ne le voit pas.
+- Un routeur qui a un `domain-password` rejette les LSP de niveau 2 non signées : l'adjacence peut
+  être `Up` des deux côtés alors que les bases ne se synchronisent pas, et des routes manquent.
+""": """
+IS-IS can sign its PDUs with a password, in clear text (`clear`, readable in the frames) or with
+**HMAC-MD5** (`md5`, RFC 5304), in TLV 10. Three independent settings:
+
+| setting (FRR) | mode | protects |
+|---------------|------|---------|
+| `isis password md5 SECRET` | interface | the **IIHs** of the interface: without the right password, no adjacency |
+| `area-password md5 SECRET` | `router isis` | the **level 1 LSPs, CSNPs and PSNPs** (the whole area) |
+| `domain-password md5 SECRET` | `router isis` | the **level 2 LSPs, CSNPs and PSNPs** (the whole domain) |
+
+- A router that has a password rejects the PDUs that do not carry the right one. A router
+  **without** a password accepts signed PDUs: it sees its neighbour (`Initializing`), which does
+  not see it.
+- A router that has a `domain-password` rejects unsigned level 2 LSPs: the adjacency can be `Up` on
+  both sides while the databases do not synchronise, and routes are missing.
+""",
+    "Routes externes": "External routes",
+    """
+Un routeur IS-IS peut annoncer des routes venues d'ailleurs (routes statiques, réseaux connectés
+hors IS-IS, autre protocole) :
+
+```
+router isis CORE
+ redistribute ipv4 static level-2            # les routes statiques de FRR (« ip route … » dans vtysh)
+ redistribute ipv4 connected level-2         # les réseaux connectés qui ne sont pas dans IS-IS
+ default-information originate ipv4 level-2  # une route par défaut, s'il en a une
+```
+
+Les préfixes redistribués sont annoncés dans le TLV 135 comme les autres (avec la métrique 0 par
+défaut, `metric N` pour la changer). `redistribute` n'annonce jamais la route par défaut : c'est le
+rôle de `default-information originate` (`always` pour l'annoncer même sans route par défaut).
+`redistribute ipv4 static` ne concerne que les routes statiques déclarées dans FRR, pas celles
+ajoutées par `ip route add` (des routes du noyau).
+""": """
+An IS-IS router can announce routes that come from elsewhere (static routes, connected networks
+outside IS-IS, another protocol):
+
+```
+router isis CORE
+ redistribute ipv4 static level-2            # FRR's static routes ("ip route …" in vtysh)
+ redistribute ipv4 connected level-2         # the connected networks that are not in IS-IS
+ default-information originate ipv4 level-2  # a default route, if it has one
+```
+
+The redistributed prefixes are announced in TLV 135 like the others (with metric 0 by default,
+`metric N` to change it). `redistribute` never announces the default route: that is the job of
+`default-information originate` (`always` to announce it even without a default route).
+`redistribute ipv4 static` only concerns the static routes declared in FRR, not those added by
+`ip route add` (kernel routes).
+""",
+    "FRR et vtysh": "FRR and vtysh",
+    """
+**FRRouting** (FRR) est une suite de démons de routage pour Linux : `zebra` installe dans le noyau
+les routes choisies, `isisd` est le démon d'IS-IS (activé dans `/etc/frr/daemons` sur les routeurs
+du TP). On le configure avec **`vtysh`** :
+
+```
+vtysh
+configure terminal
+ router isis CORE                        # le processus IS-IS, nommé CORE
+  net 49.0001.0100.0003.1002.00
+  is-type level-2-only
+  exit
+ interface eth1
+  ip router isis CORE                    # IS-IS sur cette interface (le nom du processus)
+  isis network point-to-point
+  exit
+ interface lo
+  ip router isis CORE
+  isis passive                           # annoncée, mais aucun IIH envoyé
+  exit
+ end
+write                                    # sauvegarde dans /etc/frr/frr.conf
+```
+
+Une interface **passive** est annoncée dans IS-IS mais n'émet aucun IIH : c'est le réglage de
+l'interface de bouclage et des réseaux d'hôtes. Une commande se supprime en la préfixant par `no`.
+Une commande peut aussi être passée depuis le shell : `vtysh -c "show isis neighbor"`.
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `show isis summary` | system-id, NET, compteurs de PDU |
+| `show isis interface [detail]` | les interfaces : type, niveaux, métrique, priorité, DIS, temporisateurs |
+| `show isis neighbor [detail]` | les adjacences : niveau, état, temps restant, aires, DIS |
+| `show isis database [detail]` | la base : les LSP et leurs bits ATT/P/OL, leur contenu avec `detail` |
+| `show isis route` | les routes calculées, avec leur coût |
+| `show isis topology` | l'arbre des plus courts chemins |
+| `show ip route` | les routes de zebra (`I` pour IS-IS, distance 115) |
+| `clear isis neighbor` | relance les adjacences |
+
+Documentation : [FRR — IS-IS](https://docs.frrouting.org/en/latest/isisd.html).
+""": """
+**FRRouting** (FRR) is a suite of routing daemons for Linux: `zebra` installs the chosen routes in
+the kernel, `isisd` is the IS-IS daemon (enabled in `/etc/frr/daemons` on the routers of the
+lab). It is configured with **`vtysh`**:
+
+```
+vtysh
+configure terminal
+ router isis CORE                        # the IS-IS process, named CORE
+  net 49.0001.0100.0003.1002.00
+  is-type level-2-only
+  exit
+ interface eth1
+  ip router isis CORE                    # IS-IS on this interface (the name of the process)
+  isis network point-to-point
+  exit
+ interface lo
+  ip router isis CORE
+  isis passive                           # announced, but no IIH sent
+  exit
+ end
+write                                    # saves to /etc/frr/frr.conf
+```
+
+A **passive** interface is announced in IS-IS but sends no IIH: it is the setting of the loopback
+interface and of the host networks. A command is removed by prefixing it with `no`. A command can
+also be run from the shell: `vtysh -c "show isis neighbor"`.
+
+| command | what it shows |
+|----------|-------------------|
+| `show isis summary` | system-id, NET, PDU counters |
+| `show isis interface [detail]` | the interfaces: type, levels, metric, priority, DIS, timers |
+| `show isis neighbor [detail]` | the adjacencies: level, state, remaining time, areas, DIS |
+| `show isis database [detail]` | the database: the LSPs and their ATT/P/OL bits, their content with `detail` |
+| `show isis route` | the computed routes, with their cost |
+| `show isis topology` | the shortest-path tree |
+| `show ip route` | zebra's routes (`I` for IS-IS, distance 115) |
+| `clear isis neighbor` | restarts the adjacencies |
+
+Documentation: [FRR — IS-IS](https://docs.frrouting.org/en/latest/isisd.html).
+""",
+    "Diagnostic": "Diagnostics",
+    """
+- `tcpdump -nei ethX isis` : les PDU IS-IS d'une interface (type, system-id, niveau, longueur) ;
+- `ip route`, `traceroute -n IP` : les routes installées et le chemin réellement suivi ;
+- `/var/log/frr/frr.log` : le journal des démons.
+
+| symptôme | causes à vérifier |
+|----------|-------------------|
+| aucun voisin | IS-IS pas activé sur l'interface (`ip router isis`), interface passive, niveaux incompatibles, aires différentes pour le niveau 1, types de réseau différents (le journal dit `p2p hello on non p2p circuit`), mot de passe |
+| voisin vu d'un seul côté (`Initializing`) | MTU différentes (remplissage des IIH), mot de passe configuré d'un seul côté |
+| voisins `Up` mais routes manquantes | préfixe non annoncé (interface hors IS-IS), `domain-password` / `area-password` différents, LSP pas encore régénérée |
+| trafic qui contourne un routeur | métriques, bit de surcharge (`OL` dans `show isis database`) |
+| un routeur L1 ne joint pas les autres aires | pas de routeur L1/L2 relié au niveau 2 dans l'aire (pas de bit ATT), préfixes de l'aire non annoncés au niveau 2 |
+""": """
+- `tcpdump -nei ethX isis`: the IS-IS PDUs of an interface (type, system-id, level, length);
+- `ip route`, `traceroute -n IP`: the installed routes and the path actually followed;
+- `/var/log/frr/frr.log`: the log of the daemons.
+
+| symptom | causes to check |
+|----------|-------------------|
+| no neighbour | IS-IS not enabled on the interface (`ip router isis`), passive interface, incompatible levels, different areas for level 1, different network types (the log says `p2p hello on non p2p circuit`), password |
+| neighbour seen on one side only (`Initializing`) | different MTUs (IIH padding), password configured on one side only |
+| neighbours `Up` but routes missing | prefix not announced (interface outside IS-IS), different `domain-password` / `area-password`, LSP not regenerated yet |
+| traffic that avoids a router | metrics, overload bit (`OL` in `show isis database`) |
+| an L1 router does not reach the other areas | no L1/L2 router connected to level 2 in the area (no ATT bit), prefixes of the area not announced in level 2 |
+""",
+    "Partie 1 : solution (premier domaine)": "Part 1: solution (first domain)",
+    "Partie 2 : solution (niveaux et aires)": "Part 2: solution (levels and areas)",
+    "Partie 3 : solution (DIS, métriques, surcharge)": "Part 3: solution (DIS, metrics, overload)",
+    "Partie 4 : solution (authentification)": "Part 4: solution (authentication)",
+    "Partie 5 : solution (dépannage)": "Part 5: solution (troubleshooting)",
+    "Bonus : solution (routes externes)": "Bonus: solution (external routes)",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente IS-IS (NET, PDU, adjacences, niveaux et aires, DIS,
+métriques, surcharge, authentification), sa configuration avec FRR et les commandes de diagnostic.
+
+**Le réseau.** Il est fait de **six sites indépendants**, un par partie. Chaque site a sa couleur
+sur le schéma :
+
+| partie | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- Les routeurs font tourner **FRRouting** (FRR), avec le démon `isisd` activé : configurez-les avec
+  `vtysh`. Le processus IS-IS s'appelle **`{name}`** partout (`router isis {name}`, `ip router isis
+  {name}`).
+- Toutes les adresses sont en place, y compris les adresses des interfaces de bouclage (`lo`, une
+  /32 par routeur), ainsi que la route par défaut des hôtes. Les routeurs n'ont aucune route
+  statique : seul IS-IS les renseigne.
+- Les fichiers `/etc/hosts` contiennent les noms : `bas_r2-eth1` désigne l'adresse de l'interface
+  `eth1` de `bas_r2`, `bas_r2-lo` son adresse de bouclage, `bas_h4` l'hôte.
+- **Convention de ce TP** : le system-id de chaque routeur est fabriqué à partir de son adresse de
+  bouclage (section @@ref:net@@), et le NSEL vaut `00`.
+
+**Plan d'adressage.** Les liens entre routeurs sont des /30, les réseaux des hôtes (et `lan_seg`)
+des /24.
+
+| réseau | préfixe | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Enregistrez la configuration de FRR (`write` dans `vtysh`).
+- Une adjacence se forme en quelques secondes ; un nouveau préfixe peut mettre jusqu'à 30 s à être
+  annoncé (section @@ref:pdus@@).
+
+**Évaluation.** Chaque évaluation lit vos réponses, l'état d'IS-IS sur les routeurs (adjacences,
+interfaces, base de données, configuration), les tables de routage, et lance des `ping` entre les
+hôtes.
+""": """
+Read the **Informations** tab: it presents IS-IS (NET, PDUs, adjacencies, levels and areas, DIS,
+metrics, overload, authentication), its configuration with FRR and the diagnostic commands.
+
+**The network.** It is made of **six independent sites**, one per part. Each site has its own
+colour in the *Schema* tab:
+
+| part | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- The routers run **FRRouting** (FRR), with the `isisd` daemon enabled: configure them with
+  `vtysh`. The IS-IS process is called **`{name}`** everywhere (`router isis {name}`, `ip router isis
+  {name}`).
+- Every address is in place, including the addresses of the loopback interfaces (`lo`, one /32 per
+  router), as well as the default route of the hosts. The routers have no static route: IS-IS
+  alone fills their tables.
+- The `/etc/hosts` files contain the names: `bas_r2-eth1` denotes the address of interface `eth1`
+  of `bas_r2`, `bas_r2-lo` its loopback address, `bas_h4` the host.
+- **Convention of this lab**: the system-id of each router is built from its loopback address
+  (section @@ref:net@@), and the NSEL is `00`.
+
+**Addressing plan.** The links between routers are /30s, the host networks (and `lan_seg`) /24s.
+
+| network | prefix | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Instructions.**
+
+- The parts are **independent**: do them in any order you like. A completed part gives all its
+  points, whatever the state of the others.
+- Save the FRR configuration (`write` in `vtysh`).
+- An adjacency forms within a few seconds; a new prefix may take up to 30 s to be announced
+  (section @@ref:pdus@@).
+
+**Evaluation.** Each evaluation reads your answers, the state of IS-IS on the routers (adjacencies,
+interfaces, database, configuration), the routing tables, and runs `ping`s between the hosts.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_basics`, `solve_levels`, `solve_lan`, `solve_auth`, `solve_fix` et
+`solve_external` (onglet *Appliquer une configuration*) appliquent la solution d'une seule partie et
+remplissent ses formulaires. L'état `final` les applique toutes, attend {wait} s (régénération des
+LSP) puis remplit tous les formulaires : une évaluation lancée dès son retour donne tous les points,
+bonus compris.
+
+Les pannes du site `fix` : `fix_r1` configuré dans l'aire `{wrong}` au lieu de `{area}` (niveau 1
+seulement : aucune adjacence avec `fix_r2`) ; `fix_r3` sans `isis network point-to-point` vers
+`fix_r2` ; MTU de {mtu} sur l'interface de `fix_r4` vers `fix_r3` ; `set-overload-bit` laissé sur
+`fix_r3`.
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance. The
+states `solve_basics`, `solve_levels`, `solve_lan`, `solve_auth`, `solve_fix` and
+`solve_external` (*Apply Configuration* tab) apply the solution of a single part and fill in its
+forms. The `final` state applies them all, waits {wait} s (regeneration of the LSPs) then fills in
+every form: an evaluation started as soon as it returns gives every point, bonus included.
+
+The faults of the `fix` site: `fix_r1` configured in area `{wrong}` instead of `{area}` (level 1
+only: no adjacency with `fix_r2`); `fix_r3` without `isis network point-to-point` towards
+`fix_r2`; an MTU of {mtu} on the interface of `fix_r4` towards `fix_r3`; `set-overload-bit` left
+on `fix_r3`.
+""",
+    "Partie 1 — premier domaine IS-IS (site bas)": "Part 1 — first IS-IS domain (bas site)",
+    "Premier domaine IS-IS": "First IS-IS domain",
+    """
+Les routeurs `bas_r1`, `bas_r2`, `bas_r3` et `bas_r4` forment un carré (liens `bas_l12`,
+`bas_l23`, `bas_l34` et `bas_l14`) ; l'hôte `bas_h1` est derrière `bas_r1`, l'hôte `bas_h4` derrière
+`bas_r4`. Tout le site est dans l'aire **`{area}`**, au **niveau 2 seulement**.
+
+1. **Découverte.** `bas_r1` et `bas_r2` sont déjà configurés. Sur `bas_r1`, regardez la
+   configuration (`show running-config`), puis `show isis summary`, `show isis interface detail`,
+   `show isis neighbor detail`, `show isis database` et `show isis route` (sections @@ref:net@@ à
+   @@ref:adjacency@@). Observez les trames avec `tcpdump -nei eth1` : adresses, encapsulation,
+   longueur.
+2. **Configuration.** Configurez IS-IS sur `bas_r3` et `bas_r4` sur le modèle de `bas_r1` : NET
+   dans l'aire `{area}` avec le system-id tiré de l'adresse de bouclage, niveau 2 seulement, liens
+   entre routeurs en **point à point**, interface de bouclage et réseau de `bas_h4` **passifs**
+   (section @@ref:frr@@).
+3. Vérifiez les adjacences (des deux côtés), la base de données, les routes de `bas_r2` vers le
+   réseau `bas_lan4` (combien de prochains sauts ?), et que `bas_h1` joint `bas_h4`.
+""": """
+The routers `bas_r1`, `bas_r2`, `bas_r3` and `bas_r4` form a square (links `bas_l12`,
+`bas_l23`, `bas_l34` and `bas_l14`); host `bas_h1` is behind `bas_r1`, host `bas_h4` behind
+`bas_r4`. The whole site is in area **`{area}`**, at **level 2 only**.
+
+1. **Discovery.** `bas_r1` and `bas_r2` are already configured. On `bas_r1`, look at the
+   configuration (`show running-config`), then `show isis summary`, `show isis interface detail`,
+   `show isis neighbor detail`, `show isis database` and `show isis route` (sections @@ref:net@@ to
+   @@ref:adjacency@@). Watch the frames with `tcpdump -nei eth1`: addresses, encapsulation,
+   length.
+2. **Configuration.** Configure IS-IS on `bas_r3` and `bas_r4` on the model of `bas_r1`: NET in
+   area `{area}` with the system-id derived from the loopback address, level 2 only, links between
+   routers as **point-to-point**, loopback interface and network of `bas_h4` **passive** (section
+   @@ref:frr@@).
+3. Check the adjacencies (on both sides), the database, the routes of `bas_r2` to the network
+   `bas_lan4` (how many next hops?), and that `bas_h1` reaches `bas_h4`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+`bas_r2` atteint `bas_lan4` ({lan4}) par deux chemins de même coût, 30 (10 jusqu'à `bas_r1` ou
+`bas_r3`, 10 jusqu'à `bas_r4`, 10 pour le préfixe) : sa route a deux prochains sauts.
+
+Évaluation : `bas_adj_r3`, `bas_adj_r4` (2 chacun : les deux adjacences de niveau 2 du routeur),
+`bas_net` (2 : le NET de chaque routeur), `bas_level2` (1), `bas_p2p` (2), `bas_passive` (1 :
+`lo` des deux routeurs et `eth0` de `bas_r4`), `bas_loopbacks` (1 : `bas_r1` a une route IS-IS vers les
+deux adresses de bouclage), `bas_ping` (3), `bas_ecmp` (2 : deux prochains sauts sur `bas_r2`).
+""": """
+**Solution.**
+
+{solution}
+
+`bas_r2` reaches `bas_lan4` ({lan4}) through two paths of the same cost, 30 (10 to `bas_r1` or
+`bas_r3`, 10 to `bas_r4`, 10 for the prefix): its route has two next hops.
+
+Grading: `bas_adj_r3`, `bas_adj_r4` (2 each: the two level 2 adjacencies of the router),
+`bas_net` (2: the NET of each router), `bas_level2` (1), `bas_p2p` (2), `bas_passive` (1:
+`lo` of both routers and `eth0` of `bas_r4`), `bas_loopbacks` (1: `bas_r1` has an IS-IS route to
+both loopback addresses), `bas_ping` (3), `bas_ecmp` (2: two next hops on `bas_r2`).
+""",
+    "Observations sur le site bas": "Observations on the bas site",
+    """
+- system-id de `bas_r3` (format `xxxx.xxxx.xxxx`) : @@{sysid:[0-9a-fA-F.]+}@@
+- premier octet du NET qui indique une adresse privée : @@{afi:[0-9]+}@@
+- délai (en secondes) au bout duquel `bas_r1` déclare `bas_r2` mort s'il ne reçoit plus rien :
+  @@{hold:[0-9]+}@@
+- coût de la route de `bas_r1` vers le réseau `bas_lan4` (`show isis route`) : @@{metric:[0-9]+}@@
+- une PDU IS-IS est transportée dans :
+  @@{transport:>une trame Ethernet (LLC), sans IP>>>llc|un paquet IP, protocole 89>>>ip89|un datagramme UDP, port 520>>>udp520|un segment TCP, port 179>>>tcp179}@@
+- adresse MAC de destination des IIH sur un lien point à point :
+  @@{mac:>09:00:2b:00:00:05>>>09:00:2b:00:00:05|01:80:c2:00:00:14>>>01:80:c2:00:00:14|01:80:c2:00:00:15>>>01:80:c2:00:00:15|ff:ff:ff:ff:ff:ff>>>ff:ff:ff:ff:ff:ff}@@
+""": """
+- system-id of `bas_r3` (format `xxxx.xxxx.xxxx`): @@{sysid:[0-9a-fA-F.]+}@@
+- first byte of the NET that indicates a private address: @@{afi:[0-9]+}@@
+- delay (in seconds) after which `bas_r1` declares `bas_r2` dead if it no longer receives anything:
+  @@{hold:[0-9]+}@@
+- cost of the route of `bas_r1` to the network `bas_lan4` (`show isis route`): @@{metric:[0-9]+}@@
+- an IS-IS PDU is carried in:
+  @@{transport:>an Ethernet frame (LLC), without IP>>>llc|an IP packet, protocol 89>>>ip89|a UDP datagram, port 520>>>udp520|a TCP segment, port 179>>>tcp179}@@
+- destination MAC address of the IIHs on a point-to-point link:
+  @@{mac:>09:00:2b:00:00:05>>>09:00:2b:00:00:05|01:80:c2:00:00:14>>>01:80:c2:00:00:14|01:80:c2:00:00:15>>>01:80:c2:00:00:15|ff:ff:ff:ff:ff:ff>>>ff:ff:ff:ff:ff:ff}@@
+""",
+    """
+**Solution.** System-id de `bas_r3` : **`{sysid}`** (adresse de bouclage `{lo}`) ; **49** ;
+**30** s (IIH toutes les 3 s, multiplicateur 10 : `Expires in` dans `show isis neighbor detail`,
+`Holdtime` dans `show isis neighbor`) ; coût **20** (10 jusqu'à `bas_r4` + 10 pour le préfixe) ;
+**une trame Ethernet (LLC)** (`tcpdump` : `LLC, dsap OSI (0xfe)`, `OSI NLPID IS-IS (0x83)`) ;
+**`09:00:2b:00:00:05`**.
+
+Évaluation : `bas_q_sysid`, `bas_q_afi`, `bas_q_hold`, `bas_q_metric` (1 chacun) et, pour l'enseignant
+seulement (choix dans une liste), `bas_q_transport`, `bas_q_mac` (1 chacun).
+""": """
+**Solution.** System-id of `bas_r3`: **`{sysid}`** (loopback address `{lo}`); **49**;
+**30** s (an IIH every 3 s, multiplier 10: `Expires in` in `show isis neighbor detail`,
+`Holdtime` in `show isis neighbor`); cost **20** (10 to `bas_r4` + 10 for the prefix);
+**an Ethernet frame (LLC)** (`tcpdump`: `LLC, dsap OSI (0xfe)`, `OSI NLPID IS-IS (0x83)`);
+**`09:00:2b:00:00:05`**.
+
+Grading: `bas_q_sysid`, `bas_q_afi`, `bas_q_hold`, `bas_q_metric` (1 each) and, for the
+instructor only (choice from a list), `bas_q_transport`, `bas_q_mac` (1 each).
+""",
+    "adjacences de bas_r3 avec bas_r2 et bas_r4": "adjacencies of bas_r3 with bas_r2 and bas_r4",
+    "adjacences de bas_r4 avec bas_r3 et bas_r1": "adjacencies of bas_r4 with bas_r3 and bas_r1",
+    "NET de bas_r3 et de bas_r4": "NET of bas_r3 and of bas_r4",
+    "bas_r3 et bas_r4 au niveau 2 seulement": "bas_r3 and bas_r4 at level 2 only",
+    "liens point à point sur bas_r3 et bas_r4": "point-to-point links on bas_r3 and bas_r4",
+    "interfaces passives de bas_r3 et bas_r4": "passive interfaces of bas_r3 and bas_r4",
+    "adresses de bouclage de bas_r3 et bas_r4 annoncées": "loopback addresses of bas_r3 and bas_r4 announced",
+    "bas_h1 et bas_h4 se joignent": "bas_h1 and bas_h4 reach each other",
+    "deux chemins de même coût de bas_r2 vers bas_lan4": "two equal-cost paths from bas_r2 to bas_lan4",
+    "system-id de bas_r3": "system-id of bas_r3",
+    "AFI des adresses privées": "AFI of private addresses",
+    "délai de détection d'un voisin": "time before a neighbour is declared dead",
+    "coût d'une route": "cost of a route",
+    "transport d'IS-IS": "transport of IS-IS",
+    "adresse MAC des IIH point à point": "MAC address of point-to-point IIHs",
+    "Partie 2 — niveaux et aires (site lvl)": "Part 2 — levels and areas (lvl site)",
+    """
+Les routeurs `lvl_r1` à `lvl_r5` forment une ligne ; l'hôte `lvl_h1` est derrière `lvl_r1`,
+l'hôte `lvl_h5` derrière `lvl_r5`. Le site compte trois aires (section @@ref:levels@@) :
+
+| routeur | aire | type | état au départ |
+|---------|------|------|----------------|
+| `lvl_r1` | `{a}` | niveau 1 | rien de configuré |
+| `lvl_r2` | `{a}` | niveaux 1 et 2 | rien de configuré |
+| `lvl_r3` | `{b}` | niveau 2 seulement | configuré |
+| `lvl_r4` | `{c}` | niveaux 1 et 2 | configuré |
+| `lvl_r5` | `{c}` | niveau 1 | configuré |
+
+Les réseaux de l'aire `{a}` sont tous dans `{block_a}`, ceux de l'aire `{c}` dans `{block_c}`.
+
+1. Sur `lvl_r5`, regardez la base de données (`show isis database`), les routes (`show isis route`,
+   `ip route`) et les bits `ATT/P/OL` : comment `lvl_r5` joint-il les autres aires ? Sur `lvl_r4`,
+   regardez la configuration (`show running-config`) : comment l'aire `{c}` est-elle annoncée au
+   niveau 2 (section @@ref:l1-to-l2@@) ?
+2. Configurez `lvl_r1` (niveau 1, aire `{a}`) et `lvl_r2` (niveaux 1 et 2, aire `{a}`) : NET tirés
+   des adresses de bouclage, liens point à point, interfaces de bouclage et réseau de `lvl_h1`
+   passifs. Sur `lvl_r2`, limitez l'interface vers `lvl_r1` au **niveau 1** et l'interface vers
+   `lvl_r3` au **niveau 2** (`isis circuit-type`).
+3. Comme `lvl_r4` pour l'aire `{c}`, faites annoncer par `lvl_r2` au niveau 2 le résumé de l'aire
+   `{a}`.
+4. Vérifiez le niveau des adjacences de `lvl_r2`, les deux bases de `lvl_r2`, la table de routage
+   de `lvl_r1` (que sait-il de l'aire `{c}` ?), celle de `lvl_r3`, et que `lvl_h1` joint `lvl_h5`.
+""": """
+The routers `lvl_r1` to `lvl_r5` form a line; host `lvl_h1` is behind `lvl_r1`, host `lvl_h5`
+behind `lvl_r5`. The site has three areas (section @@ref:levels@@):
+
+| router | area | type | state at the start |
+|---------|------|------|----------------|
+| `lvl_r1` | `{a}` | level 1 | nothing configured |
+| `lvl_r2` | `{a}` | levels 1 and 2 | nothing configured |
+| `lvl_r3` | `{b}` | level 2 only | configured |
+| `lvl_r4` | `{c}` | levels 1 and 2 | configured |
+| `lvl_r5` | `{c}` | level 1 | configured |
+
+The networks of area `{a}` are all in `{block_a}`, those of area `{c}` in `{block_c}`.
+
+1. On `lvl_r5`, look at the database (`show isis database`), the routes (`show isis route`,
+   `ip route`) and the `ATT/P/OL` bits: how does `lvl_r5` reach the other areas? On `lvl_r4`,
+   look at the configuration (`show running-config`): how is area `{c}` announced in level 2
+   (section @@ref:l1-to-l2@@)?
+2. Configure `lvl_r1` (level 1, area `{a}`) and `lvl_r2` (levels 1 and 2, area `{a}`): NETs derived
+   from the loopback addresses, point-to-point links, loopback interfaces and network of `lvl_h1`
+   passive. On `lvl_r2`, restrict the interface towards `lvl_r1` to **level 1** and the interface
+   towards `lvl_r3` to **level 2** (`isis circuit-type`).
+3. Like `lvl_r4` for area `{c}`, make `lvl_r2` announce the summary of area `{a}` in level 2.
+4. Check the level of the adjacencies of `lvl_r2`, the two databases of `lvl_r2`, the routing table
+   of `lvl_r1` (what does it know about area `{c}`?), that of `lvl_r3`, and that `lvl_h1` reaches
+   `lvl_h5`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+`lvl_r1` (niveau 1) n'a, en dehors de son aire, qu'une route par défaut vers `lvl_r2`, installée à
+cause du bit ATT de la LSP de niveau 1 de `lvl_r2`. `lvl_r2` et `lvl_r3` forment une adjacence de
+niveau 2 bien que leurs aires diffèrent. FRR n'annonce pas au niveau 2 les préfixes appris au niveau
+1 : sans le résumé redistribué par `lvl_r2`, `lvl_r3` et `lvl_r4` ne connaissent pas `lvl_lan1`, et
+les réponses de `lvl_h5` se perdent.
+
+Évaluation : `lvl_r1_config` (2 : type et NET), `lvl_r2_config` (2 : type et NET), `lvl_adj_l1` (2 :
+`lvl_r1` – `lvl_r2` au niveau 1 seulement, vu des deux côtés), `lvl_adj_l2` (2 : `lvl_r2` – `lvl_r3` au
+niveau 2 seulement, vu des deux côtés), `lvl_circuit_type` (2), `lvl_summary` (2 : route IS-IS de
+`lvl_r3` vers `{block_a}` par `lvl_r2`), `lvl_default` (3 : route par défaut d'IS-IS sur `lvl_r1` vers
+`lvl_r2`), `lvl_l1_only` (1 : pas de route précise vers `lvl_lan5` sur `lvl_r1`, compté avec la route
+par défaut), `lvl_ping` (3).
+""": """
+**Solution.**
+
+{solution}
+
+`lvl_r1` (level 1) has, outside its area, only a default route towards `lvl_r2`, installed because
+of the ATT bit in the level 1 LSP of `lvl_r2`. `lvl_r2` and `lvl_r3` form a level 2 adjacency
+although their areas differ. FRR does not announce in level 2 the prefixes learnt in level 1:
+without the summary redistributed by `lvl_r2`, `lvl_r3` and `lvl_r4` do not know `lvl_lan1`, and
+the replies of `lvl_h5` get lost.
+
+Grading: `lvl_r1_config` (2: type and NET), `lvl_r2_config` (2: type and NET), `lvl_adj_l1` (2:
+`lvl_r1` – `lvl_r2` at level 1 only, seen from both sides), `lvl_adj_l2` (2: `lvl_r2` – `lvl_r3` at
+level 2 only, seen from both sides), `lvl_circuit_type` (2), `lvl_summary` (2: IS-IS route of
+`lvl_r3` to `{block_a}` via `lvl_r2`), `lvl_default` (3: IS-IS default route on `lvl_r1` towards
+`lvl_r2`), `lvl_l1_only` (1: no specific route to `lvl_lan5` on `lvl_r1`, counted only with the
+default route), `lvl_ping` (3).
+""",
+    "Observations sur le site lvl": "Observations on the lvl site",
+    """
+- bit de la LSP de niveau 1 de `lvl_r2` qui fait installer à `lvl_r1` une route par défaut :
+  @@{bit:>ATT>>>att|P>>>p|OL>>>ol}@@
+- nombre de bases de données (une par niveau) que tient `lvl_r2` : @@{databases:[0-9]+}@@
+- nombre de LSP dans la base de niveau 2 de `lvl_r2` (aucun pseudo-nœud sur ce site) :
+  @@{l2_lsps:[0-9]+}@@
+- coût de la route par défaut de `lvl_r1` (`show isis route`) : @@{default_metric:[0-9]+}@@
+- deux routeurs de niveau 1 d'aires différentes forment une adjacence :
+  @@{l1_areas:>oui>>>yes|non>>>no|seulement sur un lien point à point>>>p2p}@@
+""": """
+- bit of the level 1 LSP of `lvl_r2` that makes `lvl_r1` install a default route:
+  @@{bit:>ATT>>>att|P>>>p|OL>>>ol}@@
+- number of databases (one per level) that `lvl_r2` keeps: @@{databases:[0-9]+}@@
+- number of LSPs in the level 2 database of `lvl_r2` (no pseudonode on this site):
+  @@{l2_lsps:[0-9]+}@@
+- cost of the default route of `lvl_r1` (`show isis route`): @@{default_metric:[0-9]+}@@
+- two level 1 routers of different areas form an adjacency:
+  @@{l1_areas:>yes>>>yes|no>>>no|only on a point-to-point link>>>p2p}@@
+""",
+    """
+**Solution.** **ATT** ; **2** bases ; **3** LSP de niveau 2 (`lvl_r2`, `lvl_r3`, `lvl_r4` : les
+routeurs de niveau 2) ; coût **10** (la distance jusqu'à `lvl_r2`) ; **non**.
+
+Évaluation : `lvl_q_databases`, `lvl_q_l2_lsps`, `lvl_q_default_metric` (1 chacun) et, pour
+l'enseignant seulement, `lvl_q_bit`, `lvl_q_l1_areas` (1 chacun).
+""": """
+**Solution.** **ATT**; **2** databases; **3** level 2 LSPs (`lvl_r2`, `lvl_r3`, `lvl_r4`: the
+level 2 routers); cost **10** (the distance to `lvl_r2`); **no**.
+
+Grading: `lvl_q_databases`, `lvl_q_l2_lsps`, `lvl_q_default_metric` (1 each) and, for the
+instructor only, `lvl_q_bit`, `lvl_q_l1_areas` (1 each).
+""",
+    "type et NET de lvl_r1": "type and NET of lvl_r1",
+    "type et NET de lvl_r2": "type and NET of lvl_r2",
+    "adjacence de niveau 1 entre lvl_r1 et lvl_r2": "level 1 adjacency between lvl_r1 and lvl_r2",
+    "adjacence de niveau 2 entre lvl_r2 et lvl_r3": "level 2 adjacency between lvl_r2 and lvl_r3",
+    "niveaux des interfaces de lvl_r2": "levels of the interfaces of lvl_r2",
+    "l'aire de lvl_r1 et lvl_r2 annoncée au niveau 2": "the area of lvl_r1 and lvl_r2 announced in level 2",
+    "route par défaut de lvl_r1 vers lvl_r2": "default route of lvl_r1 towards lvl_r2",
+    "lvl_r1 ne connaît pas les préfixes des autres aires": "lvl_r1 does not know the prefixes of the other areas",
+    "lvl_h1 et lvl_h5 se joignent": "lvl_h1 and lvl_h5 reach each other",
+    "bases d'un routeur L1/L2": "databases of an L1/L2 router",
+    "LSP de niveau 2": "level 2 LSPs",
+    "coût de la route par défaut": "cost of the default route",
+    "bit ATT": "ATT bit",
+    "niveau 1 et aires": "level 1 and areas",
+    "Partie 3 — DIS, métriques et surcharge (site lan)": "Part 3 — DIS, metrics and overload (lan site)",
+    "DIS, métriques et surcharge": "DIS, metrics and overload",
+    """
+`lan_r1`, `lan_r2` et `lan_r3` partagent le réseau à diffusion `lan_seg` ; `lan_r4` est relié à
+`lan_r1` (lien `lan_l14`) et à `lan_r3` (lien `lan_l34`). L'hôte `lan_h2` est derrière `lan_r2`,
+l'hôte `lan_h4` derrière `lan_r4`. IS-IS fonctionne déjà partout (aire `{area}`, niveau 2).
+
+1. **Le DIS** (section @@ref:dis@@). Sur `lan_r2`, trouvez le DIS de `lan_seg` (`show isis
+   interface detail`, `show isis neighbor detail`) et le pseudo-nœud dans la base. Faites de
+   `lan_r3` le DIS de `lan_seg` en donnant à son interface la priorité **{prio}**. Que devient le
+   pseudo-nœud ?
+2. **Les métriques** (section @@ref:metrics@@). Combien `lan_r2` a-t-il de chemins vers
+   `lan_lan4` ? Donnez au lien `lan_l14` la métrique **{metric}**, à ses **deux** extrémités, puis
+   regardez à nouveau les routes de `lan_r1` et de `lan_r2` vers `lan_lan4`.
+3. **La surcharge** (section @@ref:overload@@). `lan_r1` doit partir en maintenance : mettez-le en
+   surcharge. Vérifiez dans la base de `lan_r2` le bit `OL`, et que `lan_h4` joint encore
+   l'adresse de bouclage de `lan_r1`.
+""": """
+`lan_r1`, `lan_r2` and `lan_r3` share the broadcast network `lan_seg`; `lan_r4` is connected to
+`lan_r1` (link `lan_l14`) and to `lan_r3` (link `lan_l34`). Host `lan_h2` is behind `lan_r2`,
+host `lan_h4` behind `lan_r4`. IS-IS already runs everywhere (area `{area}`, level 2).
+
+1. **The DIS** (section @@ref:dis@@). On `lan_r2`, find the DIS of `lan_seg` (`show isis
+   interface detail`, `show isis neighbor detail`) and the pseudonode in the database. Make
+   `lan_r3` the DIS of `lan_seg` by giving its interface the priority **{prio}**. What happens to
+   the pseudonode?
+2. **The metrics** (section @@ref:metrics@@). How many paths does `lan_r2` have to `lan_lan4`?
+   Give the link `lan_l14` the metric **{metric}**, at **both** ends, then look again at the
+   routes of `lan_r1` and of `lan_r2` to `lan_lan4`.
+3. **The overload** (section @@ref:overload@@). `lan_r1` must go into maintenance: put it in
+   overload. Check the `OL` bit in the database of `lan_r2`, and that `lan_h4` still reaches the
+   loopback address of `lan_r1`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Au départ `lan_r1` est le DIS (priorité {r1prio}) ; avec la priorité {prio}, `lan_r3` le devient
+aussitôt (élection préemptive) : le pseudo-nœud `lan_r1.xx-00` est purgé, `lan_r3.yy-00` le
+remplace. Avant le changement de métrique, `lan_r2` a deux chemins de coût 30 vers `lan_lan4` (par
+`lan_r1` et par `lan_r3`) ; ensuite, `lan_r1` lui-même passe par `lan_seg` et `lan_r3` (coût 30,
+contre {via_l14} par `lan_l14`). La surcharge de `lan_r1` ne change rien à ses propres préfixes.
+
+Évaluation : `lan_dis` (3), `lan_priority` (2), `lan_metric` (2 : une extrémité chacun),
+`lan_r1_path` (2 : `lan_r1` vers `lan_lan4` par `lan_r3`), `lan_r2_path` (2 : un seul chemin, par
+`lan_r3`), `lan_overload` (3 : bit OL de la LSP de `lan_r1` dans la base de `lan_r2`),
+`lan_overload_own` (1 : `lan_h4` joint `lan_r1-lo`, compté avec le bit OL).
+""": """
+**Solution.**
+
+{solution}
+
+At the start `lan_r1` is the DIS (priority {r1prio}); with the priority {prio}, `lan_r3` becomes
+DIS at once (preemptive election): the pseudonode `lan_r1.xx-00` is purged, `lan_r3.yy-00`
+replaces it. Before the metric change, `lan_r2` has two paths of cost 30 to `lan_lan4` (via
+`lan_r1` and via `lan_r3`); afterwards, `lan_r1` itself goes through `lan_seg` and `lan_r3` (cost
+30, against {via_l14} through `lan_l14`). The overload of `lan_r1` changes nothing for its own
+prefixes.
+
+Grading: `lan_dis` (3), `lan_priority` (2), `lan_metric` (2: one end each), `lan_r1_path` (2:
+`lan_r1` to `lan_lan4` via `lan_r3`), `lan_r2_path` (2: a single path, via `lan_r3`),
+`lan_overload` (3: OL bit of the LSP of `lan_r1` in the database of `lan_r2`),
+`lan_overload_own` (1: `lan_h4` reaches `lan_r1-lo`, counted only with the OL bit).
+""",
+    "Observations sur le site lan": "Observations on the lan site",
+    """
+- intervalle (en secondes) entre deux CSNP du DIS : @@{csnp:[0-9]+}@@
+- un routeur qui arrive avec une meilleure priorité devient DIS sans attendre :
+  @@{preemptive:>oui>>>yes|non, il faut relancer IS-IS sur le DIS>>>no|seulement au niveau 1>>>level1}@@
+- métrique, dans la LSP du pseudo-nœud, des liens vers les routeurs du réseau : @@{pseudonode:[0-9]+}@@
+- coût de la route de `lan_r1` vers `lan_lan4` après le changement de métrique : @@{metric:[0-9]+}@@
+- plus grande métrique d'interface possible avec `metric-style narrow` : @@{narrow:[0-9]+}@@
+""": """
+- interval (in seconds) between two CSNPs of the DIS: @@{csnp:[0-9]+}@@
+- a router arriving with a better priority becomes DIS without waiting:
+  @@{preemptive:>yes>>>yes|no, IS-IS must be restarted on the DIS>>>no|only at level 1>>>level1}@@
+- metric, in the LSP of the pseudonode, of the links to the routers of the network: @@{pseudonode:[0-9]+}@@
+- cost of the route of `lan_r1` to `lan_lan4` after the metric change: @@{metric:[0-9]+}@@
+- largest interface metric possible with `metric-style narrow`: @@{narrow:[0-9]+}@@
+""",
+    """
+**Solution.** **10** s ; **oui** ; **0** ; **30** (`lan_seg` 10 + `lan_l34` 10 + préfixe 10) ;
+**63** (6 bits).
+
+Évaluation : `lan_q_csnp`, `lan_q_pseudonode`, `lan_q_metric`, `lan_q_narrow` (1 chacun) et, pour
+l'enseignant seulement, `lan_q_preemptive` (1).
+""": """
+**Solution.** **10** s; **yes**; **0**; **30** (`lan_seg` 10 + `lan_l34` 10 + prefix 10);
+**63** (6 bits).
+
+Grading: `lan_q_csnp`, `lan_q_pseudonode`, `lan_q_metric`, `lan_q_narrow` (1 each) and, for the
+instructor only, `lan_q_preemptive` (1).
+""",
+    "lan_r3 est le DIS de lan_seg": "lan_r3 is the DIS of lan_seg",
+    "priorité de lan_r3": "priority of lan_r3",
+    "métrique de lan_l14": "metric of lan_l14",
+    "lan_r1 joint lan_lan4 par lan_r3": "lan_r1 reaches lan_lan4 via lan_r3",
+    "un seul chemin de lan_r2 vers lan_lan4": "a single path from lan_r2 to lan_lan4",
+    "lan_r1 en surcharge": "lan_r1 in overload",
+    "lan_r1 reste joignable en surcharge": "lan_r1 stays reachable in overload",
+    "intervalle des CSNP": "CSNP interval",
+    "métrique du pseudo-nœud": "metric of the pseudonode",
+    "coût après le changement de métrique": "cost after the metric change",
+    "métrique narrow maximale": "maximum narrow metric",
+    "élection préemptive": "preemptive election",
+    "Partie 4 — authentification (site auth)": "Part 4 — authentication (auth site)",
+    """
+`auth_r1` et `auth_r2` sont reliés par le lien `auth_l12` ; l'hôte `auth_h1` est derrière
+`auth_r1`, l'hôte `auth_h2` derrière `auth_r2`. IS-IS est configuré sur les deux routeurs (aire
+`{area}`, niveau 2), mais `auth_r2`, géré par une autre équipe (pas de terminal), exige une
+authentification (section @@ref:auth@@) :
+
+- les IIH du lien `auth_l12` sont signés avec HMAC-MD5 et le mot de passe **`{hello}`** ;
+- les LSP, CSNP et PSNP de niveau 2 sont signées avec HMAC-MD5 et le mot de passe **`{domain}`**.
+
+1. Regardez les voisins de `auth_r1` : que voit-il de `auth_r2` ? Pourquoi `auth_h1` ne joint-il pas
+   `auth_h2` ?
+2. Configurez l'authentification des IIH sur l'interface de `auth_r1`, puis vérifiez à nouveau le
+   voisinage et la base de données de `auth_r1`. Que manque-t-il encore ?
+3. Configurez le mot de passe des PDU de niveau 2 et vérifiez que `auth_h1` joint `auth_h2`.
+""": """
+`auth_r1` and `auth_r2` are connected by the link `auth_l12`; host `auth_h1` is behind
+`auth_r1`, host `auth_h2` behind `auth_r2`. IS-IS is configured on both routers (area
+`{area}`, level 2), but `auth_r2`, managed by another team (no terminal), requires
+authentication (section @@ref:auth@@):
+
+- the IIHs of the link `auth_l12` are signed with HMAC-MD5 and the password **`{hello}`**;
+- the level 2 LSPs, CSNPs and PSNPs are signed with HMAC-MD5 and the password **`{domain}`**.
+
+1. Look at the neighbours of `auth_r1`: what does it see of `auth_r2`? Why does `auth_h1` not
+   reach `auth_h2`?
+2. Configure the authentication of the IIHs on the interface of `auth_r1`, then check the
+   neighbours and the database of `auth_r1` again. What is still missing?
+3. Configure the password of the level 2 PDUs and check that `auth_h1` reaches `auth_h2`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Au départ, `auth_r1` (sans mot de passe) accepte les IIH signés de `auth_r2` et l'affiche
+`Initializing`, mais `auth_r2` rejette les IIH non signés de `auth_r1` : il ne le voit pas. Avec le seul
+mot de passe des IIH, l'adjacence est `Up` des deux côtés et `auth_r1` apprend les préfixes de
+`auth_r2`, mais `auth_r2` rejette les LSP non signées de `auth_r1` : il n'a pas de route vers
+`auth_lan1`.
+
+Évaluation : `auth_adj` (4 : l'adjacence vue par `auth_r2`), `auth_lsdb` (3 : `auth_r2` a une route
+IS-IS vers `auth_lan1`), `auth_md5` (2 : les deux mots de passe en `md5` sur `auth_r1`), `auth_ping`
+(1).
+""": """
+**Solution.**
+
+{solution}
+
+At the start, `auth_r1` (without a password) accepts the signed IIHs of `auth_r2` and shows it
+`Initializing`, but `auth_r2` rejects the unsigned IIHs of `auth_r1`: it does not see it. With the
+IIH password alone, the adjacency is `Up` on both sides and `auth_r1` learns the prefixes of
+`auth_r2`, but `auth_r2` rejects the unsigned LSPs of `auth_r1`: it has no route to
+`auth_lan1`.
+
+Grading: `auth_adj` (4: the adjacency seen by `auth_r2`), `auth_lsdb` (3: `auth_r2` has an IS-IS
+route to `auth_lan1`), `auth_md5` (2: both passwords as `md5` on `auth_r1`), `auth_ping`
+(1).
+""",
+    "Observations sur le site auth": "Observations on the auth site",
+    """
+- numéro du TLV qui porte l'authentification : @@{tlv:[0-9]+}@@
+- `domain-password` protège :
+  @@{domain:>les LSP, CSNP et PSNP de niveau 2>>>l2_lsp_snp|les IIH de toutes les interfaces>>>iih|les LSP de niveau 1>>>l1_lsp|tout le trafic IP entre les routeurs>>>ip}@@
+""": """
+- number of the TLV that carries the authentication: @@{tlv:[0-9]+}@@
+- `domain-password` protects:
+  @@{domain:>the level 2 LSPs, CSNPs and PSNPs>>>l2_lsp_snp|the IIHs of every interface>>>iih|the level 1 LSPs>>>l1_lsp|all the IP traffic between the routers>>>ip}@@
+""",
+    """
+**Solution.** TLV **10** ; **les LSP, CSNP et PSNP de niveau 2**.
+
+Évaluation : `auth_q_tlv` (1) et, pour l'enseignant seulement, `auth_q_domain` (1).
+""": """
+**Solution.** TLV **10**; **the level 2 LSPs, CSNPs and PSNPs**.
+
+Grading: `auth_q_tlv` (1) and, for the instructor only, `auth_q_domain` (1).
+""",
+    "adjacence vue par auth_r2": "adjacency seen by auth_r2",
+    "auth_r2 accepte les LSP de auth_r1": "auth_r2 accepts the LSPs of auth_r1",
+    "mots de passe md5 sur auth_r1": "md5 passwords on auth_r1",
+    "auth_h1 et auth_h2 se joignent": "auth_h1 and auth_h2 reach each other",
+    "TLV d'authentification": "authentication TLV",
+    "rôle de domain-password": "role of domain-password",
+    "Partie 5 — dépannage (site fix)": "Part 5 — troubleshooting (fix site)",
+    "Dépannage": "Troubleshooting",
+    """
+Les routeurs `fix_r1` à `fix_r4` forment une ligne ; l'hôte `fix_h1` est derrière `fix_r1`, l'hôte
+`fix_h4` derrière `fix_r4`. Le plan prévu : toute la ligne dans l'aire **`{area}`**, `fix_r1` au
+niveau 1, `fix_r2` aux niveaux 1 et 2, `fix_r3` et `fix_r4` au niveau 2, des liens point à point.
+`fix_r2` annonce au niveau 2 le réseau de `fix_h1` (une route statique redistribuée, section
+@@ref:l1-to-l2@@).
+
+Ce site a été livré avec **quatre pannes** : `fix_h1` ne joint pas `fix_h4`. Trouvez-les et
+corrigez-les, sans changer le plan (section @@ref:diagnostic@@). Pour chaque lien, vérifiez
+l'adjacence **des deux côtés** (`show isis neighbor`) ; lisez la configuration (`show
+running-config`), les interfaces (`show isis interface detail`, `ip link`), la base de données, et le
+journal `/var/log/frr/frr.log`.
+""": """
+The routers `fix_r1` to `fix_r4` form a line; host `fix_h1` is behind `fix_r1`, host
+`fix_h4` behind `fix_r4`. The intended plan: the whole line in area **`{area}`**, `fix_r1` at
+level 1, `fix_r2` at levels 1 and 2, `fix_r3` and `fix_r4` at level 2, point-to-point links.
+`fix_r2` announces the network of `fix_h1` in level 2 (a redistributed static route, section
+@@ref:l1-to-l2@@).
+
+This site was delivered with **four faults**: `fix_h1` does not reach `fix_h4`. Find them and fix
+them, without changing the plan (section @@ref:diagnostic@@). For each link, check the adjacency
+**on both sides** (`show isis neighbor`); read the configuration (`show
+running-config`), the interfaces (`show isis interface detail`, `ip link`), the database, and the
+log `/var/log/frr/frr.log`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+`fix_r4` : `{mtu_cmd}` (la MTU revient à 1500). Les pannes : aire `{wrong}` sur `fix_r1`
+(niveau 1 : aucune adjacence avec `fix_r2`, d'une autre aire) ; type de réseau à diffusion sur
+`fix_r3` vers `fix_r2` (`p2p hello on non p2p circuit` dans le journal) ; MTU de {mtu} sur `fix_r4`
+(les IIH de 1500 octets de `fix_r3` sont jetés : `fix_r3` voit `fix_r4` `Initializing`, `fix_r4` ne
+voit rien) ;
+`set-overload-bit` sur `fix_r3`, routeur de transit (adjacences `Up`, mais aucun chemin ne passe par
+lui).
+
+Évaluation : `fix_adj_12`, `fix_adj_23`, `fix_adj_34` (4 chacun : l'adjacence vue des deux côtés),
+`fix_overload` (3 : la LSP de `fix_r3` sans bit OL), `fix_ping` (3).
+""": """
+**Solution.**
+
+{solution}
+
+`fix_r4`: `{mtu_cmd}` (the MTU goes back to 1500). The faults: area `{wrong}` on `fix_r1`
+(level 1: no adjacency with `fix_r2`, which is in another area); broadcast network type on
+`fix_r3` towards `fix_r2` (`p2p hello on non p2p circuit` in the log); an MTU of {mtu} on `fix_r4`
+(the 1500-byte IIHs of `fix_r3` are dropped: `fix_r3` sees `fix_r4` `Initializing`, `fix_r4` sees
+nothing);
+`set-overload-bit` on `fix_r3`, a transit router (adjacencies `Up`, but no path goes through
+it).
+
+Grading: `fix_adj_12`, `fix_adj_23`, `fix_adj_34` (4 each: the adjacency seen from both sides),
+`fix_overload` (3: the LSP of `fix_r3` without the OL bit), `fix_ping` (3).
+""",
+    "Les causes des pannes": "The causes of the faults",
+    """
+- cause de l'absence d'adjacence entre `fix_r1` et `fix_r2` : @@{{f12:>{causes}}}@@
+- cause de l'absence d'adjacence entre `fix_r2` et `fix_r3` : @@{{f23:>{causes}}}@@
+- cause de l'adjacence vue d'un seul côté entre `fix_r3` et `fix_r4` : @@{{f34:>{causes}}}@@
+- cause de l'absence de chemin à travers `fix_r3` une fois les adjacences rétablies :
+  @@{{transit:>{causes}}}@@
+""": """
+- cause of the missing adjacency between `fix_r1` and `fix_r2`: @@{{f12:>{causes}}}@@
+- cause of the missing adjacency between `fix_r2` and `fix_r3`: @@{{f23:>{causes}}}@@
+- cause of the adjacency seen on one side only between `fix_r3` and `fix_r4`: @@{{f34:>{causes}}}@@
+- cause of the missing path through `fix_r3` once the adjacencies are restored:
+  @@{{transit:>{causes}}}@@
+""",
+    """
+**Solution.** Aires différentes ; types de réseau différents ; MTU différentes ; bit de surcharge.
+
+Évaluation, pour l'enseignant seulement : `fix_q_12`, `fix_q_23`, `fix_q_34`, `fix_q_transit` (1
+chacun).
+""": """
+**Solution.** Different areas; different network types; different MTUs; overload bit.
+
+Grading, for the instructor only: `fix_q_12`, `fix_q_23`, `fix_q_34`, `fix_q_transit` (1
+each).
+""",
+    "adjacence fix_r1 – fix_r2": "adjacency fix_r1 – fix_r2",
+    "adjacence fix_r2 – fix_r3": "adjacency fix_r2 – fix_r3",
+    "adjacence fix_r3 – fix_r4": "adjacency fix_r3 – fix_r4",
+    "fix_r3 n'est plus en surcharge": "fix_r3 no longer in overload",
+    "fix_h1 et fix_h4 se joignent": "fix_h1 and fix_h4 reach each other",
+    "cause de la panne fix_r1 – fix_r2": "cause of the fault fix_r1 – fix_r2",
+    "cause de la panne fix_r2 – fix_r3": "cause of the fault fix_r2 – fix_r3",
+    "cause de la panne fix_r3 – fix_r4": "cause of the fault fix_r3 – fix_r4",
+    "cause de l'absence de transit": "cause of the missing transit",
+    "Bonus — routes externes (site ext)": "Bonus — external routes (ext site)",
+    "Routes externes (bonus)": "External routes (bonus)",
+    """
+`ext_r1` et `ext_r2` forment un petit domaine IS-IS (aire `{area}`, niveau 2) ; l'hôte `ext_h2` est
+derrière `ext_r2`. `ext_r1` est aussi relié, par le réseau `ext_wan` (hors IS-IS), au routeur
+`ext_isp` d'un fournisseur d'accès, derrière lequel se trouve le serveur `internet` ({server}).
+`ext_r1` a deux routes statiques dans FRR : vers `{public}` et une route par défaut, toutes deux
+par `ext_isp`.
+
+Faites annoncer par `ext_r1`, au niveau 2, sa route statique vers `{public}` et une route par
+défaut (section @@ref:external@@), puis vérifiez les routes de `ext_r2` et que `ext_h2` joint
+`internet`.
+""": """
+`ext_r1` and `ext_r2` form a small IS-IS domain (area `{area}`, level 2); host `ext_h2` is
+behind `ext_r2`. `ext_r1` is also connected, through the network `ext_wan` (outside IS-IS), to the
+router `ext_isp` of an Internet service provider, behind which sits the server `internet`
+({server}). `ext_r1` has two static routes in FRR: to `{public}` and a default route, both via
+`ext_isp`.
+
+Make `ext_r1` announce, in level 2, its static route to `{public}` and a default route (section
+@@ref:external@@), then check the routes of `ext_r2` and that `ext_h2` reaches `internet`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+`redistribute ipv4 static` n'annonce que `{public}` : la route par défaut demande
+`default-information originate`.
+
+Évaluation (bonus) : `ext_static` (2 : route IS-IS de `ext_r2` vers `{public}`), `ext_default`
+(2 : route par défaut IS-IS sur `ext_r2`), `ext_ping` (2 : `ext_h2` joint `internet`).
+""": """
+**Solution.**
+
+{solution}
+
+`redistribute ipv4 static` announces only `{public}`: the default route requires
+`default-information originate`.
+
+Grading (bonus): `ext_static` (2: IS-IS route of `ext_r2` to `{public}`), `ext_default`
+(2: IS-IS default route on `ext_r2`), `ext_ping` (2: `ext_h2` reaches `internet`).
+""",
+    "route vers le réseau externe annoncée": "route to the external network announced",
+    "route par défaut annoncée": "default route announced",
+    "ext_h2 joint internet": "ext_h2 reaches internet",
+}}

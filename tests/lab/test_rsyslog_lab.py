@@ -165,6 +165,24 @@ def _all_texts(grade, ns, lang='fr'):
         yield f"description:{_text(q.title)}", _text(q.description, lang)
 
 
+def _tr_literals():
+    import ast
+    import check_sre_translations
+    return check_sre_translations.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+
+
+def _instructor_literals():
+    import ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 # ---------------------------------------------------------------------------
 # data, topology, states
 # ---------------------------------------------------------------------------
@@ -342,8 +360,35 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('rsyslog_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _run(module, data, {}, lambda m, c: None, instructor_mode=True)
         assert _totals(grade) == (0, 100)
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py); the English texts are formatted and
+        render, the instructor ones included."""
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        literals = _instructor_literals()
+        assert len(literals) == 8 and set(literals) <= set(english)
+        assert set(english) == _tr_literals() and all(value and value != key for key, value in english.items())
+        assert all(english[k].lstrip().startswith(('**Solution.**', '**For the instructor.**', '**Answers.**'))
+                   for k in literals)
+        assert _text(lab.title, 'en') == "Syslog: central logs with rsyslog and logrotate"
+        assert _text(lab.NetScheme.final._sre_state_description, 'en').startswith('Reference solution')
+        g1, ns1 = _run(lab, data, {}, lambda m, c: None, instructor_mode=True)
+        texts = dict(_all_texts(g1, ns1, 'en'))
+        assert len([w for w, t in texts.items() if has_instructor(t)]) == 7
+        for where, text in texts.items():
+            assert text != dict(_all_texts(g1, ns1))[where], where
+            assert "{'" not in text, where
+            plain = re.sub(r"```.*?```", "", re.sub(r"@@\{[^}]*\}@@", "", text), flags=re.S)
+            assert not re.search(r"(?<!\{)\{[a-z_][a-z_0-9]*\}(?!\})", plain), where
+            markdown_to_html(text, show_instructor=True)
+            markdown_to_html(text, show_instructor=False)
 
     def test_english_identifiers(self, lab, data):
         french = re.compile(r'(journal|collecteur|serveur|sonde|regle|fichier|alerte|panne)', re.I)

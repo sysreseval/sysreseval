@@ -690,11 +690,13 @@ sous-interfaces VLAN d'un port ; un port passé en `rx-only` cesse d'émettre **
         for m in LLDP_SWITCHES:
             self.cmd(m, "lldpd")
 
-    @sre_state(user_allowed=True, description=tr("Partie 2 : couper silencieusement le port de ab_sw1 vers ab_srv"))
+    @sre_state(user_allowed=True, description=tr("Partie 2 : couper silencieusement le port de ab_sw1 vers ab_srv",
+                                                 en="Part 2: silently cut the port of ab_sw1 towards ab_srv"))
     def ab_cut(self):
         self.cmd('ab_sw1', f"{AB_CUT} on")
 
-    @sre_state(user_allowed=True, description=tr("Partie 2 : rétablir le port de ab_sw1 vers ab_srv"))
+    @sre_state(user_allowed=True, description=tr("Partie 2 : rétablir le port de ab_sw1 vers ab_srv",
+                                                 en="Part 2: restore the port of ab_sw1 towards ab_srv"))
     def ab_uncut(self):
         self.cmd('ab_sw1', f"{AB_CUT} off")
 
@@ -742,27 +744,32 @@ sous-interfaces VLAN d'un port ; un port passé en `rx-only` cesse d'émettre **
             self.cmd('fix_sw', c)
         self.cmd('fix_srv', "sleep 4", step=2)           # LACP negotiation
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (LLDP)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (LLDP)", en="Part 1: solution (LLDP)"))
     def solve_lldp(self):
         self._solve_lldp()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (actif / secours)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (actif / secours)",
+                                                  en="Part 2: solution (active-backup)"))
     def solve_ab(self):
         self._solve_ab()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (LACP serveur - switch)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (LACP serveur - switch)",
+                                                  en="Part 3: solution (LACP server - switch)"))
     def solve_lacp(self):
         self._solve_lacp()
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (agrégat entre switchs, ~30 s)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (agrégat entre switchs, ~30 s)",
+                                                  en="Part 4: solution (aggregate between switches, ~30 s)"))
     def solve_isl(self):
         self._solve_isl()
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (dépannage)"))
+    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (dépannage)",
+                                                  en="Part 5: solution (troubleshooting)"))
     def solve_fix(self):
         self._solve_fix()
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (VLAN annoncé par LLDP)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (VLAN annoncé par LLDP)",
+                                                  en="Bonus: solution (VLAN announced by LLDP)"))
     def solve_bonus(self):
         self._solve_bonus()
 
@@ -1358,7 +1365,9 @@ n'est bloqué, quatre flux font ~38 Mbit/s.
             section=self.section(1),
             title=tr("STP et agrégat"),
             hash="34e14a335abc3ce7",
-            description=tr("- avant l'agrégat, le port bloqué par STP est : @@{blocked:" + blocked_choices + "}@@\n")
+            description=tr("- avant l'agrégat, le port bloqué par STP est : @@{blocked:" + blocked_choices + "}@@\n",
+                           en="- before the aggregate, the port blocked by STP is: @@{blocked:" + blocked_choices
+                           + "}@@\n")
             + tr("""- avec l'agrégat : @@{stp_view:>STP ne voit qu'un port (bond0) entre les deux switchs : rien n'est bloqué, les deux câbles servent>>>one_port|STP voit deux ports et en bloque toujours un>>>two_ports|il faut désactiver STP pour que l'agrégat fonctionne>>>stp_off}@@
 - débit de quatre flux de `isl_pc1` vers `isl_pc2`, en Mbit/s, avant l'agrégat : @@{before:[0-9]+([.,][0-9]+)?}@@ ; après : @@{after:[0-9]+([.,][0-9]+)?}@@
 """)
@@ -1507,4 +1516,1110 @@ puis `ping {mgmt}`.
             description=tr("lldp_srv joint l'adresse d'administration du switch"))
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "LACP et LLDP : agrégation de liens (bonding) et découverte des voisins": "LACP and LLDP: link aggregation (bonding) and neighbour discovery",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "Pourquoi agréger des liens": "Why aggregate links",
+    """
+
+Un lien Ethernet est à la fois un **point unique de défaillance** et un **plafond de débit**.
+Multiplier les câbles ne suffit pas : entre deux switchs, deux liens parallèles forment une boucle
+que STP défait en bloquant l'un d'eux (la redondance est là, le débit non) ; entre un serveur et un
+switch, deux interfaces avec deux adresses IP ne font pas un lien plus gros.
+
+L'**agrégation de liens** (*link aggregation*, *LAG*, *port-channel*, *EtherChannel* ; *bonding*
+sous Linux) regroupe N liens physiques, les **membres**, en **un lien logique** : une seule adresse
+MAC, une seule adresse IP, un seul port pour STP et pour la table MAC des switchs. On y gagne :
+
+- la **tolérance de panne** : la perte d'un membre ne coupe rien, le trafic passe par les autres ;
+- le **débit cumulé**, réparti **par flux** (section @@ref:hashing@@) : un seul flux ne dépasse
+  jamais le débit d'un membre.
+
+Les membres relient les **deux mêmes équipements** (ou une paire de switchs qui se présentent comme
+un seul, section @@ref:bridge@@), avec la même vitesse et le même duplex.
+""": """
+
+An Ethernet link is both a **single point of failure** and a **throughput ceiling**.
+Adding cables is not enough: between two switches, two parallel links form a loop that STP
+breaks by blocking one of them (the redundancy is there, the throughput is not); between a server
+and a switch, two interfaces with two IP addresses do not make a bigger link.
+
+**Link aggregation** (*LAG*, *port-channel*, *EtherChannel*; *bonding* on Linux) groups N
+physical links, the **members**, into **one logical link**: a single MAC address, a single IP
+address, a single port for STP and for the MAC table of the switches. What you gain:
+
+- **fault tolerance**: the loss of a member cuts nothing, the traffic goes through the others;
+- **aggregate throughput**, spread **per flow** (section @@ref:hashing@@): a single flow never
+  exceeds the throughput of one member.
+
+The members connect the **same two devices** (or a pair of switches that present themselves as a
+single one, section @@ref:bridge@@), with the same speed and the same duplex.
+""",
+    "Les modes du bonding Linux": "The Linux bonding modes",
+    """
+
+Le pilote `bonding` du noyau propose sept modes (`mode` de `ip link add ... type bond`) :
+
+| mode | nom | principe | côté switch |
+|------|-----|----------|-------------|
+| 0 | `balance-rr` | les trames partent tour à tour sur chaque membre | agrégat statique ; les segments d'une connexion TCP arrivent dans le désordre |
+| 1 | `active-backup` | un seul membre actif, les autres en secours | rien : marche vers **deux switchs différents** |
+| 2 | `balance-xor` | le membre de chaque trame est choisi par hachage (`xmit_hash_policy`) | agrégat **statique** (« mode on ») |
+| 3 | `broadcast` | chaque trame part sur tous les membres | rare |
+| 4 | `802.3ad` | agrégat **négocié par LACP**, répartition par hachage | LACP |
+| 5 | `balance-tlb` | émission répartie selon la charge, réception sur un seul membre | rien |
+| 6 | `balance-alb` | `balance-tlb` + réception répartie en jouant sur les réponses ARP | rien |
+
+En `active-backup`, `primary eth0` désigne le membre préféré (il reprend la main dès qu'il est de
+nouveau valide, `primary_reselect always`). Le bond prend l'adresse MAC de **son premier membre** et
+la donne à tous (`fail_over_mac none`) : après une bascule l'adresse ne change pas, et le bond émet
+un **ARP gratuit** (`num_grat_arp`) par le nouveau membre pour que les switchs apprennent le nouveau
+chemin.
+""": """
+
+The kernel's `bonding` driver offers seven modes (`mode` of `ip link add ... type bond`):
+
+| mode | name | principle | switch side |
+|------|-----|----------|-------------|
+| 0 | `balance-rr` | frames leave on each member in turn | static aggregate; the segments of a TCP connection arrive out of order |
+| 1 | `active-backup` | a single active member, the others on standby | nothing: works towards **two different switches** |
+| 2 | `balance-xor` | the member of each frame is chosen by a hash (`xmit_hash_policy`) | **static** aggregate ("mode on") |
+| 3 | `broadcast` | each frame leaves on every member | rare |
+| 4 | `802.3ad` | aggregate **negotiated by LACP**, spread by hash | LACP |
+| 5 | `balance-tlb` | transmission spread according to the load, reception on a single member | nothing |
+| 6 | `balance-alb` | `balance-tlb` + reception spread by playing on the ARP replies | nothing |
+
+In `active-backup`, `primary eth0` names the preferred member (it takes over again as soon as it
+is valid again, `primary_reselect always`). The bond takes the MAC address of **its first member**
+and gives it to all of them (`fail_over_mac none`): after a failover the address does not change,
+and the bond sends a **gratuitous ARP** (`num_grat_arp`) through the new member so that the
+switches learn the new path.
+""",
+    "Détecter une panne : miimon ou surveillance ARP": "Detecting a failure: miimon or ARP monitoring",
+    """
+
+Un bond ne peut retirer un membre que s'il le sait en panne. Deux méthodes (exclusives : régler
+l'une désactive l'autre) :
+
+- **`miimon N`** : toutes les N ms, le bond regarde la **porteuse** (*carrier*) de chaque membre.
+  Il voit un câble débranché ou une interface locale arrêtée, mais **rien au-delà** : un switch
+  intermédiaire, un convertisseur de média, une optique qui perd des trames, un port distant mal
+  configuré laissent la porteuse allumée. **Dans cette maquette**, les liens sont virtuels et ne
+  perdent jamais leur porteuse à l'autre bout : `ip link set eth1 down` d'un côté laisse l'autre
+  côté `UP`.
+- **`arp_interval N arp_ip_target A.B.C.D`** (jusqu'à 16 cibles) : toutes les N ms, le bond envoie
+  une requête ARP vers les cibles ; un membre qui n'a rien reçu pendant `arp_missed_max` (2)
+  intervalles est déclaré en panne. C'est **tout le chemin** jusqu'à la cible qui est testé. Pour
+  `active-backup` (et `balance-rr` / `balance-xor`), pas pour `802.3ad`. Par défaut
+  (`arp_validate none`), **n'importe quelle trame** reçue suffit à juger un membre valide : un
+  switch qui continue d'émettre ses propres trames (BPDU, LLDP) sur un lien dont la suite est
+  coupée le fait paraître sain ; `arp_validate all` ne retient que le trafic ARP lié aux sondes.
+- En `802.3ad`, **LACP** surveille lui-même chaque membre (section @@ref:lacp@@).
+
+Mesuré dans cette maquette, une coupure silencieuse de 6 s du lien actif d'un bond `active-backup`
+(un `ping` toutes les 100 ms) : avec `miimon` seul, **tout est perdu** pendant les 6 s ; avec la
+surveillance ARP, environ 3 s de perte à 1000 ms, 0,6 s à 200 ms, 0,3 s à 100 ms.
+""": """
+
+A bond can only remove a member if it knows that member has failed. Two methods (mutually
+exclusive: setting one disables the other):
+
+- **`miimon N`**: every N ms, the bond looks at the **carrier** of each member.
+  It sees an unplugged cable or a local interface set down, but **nothing beyond**: an
+  intermediate switch, a media converter, an optic that loses frames, a badly configured remote
+  port leave the carrier on. **In this lab**, the links are virtual and never lose their carrier
+  at the other end: `ip link set eth1 down` on one side leaves the other side `UP`.
+- **`arp_interval N arp_ip_target A.B.C.D`** (up to 16 targets): every N ms, the bond sends
+  an ARP request to the targets; a member that has received nothing for `arp_missed_max` (2)
+  intervals is declared failed. It is **the whole path** to the target that is tested. For
+  `active-backup` (and `balance-rr` / `balance-xor`), not for `802.3ad`. By default
+  (`arp_validate none`), **any frame** received is enough to deem a member valid: a switch that
+  keeps sending its own frames (BPDU, LLDP) on a link that is cut further on makes it look
+  healthy; `arp_validate all` only takes into account the ARP traffic related to the probes.
+- In `802.3ad`, **LACP** monitors each member itself (section @@ref:lacp@@).
+
+Measured in this lab, a silent 6 s cut of the active link of an `active-backup` bond
+(a `ping` every 100 ms): with `miimon` alone, **everything is lost** during the 6 s; with ARP
+monitoring, about 3 s of loss at 1000 ms, 0.6 s at 200 ms, 0.3 s at 100 ms.
+""",
+    "Répartir le trafic : le hachage par flux": "Spreading the traffic: per-flow hashing",
+    """
+
+En `balance-xor` et en `802.3ad`, le membre qui émet une trame est choisi par un **hachage** de ses
+en-têtes, modulo le nombre de membres. Toutes les trames d'un même flux prennent donc le même
+membre (pas de désordre), et **un flux ne dépasse jamais le débit d'un membre** ; N flux se
+répartissent statistiquement. La politique `xmit_hash_policy` dit ce qui est haché :
+
+| politique | champs | conséquence |
+|-----------|--------|-------------|
+| `layer2` (défaut) | adresses MAC et EtherType | tout le trafic entre deux machines (ou vers un routeur) prend le même membre |
+| `layer2+3` | MAC + adresses IP | une paire d'adresses IP = un membre |
+| `layer3+4` | adresses IP + ports TCP/UDP | les connexions entre deux mêmes machines se répartissent |
+| `encap2+3`, `encap3+4` | en-têtes internes d'un tunnel | pour le trafic encapsulé |
+
+Chaque extrémité choisit pour **ses propres émissions** : la politique du serveur décide du sens
+serveur → switch, celle du switch du sens switch → serveur.
+
+Mesuré dans cette maquette (deux membres bridés à 20 Mbit/s) : un flux `iperf3` obtient environ
+19 Mbit/s, quatre flux (`iperf3 -P 4`) environ 38 Mbit/s. Il arrive que tous les flux tombent sur le
+même membre (une chance sur huit avec quatre flux) : recommencez, ou prenez plus de flux.
+""": """
+
+In `balance-xor` and in `802.3ad`, the member that sends a frame is chosen by a **hash** of its
+headers, modulo the number of members. All the frames of one flow therefore take the same
+member (no reordering), and **a flow never exceeds the throughput of one member**; N flows are
+spread statistically. The `xmit_hash_policy` policy says what is hashed:
+
+| policy | fields | consequence |
+|-----------|--------|-------------|
+| `layer2` (default) | MAC addresses and EtherType | all the traffic between two machines (or towards a router) takes the same member |
+| `layer2+3` | MAC + IP addresses | one pair of IP addresses = one member |
+| `layer3+4` | IP addresses + TCP/UDP ports | the connections between the same two machines are spread |
+| `encap2+3`, `encap3+4` | inner headers of a tunnel | for encapsulated traffic |
+
+Each end chooses for **its own transmissions**: the server's policy decides the direction
+server → switch, the switch's policy the direction switch → server.
+
+Measured in this lab (two members capped at 20 Mbit/s): one `iperf3` flow gets about
+19 Mbit/s, four flows (`iperf3 -P 4`) about 38 Mbit/s. All the flows may happen to land on the
+same member (one chance in eight with four flows): start again, or use more flows.
+""",
+    "LACP (IEEE 802.3ad, aujourd'hui 802.1AX)": "LACP (IEEE 802.3ad, now 802.1AX)",
+    """
+
+Un agrégat **statique** (`balance-xor`, « mode on » des switchs) ne vérifie rien : chaque
+extrémité suppose l'autre configurée pareil. Une erreur de câblage (un membre branché sur un autre
+switch) ou de configuration (un côté non agrégé) fait disparaître une partie du trafic, sans
+message.
+
+**LACP** (*Link Aggregation Control Protocol*) fait échanger des **LACPDU** sur chaque membre :
+
+- trames du groupe *slow protocols*, adresse de destination **`01:80:c2:00:00:02`** (jamais
+  relayée par un pont), EtherType **`0x8809`**, sous-type 1 ;
+- chaque LACPDU porte les informations de l'**acteur** (l'émetteur) et ce qu'il sait du
+  **partenaire** : priorité système + adresse MAC système (l'**identifiant système**), **clé**
+  (des membres de même clé peuvent être agrégés ; Linux la déduit de la vitesse et du duplex : 15
+  pour les interfaces virtuelles à 10 Gbit/s de cette maquette), priorité et numéro de port, état.
+
+Les bits d'**état** d'un port (`port state` 63 = `0x3f` = les six premiers) :
+
+| bit | nom | signification quand il vaut 1 |
+|-----|-----|-------------------------------|
+| 0x01 | *Activity* | port **actif** (il émet de lui-même) ; 0 = passif, il ne fait que répondre |
+| 0x02 | *Timeout* | délai **court** demandé (*fast*) |
+| 0x04 | *Aggregation* | port agrégeable |
+| 0x08 | *Synchronization* | port dans le bon agrégat, en accord avec le partenaire |
+| 0x10 | *Collecting* | il accepte les trames reçues |
+| 0x20 | *Distributing* | il émet des trames de données |
+| 0x40 | *Defaulted* | aucune information reçue du partenaire : valeurs par défaut |
+| 0x80 | *Expired* | les informations du partenaire ont expiré |
+
+- **Rythme** : *slow*, une LACPDU toutes les 30 s et expiration après 90 s ; *fast*, toutes les
+  secondes et expiration après **3 s**. Sous Linux, `lacp_rate fast` demande au partenaire
+  d'émettre vite (bit *Timeout* des LACPDU que l'on envoie).
+- **Agrégateur** : les membres dont le partenaire a le même identifiant système et la même clé
+  rejoignent le même agrégateur ; un membre qui voit un autre partenaire, ou aucun, est placé seul
+  dans un autre agrégateur, **inactif** (ses trames reçues sont jetées). Linux garde l'agrégateur
+  actif tant qu'il lui reste un port (`ad_select stable`).
+- **`min_links N`** : le bond (donc le port du pont au-dessus) n'a de porteuse qu'avec au moins N
+  membres actifs, pour basculer le trafic ailleurs quand trop de capacité est perdue ; trop élevé,
+  il coupe tout.
+
+Ce que LACP apporte par rapport à un agrégat statique : un membre branché ailleurs (autre
+identifiant système) ou une extrémité non agrégée (pas de partenaire) est **écarté**, et une panne
+d'un seul côté est détectée par l'absence de LACPDU pendant 3 intervalles.
+""": """
+
+A **static** aggregate (`balance-xor`, "mode on" on switches) checks nothing: each end assumes
+the other is configured the same way. A cabling error (a member plugged into another switch) or a
+configuration error (one side not aggregated) makes part of the traffic vanish, without any
+message.
+
+**LACP** (*Link Aggregation Control Protocol*) makes the two ends exchange **LACPDUs** on each
+member:
+
+- frames of the *slow protocols* group, destination address **`01:80:c2:00:00:02`** (never
+  forwarded by a bridge), EtherType **`0x8809`**, subtype 1;
+- each LACPDU carries the information of the **actor** (the sender) and what it knows of the
+  **partner**: system priority + system MAC address (the **system identifier**), **key**
+  (members with the same key can be aggregated; Linux derives it from the speed and the duplex: 15
+  for the 10 Gbit/s virtual interfaces of this lab), port priority and number, state.
+
+The **state** bits of a port (`port state` 63 = `0x3f` = the first six):
+
+| bit | name | meaning when set to 1 |
+|-----|-----|-------------------------------|
+| 0x01 | *Activity* | **active** port (it transmits on its own); 0 = passive, it only answers |
+| 0x02 | *Timeout* | **short** timeout requested (*fast*) |
+| 0x04 | *Aggregation* | the port can be aggregated |
+| 0x08 | *Synchronization* | port in the right aggregate, in agreement with the partner |
+| 0x10 | *Collecting* | it accepts the frames received |
+| 0x20 | *Distributing* | it sends data frames |
+| 0x40 | *Defaulted* | no information received from the partner: default values |
+| 0x80 | *Expired* | the partner's information has expired |
+
+- **Rate**: *slow*, one LACPDU every 30 s and expiry after 90 s; *fast*, one every second and
+  expiry after **3 s**. On Linux, `lacp_rate fast` asks the partner to transmit quickly (the
+  *Timeout* bit of the LACPDUs we send).
+- **Aggregator**: the members whose partner has the same system identifier and the same key
+  join the same aggregator; a member that sees another partner, or none, is placed alone in
+  another aggregator, **inactive** (its received frames are dropped). Linux keeps the active
+  aggregator as long as it has a port left (`ad_select stable`).
+- **`min_links N`**: the bond (hence the bridge port above it) only has a carrier with at least N
+  active members, so that the traffic moves elsewhere when too much capacity is lost; set too
+  high, it cuts everything.
+
+What LACP brings compared with a static aggregate: a member plugged in elsewhere (another
+system identifier) or an end that is not aggregated (no partner) is **left out**, and a failure
+on one side only is detected by the absence of LACPDUs for 3 intervals.
+""",
+    "Configurer et observer sous Linux": "Configuring and observing on Linux",
+    """
+
+```
+ip link add bond0 type bond mode 802.3ad miimon 100 lacp_rate fast xmit_hash_policy layer3+4
+ip link set eth0 down ; ip link set eth0 master bond0     # un membre doit être DOWN
+ip link set eth1 down ; ip link set eth1 master bond0
+ip link set bond0 up
+ip address add 192.0.2.10/24 dev bond0
+```
+
+- L'adresse IP se met sur le bond, **jamais sur les membres**. Un membre doit être arrêté pour être
+  ajouté (`Device can not be enslaved while up`) ; le bond le remet en marche.
+- Le **mode** ne change que sans membre : `ip link del bond0` (les membres sont libérés), puis
+  recréer. Beaucoup d'options changent à chaud : `ip link set bond0 type bond min_links 1`,
+  `arp_interval 200`, `primary eth0`... Retirer un membre : `ip link set eth1 nomaster`.
+- **Observer** : `cat /proc/net/bonding/bond0` (mode, membre actif, agrégateur actif : numéro,
+  nombre de ports, adresse MAC du partenaire ; pour chaque membre : son agrégateur, les LACPDU de
+  l'acteur et du partenaire), `ip -d link show bond0` (toutes les options), `ip -d link show eth0`
+  (état du membre), `ip -s link show eth0` (compteurs d'un membre), et les LACPDU elles-mêmes :
+  `tcpdump -n -e -vv -i eth0 ether proto 0x8809`.
+- En configuration permanente (paquet `ifenslave`), `/etc/network/interfaces` décrit le bond :
+
+```
+auto bond0
+iface bond0 inet static
+    address 192.0.2.10/24
+    bond-slaves eth0 eth1
+    bond-mode 802.3ad
+    bond-miimon 100
+    bond-lacp-rate fast
+    bond-xmit-hash-policy layer3+4
+```
+
+Dans ce TP tout est volatil (commandes `ip`).
+""": """
+
+```
+ip link add bond0 type bond mode 802.3ad miimon 100 lacp_rate fast xmit_hash_policy layer3+4
+ip link set eth0 down ; ip link set eth0 master bond0     # a member must be DOWN
+ip link set eth1 down ; ip link set eth1 master bond0
+ip link set bond0 up
+ip address add 192.0.2.10/24 dev bond0
+```
+
+- The IP address goes on the bond, **never on the members**. A member must be set down to be
+  added (`Device can not be enslaved while up`); the bond brings it back up.
+- The **mode** only changes without members: `ip link del bond0` (the members are released), then
+  create it again. Many options change on the fly: `ip link set bond0 type bond min_links 1`,
+  `arp_interval 200`, `primary eth0`... Removing a member: `ip link set eth1 nomaster`.
+- **Observing**: `cat /proc/net/bonding/bond0` (mode, active member, active aggregator: number,
+  number of ports, MAC address of the partner; for each member: its aggregator, the LACPDUs of
+  the actor and of the partner), `ip -d link show bond0` (every option), `ip -d link show eth0`
+  (state of the member), `ip -s link show eth0` (counters of a member), and the LACPDUs
+  themselves: `tcpdump -n -e -vv -i eth0 ether proto 0x8809`.
+- In a permanent configuration (package `ifenslave`), `/etc/network/interfaces` describes the
+  bond:
+
+```
+auto bond0
+iface bond0 inet static
+    address 192.0.2.10/24
+    bond-slaves eth0 eth1
+    bond-mode 802.3ad
+    bond-miimon 100
+    bond-lacp-rate fast
+    bond-xmit-hash-policy layer3+4
+```
+
+In this lab everything is volatile (`ip` commands).
+""",
+    "Un agrégat dans un switch": "An aggregate in a switch",
+    """
+
+Dans un switch Linux (un pont), l'agrégat est un port comme un autre : `ip link set po1 master
+br0` ; ses membres ne sont **pas** des ports du pont. Les LACPDU sont consommées par le bond et
+n'atteignent jamais le pont.
+
+**STP ne voit qu'un port** : deux switchs reliés par deux liens parallèles agrégés n'ont plus de
+boucle, rien n'est bloqué et les deux liens transportent du trafic ; sans agrégat, STP en bloque un
+(il ne garde que le port racine, celui qui reçoit le meilleur BPDU : à coût égal, celui relié au
+port de plus petit identifiant de la racine). Un port STP qui vient d'être ajouté met 30 s
+(2 × *forward delay*) à transmettre.
+
+**MLAG** (*multi-chassis LAG* : *vPC*, *stack*...) : deux switchs se présentent avec le même
+identifiant système LACP, si bien qu'un serveur peut agréger un lien vers chacun et survivre à la
+perte d'un switch. Sans MLAG, la redondance vers deux switchs se fait en `active-backup`.
+""": """
+
+In a Linux switch (a bridge), the aggregate is a port like any other: `ip link set po1 master
+br0`; its members are **not** ports of the bridge. The LACPDUs are consumed by the bond and
+never reach the bridge.
+
+**STP sees only one port**: two switches joined by two aggregated parallel links no longer have a
+loop, nothing is blocked and both links carry traffic; without an aggregate, STP blocks one of
+them (it keeps only the root port, the one that receives the best BPDU: at equal cost, the one
+connected to the root's port with the lowest identifier). A newly added STP port takes 30 s
+(2 × *forward delay*) to start forwarding.
+
+**MLAG** (*multi-chassis LAG*: *vPC*, *stack*...): two switches present themselves with the same
+LACP system identifier, so that a server can aggregate one link to each of them and survive the
+loss of a switch. Without MLAG, redundancy towards two switches is done with `active-backup`.
+""",
+    "LLDP (IEEE 802.1AB)": "LLDP (IEEE 802.1AB)",
+    """
+
+Avec **LLDP** (*Link Layer Discovery Protocol*), chaque équipement annonce périodiquement, sur
+chaque port, qui il est ; le voisin garde l'information pendant une durée de vie (**TTL**). Pas de
+négociation, pas de réponse : c'est un annuaire des voisins directs (l'équivalent normalisé de CDP,
+le protocole de Cisco).
+
+- Trame : destination **`01:80:c2:00:00:0e`** (*nearest bridge* : jamais relayée par un pont, on
+  ne voit que son voisin direct), EtherType **`0x88cc`**, une suite de TLV (type, longueur, valeur).
+- TLV **obligatoires** : *Chassis ID* (souvent une adresse MAC), *Port ID* (adresse MAC, nom
+  d'interface, ou nom local comme `Ethernet1/12`), *TTL* (= intervalle d'émission × multiplicateur :
+  **30 s × 4 = 120 s** par défaut), *End*.
+- TLV **optionnels** : *Port Description*, *System Name*, *System Description*, *System
+  Capabilities* (Bridge, Router, Station... : disponibles et activées), *Management Address*.
+- TLV d'**organisation** : IEEE 802.1 (VLAN natif du port, **noms des VLAN** transportés), IEEE
+  802.3 (vitesse et duplex, **appartenance à un agrégat** et son identifiant, taille maximale des
+  trames), LLDP-MED (téléphones : VLAN voix, alimentation PoE, inventaire).
+- Un équipement qui arrête LLDP sur un port envoie une LLDPDU de **TTL 0** (*shutdown*) : le voisin
+  l'oublie aussitôt ; sinon le voisin garde l'information jusqu'à la fin du TTL.
+
+Usages : vérifier un câblage (sur quel port de quel switch arrive ce câble ?), découverte
+automatique de la topologie par la supervision (LLDP-MIB en SNMP), configuration des téléphones IP.
+
+**Sécurité** : LLDP donne à quiconque est branché le modèle, la version, les noms, les adresses,
+les VLAN. On le coupe, ou on le met en **réception seule**, sur les ports tournés vers un réseau
+qui n'est pas de confiance (un opérateur, une salle publique), et on ne se fie pas aveuglément à ce
+que l'on reçoit (il se falsifie facilement).
+""": """
+
+With **LLDP** (*Link Layer Discovery Protocol*), each device periodically announces, on each
+port, who it is; the neighbour keeps the information for a lifetime (**TTL**). No negotiation, no
+reply: it is a directory of the direct neighbours (the standard equivalent of CDP, Cisco's
+protocol).
+
+- Frame: destination **`01:80:c2:00:00:0e`** (*nearest bridge*: never forwarded by a bridge, you
+  only see your direct neighbour), EtherType **`0x88cc`**, a sequence of TLVs (type, length,
+  value).
+- **Mandatory** TLVs: *Chassis ID* (often a MAC address), *Port ID* (MAC address, interface
+  name, or a local name such as `Ethernet1/12`), *TTL* (= transmit interval × multiplier:
+  **30 s × 4 = 120 s** by default), *End*.
+- **Optional** TLVs: *Port Description*, *System Name*, *System Description*, *System
+  Capabilities* (Bridge, Router, Station...: available and enabled), *Management Address*.
+- **Organisationally specific** TLVs: IEEE 802.1 (native VLAN of the port, **names of the VLANs**
+  carried), IEEE 802.3 (speed and duplex, **membership of an aggregate** and its identifier,
+  maximum frame size), LLDP-MED (phones: voice VLAN, PoE power, inventory).
+- A device that stops LLDP on a port sends an LLDPDU with **TTL 0** (*shutdown*): the neighbour
+  forgets it at once; otherwise the neighbour keeps the information until the TTL runs out.
+
+Uses: checking a cabling (on which port of which switch does this cable arrive?), automatic
+discovery of the topology by the monitoring system (LLDP-MIB over SNMP), configuration of IP
+phones.
+
+**Security**: LLDP tells anyone plugged in the model, the version, the names, the addresses, the
+VLANs. It is switched off, or set to **receive only**, on the ports facing a network that is not
+trusted (an operator, a public room), and what is received is not trusted blindly (it is easily
+forged).
+""",
+    "lldpd et lldpcli": "lldpd and lldpcli",
+    """
+
+Sous Linux, le démon **`lldpd`** (lancé à la main ici : `lldpd`) et son client **`lldpcli`** :
+
+- **Consulter** : `lldpcli show neighbors` (`details`, `summary`, `ports eth0`), `lldpcli show
+  chassis` (ce que l'on annonce), `lldpcli show interfaces`, `lldpcli show statistics`, `lldpcli
+  show configuration` ; `-f json0` ou `-f keyvalue` pour un script.
+- **Configurer** :
+  `lldpcli configure system description "..."`, `configure system hostname X`,
+  `configure system ip management pattern 192.0.2.*`,
+  `configure ports eth2 lldp status rx-only` (ou `tx-only`, `rx-and-tx`, `disabled`),
+  `configure ports eth0 lldp portidsubtype local Ethernet1/1 description "..."`,
+  `configure lldp tx-interval 30`, `configure lldp tx-hold 4`.
+- **Au démarrage**, lldpd exécute les commandes des fichiers `/etc/lldpd.d/*.conf` (une commande
+  `lldpcli` par ligne, sans le mot `lldpcli`) : c'est la façon de démarrer avec la bonne
+  configuration.
+
+Constaté dans cette maquette : sur les membres d'un bond, lldpd émet avec une adresse MAC source
+spéciale (celle du bond est sur plusieurs ports) et ajoute le TLV d'agrégation ; il annonce les
+sous-interfaces VLAN d'un port ; un port passé en `rx-only` cesse d'émettre **sans** LLDPDU de
+*shutdown* (le voisin garde l'ancienne information jusqu'à 120 s), alors qu'arrêter lldpd
+(`pkill lldpd`) en envoie une sur chaque port qui émettait.
+""": """
+
+On Linux, the **`lldpd`** daemon (started by hand here: `lldpd`) and its client **`lldpcli`**:
+
+- **Querying**: `lldpcli show neighbors` (`details`, `summary`, `ports eth0`), `lldpcli show
+  chassis` (what we announce), `lldpcli show interfaces`, `lldpcli show statistics`, `lldpcli
+  show configuration`; `-f json0` or `-f keyvalue` for a script.
+- **Configuring**:
+  `lldpcli configure system description "..."`, `configure system hostname X`,
+  `configure system ip management pattern 192.0.2.*`,
+  `configure ports eth2 lldp status rx-only` (or `tx-only`, `rx-and-tx`, `disabled`),
+  `configure ports eth0 lldp portidsubtype local Ethernet1/1 description "..."`,
+  `configure lldp tx-interval 30`, `configure lldp tx-hold 4`.
+- **At start-up**, lldpd runs the commands of the files `/etc/lldpd.d/*.conf` (one `lldpcli`
+  command per line, without the word `lldpcli`): this is the way to start with the right
+  configuration.
+
+Observed in this lab: on the members of a bond, lldpd sends with a special source MAC address
+(the bond's address is on several ports) and adds the aggregation TLV; it announces the VLAN
+sub-interfaces of a port; a port switched to `rx-only` stops sending **without** a *shutdown*
+LLDPDU (the neighbour keeps the old information for up to 120 s), whereas stopping lldpd
+(`pkill lldpd`) sends one on every port that was transmitting.
+""",
+    "Aide-mémoire": "Cheat sheet",
+    """
+
+| besoin | commande |
+|--------|----------|
+| créer un bond LACP | `ip link add bond0 type bond mode 802.3ad miimon 100 lacp_rate fast xmit_hash_policy layer3+4` |
+| créer un bond actif / secours surveillé par ARP | `ip link add bond0 type bond mode active-backup primary eth0 arp_interval 200 arp_ip_target A.B.C.D` |
+| ajouter un membre | `ip link set eth0 down ; ip link set eth0 master bond0` |
+| retirer un membre | `ip link set eth0 nomaster` |
+| changer une option | `ip link set bond0 type bond min_links 1` |
+| supprimer le bond | `ip link del bond0` |
+| état complet | `cat /proc/net/bonding/bond0` |
+| options du bond | `ip -d link show bond0` |
+| compteurs d'un membre | `ip -s link show eth0` |
+| voir les LACPDU | `tcpdump -n -e -vv -i eth0 ether proto 0x8809` |
+| voir les LLDPDU | `tcpdump -n -e -v -i eth0 ether proto 0x88cc` |
+| agrégat dans un pont | `ip link set po1 master br0` ; `bridge link` |
+| plusieurs flux | `iperf3 -c <serveur> -P 4` |
+| démarrer lldpd | `lldpd` ; avec une configuration : fichier `/etc/lldpd.d/*.conf` puis `lldpd` |
+| voisins LLDP | `lldpcli show neighbors [details]` |
+| sous-interface VLAN | `ip link add link eth0 name eth0.42 type vlan id 42` |
+""": """
+
+| need | command |
+|--------|----------|
+| create an LACP bond | `ip link add bond0 type bond mode 802.3ad miimon 100 lacp_rate fast xmit_hash_policy layer3+4` |
+| create an active-backup bond monitored by ARP | `ip link add bond0 type bond mode active-backup primary eth0 arp_interval 200 arp_ip_target A.B.C.D` |
+| add a member | `ip link set eth0 down ; ip link set eth0 master bond0` |
+| remove a member | `ip link set eth0 nomaster` |
+| change an option | `ip link set bond0 type bond min_links 1` |
+| delete the bond | `ip link del bond0` |
+| full state | `cat /proc/net/bonding/bond0` |
+| options of the bond | `ip -d link show bond0` |
+| counters of a member | `ip -s link show eth0` |
+| see the LACPDUs | `tcpdump -n -e -vv -i eth0 ether proto 0x8809` |
+| see the LLDPDUs | `tcpdump -n -e -v -i eth0 ether proto 0x88cc` |
+| aggregate in a bridge | `ip link set po1 master br0`; `bridge link` |
+| several flows | `iperf3 -c <server> -P 4` |
+| start lldpd | `lldpd`; with a configuration: file `/etc/lldpd.d/*.conf` then `lldpd` |
+| LLDP neighbours | `lldpcli show neighbors [details]` |
+| VLAN sub-interface | `ip link add link eth0 name eth0.42 type vlan id 42` |
+""",
+    "Partie 2 : couper silencieusement le port de ab_sw1 vers ab_srv": "Part 2: silently cut the port of ab_sw1 towards ab_srv",
+    "Partie 2 : rétablir le port de ab_sw1 vers ab_srv": "Part 2: restore the port of ab_sw1 towards ab_srv",
+    "Partie 1 : solution (LLDP)": "Part 1: solution (LLDP)",
+    "Partie 2 : solution (actif / secours)": "Part 2: solution (active-backup)",
+    "Partie 3 : solution (LACP serveur - switch)": "Part 3: solution (LACP server - switch)",
+    "Partie 4 : solution (agrégat entre switchs, ~30 s)": "Part 4: solution (aggregate between switches, ~30 s)",
+    "Partie 5 : solution (dépannage)": "Part 5: solution (troubleshooting)",
+    "Bonus : solution (VLAN annoncé par LLDP)": "Bonus: solution (VLAN announced by LLDP)",
+    """
+| partie | site | machines | réseau |
+|--------|------|----------|--------|
+| 1 — LLDP (et bonus) | `lldp_*` | `lldp_srv`, câblé à trois équipements **invisibles** et sans terminal | — (bonus : VLAN d'administration) |
+| 2 — actif / secours | `ab_*` | `ab_srv`, les switchs `ab_sw1` et `ab_sw2`, la passerelle `ab_gw` | `{ab}` : `ab_gw` `{ab_gw}`, `ab_srv` `{ab_srv}` |
+| 3 — LACP serveur ↔ switch | `lacp_*` | `lacp_srv`, le switch `lacp_sw`, `lacp_pc` | `{lacp}` : `lacp_srv` `{lacp_srv}`, `lacp_pc` `{lacp_pc}` |
+| 4 — agrégat entre switchs | `isl_*` | les switchs `isl_sw1` et `isl_sw2`, `isl_pc1` et `isl_pc2` | `{isl}` : `isl_pc1` `{isl_pc1}`, `isl_pc2` `{isl_pc2}` |
+| 5 — dépannage | `fix_*` | `fix_srv`, le switch `fix_sw`, `fix_pc` | `{fix}` : `fix_srv` `{fix_srv}`, `fix_pc` `{fix_pc}` |
+""": """
+| part | site | machines | network |
+|--------|------|----------|--------|
+| 1 — LLDP (and bonus) | `lldp_*` | `lldp_srv`, cabled to three **invisible** devices without a terminal | — (bonus: management VLAN) |
+| 2 — active-backup | `ab_*` | `ab_srv`, the switches `ab_sw1` and `ab_sw2`, the gateway `ab_gw` | `{ab}`: `ab_gw` `{ab_gw}`, `ab_srv` `{ab_srv}` |
+| 3 — LACP server ↔ switch | `lacp_*` | `lacp_srv`, the switch `lacp_sw`, `lacp_pc` | `{lacp}`: `lacp_srv` `{lacp_srv}`, `lacp_pc` `{lacp_pc}` |
+| 4 — aggregate between switches | `isl_*` | the switches `isl_sw1` and `isl_sw2`, `isl_pc1` and `isl_pc2` | `{isl}`: `isl_pc1` `{isl_pc1}`, `isl_pc2` `{isl_pc2}` |
+| 5 — troubleshooting | `fix_*` | `fix_srv`, the switch `fix_sw`, `fix_pc` | `{fix}`: `fix_srv` `{fix_srv}`, `fix_pc` `{fix_pc}` |
+""",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente l'agrégation de liens (modes du bonding Linux,
+surveillance des membres, répartition par flux, LACP, agrégat dans un switch) et LLDP.
+
+**Le réseau.** Il est fait de **cinq sites indépendants**, un par partie, chacun de sa couleur sur
+le schéma. Chaque réseau du schéma est **un câble** entre deux machines.
+""": """
+Read the **Informations** tab: it presents link aggregation (Linux bonding modes, monitoring of
+the members, per-flow spreading, LACP, aggregate in a switch) and LLDP.
+
+**The network.** It is made of **five independent sites**, one per part, each in its own colour on
+the schema. Each network of the schema is **a cable** between two machines.
+""",
+    """
+- Les switchs (`ab_sw1`, `ab_sw2`, `lacp_sw`, `isl_sw1`, `isl_sw2`, `fix_sw`) sont des machines
+  Linux dont un pont `br0` relie les ports. Ceux des sites `ab`, `lacp` et `fix` sont **déjà
+  configurés** : vous pouvez les observer (agrégat `po1`, `/proc/net/bonding/po1`, `bridge link`)
+  mais vous n'avez à les modifier qu'en partie 5. `lldpd` tourne sur tous les switchs.
+- Les adresses ci-dessus sont dans `/etc/hosts` de toutes les machines, sauf celles des serveurs
+  et de l'agrégat, que vous poserez. Il n'y a pas de DNS.
+- Les liens membres des sites `lacp` et `isl` sont **bridés à 20 Mbit/s** (`tc qdisc show`, aux
+  deux bouts) pour que la répartition du débit se mesure : n'y touchez pas. `lacp_pc` et `isl_pc2`
+  font tourner un serveur `iperf3`.
+- **Particularité de la maquette** : un lien n'y perd jamais sa porteuse à l'autre bout.
+  `ip link set eth1 down` sur une machine laisse l'interface d'en face `UP`.
+
+**Consignes.**
+
+- Le nom des agrégats que vous créez est imposé : **`{bond}`** (sur les serveurs et sur les
+  switchs du site `isl`).
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Toute la configuration est volatile (`ip`, `lldpcli`) : elle ne survit pas au redémarrage d'une
+  machine.
+- Un port de pont avec STP met **30 s** à transmettre ; LACP s'accorde en quelques secondes ; un
+  voisin LLDP apparaît dans les 30 s.
+
+**Évaluation.** Chaque évaluation lit vos réponses, l'état des agrégats aux deux bouts (`ip -d
+link`), les voisins LLDP vus **par les équipements d'en face**, lance des `ping`, envoie 64 flux UDP
+(`hping3`) à travers chaque agrégat pour compter les paquets de chaque membre, et **coupe pendant
+{cut} s le port de `ab_sw1` vers `ab_srv`** (partie 2 : la coupure ne touche que ce câble).
+""": """
+- The switches (`ab_sw1`, `ab_sw2`, `lacp_sw`, `isl_sw1`, `isl_sw2`, `fix_sw`) are Linux
+  machines whose ports are joined by a bridge `br0`. Those of the sites `ab`, `lacp` and `fix` are
+  **already configured**: you can observe them (aggregate `po1`, `/proc/net/bonding/po1`,
+  `bridge link`) but you only have to modify them in part 5. `lldpd` runs on every switch.
+- The addresses above are in `/etc/hosts` of every machine, except those of the servers and of
+  the aggregate, which you will set. There is no DNS.
+- The member links of the sites `lacp` and `isl` are **capped at 20 Mbit/s** (`tc qdisc show`, at
+  both ends) so that the spreading of the throughput can be measured: do not touch them. `lacp_pc`
+  and `isl_pc2` run an `iperf3` server.
+- **Peculiarity of this lab**: a link never loses its carrier at the other end.
+  `ip link set eth1 down` on a machine leaves the interface opposite `UP`.
+
+**Instructions.**
+
+- The name of the aggregates you create is imposed: **`{bond}`** (on the servers and on the
+  switches of the site `isl`).
+- The parts are **independent**: do them in the order you like. A completed part gives all its
+  points, whatever the state of the others.
+- The whole configuration is volatile (`ip`, `lldpcli`): it does not survive a restart of a
+  machine.
+- A bridge port with STP takes **30 s** to start forwarding; LACP agrees within a few seconds; an
+  LLDP neighbour appears within 30 s.
+
+**Evaluation.** Each evaluation reads your answers, the state of the aggregates at both ends (`ip -d
+link`), the LLDP neighbours seen **by the devices opposite**, runs `ping`s, sends 64 UDP flows
+(`hping3`) through each aggregate to count the packets of each member, and **cuts the port of
+`ab_sw1` towards `ab_srv` for {cut} s** (part 2: the cut only affects that cable).
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_lldp`, `solve_ab`, `solve_lacp`, `solve_isl`, `solve_fix` et `solve_bonus`
+appliquent la solution d'une seule partie et remplissent ses formulaires ; `final` les applique
+toutes (il attend les 30 s de STP du site `isl`) : une évaluation lancée dès son retour donne tous les
+points, bonus compris.
+
+Valeurs de cette instance : `lldp_core1` = `{core1}` (port `{port1}`, administration `{mgmt1}`),
+`lldp_core2` = `{core2}` (port `{port2}`, administration `{mgmt2}`), VLAN d'administration
+**{vlan}**, boîtier opérateur `{isp}` ; description à annoncer : `{descr}`. Racine STP du site `isl` :
+`{root}` (plus petite adresse MAC), port bloqué avant l'agrégat : `{blocked}`. Adresse système de
+`lacp_sw` (MAC de `po1` = celle de son `eth0`) : `{lacp_sw_mac}`.
+
+Pannes du site `fix` : `fix_srv` en `balance-xor` (statique) face au LACP de `fix_sw` ; `eth1` de
+`fix_sw` hors de `po1` (et arrêtée) ; `min_links 3` sur `po1` (deux membres au plus : pas de porteuse,
+coupure totale).
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance. The
+states `solve_lldp`, `solve_ab`, `solve_lacp`, `solve_isl`, `solve_fix` and `solve_bonus` apply the
+solution of a single part and fill in its forms; `final` applies them all (it waits for the 30 s
+of STP of the site `isl`): an evaluation run as soon as it returns gives all the points, bonus
+included.
+
+Values of this instance: `lldp_core1` = `{core1}` (port `{port1}`, management `{mgmt1}`),
+`lldp_core2` = `{core2}` (port `{port2}`, management `{mgmt2}`), management VLAN
+**{vlan}**, operator box `{isp}`; description to announce: `{descr}`. STP root of the site `isl`:
+`{root}` (lowest MAC address), port blocked before the aggregate: `{blocked}`. System address of
+`lacp_sw` (MAC of `po1` = that of its `eth0`): `{lacp_sw_mac}`.
+
+Faults of the site `fix`: `fix_srv` in `balance-xor` (static) facing the LACP of `fix_sw`; `eth1` of
+`fix_sw` outside `po1` (and down); `min_links 3` on `po1` (two members at most: no carrier, total
+outage).
+""",
+    "Partie 1 — LLDP (site lldp)": "Part 1 — LLDP (site lldp)",
+    "Qui est au bout de mes câbles ?": "Who is at the end of my cables?",
+    """
+Le serveur `lldp_srv` a trois interfaces câblées : `eth0`, `eth1` et `eth2`. Les équipements
+d'en face sont **invisibles** sur le schéma et vous n'y avez pas accès : deux switchs de cœur de
+réseau (sur `eth0` et `eth1`) et le boîtier d'un opérateur (sur `eth2`). Tous les trois font tourner
+LLDP (sections @@ref:lldp@@ et @@ref:lldpd@@).
+
+1. Démarrez `lldpd` sur `lldp_srv` de sorte que :
+   - il annonce la description système **`{descr}`** ;
+   - il **n'annonce rien** sur `eth2`, tournée vers l'opérateur (réception seule) : vous voulez voir
+     ce boîtier, pas vous montrer à lui.
+
+   Le plus simple est d'écrire la configuration dans `/etc/lldpd.d/sre.conf` **avant** de lancer
+   `lldpd`. Si vous avez déjà démarré `lldpd` sans cette configuration, l'opérateur vous a vu :
+   arrêtez-le (`pkill lldpd` envoie une LLDPDU de *shutdown* qui vous efface chez lui), puis
+   relancez-le ; un simple `lldpcli configure ports eth2 lldp status rx-only` le laisserait vous
+   garder jusqu'à 120 s.
+2. Avec `lldpcli show neighbors`, identifiez les équipements d'en face (attendez jusqu'à 30 s).
+
+L'évaluation interroge les équipements d'en face : les deux switchs doivent vous voir avec cette
+description, le boîtier de l'opérateur ne doit pas vous voir.
+""": """
+The server `lldp_srv` has three cabled interfaces: `eth0`, `eth1` and `eth2`. The devices
+opposite are **invisible** on the schema and you have no access to them: two core network
+switches (on `eth0` and `eth1`) and an operator's box (on `eth2`). All three run LLDP (sections
+@@ref:lldp@@ and @@ref:lldpd@@).
+
+1. Start `lldpd` on `lldp_srv` so that:
+   - it announces the system description **`{descr}`**;
+   - it **announces nothing** on `eth2`, which faces the operator (receive only): you want to see
+     that box, not to show yourself to it.
+
+   The simplest way is to write the configuration in `/etc/lldpd.d/sre.conf` **before** starting
+   `lldpd`. If you have already started `lldpd` without this configuration, the operator has seen
+   you: stop it (`pkill lldpd` sends a *shutdown* LLDPDU that erases you on its side), then start
+   it again; a mere `lldpcli configure ports eth2 lldp status rx-only` would let it keep you for up
+   to 120 s.
+2. With `lldpcli show neighbors`, identify the devices opposite (wait up to 30 s).
+
+The evaluation queries the devices opposite: both switches must see you with this description,
+the operator's box must not see you.
+""",
+    """
+**Solution.** Fichier `/etc/lldpd.d/sre.conf` sur `lldp_srv` :
+
+```
+{conf}```
+
+puis (re)démarrage :
+{cmds}
+`lldpcli show neighbors` montre `{core1}` sur `eth0`, `{core2}` sur `eth1` et `{isp}` sur `eth2`.
+""": """
+**Solution.** File `/etc/lldpd.d/sre.conf` on `lldp_srv`:
+
+```
+{conf}```
+
+then (re)start:
+{cmds}
+`lldpcli show neighbors` shows `{core1}` on `eth0`, `{core2}` on `eth1` and `{isp}` on `eth2`.
+""",
+    "Le câblage, vu par LLDP": "The cabling, as seen by LLDP",
+    """
+Relevez dans `lldpcli show neighbors` ce que les switchs annoncent :
+
+- `eth0` de `lldp_srv` arrive sur le switch @@{core1_name:[A-Za-z0-9._-]+}@@, port @@{core1_port:[A-Za-z0-9/._-]+}@@ ; son adresse d'administration est @@{core1_mgmt:[0-9.]+}@@
+- `eth1` de `lldp_srv` arrive sur le switch @@{core2_name:[A-Za-z0-9._-]+}@@, port @@{core2_port:[A-Za-z0-9/._-]+}@@ ; son adresse d'administration est @@{core2_mgmt:[0-9.]+}@@
+""": """
+Note in `lldpcli show neighbors` what the switches announce:
+
+- `eth0` of `lldp_srv` arrives on the switch @@{core1_name:[A-Za-z0-9._-]+}@@, port @@{core1_port:[A-Za-z0-9/._-]+}@@; its management address is @@{core1_mgmt:[0-9.]+}@@
+- `eth1` of `lldp_srv` arrives on the switch @@{core2_name:[A-Za-z0-9._-]+}@@, port @@{core2_port:[A-Za-z0-9/._-]+}@@; its management address is @@{core2_mgmt:[0-9.]+}@@
+""",
+    """
+**Solution.** `{core1}`, port `{port1}`, `{mgmt1}` ; `{core2}`, port `{port2}`, `{mgmt2}` (lignes
+`SysName`, `PortID` et `MgmtIP`).
+""": """
+**Solution.** `{core1}`, port `{port1}`, `{mgmt1}`; `{core2}`, port `{port2}`, `{mgmt2}` (lines
+`SysName`, `PortID` and `MgmtIP`).
+""",
+    "Le protocole": "The protocol",
+    """
+Capturez une LLDPDU sur `lldp_srv` (`tcpdump -n -e -v -i eth0 ether proto 0x88cc`, jusqu'à 30 s
+d'attente) :
+
+- adresse MAC de destination : @@{dst:[0-9A-Fa-f:.-]+}@@
+- EtherType : @@{ethertype:(0x)?[0-9A-Fa-f]+}@@
+- durée de vie (TTL) annoncée, en secondes : @@{ttl:[0-9]+}@@
+- intervalle entre deux LLDPDU d'un même switch, en secondes : @@{interval:[0-9]+}@@
+""": """
+Capture an LLDPDU on `lldp_srv` (`tcpdump -n -e -v -i eth0 ether proto 0x88cc`, up to 30 s of
+waiting):
+
+- destination MAC address: @@{dst:[0-9A-Fa-f:.-]+}@@
+- EtherType: @@{ethertype:(0x)?[0-9A-Fa-f]+}@@
+- announced lifetime (TTL), in seconds: @@{ttl:[0-9]+}@@
+- interval between two LLDPDUs of the same switch, in seconds: @@{interval:[0-9]+}@@
+""",
+    """
+**Solution.** `{mac}` (*nearest bridge*) ; `0x88cc` ; {ttl} s ; {interval} s (TTL = intervalle × 4).
+""": """
+**Solution.** `{mac}` (*nearest bridge*); `0x88cc`; {ttl} s; {interval} s (TTL = interval × 4).
+""",
+    "lldpd tourne sur lldp_srv : les deux switchs de cœur le voient": "lldpd runs on lldp_srv: both core switches see it",
+    "la description système demandée est annoncée": "the requested system description is announced",
+    "le boîtier de l'opérateur ne voit pas lldp_srv (les switchs, si)": "the operator's box does not see lldp_srv (the switches do)",
+    "noms, ports et adresses d'administration des deux switchs": "names, ports and management addresses of both switches",
+    "destination, EtherType, TTL et intervalle des LLDPDU": "destination, EtherType, TTL and interval of the LLDPDUs",
+    "Partie 2 — actif / secours vers deux switchs (site ab)": "Part 2 — active-backup towards two switches (site ab)",
+    "Un serveur relié à deux switchs": "A server connected to two switches",
+    """
+`ab_srv` est relié par `eth0` au switch `ab_sw1` et par `eth1` au switch `ab_sw2` ; les deux switchs
+sont reliés entre eux et la passerelle `ab_gw` (`{gw}`) est derrière `ab_sw2`. Deux switchs
+différents sans MLAG : un agrégat LACP est impossible, c'est un travail pour le mode
+`active-backup` (sections @@ref:modes@@ et @@ref:monitoring@@).
+
+1. Créez sur `ab_srv` le bond **`{bond}`** en mode `active-backup` avec `eth0` et `eth1`, `eth0`
+   préférée (`primary`), surveillé par **`miimon 100`** pour commencer, et donnez-lui l'adresse
+   `{srv}`. Vérifiez que `ab_srv` joint `ab_gw` et regardez `/proc/net/bonding/{bond}`.
+2. Lancez `ping {gw_name}` sur `ab_srv`, puis appliquez l'état **`ab_cut`** (onglet *Appliquer une
+   configuration*) : il coupe le câble `ab_l1` du côté de `ab_sw1` (les trames sont jetées, la
+   porteuse reste). Que fait le bond ? Rétablissez avec l'état **`ab_uncut`**.
+3. Remplacez `miimon` par la **surveillance ARP** : `arp_interval {arp}` vers la cible `{gw}`
+   (`ip link set {bond} type bond miimon 0 arp_interval {arp} arp_ip_target {gw}`), et refaites
+   l'expérience : la bascule doit prendre moins d'une seconde, puis le bond revient sur `eth0`.
+
+Chaque évaluation coupe elle-même ce câble pendant {cut} s pendant que `ab_srv` envoie un `ping`
+vers `ab_gw` toutes les 100 ms : moins de 2 s de pertes sont tolérées. Une coupure laissée en
+place par `ab_cut` n'est pas levée par l'évaluation.
+""": """
+`ab_srv` is connected by `eth0` to the switch `ab_sw1` and by `eth1` to the switch `ab_sw2`; the
+two switches are connected to each other and the gateway `ab_gw` (`{gw}`) is behind `ab_sw2`. Two
+different switches without MLAG: an LACP aggregate is impossible, this is a job for the
+`active-backup` mode (sections @@ref:modes@@ and @@ref:monitoring@@).
+
+1. Create on `ab_srv` the bond **`{bond}`** in `active-backup` mode with `eth0` and `eth1`, `eth0`
+   preferred (`primary`), monitored by **`miimon 100`** to begin with, and give it the address
+   `{srv}`. Check that `ab_srv` reaches `ab_gw` and look at `/proc/net/bonding/{bond}`.
+2. Run `ping {gw_name}` on `ab_srv`, then apply the state **`ab_cut`** (*Apply Configuration*
+   tab): it cuts the cable `ab_l1` on the side of `ab_sw1` (the frames are dropped, the carrier
+   stays). What does the bond do? Restore with the state **`ab_uncut`**.
+3. Replace `miimon` with **ARP monitoring**: `arp_interval {arp}` towards the target `{gw}`
+   (`ip link set {bond} type bond miimon 0 arp_interval {arp} arp_ip_target {gw}`), and repeat the
+   experiment: the failover must take less than a second, then the bond goes back to `eth0`.
+
+Each evaluation cuts this cable itself for {cut} s while `ab_srv` sends a `ping` to `ab_gw` every
+100 ms: less than 2 s of loss is tolerated. A cut left in place by `ab_cut` is not lifted by the
+evaluation.
+""",
+    """
+**Solution** (directement avec la surveillance ARP) sur `ab_srv` :
+{cmds}
+Avec `miimon` seul, la coupure ne change rien à la porteuse de `eth0` : le bond reste sur `eth0`
+et tout est perdu pendant la coupure (mesuré : 60 `ping` sur 60). Avec `arp_interval {arp}`, les
+requêtes ARP vers `ab_gw` restent sans réponse, `eth0` est déclarée en panne après 2 intervalles et
+`eth1` prend le relais (mesuré : 0,6 s de perte) ; à la fin de la coupure, `eth0` redevient active
+(`primary`).
+""": """
+**Solution** (directly with ARP monitoring) on `ab_srv`:
+{cmds}
+With `miimon` alone, the cut changes nothing in the carrier of `eth0`: the bond stays on `eth0`
+and everything is lost during the cut (measured: 60 `ping`s out of 60). With `arp_interval {arp}`,
+the ARP requests to `ab_gw` go unanswered, `eth0` is declared failed after 2 intervals and `eth1`
+takes over (measured: 0.6 s of loss); at the end of the cut, `eth0` becomes active again
+(`primary`).
+""",
+    "Ce que miimon ne voit pas": "What miimon does not see",
+    """
+- avec `miimon` seul, pendant la coupure de `ab_cut` : @@{miimon_cut:>le bond reste sur eth0 : tout le trafic est perdu pendant la coupure>>>stays|le bond bascule sur eth1 en moins d'une seconde>>>switches|le bond bascule sans cesse entre eth0 et eth1>>>flaps}@@
+- pourquoi ? @@{why:>eth0 garde sa porteuse : miimon ne teste que le lien local, pas le chemin>>>carrier|miimon n'est pas actif par défaut>>>default|la coupure est trop courte pour miimon>>>short}@@
+- après une bascule sur `eth1`, l'adresse MAC de `bond0` : @@{mac:>ne change pas : tous les membres portent l'adresse du bond, un ARP gratuit annonce le nouveau chemin aux switchs>>>same|devient celle de eth1 : ab_gw doit refaire une requête ARP>>>eth1|est tirée au hasard>>>random}@@
+""": """
+- with `miimon` alone, during the cut of `ab_cut`: @@{miimon_cut:>the bond stays on eth0: all the traffic is lost during the cut>>>stays|the bond fails over to eth1 in less than a second>>>switches|the bond keeps flapping between eth0 and eth1>>>flaps}@@
+- why? @@{why:>eth0 keeps its carrier: miimon only tests the local link, not the path>>>carrier|miimon is not active by default>>>default|the cut is too short for miimon>>>short}@@
+- after a failover to `eth1`, the MAC address of `bond0`: @@{mac:>does not change: every member carries the address of the bond, a gratuitous ARP announces the new path to the switches>>>same|becomes that of eth1: ab_gw must send a new ARP request>>>eth1|is drawn at random>>>random}@@
+""",
+    """
+**Solution.** Le bond reste sur `eth0` ; `eth0` garde sa porteuse (seul le lien local est testé) ;
+l'adresse MAC ne change pas (ARP gratuit par `eth1`).
+""": """
+**Solution.** The bond stays on `eth0`; `eth0` keeps its carrier (only the local link is tested);
+the MAC address does not change (gratuitous ARP through `eth1`).
+""",
+    "bond0 en active-backup avec eth0 et eth1": "bond0 in active-backup with eth0 and eth1",
+    "eth0 est le membre préféré (primary)": "eth0 is the preferred member (primary)",
+    "surveillance ARP vers ab_gw": "ARP monitoring towards ab_gw",
+    "ab_srv joint ab_gw par bond0": "ab_srv reaches ab_gw through bond0",
+    "coupure de 6 s du câble ab_l1 : moins de 2 s de pertes": "6 s cut of the cable ab_l1: less than 2 s of loss",
+    "miimon face à une coupure silencieuse ; adresse MAC après bascule": "miimon facing a silent cut; MAC address after a failover",
+    "Partie 3 — LACP entre un serveur et un switch (site lacp)": "Part 3 — LACP between a server and a switch (site lacp)",
+    "Un agrégat LACP vers un switch": "An LACP aggregate towards a switch",
+    """
+`lacp_srv` est relié au switch `lacp_sw` par deux câbles (`eth0` et `eth1` des deux côtés). Côté
+switch, l'agrégat **`{sw_bond}`** est déjà configuré : mode `802.3ad`, `lacp_rate fast`,
+`xmit_hash_policy layer3+4`, port du pont `br0` avec `eth2` (vers `lacp_pc`, `{pc}`). Sections
+@@ref:hashing@@, @@ref:lacp@@ et @@ref:linux@@.
+
+1. Créez sur `lacp_srv` le bond **`{bond}`** en mode `802.3ad` avec `eth0` et `eth1`, en demandant
+   des LACPDU rapides (`lacp_rate fast`) et une répartition par flux selon les adresses IP **et les
+   ports** ; donnez-lui l'adresse `{srv}`. Vérifiez dans `/proc/net/bonding/{bond}` que les deux
+   membres sont dans le **même agrégateur** et que le partenaire est bien `lacp_sw`, et que
+   `lacp_srv` joint `lacp_pc`.
+2. Mesurez le débit vers `lacp_pc` avec un flux (`iperf3 -c lacp_pc`) puis quatre (`iperf3 -c
+   lacp_pc -P 4`) : chaque membre est bridé à 20 Mbit/s.
+3. Sur `lacp_srv`, arrêtez `eth1` (`ip link set eth1 down`) et observez `/proc/net/bonding/{sw_bond}`
+   sur `lacp_sw` pendant quelques secondes ; puis remettez `eth1` en marche.
+
+L'évaluation vérifie l'agrégat aux deux bouts et envoie 64 flux UDP de `lacp_srv` vers `lacp_pc` :
+chacun des deux membres doit en transporter au moins {min_link}.
+""": """
+`lacp_srv` is connected to the switch `lacp_sw` by two cables (`eth0` and `eth1` on both sides).
+On the switch side, the aggregate **`{sw_bond}`** is already configured: mode `802.3ad`,
+`lacp_rate fast`, `xmit_hash_policy layer3+4`, port of the bridge `br0` with `eth2` (towards
+`lacp_pc`, `{pc}`). Sections @@ref:hashing@@, @@ref:lacp@@ and @@ref:linux@@.
+
+1. Create on `lacp_srv` the bond **`{bond}`** in `802.3ad` mode with `eth0` and `eth1`, asking for
+   fast LACPDUs (`lacp_rate fast`) and a per-flow spreading according to the IP addresses **and the
+   ports**; give it the address `{srv}`. Check in `/proc/net/bonding/{bond}` that both members are
+   in the **same aggregator** and that the partner is indeed `lacp_sw`, and that `lacp_srv` reaches
+   `lacp_pc`.
+2. Measure the throughput towards `lacp_pc` with one flow (`iperf3 -c lacp_pc`) then four (`iperf3 -c
+   lacp_pc -P 4`): each member is capped at 20 Mbit/s.
+3. On `lacp_srv`, set `eth1` down (`ip link set eth1 down`) and watch `/proc/net/bonding/{sw_bond}`
+   on `lacp_sw` for a few seconds; then bring `eth1` back up.
+
+The evaluation checks the aggregate at both ends and sends 64 UDP flows from `lacp_srv` to
+`lacp_pc`: each of the two members must carry at least {min_link} of them.
+""",
+    """
+**Solution** sur `lacp_srv` :
+{cmds}
+Avec la politique par défaut (`layer2`), tout le trafic vers `lacp_pc` prendrait le même membre :
+un seul flux comme quatre plafonnent à ~19 Mbit/s. Avec `layer3+4`, quatre flux font ~38 Mbit/s.
+`eth1` arrêtée d'un seul côté : `lacp_sw` garde sa porteuse mais ne reçoit plus de LACPDU ; après
+3 s (3 × 1 s, `lacp_rate fast`), son `eth1` n'est plus synchronisée et elle quitte l'agrégateur
+quelques secondes plus tard (« Number of ports: 1 »). Un agrégat statique, lui, continuerait d'envoyer
+la moitié des flux dans le câble mort.
+""": """
+**Solution** on `lacp_srv`:
+{cmds}
+With the default policy (`layer2`), all the traffic towards `lacp_pc` would take the same member:
+one flow and four flows alike top out at ~19 Mbit/s. With `layer3+4`, four flows reach ~38 Mbit/s.
+`eth1` set down on one side only: `lacp_sw` keeps its carrier but no longer receives LACPDUs; after
+3 s (3 × 1 s, `lacp_rate fast`), its `eth1` is no longer synchronised and it leaves the aggregator
+a few seconds later ("Number of ports: 1"). A static aggregate, on the other hand, would keep
+sending half of the flows into the dead cable.
+""",
+    "Les LACPDU": "The LACPDUs",
+    """
+Capturez une LACPDU **reçue** sur `lacp_srv` (`tcpdump -n -e -vv -i eth0 ether proto 0x8809` : la
+source est le switch) :
+
+- adresse MAC de destination : @@{dst:[0-9A-Fa-f:.-]+}@@ ; EtherType : @@{ethertype:(0x)?[0-9A-Fa-f]+}@@
+- identifiant système de l'acteur (`lacp_sw`) : adresse MAC @@{system:[0-9A-Fa-f:.-]+}@@, priorité @@{priority:[0-9]+}@@
+- clé de l'acteur : @@{key:[0-9]+}@@
+- intervalle entre deux LACPDU, en secondes : @@{interval:[0-9]+([.,][0-9]+)?}@@
+""": """
+Capture an LACPDU **received** on `lacp_srv` (`tcpdump -n -e -vv -i eth0 ether proto 0x8809`: the
+source is the switch):
+
+- destination MAC address: @@{dst:[0-9A-Fa-f:.-]+}@@; EtherType: @@{ethertype:(0x)?[0-9A-Fa-f]+}@@
+- system identifier of the actor (`lacp_sw`): MAC address @@{system:[0-9A-Fa-f:.-]+}@@, priority @@{priority:[0-9]+}@@
+- key of the actor: @@{key:[0-9]+}@@
+- interval between two LACPDUs, in seconds: @@{interval:[0-9]+([.,][0-9]+)?}@@
+""",
+    """
+**Solution.** `{dst}` (*slow protocols*) ; `0x8809` ; `{system}` (la MAC de `po1`, celle de `eth0`
+de `lacp_sw`, son premier membre), priorité {priority} ; clé {key} (10 Gbit/s, duplex intégral) ;
+1 s (`lacp_rate fast` des deux côtés).
+""": """
+**Solution.** `{dst}` (*slow protocols*); `0x8809`; `{system}` (the MAC of `po1`, that of `eth0`
+of `lacp_sw`, its first member), priority {priority}; key {key} (10 Gbit/s, full duplex);
+1 s (`lacp_rate fast` on both sides).
+""",
+    "Débit et panne d'un membre": "Throughput and failure of a member",
+    """
+- débit d'un flux `iperf3`, en Mbit/s : @@{single:[0-9]+([.,][0-9]+)?}@@ ; de quatre flux (`-P 4`, ligne `SUM` du récepteur) : @@{multi:[0-9]+([.,][0-9]+)?}@@
+- `eth1` arrêtée sur `lacp_srv` seulement : au bout de combien de secondes environ `lacp_sw` la déclare-t-il non synchronisée (elle n'a plus de porteuse en panne de son côté) ? @@{seconds:[0-9]+([.,][0-9]+)?}@@
+""": """
+- throughput of one `iperf3` flow, in Mbit/s: @@{single:[0-9]+([.,][0-9]+)?}@@; of four flows (`-P 4`, `SUM` line of the receiver): @@{multi:[0-9]+([.,][0-9]+)?}@@
+- `eth1` set down on `lacp_srv` only: after about how many seconds does `lacp_sw` declare it out of sync (its carrier does not fail on its side)? @@{seconds:[0-9]+([.,][0-9]+)?}@@
+""",
+    """
+**Solution.** ~19 Mbit/s et ~38 Mbit/s (deux membres de 20 Mbit/s ; recommencer si les quatre flux
+tombent sur le même membre) ; 3 s (expiration des informations du partenaire en *fast*), avant de la
+sortir de l'agrégateur.
+""": """
+**Solution.** ~19 Mbit/s and ~38 Mbit/s (two members of 20 Mbit/s; start again if the four flows
+land on the same member); 3 s (expiry of the partner's information in *fast*), before it is taken
+out of the aggregator.
+""",
+    "bond0 en 802.3ad avec eth0 et eth1": "bond0 in 802.3ad with eth0 and eth1",
+    "LACPDU rapides (lacp_rate fast)": "fast LACPDUs (lacp_rate fast)",
+    "répartition selon les adresses et les ports (layer3+4)": "spreading according to the addresses and the ports (layer3+4)",
+    "lacp_srv : les deux membres agrégés, partenaire lacp_sw": "lacp_srv: both members aggregated, partner lacp_sw",
+    "lacp_sw : les deux membres agrégés, partenaire lacp_srv": "lacp_sw: both members aggregated, partner lacp_srv",
+    "lacp_srv joint lacp_pc par bond0": "lacp_srv reaches lacp_pc through bond0",
+    "64 flux UDP : les deux membres en transportent": "64 UDP flows: both members carry some of them",
+    "contenu d'une LACPDU": "contents of an LACPDU",
+    "débit d'un flux et de quatre flux": "throughput of one flow and of four flows",
+    "détection d'une panne d'un seul côté par LACP": "detection by LACP of a failure on one side only",
+    "Partie 4 — agrégat entre deux switchs (site isl)": "Part 4 — aggregate between two switches (site isl)",
+    "Deux liens entre deux switchs": "Two links between two switches",
+    """
+Les switchs `isl_sw1` et `isl_sw2` sont reliés par deux câbles (`eth1` et `eth2` des deux côtés) ;
+`isl_pc1` est sur `eth0` de `isl_sw1`, `isl_pc2` (serveur `iperf3`) sur `eth0` de `isl_sw2`. Le pont
+`br0` de chaque switch, avec STP, a pour ports `eth0`, `eth1` et `eth2` (section @@ref:bridge@@).
+
+1. Regardez `bridge link` sur les deux switchs : un des deux câbles est bloqué par STP. Mesurez le
+   débit de `isl_pc1` vers `isl_pc2` avec quatre flux (`iperf3 -c isl_pc2 -P 4`).
+2. Sur **les deux switchs**, remplacez les deux ports `eth1` et `eth2` du pont par un agrégat LACP
+   **`{bond}`** (rapide, réparti selon les adresses et les ports), port de `br0`. Attendez les 30 s
+   de STP, vérifiez l'agrégat et `bridge link`, puis mesurez de nouveau.
+
+L'évaluation vérifie les deux agrégats, le pont, et envoie 64 flux UDP dans chaque sens : chacun
+des deux câbles doit en transporter au moins {min_link} dans chaque sens.
+""": """
+The switches `isl_sw1` and `isl_sw2` are connected by two cables (`eth1` and `eth2` on both sides);
+`isl_pc1` is on `eth0` of `isl_sw1`, `isl_pc2` (`iperf3` server) on `eth0` of `isl_sw2`. The bridge
+`br0` of each switch, with STP, has the ports `eth0`, `eth1` and `eth2` (section @@ref:bridge@@).
+
+1. Look at `bridge link` on both switches: one of the two cables is blocked by STP. Measure the
+   throughput from `isl_pc1` to `isl_pc2` with four flows (`iperf3 -c isl_pc2 -P 4`).
+2. On **both switches**, replace the two bridge ports `eth1` and `eth2` by an LACP aggregate
+   **`{bond}`** (fast, spread according to the addresses and the ports), port of `br0`. Wait for
+   the 30 s of STP, check the aggregate and `bridge link`, then measure again.
+
+The evaluation checks both aggregates, the bridge, and sends 64 UDP flows in each direction: each
+of the two cables must carry at least {min_link} of them in each direction.
+""",
+    """
+**Solution** sur `isl_sw1` **et** sur `isl_sw2` :
+{cmds}
+Avant : `{root}` est la racine (plus petite adresse MAC à priorité égale) ; `{other}` reçoit les
+BPDU de la racine sur `eth1` et `eth2` à coût égal et garde le port relié au port de plus petit
+identifiant de la racine (`eth1`, ajouté avant `eth2`) : **`{other}` `eth2`** est bloqué ; un seul
+lien sert, quatre flux font ~19 Mbit/s. Après : STP ne voit qu'un port `{bond}` de chaque côté, rien
+n'est bloqué, quatre flux font ~38 Mbit/s.
+""": """
+**Solution** on `isl_sw1` **and** on `isl_sw2`:
+{cmds}
+Before: `{root}` is the root (lowest MAC address at equal priority); `{other}` receives the root's
+BPDUs on `eth1` and `eth2` at equal cost and keeps the port connected to the root's port with the
+lowest identifier (`eth1`, added before `eth2`): **`{other}` `eth2`** is blocked; a single link is
+used, four flows reach ~19 Mbit/s. After: STP sees only one port `{bond}` on each side, nothing is
+blocked, four flows reach ~38 Mbit/s.
+""",
+    "STP et agrégat": "STP and aggregate",
+    """- avec l'agrégat : @@{stp_view:>STP ne voit qu'un port (bond0) entre les deux switchs : rien n'est bloqué, les deux câbles servent>>>one_port|STP voit deux ports et en bloque toujours un>>>two_ports|il faut désactiver STP pour que l'agrégat fonctionne>>>stp_off}@@
+- débit de quatre flux de `isl_pc1` vers `isl_pc2`, en Mbit/s, avant l'agrégat : @@{before:[0-9]+([.,][0-9]+)?}@@ ; après : @@{after:[0-9]+([.,][0-9]+)?}@@
+""": """- with the aggregate: @@{stp_view:>STP sees only one port (bond0) between the two switches: nothing is blocked, both cables are used>>>one_port|STP sees two ports and still blocks one of them>>>two_ports|STP must be disabled for the aggregate to work>>>stp_off}@@
+- throughput of four flows from `isl_pc1` to `isl_pc2`, in Mbit/s, before the aggregate: @@{before:[0-9]+([.,][0-9]+)?}@@; after: @@{after:[0-9]+([.,][0-9]+)?}@@
+""",
+    """
+**Solution.** `{blocked}` ; STP ne voit qu'un port ; ~19 puis ~38 Mbit/s.
+""": """
+**Solution.** `{blocked}`; STP sees only one port; ~19 then ~38 Mbit/s.
+""",
+    "{m} : bond0 en 802.3ad avec eth1 et eth2": "{m}: bond0 in 802.3ad with eth1 and eth2",
+    "{m} : les deux câbles agrégés avec l'autre switch": "{m}: both cables aggregated with the other switch",
+    "bond0 port de br0 à la place de eth1 et eth2, en transmission, sur les deux switchs": "bond0 port of br0 instead of eth1 and eth2, forwarding, on both switches",
+    "répartition selon les adresses et les ports sur les deux switchs": "spreading according to the addresses and the ports on both switches",
+    "isl_pc1 et isl_pc2 se joignent à travers l'agrégat": "isl_pc1 and isl_pc2 reach each other through the aggregate",
+    "64 flux UDP dans chaque sens : les deux câbles en transportent": "64 UDP flows in each direction: both cables carry some of them",
+    "port bloqué par STP avant l'agrégat, vue de STP après": "port blocked by STP before the aggregate, STP's view after it",
+    "débit de quatre flux avant et après l'agrégat": "throughput of four flows before and after the aggregate",
+    "Partie 5 — dépannage (site fix)": "Part 5 — troubleshooting (site fix)",
+    "Un agrégat qui ne marche pas": "An aggregate that does not work",
+    """
+`fix_srv` est relié au switch `fix_sw` par deux câbles (`eth0` et `eth1` des deux côtés) ; `fix_pc`
+(`{pc}`) est derrière `fix_sw`. L'agrégat devait être un agrégat LACP de deux membres aux deux bouts
+(**`{bond}`** sur `fix_srv`, avec l'adresse `{srv}`, **`{sw_bond}`** sur `fix_sw`, port de `br0`)...
+mais `fix_srv` ne joint pas `fix_pc`. **Trois erreurs** de configuration se cachent sur les deux
+machines : trouvez-les et corrigez-les (les autres réglages sont bons : `miimon 100`, `lacp_rate
+fast`, `layer3+4`). Outils : `ip -d link`, `/proc/net/bonding/*`, `bridge link`, `lldpcli` (qui
+tourne sur `fix_sw`), `ping`, `tcpdump`.
+
+L'évaluation vérifie la configuration, l'agrégat aux deux bouts, et envoie 64 flux UDP de `fix_srv`
+vers `fix_pc` : ils doivent tous arriver, répartis sur les deux câbles.
+""": """
+`fix_srv` is connected to the switch `fix_sw` by two cables (`eth0` and `eth1` on both sides);
+`fix_pc` (`{pc}`) is behind `fix_sw`. The aggregate was meant to be an LACP aggregate of two
+members at both ends (**`{bond}`** on `fix_srv`, with the address `{srv}`, **`{sw_bond}`** on
+`fix_sw`, port of `br0`)... but `fix_srv` does not reach `fix_pc`. **Three configuration errors**
+are hidden on the two machines: find them and fix them (the other settings are right: `miimon
+100`, `lacp_rate fast`, `layer3+4`). Tools: `ip -d link`, `/proc/net/bonding/*`, `bridge link`,
+`lldpcli` (which runs on `fix_sw`), `ping`, `tcpdump`.
+
+The evaluation checks the configuration, the aggregate at both ends, and sends 64 UDP flows from
+`fix_srv` to `fix_pc`: they must all arrive, spread over both cables.
+""",
+    """
+**Solution.** Sur `fix_srv` (le mode ne change qu'en recréant le bond) :
+{srv_cmds}
+Sur `fix_sw` :
+{sw_cmds}
+Les symptômes, dans l'ordre où on les rencontre : `po1` sans porteuse (`NO-CARRIER`, port `disabled`
+dans `bridge link`) car `min_links 3` avec au plus deux membres : coupure totale ; puis un
+partenaire `00:00:00:00:00:00` dans `/proc/net/bonding/po1` (le serveur en `balance-xor` n'envoie pas
+de LACPDU) : chaque membre de `po1` est seul dans son agrégateur, les trames reçues hors de
+l'agrégateur actif sont jetées, une partie des flux (voire tout, ARP compris) disparaît ; enfin un
+agrégateur d'un seul port car `eth1` de `fix_sw` n'est pas membre de `po1`.
+""": """
+**Solution.** On `fix_srv` (the mode only changes by recreating the bond):
+{srv_cmds}
+On `fix_sw`:
+{sw_cmds}
+The symptoms, in the order in which they show up: `po1` without a carrier (`NO-CARRIER`, port
+`disabled` in `bridge link`) because of `min_links 3` with at most two members: total outage; then
+a partner `00:00:00:00:00:00` in `/proc/net/bonding/po1` (the server in `balance-xor` sends no
+LACPDU): each member of `po1` is alone in its aggregator, the frames received outside the active
+aggregator are dropped, part of the flows (or even everything, ARP included) vanishes; finally an
+aggregator of a single port because `eth1` of `fix_sw` is not a member of `po1`.
+""",
+    ">min_links trop élevé sur po1 de fix_sw>>>min_links|fix_srv en balance-xor (agrégat statique) au lieu de 802.3ad>>>static|eth1 de fix_sw n'est pas membre de po1>>>member|lacp_rate différent aux deux bouts>>>rate": ">min_links too high on po1 of fix_sw>>>min_links|fix_srv in balance-xor (static aggregate) instead of 802.3ad>>>static|eth1 of fix_sw is not a member of po1>>>member|lacp_rate differs at the two ends>>>rate",
+    "Diagnostic": "Diagnosis",
+    """Associez chaque symptôme à sa cause :
+
+""": """Match each symptom with its cause:
+
+""",
+    "- `po1` de `fix_sw` n'a pas de porteuse (`NO-CARRIER`) : @@{outage:": "- `po1` of `fix_sw` has no carrier (`NO-CARRIER`): @@{outage:",
+    "- `/proc/net/bonding/po1` montre un partenaire `00:00:00:00:00:00` : @@{no_partner:": "- `/proc/net/bonding/po1` shows a partner `00:00:00:00:00:00`: @@{no_partner:",
+    "- les deux bouts parlent LACP, mais l'agrégateur de `fix_sw` n'a qu'un port : @@{one_port:": "- both ends speak LACP, but the aggregator of `fix_sw` has only one port: @@{one_port:",
+    """
+**Solution.** `min_links` ; `fix_srv` en `balance-xor` ; `eth1` hors de `po1`.
+""": """
+**Solution.** `min_links`; `fix_srv` in `balance-xor`; `eth1` outside `po1`.
+""",
+    "fix_srv : bond0 en 802.3ad avec eth0 et eth1": "fix_srv: bond0 in 802.3ad with eth0 and eth1",
+    "fix_sw : eth1 membre de po1": "fix_sw: eth1 member of po1",
+    "fix_sw : min_links de po1 compatible avec deux membres": "fix_sw: min_links of po1 compatible with two members",
+    "agrégat de deux membres aux deux bouts, po1 avec porteuse": "aggregate of two members at both ends, po1 with a carrier",
+    "fix_srv joint fix_pc": "fix_srv reaches fix_pc",
+    "64 flux UDP : tous arrivent à fix_pc, répartis sur les deux câbles": "64 UDP flows: all of them reach fix_pc, spread over both cables",
+    "diagnostic : symptômes et causes": "diagnosis: symptoms and causes",
+    "Bonus — le VLAN annoncé par LLDP (site lldp)": "Bonus — the VLAN announced by LLDP (site lldp)",
+    "Le VLAN d'administration": "The management VLAN",
+    """
+L'administration du switch de cœur relié à `eth0` de `lldp_srv` se fait dans un VLAN étiqueté,
+transporté par ce câble, que le switch **annonce par LLDP** (`lldpcli show neighbors details`,
+ligne `VLAN`). Le réseau d'administration est `{net}` ; votre adresse y est `{srv}`.
+
+Créez sur `lldp_srv` la sous-interface VLAN correspondante (`eth0.<numéro>`) avec cette adresse, et
+vérifiez que vous joignez l'adresse d'administration du switch (relevée en partie 1).
+
+L'évaluation vérifie la sous-interface et lance un `ping` vers le switch.
+""": """
+The core switch connected to `eth0` of `lldp_srv` is managed in a tagged VLAN, carried by this
+cable, which the switch **announces by LLDP** (`lldpcli show neighbors details`, line `VLAN`). The
+management network is `{net}`; your address in it is `{srv}`.
+
+Create on `lldp_srv` the matching VLAN sub-interface (`eth0.<number>`) with this address, and
+check that you reach the management address of the switch (noted in part 1).
+
+The evaluation checks the sub-interface and runs a `ping` to the switch.
+""",
+    """
+**Solution.** Le switch annonce `VLAN: {vlan}` ; sur `lldp_srv` :
+{cmds}
+puis `ping {mgmt}`.
+""": """
+**Solution.** The switch announces `VLAN: {vlan}`; on `lldp_srv`:
+{cmds}
+then `ping {mgmt}`.
+""",
+    "sous-interface du VLAN d'administration sur eth0": "sub-interface of the management VLAN on eth0",
+    "lldp_srv joint l'adresse d'administration du switch": "lldp_srv reaches the management address of the switch",
+}}

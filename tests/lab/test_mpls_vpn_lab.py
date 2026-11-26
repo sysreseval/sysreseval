@@ -637,12 +637,12 @@ def _simulate_with_answers(lab, data, tmp_pub_dir, cheat):
 # ---------------------------------------------------------------------------
 
 
-def _all_texts(grade, ns):
-    texts = [('informations', _text(ns.informations))]
+def _all_texts(grade, ns, lang='fr'):
+    texts = [('informations', _text(ns.informations, lang))]
     for q in grade.get_questions_ordered():
-        texts.append((_text(q.title), _text(q.description)))
+        texts.append((_text(q.title), _text(q.description, lang)))
     for e in grade.get_grade_list():
-        texts.append((str(e.title), _text(e.description) if e.description else ''))
+        texts.append((str(e.title), _text(e.description, lang) if e.description else ''))
     return texts
 
 
@@ -698,15 +698,44 @@ class TestTexts:
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 12 and result.warnings == []
+        assert result.calls == source.count(b'instructor(tr(') + source.count(b'instructor(_by_language(tr(') == 12
+        assert result.warnings == [] and result.translations == 12
         assert b'**Solution.**' not in result.data and b"Pour l'enseignant" not in result.data
+        assert b'**For the instructor.**' not in result.data
         stripped = tmp_path / 'mpls_vpn_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('mpls_vpn_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the instructor texts goes with them, the other entries stay
+        assert len(module._TRANSLATIONS['en']) == len(lab._TRANSLATIONS['en']) - 12
+        assert set(module._TRANSLATIONS['en']) < set(lab._TRANSLATIONS['en'])
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 6)
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py); the tables and solutions built in code
+        have one version per language."""
+        import ast
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 12
+        assert lab.title.resolve('en') == "MPLS: BGP/MPLS VPNs and segment routing traffic engineering"
+        assert lab.NetScheme.solve_fix._sre_state_description.resolve('en') == "Part 5: solution (troubleshooting)"
+        g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for where, text in _all_texts(g1, ns1, 'en'):
+            assert "{'" not in text and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", text), where
+            markdown_to_html(text, show_instructor=True)
+        questions = g1.get_questions_ordered()
+        first = {lang: _text(questions[0].description, lang) for lang in ('fr', 'en')}
+        assert "| 2 — eBGP entre PE et CE | `ce_*` | `ce_pe1`, `ce_p`, `ce_pe2`, les CE" in first['fr']
+        assert "| 2 — eBGP between PE and CE | `ce_*` | `ce_pe1`, `ce_p`, `ce_pe2`, the CEs" in first['en']
+        assert "les hôtes" not in first['en'] and f"`CUST_A` **65000:{data.rt_a}**" in first['en']
+        solution = {lang: _text(questions[1].description, lang) for lang in ('fr', 'en')}
+        assert "`l3_pe1` :\n\n```" in solution['fr'] and "`l3_pe1`:\n\n```" in solution['en']
 
     def test_english_identifiers(self, lab, data):
         french = re.compile(r'(routeur|reseau|panne|partie|adresse|lien|client|voisin|bouclage|etiquet|chemin|'

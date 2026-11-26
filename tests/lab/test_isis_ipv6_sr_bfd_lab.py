@@ -12,6 +12,7 @@ whole cut without BFD and a fraction of a second with it.  Covers the data, the 
 ops, the two-pass grading contract (nothing done: 0; everything: 100 + 6 bonus points; **each part
 alone gives exactly its points and everything but one part the rest**) and the texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -54,6 +55,7 @@ FORM_ELEMENTS = {
 FORM_POINTS = {'mt': 6, 'sr': 7, 'bfd': 7}
 CHOICE_ELEMENTS = {'mt_q_single', 'mt_q_nexthop', 'sr_q_no_php', 'bfd_q_interface', 'bfd_q_path'}
 BONUS_ELEMENTS = ['tl_backup', 'tl_node', 'tl_repair']
+INSTRUCTOR_TEXTS = 8         # the organisation question, a description and a form per part, the bonus
 
 
 @pytest.fixture(scope='module')
@@ -648,13 +650,30 @@ def _simulate_with_answers(lab, data, tmp_pub_dir, cheat):
 # ---------------------------------------------------------------------------
 
 
-def _all_texts(grade, ns):
-    texts = [('informations', _text(ns.informations))]
+def _all_texts(grade, ns, lang='fr'):
+    texts = [('informations', _text(ns.informations, lang))]
     for q in grade.get_questions_ordered():
-        texts.append((_text(q.title), _text(q.description)))
+        texts.append((_text(q.title, lang), _text(q.description, lang)))
     for e in grade.get_grade_list():
-        texts.append((str(e.title), _text(e.description) if e.description else ''))
+        texts.append((str(e.title), _text(e.description, lang) if e.description else ''))
     return texts
+
+
+def _tr_literals():
+    import check_sre_translations
+    return check_sre_translations.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+
+
+def _instructor_literals():
+    """The tr() literals inside the instructor() calls of the lab."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 class TestTexts:
@@ -711,15 +730,53 @@ class TestTexts:
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 8 and result.warnings == []
+        literals = _instructor_literals()
+        assert result.calls == len(literals) == INSTRUCTOR_TEXTS and result.warnings == []
         assert b'**Solution.**' not in result.data and b"Pour l'enseignant" not in result.data
+        assert b'For the instructor' not in result.data
         stripped = tmp_path / 'isis_mt_sr_bfd_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('isis_mt_sr_bfd_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the instructor texts goes with them, the rest stays
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(literals)
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(literals))
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 6)
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked
+        for every lab of the directory by test_draft_misc_translations.py)."""
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == _tr_literals() and all(v and v.strip() for v in english.values())
+        literals = _instructor_literals()
+        assert len(literals) == INSTRUCTOR_TEXTS and set(literals) <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**'))
+                   for v in english.values()) == INSTRUCTOR_TEXTS
+        assert lab.title.resolve('en') == "IS-IS: IPv6 multi-topology, segment routing and BFD"
+        assert lab.NetScheme.solve_mt._sre_state_description.resolve('en') == \
+            "Part 1: solution (IPv6 and multi-topology)"
+
+    def test_instructor_texts_in_both_languages(self, lab, data, tmp_pub_dir):
+        g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        questions = g1.get_questions_ordered()
+        for q in questions:
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert has_instructor(fr) and has_instructor(en), _text(q.title)
+            assert fr != en and ('**Solution.**' in en or '**For the instructor.**' in en), _text(q.title)
+        for where, text in _all_texts(g1, ns1, 'en'):
+            assert "{'" not in text and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", text), where
+            markdown_to_html(text, show_instructor=True)
+        # the table of the sites and the vtysh sessions of the solutions follow the language
+        first = [_text(questions[0].description, lang) for lang in ('fr', 'en')]
+        assert "| 1 — IPv6 et multi-topologie | `mt_*` |" in first[0]
+        assert "| 1 — IPv6 and multi-topology | `mt_*` | `mt_r1` to `mt_r4`, the hosts" in first[1]
+        part1 = [_text(questions[1].description, lang) for lang in ('fr', 'en')]
+        assert "`mt_r1` :\n\n```\nconfigure terminal" in part1[0]
+        assert "`mt_r1`:\n\n```\nconfigure terminal" in part1[1] and "`mt_r1` :" not in part1[1]
 
     def test_english_identifiers(self, lab, data):
         french = re.compile(r'(routeur|reseau|panne|partie|adresse|lien|zone|voisin|bouclage|chemin|niveau|aire|'

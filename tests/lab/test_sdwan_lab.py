@@ -358,6 +358,19 @@ class TestLab:
 # ---------------------------------------------------------------------------
 
 
+def _instructor_literals():
+    """The tr() literals inside instructor() calls of the lab file."""
+    ast = check_sre_translations.ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 def _texts(lab, data, instructor=True):
     name = _running_name()
     marker = Path(params.instructor_mode_marker_filename(name))
@@ -392,14 +405,34 @@ class TestTexts:
         policy, errors = sdwan_agent.validate_policy(json.loads(block))
         assert errors == [] and policy['applications'][0]['match'] == {'dscp': 34}
 
-    def test_instructor_translations(self, lab):
+    def test_translations(self, lab):
+        """Every tr() text has its English in _TRANSLATIONS (the markup kept: checked for every lab of the
+        directory by test_draft_misc_translations.py), the 14 instructor texts among them; the texts
+        evaluated at import time (title, state descriptions) carry their English inline."""
         tree = check_sre_translations.ast.parse(_LAB_PATH.read_text())
         tr_strings = check_sre_translations.get_tr_strings(tree)
         english = lab._TRANSLATIONS['en']
-        assert set(english) <= set(tr_strings) and None not in english.values() and len(english) == 14
-        assert all(english[k] != k for k in english)
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        assert set(english) == set(tr_strings) and all(english.values())
+        literals = _instructor_literals()
+        assert len(literals) == 14 and set(literals) <= set(english)
+        assert all(english[k] != k for k in literals)
         for fr, en in english.items():
             assert set(re.findall(r'\{(\w+)', fr)) == set(re.findall(r'\{(\w+)', en)), fr[:60]
+        assert lab.title.resolve('en') == "SD-WAN: tunnels, control plane, application-aware routing and SLA"
+        states = {name: state for name, state in vars(lab.NetScheme).items()
+                  if getattr(state, '_is_sre_state', False) and name != 'initial'}
+        assert len(states) == 11 and {'mpls_degraded', 'solve_bonus', 'final'} <= set(states)
+        for name, state in states.items():
+            description = state._sre_state_description
+            assert description.resolve('en') != description.resolve('fr'), name
+
+    def test_starting_point_in_both_languages(self, lab, data):
+        """The script given to start part 5 has its comments in the language of the text around it."""
+        ns = lab.NetScheme(data=data, running_lab_name=_running_name())
+        fr, en = ns.sla_skeleton(), ns.sla_skeleton('en')
+        assert '# À FAIRE' in fr and '# TO DO' in en and 'FAIRE' not in en
+        assert [line.split('#')[0] for line in fr.splitlines()] == [line.split('#')[0] for line in en.splitlines()]
 
     def test_fragments_in_both_languages(self, lab, data, tmp_pub_dir):
         _, _, grade = _texts(lab, data)
@@ -442,5 +475,8 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('sdwan_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade = _replay(module, _evaluation('final'), answers='final')
         assert _totals(grade) == (TOTAL, TOTAL, 6)

@@ -35,6 +35,7 @@ from ipaddress import IPv4Address, IPv4Interface, IPv4Network
 from typing import Dict, List, Optional
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks
@@ -1000,10 +1001,13 @@ Documentation : [FRR — OSPF](https://docs.frrouting.org/en/latest/ospfd.html),
                                     "router ospf", "redistribute connected route-map ANYCAST", "exit"])]
         return result
 
-    def health_script(self) -> str:
+    def health_script(self, lang: str = 'fr') -> str:
+        """The health check script; *lang* only changes its comment (what the solution texts show)."""
         s = self.s_ospf
+        comment = (f"{HEALTH_SCRIPT}: only announce the service address while unbound answers" if lang == 'en'
+                   else f"{HEALTH_SCRIPT} : n'annoncer l'adresse du service que tant qu'unbound répond")
         return f"""#!/bin/sh
-# {HEALTH_SCRIPT} : n'annoncer l'adresse du service que tant qu'unbound répond
+# {comment}
 SERVICE={s}
 while true; do
     if dig +time=1 +tries=1 @127.0.0.1 id.server CH TXT >/dev/null 2>&1; then
@@ -1029,8 +1033,8 @@ Restart=always
 WantedBy=multi-user.target
 """
 
-    def solution_hc(self) -> Dict[str, list]:
-        return {m: [('file', HEALTH_SCRIPT, self.health_script(), 0o755),
+    def solution_hc(self, lang: str = 'fr') -> Dict[str, list]:
+        return {m: [('file', HEALTH_SCRIPT, self.health_script(lang), 0o755),
                     ('file', HEALTH_UNIT, self.health_unit(), 0o644),
                     ('sh', "systemctl daemon-reload; systemctl enable anycast-health; systemctl start anycast-health")]
                 for m in ('hc_dns1', 'hc_dns2')}
@@ -1138,47 +1142,56 @@ WantedBy=multi-user.target
             self.file(m, "/etc/frr/frr.conf", self._frr_conf(m), permissions=0o640, owner="frr:frr", step=2)
             self.cmd(m, "systemctl start frr", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (instance la plus proche)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (instance la plus proche)",
+                                                  en="Part 1: solution (nearest instance)"))
     def solve_near(self):
         self._apply(self.solution_near())
         self._wait_ospf(('near',))
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (principale et secours)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (principale et secours)",
+                                                  en="Part 2: solution (primary and backup)"))
     def solve_prim(self):
         self._apply(self.solution_prim())
         self._wait_ospf(('prim',))
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (health check)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (health check)",
+                                                  en="Part 3: solution (health check)"))
     def solve_hc(self):
         self._apply(self.solution_hc())
         self._wait_ospf(('hc',))
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (dépannage OSPF)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (dépannage OSPF)",
+                                                  en="Part 4: solution (OSPF troubleshooting)"))
     def solve_ofix(self):
         self._apply(self.solution_ofix())
         self._wait_ospf(('ofix',))
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (BGP)"))
+    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (BGP)",
+                                                  en="Part 5: solution (BGP)"))
     def solve_bgp(self):
         self._apply(self.solution_bgp())
         self.cmd('bgp_ca', f"sleep {BGP_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 6 : solution (ingénierie du trafic)"))
+    @sre_state(user_allowed=False, description=tr("Partie 6 : solution (ingénierie du trafic)",
+                                                  en="Part 6: solution (traffic engineering)"))
     def solve_te(self):
         self._apply(self.solution_te())
         self.cmd('te_cb', f"sleep {BGP_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 7 : solution (dépannage BGP)"))
+    @sre_state(user_allowed=False, description=tr("Partie 7 : solution (dépannage BGP)",
+                                                  en="Part 7: solution (BGP troubleshooting)"))
     def solve_bfix(self):
         self._apply(self.solution_bfix())
         self.cmd('bfix_ca', f"sleep {BGP_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (BFD)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (BFD)",
+                                                  en="Bonus: solution (BFD)"))
     def solve_bfd(self):
         self._apply(self.solution_bfd())
         self._wait_ospf(('bfd',))
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (ECMP par flux)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (ECMP par flux)",
+                                                  en="Bonus: solution (per-flow ECMP)"))
     def solve_ecmp(self):
         self._apply(self.solution_ecmp())
         self._wait_ospf(('ecmp',))
@@ -1211,9 +1224,10 @@ def _int(s):
         return None
 
 
-def _solution_text(solution: Dict[str, list]) -> str:
+def _solution_text(solution: Dict[str, list], lang: str = 'fr') -> str:
     """The reference solution of a part, machine by machine: shell commands, vtysh sessions,
-    files."""
+    files (``machine :`` in French, ``machine:`` in English)."""
+    colon = ":" if lang == 'en' else " :"
     blocks = []
     for m, items in solution.items():
         parts = []
@@ -1227,9 +1241,23 @@ def _solution_text(solution: Dict[str, list]) -> str:
                 body = ["configure terminal"] + [" " + x for x in _block_lines(item[1])] + ["end", "write"]
                 parts.append("```\n" + "\n".join(body) + "\n```")
             elif kind == 'file':
-                parts.append(f"`{item[1]}` :\n\n```\n{item[2].rstrip()}\n```")
-        blocks.append(f"`{m}` :\n\n" + "\n\n".join(parts))
+                parts.append(f"`{item[1]}`{colon}\n\n```\n{item[2].rstrip()}\n```")
+        blocks.append(f"`{m}`{colon}\n\n" + "\n\n".join(parts))
     return "\n\n".join(blocks)
+
+
+def _solution_texts(solution: Dict[str, list], solution_en: Optional[Dict[str, list]] = None) -> Dict[str, str]:
+    """The solution text of each language (a value of _by_language()); *solution_en*: the solution
+    whose files carry English comments, when it differs."""
+    return {'fr': _solution_text(solution), 'en': _solution_text(solution_en or solution, 'en')}
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value gives one value per language (the
+    solution texts, the rows of the sites table, the options of a dropdown)."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
 
 
 class Grade(Grade0):
@@ -1326,7 +1354,23 @@ class Grade(Grade0):
                   "`bfix_dns1`, `bfix_dns2`, les clients `bfix_ca`, `bfix_cb` ; `bfix_ispa`, `bfix_ispb` sans terminal"),
                  ('bfd', "bonus — BFD", "`bfd_r1`, `bfd_dns1`, `bfd_dns2`"),
                  ('ecmp', "bonus — ECMP par flux", "`ecmp_r1`, `ecmp_dns1`, `ecmp_dns2`, le client `ecmp_c1`")]
-        site_rows = "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites)
+        sites_en = [("1 — OSPF: the nearest instance", "`near_r1` to `near_r3`, `near_dns1`, `near_dns2`"),
+                    ("2 — OSPF: primary and backup", "`prim_r1`, `prim_r2`, `prim_dns1`, `prim_dns2`"),
+                    ("3 — OSPF: health check", "`hc_r1`, `hc_r2`, `hc_dns1`, `hc_dns2`"),
+                    ("4 — OSPF: troubleshooting", "`ofix_r1` to `ofix_r3`, `ofix_dns1`, `ofix_dns2`"),
+                    ("5 — BGP: one prefix, two sites",
+                     "`bgp_dns1`, `bgp_dns2`, the clients `bgp_ca`, `bgp_cb`; `bgp_ispa`, `bgp_ispb` without a "
+                     "terminal"),
+                    ("6 — BGP: traffic engineering",
+                     "`te_dns1` to `te_dns3`, the clients `te_cb`, `te_cc`; `te_ispa` to `te_ispc` without a terminal"),
+                    ("7 — BGP: troubleshooting",
+                     "`bfix_dns1`, `bfix_dns2`, the clients `bfix_ca`, `bfix_cb`; `bfix_ispa`, `bfix_ispb` without a "
+                     "terminal"),
+                    ("bonus — BFD", "`bfd_r1`, `bfd_dns1`, `bfd_dns2`"),
+                    ("bonus — per-flow ECMP", "`ecmp_r1`, `ecmp_dns1`, `ecmp_dns2`, the client `ecmp_c1`")]
+        site_rows = {'fr': "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites),
+                     'en': "\n".join(f"| {part} | `{site}_*` | {machines} |"
+                                     for (site, _part, _machines), (part, machines) in zip(sites, sites_en))}
         members: Dict[str, List[str]] = {n: [] for n in list(LINKS) + LANS}
         for m, nets in ROUTER_IFACES.items():
             for i, n in enumerate(nets):
@@ -1343,7 +1387,7 @@ class Grade(Grade0):
         self.question_dummy(
             title=tr("Organisation du TP"),
             hash="9538818d40a2b427",
-            description=tr("""
+            description=_by_language(tr("""
 Lisez l'onglet **Informations** : il présente l'anycast, ses usages, son fonctionnement avec OSPF
 puis avec BGP, le suivi de l'état du service, BFD, ECMP, et rappelle la configuration de FRR.
 
@@ -1386,7 +1430,7 @@ routage, et interroge le service depuis les routeurs et les clients pour savoir 
 répond. Elle **perturbe deux sites** pendant une vingtaine de secondes : elle fige puis arrête
 unbound sur `hc_dns1` et `hc_dns2` (partie 3) et coupe `bfd_dns1` pendant {cut} s (bonus BFD) ; elle
 remet tout en place ensuite.
-""").format(site_rows=site_rows, addressing=addressing, s_o=s_o, s_b=s_b, prefix=prefix, asn=d.asn, cut=BFD_CUT)
+"""), site_rows=site_rows, addressing=addressing, s_o=s_o, s_b=s_b, prefix=prefix, asn=d.asn, cut=BFD_CUT)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
 instance. Les états `solve_near`, `solve_prim`, `solve_hc`, `solve_ofix`, `solve_bgp`,
@@ -1425,7 +1469,7 @@ instances ont unbound, et FRR avec le démon `ospfd`, mais rien de configuré.
 3. Regardez la route de `near_r2` vers `{s}` : combien de prochains sauts ? Lancez plusieurs fois
    `dig` depuis `near_r2` : est-ce toujours la même instance qui répond ?
 """).format(s=s_o)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1439,7 +1483,7 @@ sa route a deux prochains sauts. Ses propres requêtes partent toujours vers la 
 `near_rid` (2 : router-id = adresse unicast), `near_r1`, `near_r3` (3 chacun : route OSPF vers
 l'instance voisine et réponse de cette instance), `near_ecmp` (4 : deux prochains sauts sur
 `near_r2`), `near_r2` (2 : `near_r2` obtient une réponse).
-""").format(solution=_solution_text(ns.solution_near()), cost=2 * DEFAULT_COST + LOOPBACK_STUB_COST,
+"""), solution=_solution_texts(ns.solution_near()), cost=2 * DEFAULT_COST + LOOPBACK_STUB_COST,
             dc=DEFAULT_COST)),
         )
         cheat_near = {'cost': str(2 * DEFAULT_COST + LOOPBACK_STUB_COST), 'hops': '2', 'nearest': 'cost',
@@ -1531,7 +1575,7 @@ externe de type 2** (section @@ref:external@@) : métrique **{m1}** sur `prim_dn
 Vérifiez les LSA de type 5 (`show ip ospf database external`), la route de `prim_r2`
 (`show ip ospf route`) et quelle instance répond à `prim_r2`.
 """).format(s=s_o, m1=d.prim_metric1, m2=d.prim_metric2)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1543,7 +1587,7 @@ plus proche. En E1, avec la même métrique sur les deux instances, il prendrait
 Évaluation : `prim_ext1`, `prim_ext2` (3 chacun : LSA de type 5 de l'instance, E2, bonne
 métrique), `prim_only` (2 : aucune autre route externe), `prim_r2` (4 : route E2 de `prim_r2` par
 `prim_r1` et réponse de `prim_dns1`), `prim_r1` (1 : `prim_r1` servi par `prim_dns1`).
-""").format(solution=_solution_text(ns.solution_prim()), s=s_o, m1=d.prim_metric1, m2=d.prim_metric2,
+"""), solution=_solution_texts(ns.solution_prim()), s=s_o, m1=d.prim_metric1, m2=d.prim_metric2,
             fwd=2 * DEFAULT_COST)),
         )
         cheat_prim = {'fwd': str(2 * DEFAULT_COST), 'e1': 'dns2', 'e2': 'external'}
@@ -1634,7 +1678,7 @@ unbound puis l'**arrête** sur `hc_dns2`, attend {up} s, vérifie que `hc_r1` es
 `hc_dns1` et que `hc_r2` l'est aussi, redémarre unbound sur `hc_dns2`, attend {up} s et vérifie que
 `hc_r2` est de nouveau servi par `hc_dns2`.
 """).format(s=s_o, script=HEALTH_SCRIPT, down=HC_DOWN_WAIT, up=HC_UP_WAIT)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.** Sur les deux instances :
 
 {solution}
@@ -1648,7 +1692,8 @@ retire le lien de sa LSA de routeur, et `hc_r1` passe par `hc_r2` vers `hc_dns2`
 une fois débloqué), `hc_withdraw2` (3 : `hc_r2` passe par `hc_r1` quand unbound est arrêté sur
 `hc_dns2`), `hc_failover2` (2), `hc_return2` (2) ; les retours ne comptent qu'après la bascule
 correspondante.
-""").format(solution=_solution_text({'hc_dns1': ns.solution_hc()['hc_dns1']}))),
+"""), solution=_solution_texts({'hc_dns1': ns.solution_hc()['hc_dns1']},
+                               {'hc_dns1': ns.solution_hc('en')['hc_dns1']}))),
         )
         cheat_hc = {'anycast': 'flapping', 'frozen': 'query', 'lsa': '5'}
         q3 = self.question_form(
@@ -1721,7 +1766,7 @@ Ce site a été livré avec **quatre pannes**. Trouvez-les et corrigez-les sans 
 (`show ip ospf route`, `show ip ospf database router`), les adresses de `lo`, les router-id, la
 configuration d'unbound, les paquets (`tcpdump`) et le journal `/var/log/frr/frr.log`.
 """).format(s=s_o)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1737,23 +1782,26 @@ instance sans service : `ofix_r2` et ses voisins la choisissent) ; `{typo}` au l
 `ofix_dns1` parmi les prochains sauts de `ofix_r1`), `ofix_r1` (2 : `ofix_r1` servi par `ofix_dns1`
 seule), `ofix_source` (4 : `ofix_r3` servi par `ofix_dns2`), `ofix_rogue` (3 : `ofix_r2` n'est plus une
 instance, route à deux prochains sauts).
-""").format(solution=_solution_text(ns.solution_ofix()), s=s_o, typo=ns.typo)),
+"""), solution=_solution_texts(ns.solution_ofix()), s=s_o, typo=ns.typo)),
         )
         cheat_ofix = {'flap': 'rid', 'missing': 'address', 'r3': 'source', 'r2': 'rogue'}
         causes = ("router-id dupliqué>>>rid|adresse du service mal saisie>>>address|réponses envoyées depuis "
                   "l'adresse unicast>>>source|instance parasite sans service>>>rogue|aires OSPF différentes>>>area|"
                   "MTU différentes>>>mtu")
+        causes_en = ("duplicate router-id>>>rid|mistyped service address>>>address|answers sent from the unicast "
+                     "address>>>source|rogue instance without the service>>>rogue|different OSPF areas>>>area|"
+                     "different MTUs>>>mtu")
         q4 = self.question_form(
             section=self.section(1),
             title=tr("Les causes des pannes"),
             hash="4493f7fc4cdc6408",
-            description=tr("""
+            description=_by_language(tr("""
 - cause des routes vers le service qui changent sans cesse : @@{{flap:>{causes}}}@@
 - cause de l'absence de `ofix_dns1` parmi les instances : @@{{missing:>{causes}}}@@
 - une fois `ofix_r3` routé vers `ofix_dns2`, cause de ses requêtes sans réponse alors que `tcpdump`
   montre les réponses : @@{{r3:>{causes}}}@@
 - cause des requêtes sans réponse depuis `ofix_r2` : @@{{r2:>{causes}}}@@
-""").format(causes=causes)
+"""), causes={'fr': causes, 'en': causes_en})
             + instructor(tr("""
 **Solution.** Router-id dupliqué ; adresse du service mal saisie ; réponses envoyées depuis
 l'adresse unicast ; instance parasite sans service.
@@ -1817,7 +1865,7 @@ Sur `bgp_dns1` et `bgp_dns2` (section @@ref:bgp@@) : annoncez le préfixe anycas
 route-map de sortie, et une route-map d'entrée qui refuse tout. Vérifiez ensuite quelle instance
 répond à `bgp_ca` et à `bgp_cb` (`dig @{s} id.server CH TXT +short`).
 """).format(asn=d.asn, peer_a=peer_a, peer_b=peer_b, s=s_b, prefix=prefix)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1829,7 +1877,7 @@ Chaque opérateur reçoit deux chemins pour `{prefix}` : `{asn}` (son instance, 
 chacun : meilleur chemin de l'opérateur = son instance), `bgp_second` (2 : chaque opérateur a aussi
 le chemin par l'autre), `bgp_only` (2 : les instances n'annoncent que `{prefix}`), `bgp_ca`, `bgp_cb`
 (3 chacun : réponse de l'instance voisine).
-""").format(solution=_solution_text(ns.solution_bgp()), prefix=prefix, asn=d.asn)),
+"""), solution=_solution_texts(ns.solution_bgp()), prefix=prefix, asn=d.asn)),
         )
         cheat_bgp = {'aspath': f"65020 {d.asn}", 'length': 'filter', 'loop': 'loop'}
         q5 = self.question_form(
@@ -1918,7 +1966,7 @@ On veut que (section @@ref:te@@) :
 Les routeurs des opérateurs n'ont pas de terminal : observez depuis les clients (`dig`,
 `traceroute -n {s}`) et sur les instances (`show bgp ipv4 unicast neighbors X advertised-routes`).
 """).format(asn=d.asn, prefix=prefix, s=s_b)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1932,7 +1980,7 @@ par C) départagés par le router-id.
 l'AS), `te_cb` (4 : meilleur chemin de B par A et `te_cb` servi par `te_dns1`), `te_noexport` (3 : la
 route de `te_dns3` porte `no-export` chez C), `te_contained` (3 : ni A ni B n'a de chemin par C),
 `te_cc` (3 : `te_cc` servi par `te_dns3`, avec `no-export`).
-""").format(solution=_solution_text(ns.solution_te()), asn=d.asn)),
+"""), solution=_solution_texts(ns.solution_te()), asn=d.asn)),
         )
         cheat_te = {'aspath': " ".join([str(d.asn)] * 4), 'noexport': 'local', 'tie': 'tie'}
         q6 = self.question_form(
@@ -2007,7 +2055,7 @@ Ce site a été livré avec **quatre pannes**, deux sur chaque instance. Trouvez
 neighbors X advertised-routes`, `show running-config`, les adresses de `lo`, et `dig` depuis les
 clients.
 """).format(prefix=prefix, asn=d.asn, s=s_b)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -2019,17 +2067,20 @@ requêtes partent dans la route `blackhole`).
 
 Évaluation : `bfix_ispa`, `bfix_ispb` (4 chacun : meilleur chemin de l'opérateur = son instance),
 `bfix_ca`, `bfix_cb` (3 chacun : réponse de l'instance voisine).
-""").format(solution=_solution_text(ns.solution_bfix()), s=s_b, prefix=prefix)),
+"""), solution=_solution_texts(ns.solution_bfix()), s=s_b, prefix=prefix)),
         )
         cheat_bfix = {'d1send': 'policy', 'd1isp': 'long', 'd2send': 'importcheck', 'd2answer': 'noaddr'}
         bcauses = ("pas de politique de sortie (ebgp-requires-policy)>>>policy|préfixe trop long, filtré par "
                    "l'opérateur>>>long|network sans route correspondante>>>importcheck|adresse du service absente de "
                    "l'instance>>>noaddr|mauvais numéro d'AS du voisin>>>asn|session non établie>>>session")
+        bcauses_en = ("no outbound policy (ebgp-requires-policy)>>>policy|prefix too long, filtered by the "
+                      "operator>>>long|network without a matching route>>>importcheck|service address missing from "
+                      "the instance>>>noaddr|wrong AS number for the neighbour>>>asn|session not established>>>session")
         q7 = self.question_form(
             section=self.section(1),
             title=tr("Les causes des pannes"),
             hash="db8932f94bfaba96",
-            description=tr("""
+            description=_by_language(tr("""
 - cause de l'absence de toute annonce de `bfix_dns1` : @@{{d1send:>{causes}}}@@
 - une fois les annonces rétablies, cause du rejet de l'annonce de `bfix_dns1` par l'opérateur A :
   @@{{d1isp:>{causes}}}@@
@@ -2037,7 +2088,7 @@ requêtes partent dans la route `blackhole`).
   @@{{d2send:>{causes}}}@@
 - une fois l'annonce rétablie, cause des requêtes de `bfix_cb` restées sans réponse :
   @@{{d2answer:>{causes}}}@@
-""").format(causes=bcauses)
+"""), causes={'fr': bcauses, 'en': bcauses_en})
             + instructor(tr("""
 **Solution.** Pas de politique de sortie ; préfixe trop long ; `network` sans route
 correspondante ; adresse du service absente de l'instance.
@@ -2095,7 +2146,7 @@ Configurez BFD entre `bfd_r1` et `bfd_dns1` (démon `bfdd` déjà activé), avec
 @@ref:bfd@@). Reproduisez la coupure vous-même pour mesurer la différence :
 `tc qdisc add dev eth0 root netem loss 100%` sur `bfd_dns1`, puis `tc qdisc del dev eth0 root`.
 """).format(s=s_o, cost=BFD_BACKUP_COST, hello=BFD_HELLO, dead=BFD_DEAD, cut=BFD_CUT)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -2105,7 +2156,7 @@ par `bfd_dns2` : quelques paquets perdus au lieu de {lost} environ.
 
 Évaluation (bonus) : `bfd_session` (2 : session BFD de `bfd_r1` avec `bfd_dns1` active, détection en
 {det} ms au plus), `bfd_failover` (4 : au plus {maxlost} pings perdus sur {pings} pendant la coupure).
-""").format(solution=_solution_text(ns.solution_bfd()), lost=int(BFD_CUT / BFD_INTERVAL), det=BFD_MAX_DETECTION,
+"""), solution=_solution_texts(ns.solution_bfd()), lost=int(BFD_CUT / BFD_INTERVAL), det=BFD_MAX_DETECTION,
             maxlost=BFD_MAX_LOST, pings=BFD_PINGS)),
         )
         peer = bfd_peers.get(str(unicast('bfd_dns1'))) or {}
@@ -2140,14 +2191,14 @@ Faites en sorte que `ecmp_r1` répartisse **chaque flux** (adresses, protocole e
 deux instances (section @@ref:ecmp@@) : les requêtes successives de `ecmp_c1`, qui partent chacune
 d'un port source différent, doivent être servies tantôt par l'une, tantôt par l'autre.
 """).format(s=s_o)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
 
 Évaluation (bonus) : `ecmp_policy` (2 : `net.ipv4.fib_multipath_hash_policy` = 1 sur `ecmp_r1`),
 `ecmp_spread` (4 : {n} requêtes de `ecmp_c1` servies par les deux instances).
-""").format(solution=_solution_text(ns.solution_ecmp()), n=ECMP_QUERIES)),
+"""), solution=_solution_texts(ns.solution_ecmp()), n=ECMP_QUERIES)),
         )
         self.add_grade_element(title=no_tr("ecmp_policy"), max_grade=2, grade_part=part9, bonus=True,
                                grade=2 * int((ecmp_policy or '').strip() == '1'),
@@ -2157,4 +2208,1645 @@ d'un port source différent, doivent être servies tantôt par l'une, tantôt pa
                                description=tr("les requêtes de ecmp_c1 servies par les deux instances"))
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "Anycast : un service annoncé depuis plusieurs sites (OSPF et BGP)": "Anycast: one service announced from several sites (OSPF and BGP)",
+    """
+**Sommaire**
+""": """
+**Contents**
+""",
+    "L'anycast": "Anycast",
+    """
+Une adresse IP désigne d'ordinaire **une** interface : c'est l'**unicast**. Le **broadcast**
+désigne toutes les machines d'un réseau, le **multicast** tous les membres d'un groupe. L'**anycast**
+désigne **n'importe laquelle** d'un ensemble de machines : la même adresse est configurée sur
+plusieurs serveurs, à des endroits différents du réseau, et chaque paquet est livré à **un seul**
+d'entre eux, celui que le **routage** juge le plus proche.
+
+| mode | destinataires d'un paquet |
+|------|---------------------------|
+| unicast | une interface |
+| broadcast | toutes les machines du réseau local |
+| multicast | les membres d'un groupe |
+| anycast | **une** des machines qui portent l'adresse, la plus proche |
+
+En IPv4, rien ne distingue une adresse anycast d'une adresse unicast : c'est une adresse unicast
+ordinaire, simplement **annoncée depuis plusieurs endroits** par un protocole de routage (OSPF
+dans un domaine, BGP sur Internet). Aucun protocole nouveau, aucune modification des clients : le
+client envoie ses paquets à une adresse, et les routeurs, qui connaissent plusieurs chemins vers
+elle, choisissent comme d'habitude le meilleur. Chaque copie du serveur est une **instance**.
+L'architecture est décrite par la RFC 4786 (*Operation of Anycast Services*) et la RFC 7094. IPv6
+définit en plus des adresses anycast propres (RFC 4291, par exemple l'adresse *subnet-router*
+d'un préfixe), mais en pratique on y fait de l'anycast comme en IPv4.
+
+« Le plus proche » s'entend **au sens du routage** : le plus petit coût OSPF dans un domaine, la
+meilleure route BGP (souvent le chemin d'AS le plus court) sur Internet. Ce n'est pas forcément
+l'instance la plus proche en kilomètres ni la moins chargée.
+""": """
+An IP address normally designates **one** interface: that is **unicast**. **Broadcast**
+designates every machine of a network, **multicast** every member of a group. **Anycast**
+designates **any one** of a set of machines: the same address is configured on several servers,
+at different places in the network, and each packet is delivered to **only one** of them, the one
+that **routing** considers the nearest.
+
+| mode | recipients of a packet |
+|------|------------------------|
+| unicast | one interface |
+| broadcast | every machine of the local network |
+| multicast | the members of a group |
+| anycast | **one** of the machines that carry the address, the nearest |
+
+In IPv4, nothing distinguishes an anycast address from a unicast address: it is an ordinary
+unicast address, simply **announced from several places** by a routing protocol (OSPF within a
+domain, BGP on the Internet). No new protocol, no change on the clients: the client sends its
+packets to an address, and the routers, which know several paths to it, choose the best one as
+usual. Each copy of the server is an **instance**. The architecture is described by RFC 4786
+(*Operation of Anycast Services*) and RFC 7094. IPv6 also defines anycast addresses of its own
+(RFC 4291, for instance the *subnet-router* address of a prefix), but in practice anycast is done
+there as in IPv4.
+
+"The nearest" is meant **in the routing sense**: the lowest OSPF cost within a domain, the best
+BGP route (often the shortest AS path) on the Internet. It is not necessarily the instance nearest
+in kilometres, nor the least loaded one.
+""",
+    "Usages": "Uses",
+    """
+- **DNS** : les 13 noms des serveurs racine (`a` à `m.root-servers.net`) sont servis par plus de
+  1900 instances dans le monde ; les résolveurs publics `1.1.1.1`, `8.8.8.8` ou `9.9.9.9` sont des
+  adresses anycast ; de nombreux serveurs faisant autorité aussi. Le DNS s'y prête bien : un échange
+  est une question et une réponse en UDP.
+- **CDN** et grands services web : l'utilisateur est servi par le centre le plus proche.
+- **Résistance aux attaques par déni de service** : le trafic d'une attaque se répartit entre les
+  instances au lieu de converger sur une seule ; une instance saturée n'affecte que sa région.
+- **AS112** (RFC 7534) : des serveurs anycast répondent aux requêtes inverses des adresses privées
+  (`10.in-addr.arpa`…) qui fuient sur Internet.
+- **Autres** : serveurs NTP, relais 6to4 `192.88.99.1` (abandonné, RFC 7526), point de rendez-vous
+  multicast (*anycast RP*, RFC 4610), puits (*sinkhole*) qui attirent un trafic indésirable.
+
+La **passerelle anycast** (*anycast gateway*) d'un réseau EVPN est autre chose : la même adresse
+de passerelle (et la même adresse MAC) sur tous les commutateurs d'accès d'un même réseau local,
+pour que chaque hôte trouve sa passerelle sur le commutateur où il est branché.
+""": """
+- **DNS**: the 13 names of the root servers (`a` to `m.root-servers.net`) are served by more than
+  1900 instances around the world; the public resolvers `1.1.1.1`, `8.8.8.8` or `9.9.9.9` are
+  anycast addresses; so are many authoritative servers. DNS lends itself well to it: an exchange
+  is one question and one answer over UDP.
+- **CDNs** and large web services: the user is served by the nearest data centre.
+- **Resistance to denial-of-service attacks**: the traffic of an attack is spread over the
+  instances instead of converging on a single one; a saturated instance only affects its region.
+- **AS112** (RFC 7534): anycast servers answer the reverse queries for private addresses
+  (`10.in-addr.arpa`…) that leak onto the Internet.
+- **Others**: NTP servers, 6to4 relays `192.88.99.1` (deprecated, RFC 7526), multicast rendezvous
+  point (*anycast RP*, RFC 4610), *sinkholes* that attract unwanted traffic.
+
+The **anycast gateway** of an EVPN network is something else: the same gateway address (and the
+same MAC address) on every access switch of one local network, so that each host finds its
+gateway on the switch it is plugged into.
+""",
+    "Le service et ses instances": "The service and its instances",
+    """
+Comme deux paquets successifs d'un même client peuvent atteindre deux instances différentes si le
+routage change entre-temps, l'anycast convient aux services :
+
+- **sans état** ou à échanges courts : une requête DNS (UDP), une requête NTP ; TCP fonctionne tant
+  que les routes sont stables (une connexion qui change d'instance reçoit un `RST`) ;
+- dont **toutes les instances donnent la même réponse** : mêmes zones, même contenu.
+
+Chaque instance a donc deux adresses : l'**adresse du service** (anycast), la même partout, et une
+**adresse unicast** propre, pour l'administrer, la superviser et lui servir d'identifiant
+(router-id). L'adresse du service est posée sur une interface qui ne tombe jamais : `lo` ou une
+interface `dummy`, en /32.
+
+Une instance doit **répondre depuis l'adresse que le client a interrogée**. Un serveur UDP qui
+écoute sur toutes les adresses (`0.0.0.0`) et laisse le noyau choisir l'adresse source répond
+depuis son adresse unicast : le client, qui attend une réponse de l'adresse du service, l'ignore.
+`dig` finit par afficher `timed out`, alors que `tcpdump` montre bien la réponse, partie de
+l'adresse unicast de l'instance. Les serveurs DNS savent l'éviter : unbound avec
+`interface-automatic: yes` (option `IP_PKTINFO` du socket), BIND en ouvrant un socket par adresse.
+
+Pour savoir **quelle instance a répondu**, les serveurs DNS donnent leur nom dans la classe
+`CHAOS` (`id.server` ou `hostname.bind`, type TXT, RFC 4892) ou dans l'option EDNS **NSID**
+(RFC 5001) :
+
+```
+dig @192.0.2.53 id.server CH TXT +short
+dig @192.0.2.53 example.org +nsid
+```
+
+Dans ce TP, unbound tourne sur chaque instance (`/etc/unbound/unbound.conf`) et donne comme
+identité le nom de la machine.
+""": """
+Since two successive packets of one client may reach two different instances if the routing
+changes in between, anycast suits services:
+
+- that are **stateless** or have short exchanges: a DNS query (UDP), an NTP query; TCP works as
+  long as the routes are stable (a connection that changes instance receives an `RST`);
+- where **every instance gives the same answer**: same zones, same content.
+
+Each instance therefore has two addresses: the **service address** (anycast), the same
+everywhere, and a **unicast address** of its own, to administer it, monitor it and serve as its
+identifier (router-id). The service address is put on an interface that never goes down: `lo` or
+a `dummy` interface, as a /32.
+
+An instance must **answer from the address the client queried**. A UDP server that listens on
+every address (`0.0.0.0`) and lets the kernel choose the source address answers from its unicast
+address: the client, which expects an answer from the service address, ignores it. `dig` ends up
+printing `timed out`, while `tcpdump` does show the answer, sent from the unicast address of the
+instance. DNS servers know how to avoid this: unbound with `interface-automatic: yes` (socket
+option `IP_PKTINFO`), BIND by opening one socket per address.
+
+To know **which instance answered**, DNS servers give their name in the `CHAOS` class
+(`id.server` or `hostname.bind`, type TXT, RFC 4892) or in the EDNS **NSID** option
+(RFC 5001):
+
+```
+dig @192.0.2.53 id.server CH TXT +short
+dig @192.0.2.53 example.org +nsid
+```
+
+In this lab, unbound runs on each instance (`/etc/unbound/unbound.conf`) and gives the name of
+the machine as its identity.
+""",
+    "Anycast dans OSPF": "Anycast in OSPF",
+    """
+Dans un domaine OSPF, chaque instance annonce l'adresse du service, en /32 :
+
+- le plus simple : l'instance fait elle-même tourner OSPF (FRR, BIRD…) avec son routeur, et
+  annonce l'adresse posée sur `lo` comme un réseau OSPF ordinaire (`network 192.0.2.53/32 area 0`).
+  Elle apparaît dans la LSA de routeur de l'instance (`show ip ospf database router`), comme un
+  lien *stub* ; une adresse de `lo` est annoncée avec le coût **0** ;
+- ou bien comme une **route externe** (LSA de type 5), par `redistribute connected` filtré par une
+  route-map (section @@ref:external@@) ;
+- ou encore par le routeur, avec une route statique vers l'adresse unicast de l'instance,
+  redistribuée : simple, mais le routeur n'apprend rien si le serveur tombe.
+
+Chaque routeur calcule ses plus courts chemins comme d'habitude et trouve l'adresse du service
+derrière **plusieurs** routeurs : il garde le moins coûteux. Le domaine se partage ainsi en zones
+d'attraction, une par instance. Un routeur à **égale distance** de deux instances installe une
+route **ECMP** à deux prochains sauts (section @@ref:ecmp@@).
+
+### @@sec:router-id@@ Le piège du router-id
+
+Le router-id identifie un routeur OSPF : il doit être **unique** dans le domaine. Sans
+`ospf router-id`, FRR choisit la plus grande adresse des interfaces de bouclage, sinon la plus
+grande adresse des autres interfaces. Sur une instance anycast, c'est souvent… l'adresse du
+service, **la même sur toutes les instances**. Deux routeurs de même router-id ne forment pas
+forcément d'adjacence entre eux, mais leurs LSA portent le même identifiant : chacun reçoit la
+LSA de l'autre, la prend pour une version de la sienne, et la réémet avec un numéro de séquence
+plus grand ; les deux s'écrasent sans fin, et les routes vers l'une puis l'autre instance
+apparaissent et disparaissent. FRR ne le signale pas dans son journal : c'est `show ip ospf database
+router ID` qui le montre, avec une LSA dont l'âge repart sans cesse à zéro et dont le contenu change
+d'une lecture à l'autre. **Fixez toujours le router-id** d'une instance
+à son adresse unicast. Un changement de router-id ne prend effet qu'après
+`clear ip ospf process` (FRR le rappelle).
+""": """
+In an OSPF domain, each instance announces the service address, as a /32:
+
+- the simplest: the instance runs OSPF itself (FRR, BIRD…) with its router, and announces the
+  address put on `lo` as an ordinary OSPF network (`network 192.0.2.53/32 area 0`). It appears
+  in the router LSA of the instance (`show ip ospf database router`), as a *stub* link; an
+  address of `lo` is announced with cost **0**;
+- or as an **external route** (type 5 LSA), through `redistribute connected` filtered by a
+  route-map (section @@ref:external@@);
+- or else by the router, with a static route to the unicast address of the instance,
+  redistributed: simple, but the router learns nothing if the server goes down.
+
+Each router computes its shortest paths as usual and finds the service address behind
+**several** routers: it keeps the cheapest one. The domain is thus divided into catchment areas,
+one per instance. A router at **equal distance** from two instances installs an **ECMP** route
+with two next hops (section @@ref:ecmp@@).
+
+### @@sec:router-id@@ The router-id trap
+
+The router-id identifies an OSPF router: it must be **unique** in the domain. Without
+`ospf router-id`, FRR chooses the highest address of the loopback interfaces, otherwise the
+highest address of the other interfaces. On an anycast instance, that is often… the service
+address, **the same on every instance**. Two routers with the same router-id do not necessarily
+form an adjacency with each other, but their LSAs carry the same identifier: each one receives the
+LSA of the other, takes it for a version of its own, and re-originates it with a higher sequence
+number; the two overwrite each other endlessly, and the routes to one instance, then to the
+other, appear and disappear. FRR does not report it in its log: `show ip ospf database
+router ID` shows it, with an LSA whose age keeps going back to zero and whose content changes
+from one reading to the next. **Always set the router-id** of an instance
+to its unicast address. A change of router-id only takes effect after
+`clear ip ospf process` (FRR reminds you).
+""",
+    "Instance principale et secours : routes externes": "Primary and backup instances: external routes",
+    """
+Annoncer l'adresse comme un lien de l'instance envoie chaque client vers l'instance **la plus
+proche**. On peut au contraire vouloir une instance **principale** qui reçoit tout le trafic, et
+une instance de **secours** qui ne sert que si la principale disparaît. Les routes externes d'OSPF
+le permettent. Une route externe (LSA de type 5, émise par un **ASBR**) porte une métrique et un
+type :
+
+| type | coût comparé entre deux ASBR | effet en anycast |
+|------|------------------------------|------------------|
+| **E2** (`metric-type 2`, défaut de FRR) | la métrique externe **seule** ; à égalité, le coût jusqu'à l'ASBR départage | la plus petite métrique gagne partout : principale / secours |
+| **E1** (`metric-type 1`) | métrique externe **+** coût interne jusqu'à l'ASBR | l'instance la plus proche, corrigée par la métrique |
+
+Sur une instance (FRR) :
+
+```
+ip prefix-list ANYCAST seq 10 permit 192.0.2.53/32
+route-map ANYCAST permit 10
+ match ip address prefix-list ANYCAST
+ set metric 20
+ set metric-type type-2
+ exit
+router ospf
+ redistribute connected route-map ANYCAST
+ exit
+```
+
+La route-map est indispensable : sans elle, `redistribute connected` annoncerait **tous** les
+réseaux connectés de l'instance. `show ip ospf database external` montre les LSA de type 5 (qui les
+émet, avec quelle métrique et quel type), `show ip ospf route` les routes choisies : `N E2 …
+[20/30]` se lit « coût jusqu'à l'ASBR 20, métrique externe 30 ».
+""": """
+Announcing the address as a link of the instance sends each client to the **nearest**
+instance. One may instead want a **primary** instance that receives all the traffic, and a
+**backup** instance that only serves if the primary disappears. OSPF external routes make this
+possible. An external route (type 5 LSA, originated by an **ASBR**) carries a metric and a
+type:
+
+| type | cost compared between two ASBRs | effect for anycast |
+|------|---------------------------------|--------------------|
+| **E2** (`metric-type 2`, FRR's default) | the external metric **alone**; on a tie, the cost to the ASBR decides | the smallest metric wins everywhere: primary / backup |
+| **E1** (`metric-type 1`) | external metric **+** internal cost to the ASBR | the nearest instance, corrected by the metric |
+
+On an instance (FRR):
+
+```
+ip prefix-list ANYCAST seq 10 permit 192.0.2.53/32
+route-map ANYCAST permit 10
+ match ip address prefix-list ANYCAST
+ set metric 20
+ set metric-type type-2
+ exit
+router ospf
+ redistribute connected route-map ANYCAST
+ exit
+```
+
+The route-map is essential: without it, `redistribute connected` would announce **all** the
+connected networks of the instance. `show ip ospf database external` shows the type 5 LSAs (who
+originates them, with which metric and which type), `show ip ospf route` the chosen routes:
+`N E2 … [20/30]` reads "cost to the ASBR 20, external metric 30".
+""",
+    "Suivre l'état du service": "Tracking the state of the service",
+    """
+Le routage ne sait rien du service : si unbound s'arrête ou se bloque sur une instance, celle-ci
+continue d'annoncer l'adresse et **tous les clients de sa zone d'attraction sont privés de
+service** (un *trou noir*), alors que les autres instances fonctionnent. L'annonce doit donc
+suivre l'état du service : un **health check** interroge le service régulièrement, **retire
+l'adresse** (ou l'annonce) quand il ne répond plus et la remet quand il répond de nouveau.
+
+```
+#!/bin/sh
+# /usr/local/sbin/anycast-health : n'annoncer le service que s'il répond
+while true; do
+    if dig +time=1 +tries=1 @127.0.0.1 id.server CH TXT >/dev/null 2>&1; then
+        …   # le service répond : l'adresse doit être sur lo (ip addr add, si elle n'y est pas)
+    else
+        …   # il ne répond pas : retirer l'adresse (ip addr del)
+    fi
+    sleep 1
+done
+```
+
+- **Interrogez le service comme un client** (une vraie requête, avec un délai) : un processus
+  présent mais figé passe les tests `pidof` ou `systemctl is-active` et ne répond plus.
+- **N'interrogez pas l'adresse du service** : une fois l'adresse retirée, la requête part vers une
+  autre instance, qui répond ; le script remet l'adresse, la requête suivante échoue de nouveau…
+  l'annonce oscille. Interrogez `127.0.0.1` ou l'adresse unicast.
+- Le script ne doit pas « réparer » le service (le redémarrer) : c'est un autre rôle.
+- Lancez-le pour qu'il tourne en permanence, par exemple comme service systemd :
+
+```
+# /etc/systemd/system/anycast-health.service
+[Unit]
+Description=Anycast health check
+After=unbound.service
+
+[Service]
+ExecStart=/usr/local/sbin/anycast-health
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+puis `systemctl daemon-reload` et `systemctl enable --now anycast-health` (dans les conteneurs du
+TP, `systemctl` est un remplaçant qui lance le processus ; `systemctl status anycast-health` le
+montre).
+
+Retirer l'adresse de `lo` suffit : ospfd retire le lien de sa LSA de routeur, les autres routeurs
+recalculent leurs routes et choisissent l'instance suivante. Le **délai de bascule** est la somme
+de l'intervalle du test, de son délai d'attente, du délai avant la nouvelle LSA (OSPF ne réémet
+pas la même LSA plus d'une fois toutes les **5 s**, *MinLSInterval*) et du calcul SPF. En
+production, on ajoute de l'hystérésis (plusieurs échecs avant de retirer, plusieurs succès avant de
+remettre) pour éviter les oscillations.
+""": """
+Routing knows nothing about the service: if unbound stops or hangs on an instance, the instance
+keeps announcing the address and **every client of its catchment area is left without
+service** (a *black hole*), while the other instances work. The announcement must therefore
+follow the state of the service: a **health check** queries the service regularly, **withdraws
+the address** (or the announcement) when it no longer answers and puts it back when it answers
+again.
+
+```
+#!/bin/sh
+# /usr/local/sbin/anycast-health: only announce the service if it answers
+while true; do
+    if dig +time=1 +tries=1 @127.0.0.1 id.server CH TXT >/dev/null 2>&1; then
+        …   # the service answers: the address must be on lo (ip addr add, if it is not there)
+    else
+        …   # it does not answer: withdraw the address (ip addr del)
+    fi
+    sleep 1
+done
+```
+
+- **Query the service as a client would** (a real query, with a timeout): a process that is
+  present but frozen passes the `pidof` or `systemctl is-active` tests and no longer answers.
+- **Do not query the service address**: once the address is withdrawn, the query goes to another
+  instance, which answers; the script puts the address back, the next query fails again… the
+  announcement flaps. Query `127.0.0.1` or the unicast address.
+- The script must not "repair" the service (restart it): that is another role.
+- Start it so that it runs permanently, for instance as a systemd service:
+
+```
+# /etc/systemd/system/anycast-health.service
+[Unit]
+Description=Anycast health check
+After=unbound.service
+
+[Service]
+ExecStart=/usr/local/sbin/anycast-health
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+then `systemctl daemon-reload` and `systemctl enable --now anycast-health` (in the containers of
+the lab, `systemctl` is a replacement that starts the process; `systemctl status anycast-health`
+shows it).
+
+Removing the address from `lo` is enough: ospfd removes the link from its router LSA, the other
+routers recompute their routes and choose the next instance. The **failover delay** is the sum
+of the test interval, its timeout, the delay before the new LSA (OSPF does not re-originate the
+same LSA more than once every **5 s**, *MinLSInterval*) and the SPF computation. In production,
+hysteresis is added (several failures before withdrawing, several successes before putting the
+address back) to avoid flapping.
+""",
+    "Panne d'un serveur : BFD": "Failure of a server: BFD",
+    """
+Le health check couvre la panne du **service**. Si l'instance entière disparaît sans prévenir
+(panne, câble, carte réseau figée), son routeur ne s'en aperçoit qu'à l'expiration du *dead
+interval* OSPF (40 s par défaut) : pendant ce temps, il continue de lui envoyer le trafic.
+**BFD** (*Bidirectional Forwarding Detection*, RFC 5880) détecte la perte d'un voisin en
+quelques centaines de millisecondes : les deux extrémités s'échangent de petits paquets UDP (port
+3784) à un rythme rapide, et déclarent la session morte après `detect-multiplier` paquets
+manqués. Le temps de détection vaut l'intervalle de réception négocié multiplié par le
+multiplicateur du voisin : 100 ms × 3 = 300 ms. OSPF s'abonne à BFD et abandonne aussitôt
+l'adjacence.
+
+Avec FRR (démon `bfdd`), sur **les deux** extrémités :
+
+```
+bfd
+ profile fast
+  receive-interval 100
+  transmit-interval 100
+  detect-multiplier 3
+  exit
+ exit
+interface eth0
+ ip ospf bfd
+ ip ospf bfd profile fast
+ exit
+```
+
+`show bfd peers` liste les sessions, leur état et les intervalles négociés.
+""": """
+The health check covers the failure of the **service**. If the whole instance disappears without
+warning (crash, cable, frozen network card), its router only notices when the OSPF *dead
+interval* expires (40 s by default): in the meantime, it keeps sending it the traffic.
+**BFD** (*Bidirectional Forwarding Detection*, RFC 5880) detects the loss of a neighbour within
+a few hundred milliseconds: the two ends exchange small UDP packets (port 3784) at a fast rate,
+and declare the session dead after `detect-multiplier` missed packets. The detection time is the
+negotiated receive interval multiplied by the neighbour's multiplier: 100 ms × 3 = 300 ms. OSPF
+subscribes to BFD and drops the adjacency at once.
+
+With FRR (daemon `bfdd`), on **both** ends:
+
+```
+bfd
+ profile fast
+  receive-interval 100
+  transmit-interval 100
+  detect-multiplier 3
+  exit
+ exit
+interface eth0
+ ip ospf bfd
+ ip ospf bfd profile fast
+ exit
+```
+
+`show bfd peers` lists the sessions, their state and the negotiated intervals.
+""",
+    "ECMP et flux": "ECMP and flows",
+    """
+Un routeur qui a deux routes de même coût vers l'adresse du service (**ECMP**) répartit le trafic
+**par flux** et non par paquet : il calcule une empreinte (*hash*) des en-têtes et l'associe à un
+prochain saut. Tous les paquets d'un même flux suivent ainsi le même chemin, ce qui est
+indispensable en anycast (une connexion TCP coupée en deux instances ne fonctionne pas). Sous
+Linux, `net.ipv4.fib_multipath_hash_policy` choisit les champs du calcul :
+
+| valeur | champs | effet pour un client |
+|--------|--------|----------------------|
+| `0` (défaut) | adresses source et destination (L3) | toutes ses requêtes vont à la **même** instance |
+| `1` | adresses **et ports**, protocole (L4) | chaque flux (port source différent) peut aller à une instance différente |
+
+`sysctl -w net.ipv4.fib_multipath_hash_policy=1` s'applique aussitôt (dans un fichier de
+`/etc/sysctl.d/` pour le garder au redémarrage). `ip route get <adresse> ipproto udp sport N dport
+53` montre le prochain saut choisi pour un flux donné. Quand une instance disparaît ou revient, les
+flux sont redistribués : des connexions TCP en cours peuvent changer d'instance et être coupées.
+""": """
+A router that has two routes of equal cost to the service address (**ECMP**) spreads the traffic
+**per flow** and not per packet: it computes a *hash* of the headers and maps it to a next hop.
+All the packets of one flow thus follow the same path, which is essential for anycast (a TCP
+connection split between two instances does not work). On Linux,
+`net.ipv4.fib_multipath_hash_policy` chooses the fields of the computation:
+
+| value | fields | effect for a client |
+|-------|--------|---------------------|
+| `0` (default) | source and destination addresses (L3) | all its queries go to the **same** instance |
+| `1` | addresses **and ports**, protocol (L4) | each flow (different source port) may go to a different instance |
+
+`sysctl -w net.ipv4.fib_multipath_hash_policy=1` applies at once (put it in a file of
+`/etc/sysctl.d/` to keep it across a reboot). `ip route get <address> ipproto udp sport N dport
+53` shows the next hop chosen for a given flow. When an instance disappears or comes back, the
+flows are redistributed: TCP connections in progress may change instance and be cut.
+""",
+    "Anycast entre domaines : BGP": "Anycast between domains: BGP",
+    """
+Sur Internet, chaque site de l'opérateur du service annonce **le même préfixe** en BGP à ses
+fournisseurs et à ses pairs. Les autres AS reçoivent plusieurs chemins vers ce préfixe et en
+choisissent un avec le processus de décision de BGP (préférence locale, puis **chemin d'AS le plus
+court**, origine, MED, eBGP plutôt qu'iBGP, coût IGP jusqu'au prochain saut…).
+
+- **Un /24 au moins** : les opérateurs filtrent les préfixes IPv4 plus longs qu'un /24 (/48 en
+  IPv6). On annonce donc un /24 dont l'adresse du service fait partie, et pas le /32 du service.
+- **Une route pour `network`** : FRR n'annonce un préfixe déclaré par `network` que si une route
+  identique existe dans sa table (`bgp network import-check`) ; sinon le préfixe apparaît sans `*`
+  (non valide) dans `show bgp ipv4 unicast`. On crée une route sans issue :
+  `ip route 198.51.100.0/24 blackhole`. L'adresse du service, posée sur `lo`, est plus précise et
+  reste livrée localement ; les autres adresses du /24 partent à la poubelle.
+- **Une politique explicite** : FRR applique la RFC 8212 (`bgp ebgp-requires-policy`) : sans
+  route-map (ou prefix-list) en sortie vers un pair eBGP, il ne lui envoie rien ; sans politique
+  en entrée, il n'accepte rien. `show bgp summary` affiche alors `(Policy)`. N'annoncez que le
+  préfixe du service : une instance n'a pas à transporter le trafic des autres (elle n'est pas un
+  AS de transit).
+- **Le même AS d'origine** sur tous les sites (le cas le plus courant) : un site ne reçoit jamais
+  la route d'un autre site, car tout routeur BGP rejette une route dont le chemin d'AS contient
+  son propre AS (détection de boucle). Les sites ne peuvent donc pas se secourir par BGP ; ils
+  utilisent leurs adresses unicast pour communiquer. Avec des AS d'origine différents, le préfixe
+  a plusieurs origines (*MOAS*) : il faut alors une ROA RPKI pour chacune.
+- Une instance qui n'a qu'un fournisseur n'a besoin d'aucune route : une route par défaut vers
+  lui suffit ; elle refuse tout en entrée (`route-map DENY-ALL deny 10`).
+
+« Le plus proche » devient « le chemin d'AS le plus court » : un client peut être servi par une
+instance lointaine si elle est à moins d'AS que l'instance voisine.
+""": """
+On the Internet, each site of the operator of the service announces **the same prefix** in BGP to
+its providers and its peers. The other ASes receive several paths to this prefix and choose one
+with the BGP decision process (local preference, then **shortest AS path**, origin, MED, eBGP
+rather than iBGP, IGP cost to the next hop…).
+
+- **At least a /24**: operators filter IPv4 prefixes longer than a /24 (/48 in IPv6). So one
+  announces a /24 that contains the service address, and not the /32 of the service.
+- **A route for `network`**: FRR only announces a prefix declared by `network` if an identical
+  route exists in its table (`bgp network import-check`); otherwise the prefix appears without
+  `*` (not valid) in `show bgp ipv4 unicast`. One creates a dead-end route:
+  `ip route 198.51.100.0/24 blackhole`. The service address, put on `lo`, is more specific and
+  is still delivered locally; the other addresses of the /24 go to the bin.
+- **An explicit policy**: FRR applies RFC 8212 (`bgp ebgp-requires-policy`): without an outbound
+  route-map (or prefix-list) towards an eBGP peer, it sends it nothing; without an inbound
+  policy, it accepts nothing. `show bgp summary` then shows `(Policy)`. Only announce the prefix
+  of the service: an instance has no business carrying the traffic of others (it is not a
+  transit AS).
+- **The same origin AS** at every site (the most common case): a site never receives the route
+  of another site, since every BGP router rejects a route whose AS path contains its own AS (loop
+  detection). The sites therefore cannot back each other up through BGP; they use their unicast
+  addresses to communicate. With different origin ASes, the prefix has several origins (*MOAS*):
+  an RPKI ROA is then needed for each of them.
+- An instance that has only one provider needs no route: a default route to it is enough; it
+  refuses everything inbound (`route-map DENY-ALL deny 10`).
+
+"The nearest" becomes "the shortest AS path": a client may be served by a distant instance if it
+is fewer ASes away than the neighbouring instance.
+""",
+    "Ingénierie du trafic": "Traffic engineering",
+    """
+L'opérateur influence le choix des autres AS par ce qu'il annonce, avec une route-map de sortie :
+
+- **Allonger le chemin d'AS** (*AS-path prepending*) : `set as-path prepend 64500 64500 64500`
+  répète son propre AS. Les AS qui ont un chemin plus court préfèrent l'autre site : on en fait
+  un site de **secours**, qui ne reçoit le trafic que si les autres disparaissent. À longueur
+  égale, d'autres critères départagent (origine, MED, router-id…) : un seul ajout ne suffit pas
+  toujours. Un fournisseur qui donne une préférence locale plus forte aux routes de ses clients
+  ignore le prepending ; beaucoup proposent des **communautés** pour la faire baisser.
+- **Les communautés bien connues** (RFC 1997) : `no-export` (`65535:65281`) demande au voisin
+  d'utiliser la route et de la diffuser dans son AS, mais de **ne l'annoncer à aucun pair eBGP** ;
+  `no-advertise` interdit même de la diffuser. Les serveurs racine s'en servent pour leurs
+  **nœuds locaux** : une instance installée chez un opérateur ou à un point d'échange, annoncée
+  avec `no-export`, ne sert que cet opérateur et ses utilisateurs, tandis que les **nœuds
+  globaux** sont annoncés à tout Internet.
+
+```
+route-map TO-ISP permit 10
+ match ip address prefix-list ANYCAST
+ set community no-export
+ exit
+```
+
+FRR envoie les communautés à ses voisins sans réglage particulier. Une modification de route-map
+est appliquée aux annonces au bout de quelques secondes (`bgp route-map delay-timer`, 5 s) ;
+`clear bgp * soft out` force une nouvelle annonce. `show bgp ipv4 unicast PRÉFIXE` détaille chaque
+chemin, avec ses communautés.
+""": """
+The operator influences the choice of the other ASes through what it announces, with an outbound
+route-map:
+
+- **Lengthen the AS path** (*AS-path prepending*): `set as-path prepend 64500 64500 64500`
+  repeats its own AS. The ASes that have a shorter path prefer the other site: this makes it a
+  **backup** site, which only receives the traffic if the others disappear. With equal lengths,
+  other criteria decide (origin, MED, router-id…): a single addition is not always enough. A
+  provider that gives a higher local preference to the routes of its customers ignores the
+  prepending; many offer **communities** to lower it.
+- **The well-known communities** (RFC 1997): `no-export` (`65535:65281`) asks the neighbour to
+  use the route and to spread it within its AS, but to **announce it to no eBGP peer**;
+  `no-advertise` even forbids spreading it. The root servers use it for their **local nodes**:
+  an instance installed at an operator or at an exchange point, announced with `no-export`, only
+  serves that operator and its users, while the **global nodes** are announced to the whole
+  Internet.
+
+```
+route-map TO-ISP permit 10
+ match ip address prefix-list ANYCAST
+ set community no-export
+ exit
+```
+
+FRR sends communities to its neighbours without any particular setting. A route-map change is
+applied to the announcements after a few seconds (`bgp route-map delay-timer`, 5 s);
+`clear bgp * soft out` forces a new announcement. `show bgp ipv4 unicast PREFIX` details each
+path, with its communities.
+""",
+    "FRR : rappels": "FRR: reminders",
+    """
+Les routeurs et les instances font tourner **FRRouting** ; on le configure avec `vtysh`
+(`configure terminal`, les commandes, `end`, puis `write` pour enregistrer dans
+`/etc/frr/frr.conf`). Une commande se supprime en la préfixant par `no`, et peut être passée depuis
+le shell : `vtysh -c "show ip route"`. Les démons actifs sont dans `/etc/frr/daemons`.
+
+OSPF sur une instance (l'adresse du service sur `lo`, l'adresse unicast `10.1.16.2` sur `eth0`) :
+
+```
+ip addr add 192.0.2.53/32 dev lo                 # shell
+vtysh
+configure terminal
+ router ospf
+  ospf router-id 10.1.16.2
+  network 10.1.16.0/24 area 0
+  network 192.0.2.53/32 area 0
+  exit
+ end
+write
+```
+
+FRR refuse de mélanger les instructions `network` et `ip ospf area` (mode interface) dans un même
+processus : choisissez l'une des deux formes.
+
+BGP sur une instance (AS 64500, fournisseur `10.1.80.5` dans l'AS 65010) :
+
+```
+configure terminal
+ ip route 198.51.100.0/24 blackhole
+ ip prefix-list ANYCAST seq 10 permit 198.51.100.0/24
+ route-map TO-ISP permit 10
+  match ip address prefix-list ANYCAST
+  exit
+ route-map DENY-ALL deny 10
+  exit
+ router bgp 64500
+  bgp router-id 10.1.80.6
+  neighbor 10.1.80.5 remote-as 65010
+  address-family ipv4 unicast
+   network 198.51.100.0/24
+   neighbor 10.1.80.5 route-map DENY-ALL in
+   neighbor 10.1.80.5 route-map TO-ISP out
+   exit-address-family
+  exit
+ end
+write
+```
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `show ip ospf neighbor` | les adjacences |
+| `show ip ospf` | le router-id, ASBR ou non |
+| `show ip ospf database router` / `external` | les LSA de routeur (liens *stub*) / de type 5 |
+| `show ip ospf route` | les routes d'OSPF, leur coût et leur type |
+| `show bgp summary` | les sessions BGP, les préfixes reçus et envoyés, `(Policy)` |
+| `show bgp ipv4 unicast [PRÉFIXE]` | la table BGP, le détail des chemins d'un préfixe |
+| `show bgp ipv4 unicast neighbors X advertised-routes` | ce qui est annoncé au voisin X |
+| `show bfd peers` | les sessions BFD |
+| `show ip route` | la table de zebra |
+
+Documentation : [FRR — OSPF](https://docs.frrouting.org/en/latest/ospfd.html),
+[BGP](https://docs.frrouting.org/en/latest/bgp.html), [BFD](https://docs.frrouting.org/en/latest/bfd.html).
+""": """
+The routers and the instances run **FRRouting**; it is configured with `vtysh`
+(`configure terminal`, the commands, `end`, then `write` to save into
+`/etc/frr/frr.conf`). A command is removed by prefixing it with `no`, and can be passed from
+the shell: `vtysh -c "show ip route"`. The active daemons are in `/etc/frr/daemons`.
+
+OSPF on an instance (the service address on `lo`, the unicast address `10.1.16.2` on `eth0`):
+
+```
+ip addr add 192.0.2.53/32 dev lo                 # shell
+vtysh
+configure terminal
+ router ospf
+  ospf router-id 10.1.16.2
+  network 10.1.16.0/24 area 0
+  network 192.0.2.53/32 area 0
+  exit
+ end
+write
+```
+
+FRR refuses to mix `network` statements and `ip ospf area` (interface mode) in the same
+process: choose one of the two forms.
+
+BGP on an instance (AS 64500, provider `10.1.80.5` in AS 65010):
+
+```
+configure terminal
+ ip route 198.51.100.0/24 blackhole
+ ip prefix-list ANYCAST seq 10 permit 198.51.100.0/24
+ route-map TO-ISP permit 10
+  match ip address prefix-list ANYCAST
+  exit
+ route-map DENY-ALL deny 10
+  exit
+ router bgp 64500
+  bgp router-id 10.1.80.6
+  neighbor 10.1.80.5 remote-as 65010
+  address-family ipv4 unicast
+   network 198.51.100.0/24
+   neighbor 10.1.80.5 route-map DENY-ALL in
+   neighbor 10.1.80.5 route-map TO-ISP out
+   exit-address-family
+  exit
+ end
+write
+```
+
+| command | what it shows |
+|---------|---------------|
+| `show ip ospf neighbor` | the adjacencies |
+| `show ip ospf` | the router-id, ASBR or not |
+| `show ip ospf database router` / `external` | the router LSAs (*stub* links) / the type 5 LSAs |
+| `show ip ospf route` | the OSPF routes, their cost and their type |
+| `show bgp summary` | the BGP sessions, the prefixes received and sent, `(Policy)` |
+| `show bgp ipv4 unicast [PREFIX]` | the BGP table, the details of the paths of a prefix |
+| `show bgp ipv4 unicast neighbors X advertised-routes` | what is announced to neighbour X |
+| `show bfd peers` | the BFD sessions |
+| `show ip route` | the zebra table |
+
+Documentation: [FRR — OSPF](https://docs.frrouting.org/en/latest/ospfd.html),
+[BGP](https://docs.frrouting.org/en/latest/bgp.html), [BFD](https://docs.frrouting.org/en/latest/bfd.html).
+""",
+    "Diagnostic": "Diagnostics",
+    """
+- `dig @ADRESSE id.server CH TXT +short` : quelle instance répond ;
+- `ip route get ADRESSE`, `traceroute -n ADRESSE` : le prochain saut choisi, le chemin suivi ;
+- `ip -br addr show dev lo` : les adresses de bouclage d'une instance ;
+- `tcpdump -ni eth0 port 53` : les requêtes qui arrivent et l'adresse source des réponses ;
+- `/var/log/frr/frr.log` : le journal de FRR ;
+- `unbound-checkconf` : vérifie la configuration d'unbound ; les conteneurs n'ont pas de syslog :
+  pour voir le journal d'unbound, arrêtez-le (`systemctl stop unbound`) et relancez-le au premier
+  plan avec `unbound -dd -v` (`-dd` : journal sur la sortie d'erreur).
+
+| symptôme | causes à vérifier |
+|----------|-------------------|
+| une route vers le service mais pas de réponse | service arrêté ou bloqué sur l'instance choisie (health check), instance parasite qui annonce l'adresse sans service, adresse du service absente de l'instance |
+| `dig` sans réponse (`timed out`) alors que `tcpdump` voit passer la réponse | l'instance répond depuis son adresse unicast (serveur UDP sans `IP_PKTINFO`) |
+| routes vers le service qui apparaissent et disparaissent | router-id dupliqué, health check qui interroge l'adresse du service |
+| une instance n'attire aucun client | adresse mal saisie, réseau non annoncé, adjacence absente, métrique externe |
+| préfixe BGP absent chez le fournisseur | `(Policy)` dans `show bgp summary`, préfixe non valide (`network` sans route), préfixe trop long filtré, session non établie |
+""": """
+- `dig @ADDRESS id.server CH TXT +short`: which instance answers;
+- `ip route get ADDRESS`, `traceroute -n ADDRESS`: the chosen next hop, the path followed;
+- `ip -br addr show dev lo`: the loopback addresses of an instance;
+- `tcpdump -ni eth0 port 53`: the queries that arrive and the source address of the answers;
+- `/var/log/frr/frr.log`: the FRR log;
+- `unbound-checkconf`: checks the configuration of unbound; the containers have no syslog: to
+  see the log of unbound, stop it (`systemctl stop unbound`) and start it again in the
+  foreground with `unbound -dd -v` (`-dd`: log on standard error).
+
+| symptom | causes to check |
+|---------|-----------------|
+| a route to the service but no answer | service stopped or hung on the chosen instance (health check), rogue instance announcing the address without the service, service address missing from the instance |
+| `dig` without an answer (`timed out`) while `tcpdump` sees the answer go by | the instance answers from its unicast address (UDP server without `IP_PKTINFO`) |
+| routes to the service that appear and disappear | duplicate router-id, health check that queries the service address |
+| an instance attracts no client | mistyped address, network not announced, missing adjacency, external metric |
+| BGP prefix missing at the provider | `(Policy)` in `show bgp summary`, prefix not valid (`network` without a route), prefix too long and filtered, session not established |
+""",
+    "Partie 1 : solution (instance la plus proche)": "Part 1: solution (nearest instance)",
+    "Partie 2 : solution (principale et secours)": "Part 2: solution (primary and backup)",
+    "Partie 3 : solution (health check)": "Part 3: solution (health check)",
+    "Partie 4 : solution (dépannage OSPF)": "Part 4: solution (OSPF troubleshooting)",
+    "Partie 5 : solution (BGP)": "Part 5: solution (BGP)",
+    "Partie 6 : solution (ingénierie du trafic)": "Part 6: solution (traffic engineering)",
+    "Partie 7 : solution (dépannage BGP)": "Part 7: solution (BGP troubleshooting)",
+    "Bonus : solution (BFD)": "Bonus: solution (BFD)",
+    "Bonus : solution (ECMP par flux)": "Bonus: solution (per-flow ECMP)",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente l'anycast, ses usages, son fonctionnement avec OSPF
+puis avec BGP, le suivi de l'état du service, BFD, ECMP, et rappelle la configuration de FRR.
+
+**Le réseau.** Il est fait de **neuf sites indépendants**, un par partie, chacun avec sa couleur
+sur le schéma. Chaque site héberge son propre exemplaire du service : un service DNS (unbound)
+installé sur plusieurs **instances** `*_dnsN`.
+
+| partie | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- **Adresse du service** : `{s_o}` dans les sites OSPF (`near`, `prim`, `hc`, `ofix`, `bfd`,
+  `ecmp`) ; préfixe anycast `{prefix}` et adresse `{s_b}` dans les sites BGP (`bgp`, `te`,
+  `bfix`). Le nom `anycast` la désigne dans les fichiers `/etc/hosts`.
+- Sur chaque instance, unbound répond à `dig @ADRESSE id.server CH TXT +short` par le nom de la
+  machine (section @@ref:service@@).
+- Les routeurs et les instances font tourner **FRRouting** (FRR) : configurez-les avec `vtysh`
+  (section @@ref:frr@@). Les routeurs des sites OSPF sont configurés (aire 0, router-id = adresse
+  de bouclage) ; les routeurs des opérateurs (`*_isp*`) n'ont pas de terminal.
+- Toutes les adresses unicast sont en place ; chaque instance a une route par défaut vers son
+  routeur.
+- Les fichiers `/etc/hosts` contiennent les noms : `near_r2-eth1` désigne l'adresse de
+  l'interface `eth1` de `near_r2`, `near_r2-lo` son adresse de bouclage.
+- AS de l'opérateur du service : **{asn}** ; opérateurs A, B, C : AS 65010, 65020, 65030.
+
+**Plan d'adressage.** Les liens entre deux machines sont des /30, les autres réseaux des /24.
+
+| réseau | préfixe | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Enregistrez la configuration de FRR (`write` dans `vtysh`).
+
+**Évaluation.** Chaque évaluation lit vos réponses, l'état d'OSPF, de BGP et de BFD, les tables de
+routage, et interroge le service depuis les routeurs et les clients pour savoir quelle instance
+répond. Elle **perturbe deux sites** pendant une vingtaine de secondes : elle fige puis arrête
+unbound sur `hc_dns1` et `hc_dns2` (partie 3) et coupe `bfd_dns1` pendant {cut} s (bonus BFD) ; elle
+remet tout en place ensuite.
+""": """
+Read the **Informations** tab: it presents anycast, its uses, how it works with OSPF then with
+BGP, tracking the state of the service, BFD, ECMP, and recalls the configuration of FRR.
+
+**The network.** It is made of **nine independent sites**, one per part, each with its colour
+on the schema. Each site hosts its own copy of the service: a DNS service (unbound) installed on
+several **instances** `*_dnsN`.
+
+| part | site | machines |
+|------|------|----------|
+{site_rows}
+
+- **Service address**: `{s_o}` in the OSPF sites (`near`, `prim`, `hc`, `ofix`, `bfd`,
+  `ecmp`); anycast prefix `{prefix}` and address `{s_b}` in the BGP sites (`bgp`, `te`,
+  `bfix`). The name `anycast` designates it in the `/etc/hosts` files.
+- On each instance, unbound answers `dig @ADDRESS id.server CH TXT +short` with the name of the
+  machine (section @@ref:service@@).
+- The routers and the instances run **FRRouting** (FRR): configure them with `vtysh`
+  (section @@ref:frr@@). The routers of the OSPF sites are configured (area 0, router-id =
+  loopback address); the routers of the operators (`*_isp*`) have no terminal.
+- All the unicast addresses are in place; each instance has a default route to its
+  router.
+- The `/etc/hosts` files contain the names: `near_r2-eth1` designates the address of
+  interface `eth1` of `near_r2`, `near_r2-lo` its loopback address.
+- AS of the operator of the service: **{asn}**; operators A, B, C: AS 65010, 65020, 65030.
+
+**Addressing plan.** The links between two machines are /30s, the other networks /24s.
+
+| network | prefix | interfaces |
+|---------|--------|------------|
+{addressing}
+
+**Instructions.**
+
+- The parts are **independent**: do them in any order you like. A completed part gives all its
+  points, whatever the state of the others.
+- Save the FRR configuration (`write` in `vtysh`).
+
+**Evaluation.** Each evaluation reads your answers, the state of OSPF, BGP and BFD, the routing
+tables, and queries the service from the routers and the clients to find out which instance
+answers. It **disturbs two sites** for about twenty seconds: it freezes then stops unbound on
+`hc_dns1` and `hc_dns2` (part 3) and cuts `bfd_dns1` off for {cut} s (BFD bonus); it puts
+everything back in place afterwards.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_near`, `solve_prim`, `solve_hc`, `solve_ofix`, `solve_bgp`,
+`solve_te`, `solve_bfix`, `solve_bfd` et `solve_ecmp` (onglet *Appliquer une configuration*)
+appliquent la solution d'une seule partie et remplissent ses formulaires. L'état `final` les
+applique toutes et attend la convergence d'OSPF (toutes les adjacences `Full`, jusqu'à
+{wait} s sur un projet qui vient de démarrer) : une évaluation lancée dès son retour donne tous les
+points, bonus compris.
+
+Les pannes du site `ofix` : `ospf router-id {s_o}` sur `ofix_dns1` et `ofix_dns2` ; unbound de
+`ofix_dns2` sans `interface-automatic` ; `{s_o}/32` sur `lo` de `ofix_r2`, annoncée ; `{typo}` au
+lieu de `{s_o}` sur `ofix_dns1`. Celles du site `bfix` : `bfix_dns1` sans route-map de sortie et
+annonçant `{s_b}/32` ; `bfix_dns2` sans route `blackhole` pour `{prefix}` et sans `{s_b}` sur `lo`.
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance.
+The states `solve_near`, `solve_prim`, `solve_hc`, `solve_ofix`, `solve_bgp`, `solve_te`,
+`solve_bfix`, `solve_bfd` and `solve_ecmp` (*Apply Configuration* tab) apply the solution of a
+single part and fill in its forms. The state `final` applies them all and waits for OSPF to
+converge (every adjacency `Full`, up to {wait} s on a project that has just started): an
+evaluation launched as soon as it returns gives every point, bonuses included.
+
+The faults of the `ofix` site: `ospf router-id {s_o}` on `ofix_dns1` and `ofix_dns2`; unbound of
+`ofix_dns2` without `interface-automatic`; `{s_o}/32` on `lo` of `ofix_r2`, announced; `{typo}`
+instead of `{s_o}` on `ofix_dns1`. Those of the `bfix` site: `bfix_dns1` without an outbound
+route-map and announcing `{s_b}/32`; `bfix_dns2` without a `blackhole` route for `{prefix}` and
+without `{s_b}` on `lo`.
+""",
+    "Partie 1 — OSPF : l'instance la plus proche (site near)": "Part 1 — OSPF: the nearest instance (site near)",
+    "Anycast dans OSPF : l'instance la plus proche": "Anycast in OSPF: the nearest instance",
+    """
+Les routeurs `near_r1`, `near_r2` et `near_r3` forment une ligne et font tourner OSPF (aire 0).
+L'instance `near_dns1` est derrière `near_r1`, l'instance `near_dns2` derrière `near_r3`. Les deux
+instances ont unbound, et FRR avec le démon `ospfd`, mais rien de configuré.
+
+1. Sur `near_dns1` et `near_dns2` : posez l'adresse du service `{s}/32` sur `lo`, puis configurez
+   OSPF (sections @@ref:ospf@@ et @@ref:frr@@) : **router-id = l'adresse unicast de l'instance**
+   (section @@ref:router-id@@), son réseau et l'adresse du service dans l'aire 0.
+2. Vérifiez les adjacences, puis, depuis chaque routeur, quelle instance répond
+   (`dig @{s} id.server CH TXT +short`) et par quel chemin (`ip route get {s}`, `show ip ospf
+   route`).
+3. Regardez la route de `near_r2` vers `{s}` : combien de prochains sauts ? Lancez plusieurs fois
+   `dig` depuis `near_r2` : est-ce toujours la même instance qui répond ?
+""": """
+The routers `near_r1`, `near_r2` and `near_r3` form a line and run OSPF (area 0). The instance
+`near_dns1` is behind `near_r1`, the instance `near_dns2` behind `near_r3`. Both instances have
+unbound, and FRR with the `ospfd` daemon, but nothing is configured.
+
+1. On `near_dns1` and `near_dns2`: put the service address `{s}/32` on `lo`, then configure
+   OSPF (sections @@ref:ospf@@ and @@ref:frr@@): **router-id = the unicast address of the
+   instance** (section @@ref:router-id@@), its network and the service address in area 0.
+2. Check the adjacencies, then, from each router, which instance answers
+   (`dig @{s} id.server CH TXT +short`) and through which path (`ip route get {s}`, `show ip ospf
+   route`).
+3. Look at the route of `near_r2` to `{s}`: how many next hops? Run `dig` several times from
+   `near_r2`: is it always the same instance that answers?
+""",
+    """
+**Solution.**
+
+{solution}
+
+`near_r1` est servi par `near_dns1`, `near_r3` par `near_dns2` ; `near_r2` est à égale distance
+(coût {cost} : {dc} jusqu'au routeur voisin, {dc} jusqu'à l'instance, 0 pour une adresse de `lo`) et
+sa route a deux prochains sauts. Ses propres requêtes partent toujours vers la même instance
+(empreinte calculée sur les adresses : section @@ref:ecmp@@).
+
+Évaluation : `near_adj` (2 : `near_dns1` et `near_dns2` voisins `Full` de leur routeur),
+`near_rid` (2 : router-id = adresse unicast), `near_r1`, `near_r3` (3 chacun : route OSPF vers
+l'instance voisine et réponse de cette instance), `near_ecmp` (4 : deux prochains sauts sur
+`near_r2`), `near_r2` (2 : `near_r2` obtient une réponse).
+""": """
+**Solution.**
+
+{solution}
+
+`near_r1` is served by `near_dns1`, `near_r3` by `near_dns2`; `near_r2` is at equal distance
+(cost {cost}: {dc} to the neighbouring router, {dc} to the instance, 0 for an address of `lo`)
+and its route has two next hops. Its own queries always go to the same instance (hash computed on
+the addresses: section @@ref:ecmp@@).
+
+Evaluation: `near_adj` (2: `near_dns1` and `near_dns2` `Full` neighbours of their router),
+`near_rid` (2: router-id = unicast address), `near_r1`, `near_r3` (3 each: OSPF route to the
+neighbouring instance and answer from that instance), `near_ecmp` (4: two next hops on
+`near_r2`), `near_r2` (2: `near_r2` gets an answer).
+""",
+    "Observations sur le site near": "Observations on the near site",
+    """
+- coût de la route de `near_r2` vers l'adresse du service (`show ip ospf route`) : @@{cost:[0-9]+}@@
+- nombre de prochains sauts de cette route : @@{hops:[0-9]+}@@
+- un routeur envoie les paquets destinés à l'adresse du service vers l'instance :
+  @@{nearest:>la moins coûteuse au sens d'OSPF>>>cost|la plus proche géographiquement>>>geo|la première configurée>>>first|choisie au hasard pour chaque paquet>>>random}@@
+- on fixe le router-id des instances parce que :
+  @@{rid:>sinon FRR peut prendre l'adresse du service, la même sur toutes les instances>>>duplicate|le router-id doit être l'adresse annoncée>>>announced|OSPF ne démarre pas sans router-id>>>required|cela accélère la convergence>>>faster}@@
+""": """
+- cost of the route of `near_r2` to the service address (`show ip ospf route`): @@{cost:[0-9]+}@@
+- number of next hops of this route: @@{hops:[0-9]+}@@
+- a router sends the packets destined to the service address to the instance:
+  @@{nearest:>the cheapest in the OSPF sense>>>cost|the nearest geographically>>>geo|the first one configured>>>first|chosen at random for each packet>>>random}@@
+- the router-id of the instances is set because:
+  @@{rid:>otherwise FRR may take the service address, the same on every instance>>>duplicate|the router-id must be the announced address>>>announced|OSPF does not start without a router-id>>>required|it speeds up convergence>>>faster}@@
+""",
+    """
+**Solution.** Coût **{cost}** ; **2** prochains sauts ; **la moins coûteuse au sens d'OSPF** ;
+**sinon FRR peut prendre l'adresse du service** (la plus grande adresse de bouclage), la même sur
+toutes les instances : router-id dupliqué.
+
+Évaluation : `near_q_cost`, `near_q_hops` (1 chacun) et, pour l'enseignant seulement (choix dans une
+liste), `near_q_nearest`, `near_q_rid` (1 chacun).
+""": """
+**Solution.** Cost **{cost}**; **2** next hops; **the cheapest in the OSPF sense**;
+**otherwise FRR may take the service address** (the highest loopback address), the same on every
+instance: duplicate router-id.
+
+Evaluation: `near_q_cost`, `near_q_hops` (1 each) and, for the instructor only (choice from a
+list), `near_q_nearest`, `near_q_rid` (1 each).
+""",
+    "adjacences des instances avec leur routeur": "adjacencies of the instances with their router",
+    "router-id des instances = leur adresse unicast": "router-id of the instances = their unicast address",
+    "near_r1 servi par near_dns1": "near_r1 served by near_dns1",
+    "near_r3 servi par near_dns2": "near_r3 served by near_dns2",
+    "deux prochains sauts de near_r2 vers le service": "two next hops from near_r2 to the service",
+    "near_r2 obtient une réponse": "near_r2 gets an answer",
+    "coût de la route de near_r2": "cost of the route of near_r2",
+    "nombre de prochains sauts": "number of next hops",
+    "choix de l'instance": "choice of the instance",
+    "rôle du router-id": "role of the router-id",
+    "Partie 2 — OSPF : principale et secours (site prim)": "Part 2 — OSPF: primary and backup (site prim)",
+    "Instance principale et instance de secours": "Primary instance and backup instance",
+    """
+Les routeurs `prim_r1` et `prim_r2` sont reliés ; l'instance `prim_dns1` est derrière `prim_r1`,
+l'instance `prim_dns2` derrière `prim_r2`. Les instances font déjà tourner OSPF avec leur routeur
+(router-id = leur adresse unicast) et portent l'adresse du service `{s}/32` sur `lo`, **sans
+l'annoncer**.
+
+On veut que **`prim_dns1` reçoive tout le trafic**, `prim_r2` compris, et que `prim_dns2` ne
+serve que de secours. Faites annoncer l'adresse du service par chaque instance comme une **route
+externe de type 2** (section @@ref:external@@) : métrique **{m1}** sur `prim_dns1`, **{m2}** sur
+`prim_dns2`, et rien d'autre que `{s}/32`.
+
+Vérifiez les LSA de type 5 (`show ip ospf database external`), la route de `prim_r2`
+(`show ip ospf route`) et quelle instance répond à `prim_r2`.
+""": """
+The routers `prim_r1` and `prim_r2` are connected; the instance `prim_dns1` is behind `prim_r1`,
+the instance `prim_dns2` behind `prim_r2`. The instances already run OSPF with their router
+(router-id = their unicast address) and carry the service address `{s}/32` on `lo`, **without
+announcing it**.
+
+We want **`prim_dns1` to receive all the traffic**, `prim_r2` included, and `prim_dns2` to
+serve only as a backup. Have each instance announce the service address as a **type 2 external
+route** (section @@ref:external@@): metric **{m1}** on `prim_dns1`, **{m2}** on `prim_dns2`,
+and nothing other than `{s}/32`.
+
+Check the type 5 LSAs (`show ip ospf database external`), the route of `prim_r2`
+(`show ip ospf route`) and which instance answers `prim_r2`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+`prim_r2` voit deux LSA de type 5 pour `{s}/32` ; en E2 seule la métrique externe compte : il
+prend celle de `prim_dns1` ({m1} < {m2}), à {fwd} de coût (via `prim_r1`), bien que `prim_dns2` soit
+plus proche. En E1, avec la même métrique sur les deux instances, il prendrait `prim_dns2`.
+
+Évaluation : `prim_ext1`, `prim_ext2` (3 chacun : LSA de type 5 de l'instance, E2, bonne
+métrique), `prim_only` (2 : aucune autre route externe), `prim_r2` (4 : route E2 de `prim_r2` par
+`prim_r1` et réponse de `prim_dns1`), `prim_r1` (1 : `prim_r1` servi par `prim_dns1`).
+""": """
+**Solution.**
+
+{solution}
+
+`prim_r2` sees two type 5 LSAs for `{s}/32`; with E2 only the external metric counts: it takes
+the one of `prim_dns1` ({m1} < {m2}), at a cost of {fwd} (via `prim_r1`), although `prim_dns2`
+is nearer. With E1, and the same metric on both instances, it would take `prim_dns2`.
+
+Evaluation: `prim_ext1`, `prim_ext2` (3 each: type 5 LSA of the instance, E2, right metric),
+`prim_only` (2: no other external route), `prim_r2` (4: E2 route of `prim_r2` through
+`prim_r1` and answer from `prim_dns1`), `prim_r1` (1: `prim_r1` served by `prim_dns1`).
+""",
+    "Observations sur le site prim": "Observations on the prim site",
+    """
+- coût de `prim_r2` jusqu'à l'ASBR `prim_dns1` (`show ip ospf route`, ligne `R`) : @@{fwd:[0-9]+}@@
+- avec `metric-type 1` et la **même** métrique sur les deux instances, `prim_r2` serait servi par :
+  @@{e1:>prim_dns2>>>dns2|prim_dns1>>>dns1|les deux (ECMP)>>>both|aucune>>>none}@@
+- entre deux routes E2, OSPF compare :
+  @@{e2:>la métrique externe seule (le coût jusqu'à l'ASBR départage les égalités)>>>external|la métrique externe plus le coût jusqu'à l'ASBR>>>sum|le coût jusqu'à l'ASBR seul>>>internal|le nombre de routeurs traversés>>>hops}@@
+""": """
+- cost from `prim_r2` to the ASBR `prim_dns1` (`show ip ospf route`, line `R`): @@{fwd:[0-9]+}@@
+- with `metric-type 1` and the **same** metric on both instances, `prim_r2` would be served by:
+  @@{e1:>prim_dns2>>>dns2|prim_dns1>>>dns1|both (ECMP)>>>both|neither>>>none}@@
+- between two E2 routes, OSPF compares:
+  @@{e2:>the external metric alone (the cost to the ASBR breaks ties)>>>external|the external metric plus the cost to the ASBR>>>sum|the cost to the ASBR alone>>>internal|the number of routers crossed>>>hops}@@
+""",
+    """
+**Solution.** **{fwd}** ; **`prim_dns2`** (E1 : {dc} + métrique contre {fwd} + métrique) ; **la métrique
+externe seule**.
+
+Évaluation : `prim_q_fwd` (1) et, pour l'enseignant seulement, `prim_q_e1`, `prim_q_e2` (1 chacun).
+""": """
+**Solution.** **{fwd}**; **`prim_dns2`** (E1: {dc} + metric against {fwd} + metric); **the
+external metric alone**.
+
+Evaluation: `prim_q_fwd` (1) and, for the instructor only, `prim_q_e1`, `prim_q_e2` (1 each).
+""",
+    "route externe E2 de prim_dns1": "E2 external route of prim_dns1",
+    "route externe E2 de prim_dns2": "E2 external route of prim_dns2",
+    "seule l'adresse du service est redistribuée": "only the service address is redistributed",
+    "prim_r2 servi par prim_dns1": "prim_r2 served by prim_dns1",
+    "prim_r1 servi par prim_dns1": "prim_r1 served by prim_dns1",
+    "coût jusqu'à l'ASBR": "cost to the ASBR",
+    "effet d'E1": "effect of E1",
+    "comparaison des E2": "comparison of E2 routes",
+    "Partie 3 — OSPF : health check (site hc)": "Part 3 — OSPF: health check (site hc)",
+    """
+Les routeurs `hc_r1` et `hc_r2` sont reliés ; l'instance `hc_dns1` est derrière `hc_r1`,
+l'instance `hc_dns2` derrière `hc_r2`. Tout est configuré : chaque instance annonce `{s}/32` (sur
+`lo`) dans OSPF, `hc_r1` est servi par `hc_dns1` et `hc_r2` par `hc_dns2`.
+
+1. **Le trou noir.** Arrêtez unbound sur `hc_dns1` (`systemctl stop unbound`) : que répond le
+   service à `hc_r1` ? Que devient sa route vers `{s}` ? Redémarrez unbound.
+2. **Le health check.** Sur `hc_dns1` **et** `hc_dns2`, écrivez le script `{script}` qui,
+   **toutes les secondes**, interroge unbound sur l'instance elle-même et retire `{s}/32` de `lo`
+   quand il ne répond plus, puis la remet quand il répond de nouveau (section @@ref:health@@). Il
+   ne doit pas redémarrer unbound. Faites-le tourner en permanence (service systemd
+   `anycast-health`).
+3. Recommencez l'expérience du 1 et suivez la bascule depuis `hc_r1` (`ip route get {s}`, `dig`).
+
+**Ce que fait l'évaluation.** Elle **fige** unbound sur `hc_dns1` (`kill -STOP` : le processus
+existe mais ne répond plus), attend {down} s, vérifie que `hc_r1` est servi par `hc_dns2`, débloque
+unbound puis l'**arrête** sur `hc_dns2`, attend {up} s, vérifie que `hc_r1` est de nouveau servi par
+`hc_dns1` et que `hc_r2` l'est aussi, redémarre unbound sur `hc_dns2`, attend {up} s et vérifie que
+`hc_r2` est de nouveau servi par `hc_dns2`.
+""": """
+The routers `hc_r1` and `hc_r2` are connected; the instance `hc_dns1` is behind `hc_r1`, the
+instance `hc_dns2` behind `hc_r2`. Everything is configured: each instance announces `{s}/32`
+(on `lo`) in OSPF, `hc_r1` is served by `hc_dns1` and `hc_r2` by `hc_dns2`.
+
+1. **The black hole.** Stop unbound on `hc_dns1` (`systemctl stop unbound`): what does the
+   service answer to `hc_r1`? What becomes of its route to `{s}`? Restart unbound.
+2. **The health check.** On `hc_dns1` **and** `hc_dns2`, write the script `{script}` which,
+   **every second**, queries unbound on the instance itself and removes `{s}/32` from `lo`
+   when it no longer answers, then puts it back when it answers again (section @@ref:health@@).
+   It must not restart unbound. Make it run permanently (systemd service
+   `anycast-health`).
+3. Repeat the experiment of step 1 and follow the failover from `hc_r1` (`ip route get {s}`,
+   `dig`).
+
+**What the evaluation does.** It **freezes** unbound on `hc_dns1` (`kill -STOP`: the process
+exists but no longer answers), waits {down} s, checks that `hc_r1` is served by `hc_dns2`, thaws
+unbound then **stops** it on `hc_dns2`, waits {up} s, checks that `hc_r1` is served by `hc_dns1`
+again and that `hc_r2` is too, restarts unbound on `hc_dns2`, waits {up} s and checks that
+`hc_r2` is served by `hc_dns2` again.
+""",
+    """
+**Solution.** Sur les deux instances :
+
+{solution}
+
+Unbound arrêté : `hc_r1` garde sa route vers `hc_dns1`, qui annonce toujours l'adresse, et ne
+reçoit plus de réponse (trou noir). Avec le health check, l'adresse disparaît de `lo`, ospfd
+retire le lien de sa LSA de routeur, et `hc_r1` passe par `hc_r2` vers `hc_dns2` en 2 à 3 s.
+
+Évaluation : `hc_withdraw1` (3 : `hc_r1` passe par `hc_r2` quand unbound est figé sur `hc_dns1`),
+`hc_failover1` (2 : `hc_r1` servi alors par `hc_dns2`), `hc_return1` (2 : retour vers `hc_dns1`
+une fois débloqué), `hc_withdraw2` (3 : `hc_r2` passe par `hc_r1` quand unbound est arrêté sur
+`hc_dns2`), `hc_failover2` (2), `hc_return2` (2) ; les retours ne comptent qu'après la bascule
+correspondante.
+""": """
+**Solution.** On both instances:
+
+{solution}
+
+Unbound stopped: `hc_r1` keeps its route to `hc_dns1`, which still announces the address, and no
+longer receives any answer (black hole). With the health check, the address disappears from
+`lo`, ospfd removes the link from its router LSA, and `hc_r1` goes through `hc_r2` to `hc_dns2`
+within 2 to 3 s.
+
+Evaluation: `hc_withdraw1` (3: `hc_r1` goes through `hc_r2` when unbound is frozen on
+`hc_dns1`), `hc_failover1` (2: `hc_r1` then served by `hc_dns2`), `hc_return1` (2: back to
+`hc_dns1` once thawed), `hc_withdraw2` (3: `hc_r2` goes through `hc_r1` when unbound is stopped
+on `hc_dns2`), `hc_failover2` (2), `hc_return2` (2); the returns only count after the
+corresponding failover.
+""",
+    "Le health check": "The health check",
+    """
+- le script ne doit pas interroger l'adresse du service parce que :
+  @@{anycast:>une fois l'adresse retirée, la requête atteint une autre instance qui répond : le script remet l'adresse et l'annonce oscille>>>flapping|unbound n'écoute pas sur cette adresse>>>listen|la requête serait refusée par access-control>>>refused|ce serait plus lent>>>slow}@@
+- un unbound figé (processus présent qui ne répond plus) est détecté par :
+  @@{frozen:>une vraie requête DNS avec un délai d'attente>>>query|systemctl is-active unbound>>>active|pidof unbound>>>pidof|ss -lun>>>ss}@@
+- délai minimal (en secondes) entre deux émissions d'une même LSA par OSPF : @@{lsa:[0-9]+}@@
+""": """
+- the script must not query the service address because:
+  @@{anycast:>once the address is withdrawn, the query reaches another instance which answers: the script puts the address back and the announcement flaps>>>flapping|unbound does not listen on that address>>>listen|the query would be refused by access-control>>>refused|it would be slower>>>slow}@@
+- a frozen unbound (process present but no longer answering) is detected by:
+  @@{frozen:>a real DNS query with a timeout>>>query|systemctl is-active unbound>>>active|pidof unbound>>>pidof|ss -lun>>>ss}@@
+- minimum delay (in seconds) between two originations of the same LSA by OSPF: @@{lsa:[0-9]+}@@
+""",
+    """
+**Solution.** L'annonce oscillerait ; **une vraie requête DNS** ; **5** s (*MinLSInterval*).
+
+Évaluation : `hc_q_lsa` (1) et, pour l'enseignant seulement, `hc_q_anycast`, `hc_q_frozen` (1 chacun).
+""": """
+**Solution.** The announcement would flap; **a real DNS query**; **5** s (*MinLSInterval*).
+
+Evaluation: `hc_q_lsa` (1) and, for the instructor only, `hc_q_anycast`, `hc_q_frozen` (1 each).
+""",
+    "annonce retirée par hc_dns1 (unbound figé)": "announcement withdrawn by hc_dns1 (unbound frozen)",
+    "hc_r1 servi par hc_dns2": "hc_r1 served by hc_dns2",
+    "retour vers hc_dns1": "back to hc_dns1",
+    "annonce retirée par hc_dns2 (unbound arrêté)": "announcement withdrawn by hc_dns2 (unbound stopped)",
+    "hc_r2 servi par hc_dns1": "hc_r2 served by hc_dns1",
+    "retour vers hc_dns2": "back to hc_dns2",
+    "MinLSInterval": "MinLSInterval",
+    "pourquoi ne pas interroger l'adresse du service": "why not query the service address",
+    "détection d'un processus figé": "detection of a frozen process",
+    "Partie 4 — OSPF : dépannage (site ofix)": "Part 4 — OSPF: troubleshooting (site ofix)",
+    "Dépannage d'un service anycast dans OSPF": "Troubleshooting an anycast service in OSPF",
+    """
+Le site `ofix` reprend le plan du site `near` : les routeurs `ofix_r1`, `ofix_r2` et `ofix_r3` en
+ligne, l'instance `ofix_dns1` derrière `ofix_r1`, l'instance `ofix_dns2` derrière `ofix_r3`, qui
+annoncent toutes deux `{s}/32` dans OSPF. Le résultat attendu : `ofix_r1` servi par `ofix_dns1`,
+`ofix_r3` par `ofix_dns2`, et `ofix_r2` avec une route à deux prochains sauts vers les deux
+instances.
+
+Ce site a été livré avec **quatre pannes**. Trouvez-les et corrigez-les sans changer le plan
+(section @@ref:diagnostic@@) : interrogez le service depuis chaque routeur, lisez les routes
+(`show ip ospf route`, `show ip ospf database router`), les adresses de `lo`, les router-id, la
+configuration d'unbound, les paquets (`tcpdump`) et le journal `/var/log/frr/frr.log`.
+""": """
+The `ofix` site repeats the design of the `near` site: the routers `ofix_r1`, `ofix_r2` and
+`ofix_r3` in a line, the instance `ofix_dns1` behind `ofix_r1`, the instance `ofix_dns2` behind
+`ofix_r3`, both announcing `{s}/32` in OSPF. The expected result: `ofix_r1` served by
+`ofix_dns1`, `ofix_r3` by `ofix_dns2`, and `ofix_r2` with a route with two next hops to the two
+instances.
+
+This site was delivered with **four faults**. Find them and fix them without changing the design
+(section @@ref:diagnostic@@): query the service from each router, read the routes
+(`show ip ospf route`, `show ip ospf database router`), the addresses of `lo`, the router-ids,
+the configuration of unbound, the packets (`tcpdump`) and the log `/var/log/frr/frr.log`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Les pannes : router-id `{s}` (l'adresse du service) sur les deux instances, qui écrasent sans fin
+leurs LSA de routeur ; unbound de `ofix_dns2` sans `interface-automatic` (ses réponses partent de
+son adresse unicast : `dig` depuis `ofix_r3` finit en `timed out`, `tcpdump` montre la réponse) ;
+une copie de `{s}/32` sur `lo` de `ofix_r2`, annoncée (une
+instance sans service : `ofix_r2` et ses voisins la choisissent) ; `{typo}` au lieu de `{s}` sur
+`ofix_dns1`.
+
+Évaluation : `ofix_rid` (4 : 2 par instance, router-id = adresse unicast), `ofix_address` (3 :
+`ofix_dns1` parmi les prochains sauts de `ofix_r1`), `ofix_r1` (2 : `ofix_r1` servi par `ofix_dns1`
+seule), `ofix_source` (4 : `ofix_r3` servi par `ofix_dns2`), `ofix_rogue` (3 : `ofix_r2` n'est plus une
+instance, route à deux prochains sauts).
+""": """
+**Solution.**
+
+{solution}
+
+The faults: router-id `{s}` (the service address) on both instances, which endlessly overwrite
+each other's router LSAs; unbound of `ofix_dns2` without `interface-automatic` (its answers leave
+from its unicast address: `dig` from `ofix_r3` ends in `timed out`, `tcpdump` shows the answer);
+a copy of `{s}/32` on `lo` of `ofix_r2`, announced (an
+instance without the service: `ofix_r2` and its neighbours choose it); `{typo}` instead of `{s}`
+on `ofix_dns1`.
+
+Evaluation: `ofix_rid` (4: 2 per instance, router-id = unicast address), `ofix_address` (3:
+`ofix_dns1` among the next hops of `ofix_r1`), `ofix_r1` (2: `ofix_r1` served by `ofix_dns1`
+alone), `ofix_source` (4: `ofix_r3` served by `ofix_dns2`), `ofix_rogue` (3: `ofix_r2` is no
+longer an instance, route with two next hops).
+""",
+    "Les causes des pannes": "The causes of the faults",
+    """
+- cause des routes vers le service qui changent sans cesse : @@{{flap:>{causes}}}@@
+- cause de l'absence de `ofix_dns1` parmi les instances : @@{{missing:>{causes}}}@@
+- une fois `ofix_r3` routé vers `ofix_dns2`, cause de ses requêtes sans réponse alors que `tcpdump`
+  montre les réponses : @@{{r3:>{causes}}}@@
+- cause des requêtes sans réponse depuis `ofix_r2` : @@{{r2:>{causes}}}@@
+""": """
+- cause of the routes to the service that keep changing: @@{{flap:>{causes}}}@@
+- cause of the absence of `ofix_dns1` among the instances: @@{{missing:>{causes}}}@@
+- once `ofix_r3` is routed to `ofix_dns2`, cause of its queries left without an answer although
+  `tcpdump` shows the answers: @@{{r3:>{causes}}}@@
+- cause of the queries left without an answer from `ofix_r2`: @@{{r2:>{causes}}}@@
+""",
+    """
+**Solution.** Router-id dupliqué ; adresse du service mal saisie ; réponses envoyées depuis
+l'adresse unicast ; instance parasite sans service.
+
+Évaluation, pour l'enseignant seulement : `ofix_q_flap`, `ofix_q_missing`, `ofix_q_r3`, `ofix_q_r2` (1
+chacun).
+""": """
+**Solution.** Duplicate router-id; mistyped service address; answers sent from the unicast
+address; rogue instance without the service.
+
+Evaluation, for the instructor only: `ofix_q_flap`, `ofix_q_missing`, `ofix_q_r3`, `ofix_q_r2` (1
+each).
+""",
+    "router-id des instances": "router-id of the instances",
+    "ofix_dns1 annonce l'adresse du service": "ofix_dns1 announces the service address",
+    "ofix_r1 servi par ofix_dns1": "ofix_r1 served by ofix_dns1",
+    "ofix_r3 servi par ofix_dns2": "ofix_r3 served by ofix_dns2",
+    "ofix_r2 n'est plus une instance": "ofix_r2 is no longer an instance",
+    "cause des routes instables": "cause of the unstable routes",
+    "cause de l'absence de ofix_dns1": "cause of the absence of ofix_dns1",
+    "cause de l'échec depuis ofix_r3": "cause of the failure from ofix_r3",
+    "cause de l'échec depuis ofix_r2": "cause of the failure from ofix_r2",
+    "Partie 5 — BGP : un préfixe, deux sites (site bgp)": "Part 5 — BGP: one prefix, two sites (site bgp)",
+    """
+Deux opérateurs sont reliés : A (AS 65010, routeur `bgp_ispa`, client `bgp_ca`) et B (AS 65020,
+routeur `bgp_ispb`, client `bgp_cb`). L'opérateur du service (AS **{asn}**) a une instance chez
+chacun : `bgp_dns1` reliée à `bgp_ispa` ({peer_a}), `bgp_dns2` reliée à `bgp_ispb` ({peer_b}).
+Chaque instance porte `{s}/32` sur `lo` et a une route par défaut vers son opérateur. Les
+opérateurs sont configurés pour une session BGP avec l'instance qu'ils relient, et n'acceptent de
+l'AS {asn} que des préfixes de longueur **24 au plus**.
+
+Sur `bgp_dns1` et `bgp_dns2` (section @@ref:bgp@@) : annoncez le préfixe anycast **`{prefix}`**
+(et lui seul) à l'opérateur en BGP, avec la route `blackhole` dont `network` a besoin, une
+route-map de sortie, et une route-map d'entrée qui refuse tout. Vérifiez ensuite quelle instance
+répond à `bgp_ca` et à `bgp_cb` (`dig @{s} id.server CH TXT +short`).
+""": """
+Two operators are connected: A (AS 65010, router `bgp_ispa`, client `bgp_ca`) and B (AS 65020,
+router `bgp_ispb`, client `bgp_cb`). The operator of the service (AS **{asn}**) has an instance
+at each: `bgp_dns1` connected to `bgp_ispa` ({peer_a}), `bgp_dns2` connected to `bgp_ispb`
+({peer_b}). Each instance carries `{s}/32` on `lo` and has a default route to its operator. The
+operators are configured for a BGP session with the instance they connect, and only accept from
+AS {asn} prefixes of length **24 at most**.
+
+On `bgp_dns1` and `bgp_dns2` (section @@ref:bgp@@): announce the anycast prefix **`{prefix}`**
+(and only it) to the operator in BGP, with the `blackhole` route that `network` needs, an
+outbound route-map, and an inbound route-map that refuses everything. Then check which instance
+answers `bgp_ca` and `bgp_cb` (`dig @{s} id.server CH TXT +short`).
+""",
+    """
+**Solution.**
+
+{solution}
+
+Chaque opérateur reçoit deux chemins pour `{prefix}` : `{asn}` (son instance, le plus court) et
+`650x0 {asn}` (par l'autre opérateur). `bgp_ca` est servi par `bgp_dns1`, `bgp_cb` par `bgp_dns2`.
+
+Évaluation : `bgp_sessions` (2 : session de chaque instance établie), `bgp_ispa`, `bgp_ispb` (3
+chacun : meilleur chemin de l'opérateur = son instance), `bgp_second` (2 : chaque opérateur a aussi
+le chemin par l'autre), `bgp_only` (2 : les instances n'annoncent que `{prefix}`), `bgp_ca`, `bgp_cb`
+(3 chacun : réponse de l'instance voisine).
+""": """
+**Solution.**
+
+{solution}
+
+Each operator receives two paths for `{prefix}`: `{asn}` (its instance, the shortest) and
+`650x0 {asn}` (through the other operator). `bgp_ca` is served by `bgp_dns1`, `bgp_cb` by
+`bgp_dns2`.
+
+Evaluation: `bgp_sessions` (2: session of each instance established), `bgp_ispa`, `bgp_ispb` (3
+each: best path of the operator = its instance), `bgp_second` (2: each operator also has the path
+through the other one), `bgp_only` (2: the instances announce only `{prefix}`), `bgp_ca`,
+`bgp_cb` (3 each: answer from the neighbouring instance).
+""",
+    "Observations sur le site bgp": "Observations on the bgp site",
+    """
+- chemin d'AS du **second** chemin de l'opérateur A vers le préfixe anycast (celui qui passe par
+  B ; les AS séparés par des espaces) : @@{aspath:[0-9 ]+}@@
+- on annonce un /24 plutôt que le /32 du service parce que :
+  @@{length:>les opérateurs filtrent les préfixes plus longs qu'un /24>>>filter|BGP ne sait pas annoncer un /32>>>cannot|cela économise des adresses>>>save|BGP agrège tout seul les /32>>>aggregate}@@
+- même sans filtre en entrée, `bgp_dns1` n'apprendrait jamais la route annoncée par `bgp_dns2`
+  parce que :
+  @@{loop:>son propre AS figure dans le chemin d'AS : détection de boucle>>>loop|l'opérateur A la filtre>>>isp|ebgp-requires-policy l'en empêche>>>policy|les deux instances ont le même router-id>>>rid}@@
+""": """
+- AS path of the **second** path of operator A to the anycast prefix (the one through B; the
+  ASes separated by spaces): @@{aspath:[0-9 ]+}@@
+- a /24 is announced rather than the /32 of the service because:
+  @@{length:>operators filter prefixes longer than a /24>>>filter|BGP cannot announce a /32>>>cannot|it saves addresses>>>save|BGP aggregates the /32s on its own>>>aggregate}@@
+- even without an inbound filter, `bgp_dns1` would never learn the route announced by `bgp_dns2`
+  because:
+  @@{loop:>its own AS is in the AS path: loop detection>>>loop|operator A filters it>>>isp|ebgp-requires-policy prevents it>>>policy|both instances have the same router-id>>>rid}@@
+""",
+    """
+**Solution.** **`65020 {asn}`** ; les opérateurs filtrent les préfixes plus longs qu'un /24 ;
+détection de boucle (l'AS {asn} est dans le chemin).
+
+Évaluation : `bgp_q_aspath` (1) et, pour l'enseignant seulement, `bgp_q_length`, `bgp_q_loop` (1
+chacun).
+""": """
+**Solution.** **`65020 {asn}`**; operators filter prefixes longer than a /24; loop detection
+(AS {asn} is in the path).
+
+Evaluation: `bgp_q_aspath` (1) and, for the instructor only, `bgp_q_length`, `bgp_q_loop` (1
+each).
+""",
+    "sessions BGP des instances établies": "BGP sessions of the instances established",
+    "l'opérateur A passe par bgp_dns1": "operator A goes through bgp_dns1",
+    "l'opérateur B passe par bgp_dns2": "operator B goes through bgp_dns2",
+    "chaque opérateur connaît aussi l'autre instance": "each operator also knows the other instance",
+    "seul le préfixe anycast est annoncé": "only the anycast prefix is announced",
+    "bgp_ca servi par bgp_dns1": "bgp_ca served by bgp_dns1",
+    "bgp_cb servi par bgp_dns2": "bgp_cb served by bgp_dns2",
+    "chemin d'AS du second chemin": "AS path of the second path",
+    "pourquoi un /24": "why a /24",
+    "détection de boucle": "loop detection",
+    "Partie 6 — BGP : ingénierie du trafic (site te)": "Part 6 — BGP: traffic engineering (site te)",
+    "Site de secours et nœud local": "Backup site and local node",
+    """
+Trois opérateurs sont reliés deux à deux : A (AS 65010, `te_ispa`), B (AS 65020, `te_ispb`, client
+`te_cb`) et C (AS 65030, `te_ispc`, client `te_cc`). L'opérateur du service (AS {asn}) a une
+instance chez chacun : `te_dns1` chez A, `te_dns2` chez B, `te_dns3` chez C. Les trois annoncent
+déjà `{prefix}` de la même façon (route-map de sortie `TO-ISP`) : `te_cb` est servi par
+`te_dns2`, et la route de `te_dns3` se propage chez A et B.
+
+On veut que (section @@ref:te@@) :
+
+1. `te_dns2` soit un site de **secours** : ajoutez **trois fois** l'AS {asn} au chemin d'AS de ses
+   annonces. `te_cb` doit alors être servi par `te_dns1`, et B garder le chemin par `te_dns2`.
+2. `te_dns3` soit un **nœud local** de C : ses annonces portent la communauté `no-export`. C et ses
+   clients l'utilisent, mais A et B ne doivent plus apprendre de chemin par C.
+
+Les routeurs des opérateurs n'ont pas de terminal : observez depuis les clients (`dig`,
+`traceroute -n {s}`) et sur les instances (`show bgp ipv4 unicast neighbors X advertised-routes`).
+""": """
+Three operators are connected in pairs: A (AS 65010, `te_ispa`), B (AS 65020, `te_ispb`, client
+`te_cb`) and C (AS 65030, `te_ispc`, client `te_cc`). The operator of the service (AS {asn}) has
+an instance at each: `te_dns1` at A, `te_dns2` at B, `te_dns3` at C. All three already announce
+`{prefix}` in the same way (outbound route-map `TO-ISP`): `te_cb` is served by `te_dns2`, and
+the route of `te_dns3` propagates to A and B.
+
+We want (section @@ref:te@@):
+
+1. `te_dns2` to be a **backup** site: add AS {asn} **three times** to the AS path of its
+   announcements. `te_cb` must then be served by `te_dns1`, and B keep the path through `te_dns2`.
+2. `te_dns3` to be a **local node** of C: its announcements carry the `no-export` community. C
+   and its clients use it, but A and B must no longer learn a path through C.
+
+The routers of the operators have no terminal: observe from the clients (`dig`,
+`traceroute -n {s}`) and on the instances (`show bgp ipv4 unicast neighbors X advertised-routes`).
+""",
+    """
+**Solution.**
+
+{solution}
+
+B reçoit `{asn} {asn} {asn} {asn}` de `te_dns2` (quatre AS) contre `65010 {asn}` par A : il passe par A.
+C n'annonce plus la route de `te_dns3` (marquée `no-export`) à A ni à B, mais l'utilise lui-même :
+`te_cc` est servi par `te_dns3`. Sans le `no-export`, B aurait deux chemins de deux AS (par A et
+par C) départagés par le router-id.
+
+Évaluation : `te_prepend` (3 : B garde le chemin de `te_dns2`, avec au moins trois répétitions de
+l'AS), `te_cb` (4 : meilleur chemin de B par A et `te_cb` servi par `te_dns1`), `te_noexport` (3 : la
+route de `te_dns3` porte `no-export` chez C), `te_contained` (3 : ni A ni B n'a de chemin par C),
+`te_cc` (3 : `te_cc` servi par `te_dns3`, avec `no-export`).
+""": """
+**Solution.**
+
+{solution}
+
+B receives `{asn} {asn} {asn} {asn}` from `te_dns2` (four ASes) against `65010 {asn}` through A: it goes through A.
+C no longer announces the route of `te_dns3` (marked `no-export`) to A or to B, but uses it
+itself: `te_cc` is served by `te_dns3`. Without the `no-export`, B would have two paths of two
+ASes (through A and through C), decided by the router-id.
+
+Evaluation: `te_prepend` (3: B keeps the path of `te_dns2`, with at least three repetitions of
+the AS), `te_cb` (4: best path of B through A and `te_cb` served by `te_dns1`), `te_noexport` (3:
+the route of `te_dns3` carries `no-export` at C), `te_contained` (3: neither A nor B has a path
+through C), `te_cc` (3: `te_cc` served by `te_dns3`, with `no-export`).
+""",
+    "Observations sur le site te": "Observations on the te site",
+    """
+- chemin d'AS de la route que `te_ispb` reçoit de `te_dns2` (lisez les annonces de `te_dns2`) :
+  @@{aspath:[0-9 ]+}@@
+- un opérateur qui reçoit une route marquée `no-export` :
+  @@{noexport:>l'utilise et la diffuse dans son AS, mais ne l'annonce à aucun pair eBGP>>>local|la rejette>>>reject|ne l'annonce qu'à ses clients>>>customers|l'annonce avec une préférence basse>>>lowpref}@@
+- un seul ajout de l'AS ne suffit pas toujours à faire de `te_dns2` un secours parce que :
+  @@{tie:>à longueur de chemin égale, d'autres critères départagent et peuvent garder te_dns2>>>tie|un prepend unique est ignoré>>>ignored|il faut répéter un autre AS que le sien>>>other|il faut un prepend par opérateur>>>each}@@
+""": """
+- AS path of the route that `te_ispb` receives from `te_dns2` (read the announcements of `te_dns2`):
+  @@{aspath:[0-9 ]+}@@
+- an operator that receives a route marked `no-export`:
+  @@{noexport:>uses it and spreads it within its AS, but announces it to no eBGP peer>>>local|rejects it>>>reject|announces it only to its customers>>>customers|announces it with a low preference>>>lowpref}@@
+- a single addition of the AS is not always enough to make `te_dns2` a backup because:
+  @@{tie:>with equal path lengths, other criteria decide and may keep te_dns2>>>tie|a single prepend is ignored>>>ignored|an AS other than one's own must be repeated>>>other|one prepend per operator is needed>>>each}@@
+""",
+    """
+**Solution.** **`{aspath}`** ; elle est utilisée et diffusée dans l'AS mais annoncée à aucun pair
+eBGP ; à longueur égale, d'autres critères départagent.
+
+Évaluation : `te_q_aspath` (1) et, pour l'enseignant seulement, `te_q_noexport`, `te_q_tie` (1
+chacun).
+""": """
+**Solution.** **`{aspath}`**; it is used and spread within the AS but announced to no eBGP
+peer; with equal lengths, other criteria decide.
+
+Evaluation: `te_q_aspath` (1) and, for the instructor only, `te_q_noexport`, `te_q_tie` (1
+each).
+""",
+    "te_dns2 annonce un chemin allongé": "te_dns2 announces a lengthened path",
+    "te_cb servi par te_dns1": "te_cb served by te_dns1",
+    "te_dns3 marque ses annonces no-export": "te_dns3 marks its announcements no-export",
+    "ni A ni B n'apprend de chemin par C": "neither A nor B learns a path through C",
+    "te_cc servi par te_dns3": "te_cc served by te_dns3",
+    "chemin d'AS allongé": "lengthened AS path",
+    "rôle de no-export": "role of no-export",
+    "limite du prepending": "limit of prepending",
+    "Partie 7 — BGP : dépannage (site bfix)": "Part 7 — BGP: troubleshooting (site bfix)",
+    "Dépannage d'un service anycast en BGP": "Troubleshooting an anycast service in BGP",
+    """
+Le site `bfix` reprend le plan du site `bgp` : les opérateurs A (`bfix_ispa`, client `bfix_ca`) et
+B (`bfix_ispb`, client `bfix_cb`), l'instance `bfix_dns1` chez A, l'instance `bfix_dns2` chez B,
+qui devraient annoncer toutes deux `{prefix}` (AS {asn}) pour servir l'adresse `{s}`. Le résultat
+attendu : `bfix_ca` servi par `bfix_dns1`, `bfix_cb` par `bfix_dns2`. Les opérateurs n'acceptent
+de l'AS {asn} que des préfixes de longueur 24 au plus.
+
+Ce site a été livré avec **quatre pannes**, deux sur chaque instance. Trouvez-les et corrigez-les
+(section @@ref:diagnostic@@) : `show bgp summary`, `show bgp ipv4 unicast`, `show bgp ipv4 unicast
+neighbors X advertised-routes`, `show running-config`, les adresses de `lo`, et `dig` depuis les
+clients.
+""": """
+The `bfix` site repeats the design of the `bgp` site: the operators A (`bfix_ispa`, client
+`bfix_ca`) and B (`bfix_ispb`, client `bfix_cb`), the instance `bfix_dns1` at A, the instance
+`bfix_dns2` at B, which should both announce `{prefix}` (AS {asn}) to serve the address `{s}`.
+The expected result: `bfix_ca` served by `bfix_dns1`, `bfix_cb` by `bfix_dns2`. The operators
+only accept from AS {asn} prefixes of length 24 at most.
+
+This site was delivered with **four faults**, two on each instance. Find them and fix them
+(section @@ref:diagnostic@@): `show bgp summary`, `show bgp ipv4 unicast`, `show bgp ipv4 unicast
+neighbors X advertised-routes`, `show running-config`, the addresses of `lo`, and `dig` from the
+clients.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Les pannes : `bfix_dns1` n'a pas de route-map de sortie (`(Policy)` : rien n'est envoyé) et annonce
+`{s}/32` (filtré par l'opérateur) au lieu de `{prefix}` ; `bfix_dns2` déclare `network {prefix}` sans
+route correspondante (préfixe non valide : rien n'est annoncé) et n'a pas `{s}` sur `lo` (les
+requêtes partent dans la route `blackhole`).
+
+Évaluation : `bfix_ispa`, `bfix_ispb` (4 chacun : meilleur chemin de l'opérateur = son instance),
+`bfix_ca`, `bfix_cb` (3 chacun : réponse de l'instance voisine).
+""": """
+**Solution.**
+
+{solution}
+
+The faults: `bfix_dns1` has no outbound route-map (`(Policy)`: nothing is sent) and announces
+`{s}/32` (filtered by the operator) instead of `{prefix}`; `bfix_dns2` declares `network {prefix}`
+without a matching route (prefix not valid: nothing is announced) and does not have `{s}` on `lo`
+(the queries go into the `blackhole` route).
+
+Evaluation: `bfix_ispa`, `bfix_ispb` (4 each: best path of the operator = its instance),
+`bfix_ca`, `bfix_cb` (3 each: answer from the neighbouring instance).
+""",
+    """
+- cause de l'absence de toute annonce de `bfix_dns1` : @@{{d1send:>{causes}}}@@
+- une fois les annonces rétablies, cause du rejet de l'annonce de `bfix_dns1` par l'opérateur A :
+  @@{{d1isp:>{causes}}}@@
+- cause de l'absence d'annonce de `bfix_dns2`, dont la session est pourtant établie :
+  @@{{d2send:>{causes}}}@@
+- une fois l'annonce rétablie, cause des requêtes de `bfix_cb` restées sans réponse :
+  @@{{d2answer:>{causes}}}@@
+""": """
+- cause of the absence of any announcement from `bfix_dns1`: @@{{d1send:>{causes}}}@@
+- once the announcements are restored, cause of operator A rejecting the announcement of `bfix_dns1`:
+  @@{{d1isp:>{causes}}}@@
+- cause of the absence of announcements from `bfix_dns2`, whose session is established nonetheless:
+  @@{{d2send:>{causes}}}@@
+- once the announcement is restored, cause of the queries of `bfix_cb` left without an answer:
+  @@{{d2answer:>{causes}}}@@
+""",
+    """
+**Solution.** Pas de politique de sortie ; préfixe trop long ; `network` sans route
+correspondante ; adresse du service absente de l'instance.
+
+Évaluation, pour l'enseignant seulement : `bfix_q_d1send`, `bfix_q_d1isp`, `bfix_q_d2send`,
+`bfix_q_d2answer` (1 chacun).
+""": """
+**Solution.** No outbound policy; prefix too long; `network` without a matching
+route; service address missing from the instance.
+
+Evaluation, for the instructor only: `bfix_q_d1send`, `bfix_q_d1isp`, `bfix_q_d2send`,
+`bfix_q_d2answer` (1 each).
+""",
+    "l'opérateur A passe par bfix_dns1": "operator A goes through bfix_dns1",
+    "l'opérateur B passe par bfix_dns2": "operator B goes through bfix_dns2",
+    "bfix_ca servi par bfix_dns1": "bfix_ca served by bfix_dns1",
+    "bfix_cb servi par bfix_dns2": "bfix_cb served by bfix_dns2",
+    "cause du silence de bfix_dns1": "cause of the silence of bfix_dns1",
+    "cause du rejet par l'opérateur A": "cause of the rejection by operator A",
+    "cause du silence de bfix_dns2": "cause of the silence of bfix_dns2",
+    "cause des requêtes sans réponse": "cause of the unanswered queries",
+    "Bonus — BFD (site bfd)": "Bonus — BFD (site bfd)",
+    "Panne silencieuse d'une instance : BFD (bonus)": "Silent failure of an instance: BFD (bonus)",
+    """
+Le routeur `bfd_r1` relie deux instances qui annoncent `{s}/32` dans OSPF : `bfd_dns1` (coût 10) et
+`bfd_dns2` (coût {cost} sur l'interface de `bfd_r1`, une instance de secours). Entre `bfd_r1` et
+`bfd_dns1`, les temporisateurs OSPF sont de {hello} s (hello) et {dead} s (dead).
+
+**Ce que fait l'évaluation.** Pendant que `bfd_r1` envoie un `ping` vers `{s}` toutes les 50 ms
+pendant 6 s, `bfd_dns1` devient muet pendant {cut} s (plus rien ne sort de son interface : une panne
+silencieuse, que `bfd_r1` ne peut pas voir sur son interface). Sans BFD, `bfd_r1` attend la fin du
+*dead interval* et perd tous les paquets de la coupure.
+
+Configurez BFD entre `bfd_r1` et `bfd_dns1` (démon `bfdd` déjà activé), avec des intervalles de
+**100 ms** et un multiplicateur de **3**, et associez-le à OSPF des deux côtés (section
+@@ref:bfd@@). Reproduisez la coupure vous-même pour mesurer la différence :
+`tc qdisc add dev eth0 root netem loss 100%` sur `bfd_dns1`, puis `tc qdisc del dev eth0 root`.
+""": """
+The router `bfd_r1` connects two instances that announce `{s}/32` in OSPF: `bfd_dns1` (cost 10)
+and `bfd_dns2` (cost {cost} on the interface of `bfd_r1`, a backup instance). Between `bfd_r1`
+and `bfd_dns1`, the OSPF timers are {hello} s (hello) and {dead} s (dead).
+
+**What the evaluation does.** While `bfd_r1` sends a `ping` to `{s}` every 50 ms for 6 s,
+`bfd_dns1` goes silent for {cut} s (nothing leaves its interface any more: a silent failure,
+which `bfd_r1` cannot see on its own interface). Without BFD, `bfd_r1` waits for the end of the
+*dead interval* and loses every packet of the outage.
+
+Configure BFD between `bfd_r1` and `bfd_dns1` (daemon `bfdd` already enabled), with intervals of
+**100 ms** and a multiplier of **3**, and tie it to OSPF on both sides (section
+@@ref:bfd@@). Reproduce the outage yourself to measure the difference:
+`tc qdisc add dev eth0 root netem loss 100%` on `bfd_dns1`, then `tc qdisc del dev eth0 root`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Avec BFD, `bfd_r1` déclare `bfd_dns1` mort en 300 ms, OSPF abandonne l'adjacence et la route passe
+par `bfd_dns2` : quelques paquets perdus au lieu de {lost} environ.
+
+Évaluation (bonus) : `bfd_session` (2 : session BFD de `bfd_r1` avec `bfd_dns1` active, détection en
+{det} ms au plus), `bfd_failover` (4 : au plus {maxlost} pings perdus sur {pings} pendant la coupure).
+""": """
+**Solution.**
+
+{solution}
+
+With BFD, `bfd_r1` declares `bfd_dns1` dead within 300 ms, OSPF drops the adjacency and the route
+goes through `bfd_dns2`: a few packets lost instead of about {lost}.
+
+Evaluation (bonus): `bfd_session` (2: BFD session of `bfd_r1` with `bfd_dns1` up, detection in
+{det} ms at most), `bfd_failover` (4: at most {maxlost} pings lost out of {pings} during the outage).
+""",
+    "session BFD rapide entre bfd_r1 et bfd_dns1": "fast BFD session between bfd_r1 and bfd_dns1",
+    "bascule rapide pendant la coupure": "fast failover during the outage",
+    "Bonus — ECMP par flux (site ecmp)": "Bonus — per-flow ECMP (site ecmp)",
+    "Répartir les flux d'un client (bonus)": "Spreading the flows of a client (bonus)",
+    """
+Le routeur `ecmp_r1` relie deux instances à égale distance, `ecmp_dns1` et `ecmp_dns2`, qui
+annoncent `{s}/32` dans OSPF, et le client `ecmp_c1`. La route de `ecmp_r1` vers `{s}` a deux
+prochains sauts, mais toutes les requêtes de `ecmp_c1` sont servies par la même instance :
+vérifiez-le en lançant plusieurs fois `dig @{s} id.server CH TXT +short` depuis `ecmp_c1`.
+
+Faites en sorte que `ecmp_r1` répartisse **chaque flux** (adresses, protocole et ports) entre les
+deux instances (section @@ref:ecmp@@) : les requêtes successives de `ecmp_c1`, qui partent chacune
+d'un port source différent, doivent être servies tantôt par l'une, tantôt par l'autre.
+""": """
+The router `ecmp_r1` connects two instances at equal distance, `ecmp_dns1` and `ecmp_dns2`, which
+announce `{s}/32` in OSPF, and the client `ecmp_c1`. The route of `ecmp_r1` to `{s}` has two
+next hops, but all the queries of `ecmp_c1` are served by the same instance: check it by running
+`dig @{s} id.server CH TXT +short` several times from `ecmp_c1`.
+
+Make `ecmp_r1` spread **each flow** (addresses, protocol and ports) between the two instances
+(section @@ref:ecmp@@): the successive queries of `ecmp_c1`, which each leave from a different
+source port, must be served sometimes by one, sometimes by the other.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Évaluation (bonus) : `ecmp_policy` (2 : `net.ipv4.fib_multipath_hash_policy` = 1 sur `ecmp_r1`),
+`ecmp_spread` (4 : {n} requêtes de `ecmp_c1` servies par les deux instances).
+""": """
+**Solution.**
+
+{solution}
+
+Evaluation (bonus): `ecmp_policy` (2: `net.ipv4.fib_multipath_hash_policy` = 1 on `ecmp_r1`),
+`ecmp_spread` (4: {n} queries of `ecmp_c1` served by both instances).
+""",
+    "empreinte ECMP calculée sur les ports": "ECMP hash computed on the ports",
+    "les requêtes de ecmp_c1 servies par les deux instances": "the queries of ecmp_c1 served by both instances",
+}}

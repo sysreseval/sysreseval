@@ -10,6 +10,7 @@ the ECMP spread.  Covers the data, the topology, the state ops, the two-pass gra
 (nothing done: 0; everything: 131 + 12 bonus points; **each part alone gives exactly its points
 and everything but one part the rest**) and the texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -20,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from SRE import params
+from SRE import form_spec, params
 from SRE.instructor_text import has_instructor, markdown_to_html
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -802,6 +803,18 @@ def _all_texts(grade, ns):
     return texts
 
 
+def _instructor_literals():
+    """The tr() literals of the instructor() calls (their English goes away with them when stripped)."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 class TestTexts:
     def test_hashes_and_fragments(self, lab, data, tmp_pub_dir):
         g0, ns0 = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)
@@ -864,16 +877,52 @@ class TestTexts:
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 17 and result.warnings == []
+        # the texts that insert a solution per language are instructor(_by_language(tr(...), ...))
+        assert result.calls == source.count(b'instructor(tr(') + source.count(b'instructor(_by_language(tr(')
+        assert result.calls == len(_instructor_literals()) == 17 and result.warnings == []
         assert b'**Solution.**' not in result.data and b"Pour l'enseignant" not in result.data
+        assert b'For the instructor' not in result.data
         stripped = tmp_path / 'anycast_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('anycast_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (REGULAR, BONUS)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py); the values built at run time (the
+        solutions, the table of the sites, the options of the causes) have their English too."""
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        assert set(_instructor_literals()) <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 17
+        assert _text(lab.title, 'en') == "Anycast: one service announced from several sites (OSPF and BGP)"
+        assert _text(lab.NetScheme.solve_ecmp._sre_state_description, 'en') == "Bonus: solution (per-flow ECMP)"
+        g1, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        questions = g1.get_questions_ordered()
+        for q in questions:
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert fr != en and has_instructor(en), _text(q.title)
+            # the stored answers do not depend on the language: same fields, same dropdown values
+            assert form_spec.form_fields(fr) == form_spec.form_fields(en), _text(q.title)
+            assert "{'" not in en and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", en), _text(q.title)
+            markdown_to_html(en, show_instructor=True)
+        everything = "\n".join(_text(q.description, 'en') for q in questions)
+        for french in ("l'instance la plus proche", 'sans terminal', 'router-id dupliqué', 'préfixe trop long',
+                       "n'annoncer", '` :\n'):
+            assert french not in everything, french
+        for english_text in ('| 1 — OSPF: the nearest instance | `near_*` |', 'duplicate router-id>>>rid',
+                             'no outbound policy (ebgp-requires-policy)>>>policy', '`near_dns1`:\n',
+                             'only announce the service address while unbound answers'):
+            assert english_text in everything, english_text
 
     def test_english_identifiers(self, lab, data):
         """Machines, networks, states, data fields, grade elements, part keys and form fields are English."""

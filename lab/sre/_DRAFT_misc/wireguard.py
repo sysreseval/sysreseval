@@ -12,8 +12,8 @@ The probe watches the `wan` traffic during the evaluation (``tcpdump``), then co
 concentrator with the keys of two laptops whose public key alone is given to the students:
 `colleague` (must pass) and `oldpc` (removed in part 7, must not pass any more).  The ``final``
 state applies the reference solution.  Every question ends with its solution in an
-``instructor()`` block (instructor mode).  The texts are French (``tr()``), the identifiers
-English.
+``instructor()`` block (instructor mode).  The texts are French (``tr()``) with their English in
+``_TRANSLATIONS``, the identifiers English.
 
 The Docker images must ship the ``wireguard`` package (images >= 1.30).  The evaluation archives
 hold the output of ``wg show all dump``, hence the (throw-away) private keys of the lab.
@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from ipaddress import IPv4Interface, IPv4Network
 from typing import Dict
 
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from firewall import get_ruleset, ruleset_mentions
@@ -43,7 +44,7 @@ from wireguard import (
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("WireGuard : tunnels, pairs, site à site, tunnel complet")
+title = tr("WireGuard : tunnels, pairs, site à site, tunnel complet", en="WireGuard: tunnels, peers, site to site, full tunnel")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True
@@ -683,6 +684,32 @@ def _conf_key_ok(conf: dict, iface) -> bool:
     return iface is not None and is_wg_key(priv) and public_key(priv) == iface['public_key']
 
 
+_DROPDOWN_RE = re.compile(r"@@\{\w+(?:~\d*)?:>([^}]*)\}@@")
+
+
+def _option_labels(lang: str) -> Dict[str, str]:
+    """{option: label} of the dropdowns of the *lang* texts of _TRANSLATIONS (`label>>>option`: the English
+    forms show the label and store the French option)."""
+    labels = {}
+    for text in _TRANSLATIONS.get(lang, {}).values():
+        for options in _DROPDOWN_RE.findall(text):
+            for option in options.split('|'):
+                label, sep, value = option.rpartition('>>>')
+                if sep:
+                    labels[value] = label
+    return labels
+
+
+def _with_answers(text: TranslatedText, answers: Dict[str, str], **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values* and the right *answers* of a form (the French options),
+    in the language of each version: in English, an option is printed with its English label."""
+    result = {}
+    for lang, version in text.items():
+        labels = _option_labels(lang) if lang != default_language else {}
+        result[lang] = version.format(**values, **{k: labels.get(v, v) for k, v in answers.items()})
+    return TranslatedText(result)
+
+
 class Grade(Grade0):
     def __init__(self, net_scheme):
         super().__init__(net_scheme)
@@ -924,7 +951,7 @@ que dit `ping` ?
 - quand a lieu une poignée de main ? @@{handshake:>quand il y a un paquet à envoyer, puis toutes les deux minutes tant que le trafic dure|une seule fois, à la création de l'interface|toutes les secondes, en permanence}@@
 - `ping` de l'adresse VPN de `laptop` depuis `gwb` : @@{nopeer:>Required key not available : aucun pair n'a cette destination dans ses AllowedIPs|Destination address required : le pair n'a pas d'endpoint|le ping part vers srv qui le jette en silence}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Sur `srv` (clés de l'état `final`) :
 
 ```
@@ -946,9 +973,10 @@ Sur `gwb` :
   `/etc/wireguard/private.key`, mode 600 ; chaque pair connaît l'autre avec la bonne `AllowedIPs` ; `srv`
   écoute en UDP {port}), l'adresse de `wg0`, une poignée de main récente et un `ping` dans chaque sens.
 - Réponses : {proto} {port_answer} ; {icmp_wan} ; {auth} ; {handshake} ; {nopeer}.
-""").format(set_srv=self.net_scheme.wg_set_srv(), set_gwb=self.net_scheme.wg_set_gwb(), port=WG_PORT,
+"""), {k: v for k, v in q1_answers.items() if k != "port"},
+            set_srv=self.net_scheme.wg_set_srv(), set_gwb=self.net_scheme.wg_set_gwb(), port=WG_PORT,
             srv_wan=d.ips.srv_wan.ip, gwb_wan=d.ips.gwb_wan.ip, vpn_laptop=d.ips.vpn_laptop.ip, vpn=vpn,
-            port_answer=q1_answers["port"], **{k: v for k, v in q1_answers.items() if k != "port"})),
+            port_answer=q1_answers["port"])),
             cheat_answers={"final": q1_answers},
         )
 
@@ -1049,7 +1077,7 @@ Que se passe-t-il si on lance `systemctl start wg-quick@wg0` alors que `wg0` a �
 - mode du fichier `wg0.conf` : @@{mode:>600 : il contient la clé privée|644 : il ne contient que des clés publiques|755 : wg-quick l'exécute}@@
 - `systemctl start wg-quick@wg0` alors que `wg0` a été montée à la main : @@{already:>systemctl start échoue (wg0 already exists) et l'unité est failed : démonter d'abord|l'unité prend le contrôle de l'interface existante|l'interface est recréée avec le fichier}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** `/etc/wireguard/wg0.conf` sur `srv` (clés de l'état `final` ; tel qu'il sera à la fin
 de la partie 2, les parties 3, 5 et 7 y ajoutent des pairs) :
 
@@ -1071,8 +1099,8 @@ puis, sur chaque machine, `ip link del wg0` (interface de la partie 1), `chmod 6
   `Address` ; le pair avec `AllowedIPs` et `Endpoint` ; fichier en mode 600 ; unité `wg-quick@wg0`
   active **et** activée au démarrage sur les deux machines.
 - Réponses : {strip} ; {route} ; {reload} ; {mode} ; {already}.
-""").format(conf_srv=self.net_scheme.wg_conf_srv(part=2), conf_gwb=self.net_scheme.wg_conf_gwb(part=2), vpn=vpn,
-            **q2_answers)),
+"""), q2_answers,
+            conf_srv=self.net_scheme.wg_conf_srv(part=2), conf_gwb=self.net_scheme.wg_conf_gwb(part=2), vpn=vpn)),
             cheat_answers={"final": q2_answers},
         )
 
@@ -1167,7 +1195,7 @@ le concentrateur joint le poste derrière le NAT.
 - qui peut initier la poignée de main ? @@{initiator:>seul le nomade : srv ne connaît son endpoint qu'après son premier paquet|seul srv : c'est le serveur|l'un ou l'autre, indifféremment}@@
 - pour ajouter le portable d'un collègue, on lui demande : @@{colleague_key:>sa clé publique seulement, et on lui donne celle de srv|sa clé privée, pour la mettre dans wg0.conf de srv|un mot de passe}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** `/etc/wireguard/wg0.conf` sur `laptop` (fin de partie 3) :
 
 ```
@@ -1191,9 +1219,9 @@ sur `laptop`.
   une poignée de main et un `ping` ; sur le `wan`, de l'UDP {port} de la box vers `srv` et aucun ICMP
   en clair de la box vers le VPN ou les LAN.
 - Réponses : {endpoint} ; {keepalive} ; {listenport} ; {initiator} ; {colleague_key}.
-""").format(conf_laptop=self.net_scheme.wg_conf_laptop(part=3), conf_srv=self.net_scheme.wg_conf_srv(part=3),
-            box_wan=d.ips.box_wan.ip, vpn_laptop=d.ips.vpn_laptop.ip, vpn_colleague=d.ips.vpn_colleague.ip, port=WG_PORT,
-            **q3_answers)),
+"""), q3_answers,
+            conf_laptop=self.net_scheme.wg_conf_laptop(part=3), conf_srv=self.net_scheme.wg_conf_srv(part=3),
+            box_wan=d.ips.box_wan.ip, vpn_laptop=d.ips.vpn_laptop.ip, vpn_colleague=d.ips.vpn_colleague.ip, port=WG_PORT)),
             cheat_answers={"final": q3_answers},
         )
 
@@ -1477,7 +1505,7 @@ nft add rule ip nat postrouting ip saddr {vpn} oifname eth0 masquerade
 - pourquoi le NAT est-il nécessaire ? @@{nat:>Internet n'a pas de route vers le réseau du VPN : les réponses ne reviendraient pas|WireGuard ne peut pas chiffrer les paquets vers Internet|le nomade n'a pas de route par défaut}@@
 - routeur par défaut de `gwb` après cette partie : @@{gwb_default:[0-9.]+}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** `wg0.conf` de `laptop` (fin de partie 6) :
 
 ```
@@ -1503,9 +1531,10 @@ et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.co
   depuis `laptop` affichant `client={srv_wan}` ; sur le `wan`, des requêtes TCP 80 vers `web` depuis
   `{srv_wan}` et aucune depuis `{box_wan}`.
 - Réponses : {fwmark} ; {suppress} ; {web_sees} ; {nat} ; {gwb_default}.
-""").format(conf_laptop=self.net_scheme.wg_conf_laptop(part=6), nft=self.net_scheme.nft_nat(), box_wan=d.ips.box_wan.ip,
+"""), q6_answers,
+            conf_laptop=self.net_scheme.wg_conf_laptop(part=6), nft=self.net_scheme.nft_nat(), box_wan=d.ips.box_wan.ip,
             port=WG_PORT, web=d.ips.web.ip, srv_wan=d.ips.srv_wan.ip, box_hotel=d.ips.box_hotel.ip,
-            vpn_laptop=d.ips.vpn_laptop.ip, inet=d.ips.inet_wan.ip, **q6_answers)),
+            vpn_laptop=d.ips.vpn_laptop.ip, inet=d.ips.inet_wan.ip)),
             cheat_answers={"final": q6_answers},
         )
 
@@ -1587,7 +1616,7 @@ toujours là.
 - pour révoquer un appareil : @@{revoke:>retirer son pair (wg set wg0 peer CLÉ remove, ou supprimer sa section et wg syncconf) : effet immédiat|publier sa clé dans une liste de révocation|attendre l'expiration de sa clé}@@
 - une clé WireGuard expire-t-elle ? @@{expire:>non : une clé est valable tant qu'elle est configurée, il n'y a ni date d'expiration ni CRL|oui, après 825 jours|oui, à chaque redémarrage}@@
 """)
-            + instructor(tr("""
+            + instructor(_with_answers(tr("""
 **Solution.** Sur `srv`, `wg genpsk` donne une clé (celle de l'état `final` : `{psk}`) à mettre dans
 le pair `laptop` ; sur `laptop`, la même dans le pair `srv` ; `wg syncconf wg0 <(wg-quick strip wg0)`
 des deux côtés. `wg0.conf` de `srv` à la fin du TP (pair `oldpc` supprimé) :
@@ -1604,8 +1633,8 @@ des deux côtés. `wg0.conf` de `srv` à la fin du TP (pair `oldpc` supprimé) :
   dans les deux fichiers ; `colleague` toujours pair de `srv` et `oldpc` absent (interface et fichier) ;
   la sonde : refusée avec la clé de `oldpc` (aucune poignée de main), acceptée avec celle de `colleague`.
 - Réponses : {psk_answer} ; {psk_effect} ; {revoke} ; {expire}.
-""").format(psk=d.psk_laptop, conf_srv=self.net_scheme.wg_conf_srv(part=7), pub_oldpc=pub_oldpc,
-            psk_answer=q7_answers["psk"], **{k: v for k, v in q7_answers.items() if k != "psk"})),
+"""), {"psk_answer": q7_answers["psk"], **{k: v for k, v in q7_answers.items() if k != "psk"}},
+            psk=d.psk_laptop, conf_srv=self.net_scheme.wg_conf_srv(part=7), pub_oldpc=pub_oldpc)),
             cheat_answers={"final": q7_answers},
         )
 
@@ -1638,4 +1667,1554 @@ des deux côtés. `wg0.conf` de `srv` à la fin du TP (pair `oldpc` supprimé) :
         )
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "WireGuard : tunnels, pairs, site à site, tunnel complet": "WireGuard: tunnels, peers, site to site, full tunnel",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "Pourquoi WireGuard ?": "Why WireGuard?",
+    """
+
+Un **VPN** (*Virtual Private Network*) relie des machines ou des réseaux à travers un réseau que
+l'on ne contrôle pas — Internet — comme s'ils étaient sur un même réseau privé : les paquets IP
+du réseau privé sont **encapsulés** dans d'autres paquets qui traversent Internet, **chiffrés**
+(confidentialité), **authentifiés** (intégrité, identité des extrémités). Les technologies
+classiques, IPsec (dans le noyau, négociation IKE, des dizaines d'options) et OpenVPN (en espace
+utilisateur, TLS, certificats X.509), sont lourdes : des centaines de milliers de lignes de code,
+des configurations longues, des choix d'algorithmes à faire soi-même.
+
+**WireGuard** (Jason A. Donenfeld, 2015–2016 ; intégré au noyau Linux 5.6 en mars 2020) prend le
+contre-pied : une implémentation d'environ quatre mille lignes, **aucune négociation** — les
+algorithmes sont fixés par la version du protocole (Curve25519 pour l'échange de clés,
+ChaCha20-Poly1305 pour le chiffrement authentifié, BLAKE2s pour le hachage, HKDF pour la
+dérivation des clés, SipHash pour les tables), une configuration de quelques lignes, des
+performances proches de celles du noyau (pas d'aller-retour vers l'espace utilisateur). Il ne
+fait **qu'une chose** : transporter des paquets IP (v4 ou v6, niveau 3) dans des datagrammes
+**UDP**, entre des **pairs** identifiés par leur **clé publique**. Pas de mode client/serveur,
+pas de certificats, pas de mots de passe, pas de TCP, pas de niveau 2 : ce qui manque se construit
+autour (un plan de contrôle comme Tailscale, NetBird ou Headscale, un portail d'authentification,
+un script de distribution des clés).
+
+Il existe sur Linux (noyau), BSD, Windows, macOS, Android, iOS (implémentations en espace
+utilisateur `wireguard-go` et `boringtun`). Debian fournit le paquet `wireguard` (outils `wg` et
+`wg-quick`), le module est dans le noyau.
+
+| | WireGuard | OpenVPN | IPsec |
+|--|-----------|---------|-------|
+| où | noyau | processus utilisateur | noyau |
+| identité d'un pair | clé publique Curve25519 | certificat X.509 (CA) | certificat ou clé partagée |
+| transport | UDP seulement | UDP ou TCP (443…) | ESP (IP 50) ou UDP 4500 |
+| algorithmes | fixés | négociés (TLS) | négociés (IKE) |
+| configuration | quelques lignes | dizaines de directives | complexe |
+| révocation | retirer le pair | CRL | CRL |
+""": """
+
+A **VPN** (*Virtual Private Network*) links machines or networks across a network that one does
+not control — the Internet — as if they were on one private network: the IP packets of the
+private network are **encapsulated** in other packets that cross the Internet, **encrypted**
+(confidentiality), **authenticated** (integrity, identity of the endpoints). The classic
+technologies, IPsec (in the kernel, IKE negotiation, dozens of options) and OpenVPN (in user
+space, TLS, X.509 certificates), are heavy: hundreds of thousands of lines of code, long
+configurations, choices of algorithms to make yourself.
+
+**WireGuard** (Jason A. Donenfeld, 2015–2016; merged into the Linux kernel 5.6 in March 2020) takes
+the opposite course: an implementation of about four thousand lines, **no negotiation** — the
+algorithms are fixed by the version of the protocol (Curve25519 for the key exchange,
+ChaCha20-Poly1305 for authenticated encryption, BLAKE2s for hashing, HKDF for key derivation,
+SipHash for the tables), a configuration of a few lines, performance close to that of the
+kernel (no round trip to user space). It does **only one thing**: carry IP packets (v4 or v6,
+layer 3) in **UDP** datagrams, between **peers** identified by their **public key**. No
+client/server mode, no certificates, no passwords, no TCP, no layer 2: what is missing is built
+around it (a control plane such as Tailscale, NetBird or Headscale, an authentication portal, a
+key distribution script).
+
+It exists on Linux (kernel), BSD, Windows, macOS, Android, iOS (user-space implementations
+`wireguard-go` and `boringtun`). Debian ships the `wireguard` package (the `wg` and `wg-quick`
+tools), the module is in the kernel.
+
+| | WireGuard | OpenVPN | IPsec |
+|--|-----------|---------|-------|
+| where | kernel | user process | kernel |
+| identity of a peer | Curve25519 public key | X.509 certificate (CA) | certificate or shared key |
+| transport | UDP only | UDP or TCP (443…) | ESP (IP 50) or UDP 4500 |
+| algorithms | fixed | negotiated (TLS) | negotiated (IKE) |
+| configuration | a few lines | dozens of directives | complex |
+| revocation | remove the peer | CRL | CRL |
+""",
+    "Le modèle : une interface, des clés, des pairs": "The model: an interface, keys, peers",
+    """
+
+Sur chaque machine, un tunnel WireGuard est une **interface réseau** virtuelle (`wg0`) qui
+porte une adresse du réseau privé et vers laquelle pointent des routes. L'interface a une **clé
+privée** (32 octets, écrite en base64 : 44 caractères) et, éventuellement, un port UDP d'écoute
+(`ListenPort`, 51820 par convention). Elle connaît une liste de **pairs** ; pour chacun :
+
+| paramètre | rôle |
+|-----------|------|
+| `PublicKey` | l'identité du pair : la clé publique dérivée de sa clé privée (`wg pubkey`) |
+| `AllowedIPs` | les adresses ou réseaux qui se trouvent **derrière ce pair** (§ @@ref:allowed-ips@@) |
+| `Endpoint` | adresse publique et port du pair, s'ils sont connus et fixes (facultatif : appris sinon) |
+| `PersistentKeepalive` | envoyer un paquet vide toutes les *n* secondes (NAT, § @@ref:nat@@) |
+| `PresharedKey` | clé symétrique supplémentaire, propre à ce couple de pairs (§ @@ref:security@@) |
+
+Il n'y a **pas de client ni de serveur** : les deux extrémités ont la même configuration, à ceci
+près que l'une connaît l'`Endpoint` de l'autre (celle qui a une adresse publique fixe). Un
+**concentrateur** (le `srv` de ce TP) n'est qu'un pair qui en connaît beaucoup d'autres.
+
+```
+wg genkey > private.key            # clé privée (base64) : umask 077 avant !
+wg pubkey < private.key            # clé publique correspondante : à donner aux pairs
+wg genkey | tee private.key | wg pubkey > public.key
+wg genpsk                          # clé pré-partagée (symétrique)
+```
+
+L'**identité d'un pair est sa clé publique**, rien d'autre : pas de nom, pas d'autorité de
+certification. Chaque pair doit donc avoir, à l'avance, la clé publique de ceux avec qui il
+dialogue ; l'échange des clés publiques se fait hors ligne, par un canal de confiance (dans ce
+TP, le répertoire `/shared` commun à toutes les machines ou un copier-coller). La clé privée ne
+quitte jamais sa machine.
+""": """
+
+On each machine, a WireGuard tunnel is a virtual **network interface** (`wg0`) that holds an
+address of the private network and to which routes point. The interface has a **private
+key** (32 bytes, written in base64: 44 characters) and, optionally, a UDP listening port
+(`ListenPort`, 51820 by convention). It knows a list of **peers**; for each one:
+
+| parameter | role |
+|-----------|------|
+| `PublicKey` | the identity of the peer: the public key derived from its private key (`wg pubkey`) |
+| `AllowedIPs` | the addresses or networks that lie **behind this peer** (§ @@ref:allowed-ips@@) |
+| `Endpoint` | public address and port of the peer, if they are known and fixed (optional: learnt otherwise) |
+| `PersistentKeepalive` | send an empty packet every *n* seconds (NAT, § @@ref:nat@@) |
+| `PresharedKey` | additional symmetric key, specific to this pair of peers (§ @@ref:security@@) |
+
+There is **no client and no server**: both ends have the same configuration, except that one
+knows the `Endpoint` of the other (the one with a fixed public address). A **concentrator** (the
+`srv` of this lab) is just a peer that knows many others.
+
+```
+wg genkey > private.key            # private key (base64): umask 077 first!
+wg pubkey < private.key            # matching public key: to give to the peers
+wg genkey | tee private.key | wg pubkey > public.key
+wg genpsk                          # preshared key (symmetric)
+```
+
+The **identity of a peer is its public key**, nothing else: no name, no certificate
+authority. Each peer must therefore have, in advance, the public key of those it talks to; the
+public keys are exchanged offline, over a trusted channel (in this lab, the `/shared` directory
+common to all the machines, or copy and paste). The private key never leaves its machine.
+""",
+    "Le routage par clés (*cryptokey routing*) : `AllowedIPs`": "Cryptokey routing: `AllowedIPs`",
+    """
+
+C'est **l'idée centrale** de WireGuard. Chaque interface tient une table qui associe la clé
+publique de chaque pair à une liste de préfixes IP, ses `AllowedIPs`. Cette table sert dans les
+deux sens :
+
+- **en sortie** : un paquet qui entre dans `wg0` (parce qu'une route l'y a envoyé) est chiffré
+  pour le pair dont les `AllowedIPs` contiennent sa destination (le préfixe le plus long gagne).
+  S'il n'y en a aucun, le paquet est jeté et l'émetteur reçoit l'erreur `Required key not
+  available` ;
+- **en entrée** : un paquet déchiffré venant d'un pair n'est accepté que si son **adresse
+  source** figure dans les `AllowedIPs` de ce pair. Sinon il est jeté silencieusement.
+
+`AllowedIPs` est donc à la fois une **table de routage** (quel pair pour quelle destination) et un
+**filtre d'entrée** (quelles sources ce pair a le droit d'émettre) : impossible pour un pair
+d'usurper l'adresse d'un autre. Un préfixe ne peut appartenir **qu'à un seul pair** : l'ajouter à
+un second pair le retire au premier.
+
+| situation | `AllowedIPs` du pair |
+|-----------|----------------------|
+| un poste nomade (vu du concentrateur) | son adresse VPN : `10.8.0.5/32` |
+| le concentrateur (vu d'un poste) | le réseau du VPN et les LAN derrière lui : `10.8.0.0/24, 192.168.1.0/24` |
+| une passerelle de site (vue du concentrateur) | son adresse VPN et son LAN : `10.8.0.2/32, 192.168.2.0/24` |
+| tout le trafic (tunnel complet) | `0.0.0.0/0` |
+
+`wg-quick` déduit les **routes** du noyau des `AllowedIPs` (§ @@ref:tools@@) : avec `wg` seul, il faut les
+ajouter soi-même (`ip route add RÉSEAU dev wg0`). Les deux doivent être cohérents : la route
+envoie le paquet dans `wg0`, les `AllowedIPs` choisissent le pair.
+""": """
+
+This is **the central idea** of WireGuard. Each interface keeps a table that maps the public key
+of each peer to a list of IP prefixes, its `AllowedIPs`. This table is used in both
+directions:
+
+- **outgoing**: a packet that enters `wg0` (because a route sent it there) is encrypted for the
+  peer whose `AllowedIPs` contain its destination (the longest prefix wins). If there is none,
+  the packet is dropped and the sender gets the error `Required key not available`;
+- **incoming**: a decrypted packet coming from a peer is accepted only if its **source
+  address** is in the `AllowedIPs` of that peer. Otherwise it is silently dropped.
+
+`AllowedIPs` is therefore both a **routing table** (which peer for which destination) and an
+**ingress filter** (which sources this peer is allowed to send from): a peer cannot spoof the
+address of another one. A prefix can belong to **only one peer**: adding it to a second peer
+removes it from the first.
+
+| situation | `AllowedIPs` of the peer |
+|-----------|----------------------|
+| a roaming host (seen from the concentrator) | its VPN address: `10.8.0.5/32` |
+| the concentrator (seen from a host) | the VPN network and the LANs behind it: `10.8.0.0/24, 192.168.1.0/24` |
+| a site gateway (seen from the concentrator) | its VPN address and its LAN: `10.8.0.2/32, 192.168.2.0/24` |
+| all the traffic (full tunnel) | `0.0.0.0/0` |
+
+`wg-quick` derives the kernel **routes** from the `AllowedIPs` (§ @@ref:tools@@): with `wg` alone, you
+must add them yourself (`ip route add NETWORK dev wg0`). The two must be consistent: the route
+sends the packet into `wg0`, the `AllowedIPs` choose the peer.
+""",
+    "Le protocole : poignée de main, sessions, paquets": "The protocol: handshake, sessions, packets",
+    """
+
+WireGuard repose sur le cadre **Noise** (motif *IKpsk2*). Une **poignée de main** en un seul
+aller-retour établit les clés de session :
+
+1. l'**initiateur** (celui qui a un paquet à envoyer) émet une *handshake initiation*
+   (148 octets) : clé éphémère, sa clé publique statique chiffrée (seul le destinataire peut
+   l'identifier), un horodatage (contre le rejeu) ;
+2. le **répondeur** vérifie que la clé publique est celle d'un pair connu, puis répond par une
+   *handshake response* (92 octets) avec sa propre clé éphémère.
+
+Les clés éphémères donnent la **confidentialité persistante** (*perfect forward secrecy*) : une
+clé privée volée plus tard ne déchiffre pas les sessions passées. Un paquet qui ne vient pas d'un
+pair connu **n'obtient aucune réponse** : un serveur WireGuard est invisible aux scans de ports.
+Sous charge, le répondeur peut exiger un *cookie* (64 octets) avant de calculer quoi que ce soit
+(protection contre le déni de service).
+
+Les **sessions** sont courtes : avec du trafic, une nouvelle poignée de main a lieu toutes les
+**2 minutes** (`latest handshake` dans `wg show`) et des clés de session de plus de 3 minutes
+sont refusées. La poignée de main n'a lieu que lorsqu'il y a quelque chose à envoyer : un tunnel
+inactif est silencieux. Il n'y a pas d'état « connecté » ni « déconnecté », seulement une date
+de dernière poignée de main.
+
+Les **paquets de données** (type 4) ont un en-tête de 16 octets (type, index du récepteur,
+compteur de 64 bits contre le rejeu) suivi du paquet IP chiffré, complété à un multiple de
+16 octets, et d'une étiquette d'authentification de 16 octets : **32 octets** de surcoût, plus
+les 28 octets d'IP et UDP. Un `ping` de 84 octets donne ainsi un datagramme UDP de 128 octets
+(84 → 96 + 32). Un paquet vide (32 octets) sert de *keepalive*. Le MTU de `wg0` est fixé à
+**1420** (1500 − 80, de quoi loger l'en-tête IPv6 + UDP + WireGuard).
+
+Enfin, l'`Endpoint` d'un pair est **mis à jour à chaque paquet authentifié** reçu de lui : un
+portable qui change de réseau (Wi-Fi → 4G) garde sa session, le serveur apprend sa nouvelle
+adresse au premier paquet. C'est la **mobilité** (*roaming*) intégrée.
+""": """
+
+WireGuard is built on the **Noise** framework (pattern *IKpsk2*). A **handshake** of a single
+round trip establishes the session keys:
+
+1. the **initiator** (the one that has a packet to send) sends a *handshake initiation*
+   (148 bytes): an ephemeral key, its static public key, encrypted (only the recipient can
+   identify it), a timestamp (against replay);
+2. the **responder** checks that the public key is that of a known peer, then replies with a
+   *handshake response* (92 bytes) carrying its own ephemeral key.
+
+The ephemeral keys give **forward secrecy** (*perfect forward secrecy*): a private key stolen
+later does not decrypt past sessions. A packet that does not come from a known peer **gets no
+reply at all**: a WireGuard server is invisible to port scans. Under load, the responder can
+require a *cookie* (64 bytes) before computing anything (protection against denial of
+service).
+
+**Sessions** are short: with traffic, a new handshake takes place every **2 minutes**
+(`latest handshake` in `wg show`) and session keys older than 3 minutes are refused. The
+handshake only takes place when there is something to send: an idle tunnel is silent. There is
+no "connected" or "disconnected" state, only the date of the latest handshake.
+
+**Data packets** (type 4) have a 16-byte header (type, receiver index, 64-bit counter against
+replay) followed by the encrypted IP packet, padded to a multiple of 16 bytes, and a 16-byte
+authentication tag: **32 bytes** of overhead, plus the 28 bytes of IP and UDP. An 84-byte `ping`
+thus gives a 128-byte UDP datagram (84 → 96 + 32). An empty packet (32 bytes) serves as a
+*keepalive*. The MTU of `wg0` is set to **1420** (1500 − 80, room for the IPv6 + UDP + WireGuard
+headers).
+
+Finally, the `Endpoint` of a peer is **updated with every authenticated packet** received from
+it: a laptop that changes network (Wi-Fi → 4G) keeps its session, the server learns its new
+address from the first packet. This is built-in **mobility** (*roaming*).
+""",
+    "Les outils : `wg`, `wg-quick`, systemd": "The tools: `wg`, `wg-quick`, systemd",
+    """
+
+**`wg`** configure et interroge le noyau :
+
+| commande | effet |
+|----------|-------|
+| `wg show` (`wg show wg0`) | état : clé publique, port, pairs, *endpoint*, `latest handshake`, octets transférés |
+| `wg show wg0 dump`, `wg show wg0 latest-handshakes` | formes pour les scripts |
+| `wg set wg0 private-key F listen-port 51820 peer CLÉ allowed-ips … endpoint … persistent-keepalive 25` | configurer à la main |
+| `wg set wg0 peer CLÉ remove` | retirer un pair (immédiat) |
+| `wg setconf wg0 F` / `wg addconf` / `wg syncconf` | charger, ajouter, synchroniser une configuration (format INI, sans les clés propres à wg-quick) |
+| `wg showconf wg0` | la configuration courante au format de `setconf` (clé privée comprise) |
+| `wg genkey`, `wg pubkey`, `wg genpsk` | les clés |
+
+`wg` ne crée pas l'interface et ne touche ni aux adresses ni aux routes : à la main, c'est
+`ip link add wg0 type wireguard`, `wg set …`, `ip address add … dev wg0`, `ip link set wg0 up`,
+`ip route add …`.
+
+**`wg-quick`** fait tout cela à partir d'un fichier `/etc/wireguard/NOM.conf` (mode `600`, il
+contient la clé privée). Le fichier a la syntaxe de `wg setconf`, plus quelques clés dans
+`[Interface]` que `wg-quick` traite lui-même : `Address` (adresse de `wg0`), `DNS` (via
+`resolvconf`), `MTU`, `Table` (`off` : ne pas ajouter de route ; un numéro : les mettre dans
+cette table), `PreUp`/`PostUp`/`PreDown`/`PostDown` (commandes, par exemple une règle de
+pare-feu), `SaveConfig` (réécrire le fichier avec l'état courant au `down`).
+
+```
+[Interface]
+PrivateKey = <clé privée>
+Address = 10.8.0.1/24
+ListenPort = 51820
+
+[Peer]
+PublicKey = <clé publique du pair>
+Endpoint = 203.0.113.5:51820
+AllowedIPs = 10.8.0.2/32, 192.168.2.0/24
+PersistentKeepalive = 25
+```
+
+`wg-quick up wg0` : `ip link add`, `wg setconf` (avec le fichier débarrassé des clés de wg-quick,
+que montre `wg-quick strip wg0`), `ip address add`, MTU, `ip link set up`, puis **une route par
+préfixe des `AllowedIPs`** (et le mécanisme du tunnel complet pour `0.0.0.0/0`, § @@ref:routing@@).
+`wg-quick down wg0` défait tout. L'unité systemd **`wg-quick@wg0`** lance `wg-quick up wg0` au
+démarrage : `systemctl enable --now wg-quick@wg0`. Deux pièges : `wg-quick up` refuse une
+interface qui existe déjà (`wg0' already exists`), et `systemctl start` échoue de même (unité
+*failed*) si l'interface a été montée à la main — démonter d'abord. Pour appliquer une
+modification du fichier **sans couper le tunnel** : `wg syncconf wg0 <(wg-quick strip wg0)` ;
+`systemctl restart wg-quick@wg0` coupe et remonte (nouvelles routes comprises).
+""": """
+
+**`wg`** configures and queries the kernel:
+
+| command | effect |
+|----------|-------|
+| `wg show` (`wg show wg0`) | state: public key, port, peers, *endpoint*, `latest handshake`, bytes transferred |
+| `wg show wg0 dump`, `wg show wg0 latest-handshakes` | forms for scripts |
+| `wg set wg0 private-key F listen-port 51820 peer KEY allowed-ips … endpoint … persistent-keepalive 25` | configure by hand |
+| `wg set wg0 peer KEY remove` | remove a peer (immediate) |
+| `wg setconf wg0 F` / `wg addconf` / `wg syncconf` | load, add, synchronise a configuration (INI format, without the keys specific to wg-quick) |
+| `wg showconf wg0` | the current configuration in the format of `setconf` (private key included) |
+| `wg genkey`, `wg pubkey`, `wg genpsk` | the keys |
+
+`wg` does not create the interface and touches neither the addresses nor the routes: by hand, it
+is `ip link add wg0 type wireguard`, `wg set …`, `ip address add … dev wg0`, `ip link set wg0 up`,
+`ip route add …`.
+
+**`wg-quick`** does all of this from a file `/etc/wireguard/NAME.conf` (mode `600`, it
+contains the private key). The file has the syntax of `wg setconf`, plus a few keys in
+`[Interface]` that `wg-quick` handles itself: `Address` (address of `wg0`), `DNS` (through
+`resolvconf`), `MTU`, `Table` (`off`: do not add any route; a number: put them in that
+table), `PreUp`/`PostUp`/`PreDown`/`PostDown` (commands, for example a firewall
+rule), `SaveConfig` (rewrite the file with the current state at `down`).
+
+```
+[Interface]
+PrivateKey = <private key>
+Address = 10.8.0.1/24
+ListenPort = 51820
+
+[Peer]
+PublicKey = <public key of the peer>
+Endpoint = 203.0.113.5:51820
+AllowedIPs = 10.8.0.2/32, 192.168.2.0/24
+PersistentKeepalive = 25
+```
+
+`wg-quick up wg0`: `ip link add`, `wg setconf` (with the file stripped of the wg-quick keys,
+as `wg-quick strip wg0` shows it), `ip address add`, MTU, `ip link set up`, then **one route per
+prefix of the `AllowedIPs`** (and the full-tunnel mechanism for `0.0.0.0/0`, § @@ref:routing@@).
+`wg-quick down wg0` undoes everything. The systemd unit **`wg-quick@wg0`** runs `wg-quick up wg0` at
+boot: `systemctl enable --now wg-quick@wg0`. Two traps: `wg-quick up` refuses an
+interface that already exists (`wg0' already exists`), and `systemctl start` fails likewise (unit
+*failed*) if the interface was brought up by hand — bring it down first. To apply a
+change to the file **without cutting the tunnel**: `wg syncconf wg0 <(wg-quick strip wg0)`;
+`systemctl restart wg-quick@wg0` takes it down and up again (new routes included).
+""",
+    "Routage : derrière le tunnel, site à site, tunnel complet": "Routing: behind the tunnel, site to site, full tunnel",
+    """
+
+Un tunnel ne transporte que ce que les **routes** y envoient, et WireGuard n'accepte que ce que
+les `AllowedIPs` autorisent : chaque réseau à joindre doit figurer, de chaque côté, dans les
+`AllowedIPs` du pair par lequel on passe (et donc dans les routes).
+
+**Un LAN derrière le concentrateur** (`lana` derrière `srv`) : sur le poste, `AllowedIPs = VPN,
+lana` ; le concentrateur **route** entre `wg0` et son LAN (`net.ipv4.ip_forward=1`, persistant
+dans `/etc/sysctl.d/`). Chemin du retour : les machines du LAN doivent savoir joindre le réseau
+du VPN — le concentrateur est leur routeur par défaut (cas de ce TP), ou une route statique, ou
+du NAT sur le concentrateur.
+
+**Site à site** : la passerelle `gwb` du site B est un pair comme un autre, avec un réseau entier
+derrière elle. Côté concentrateur, `AllowedIPs = adresseVPN_de_gwb/32, lanb` (« `lanb` est
+derrière ce pair ») ; côté `gwb`, `AllowedIPs = VPN, lana` (« le réseau du VPN et `lana` sont
+derrière `srv` ») ; les deux passerelles routent. Les autres postes joignent `lanb` **en passant
+par le concentrateur** (ils n'ont que lui comme pair) : ils ajoutent `lanb` à leurs `AllowedIPs`,
+et `gwb` doit accepter leurs adresses VPN (d'où `VPN` entier, pas seulement l'adresse de `srv`).
+WireGuard n'a pas d'équivalent de `client-to-client` : c'est le noyau du concentrateur qui
+relaie, `ip_forward` suffit.
+
+**Tunnel complet** (`AllowedIPs = 0.0.0.0/0`) : tout doit passer par `wg0`… sauf les datagrammes
+UDP chiffrés que WireGuard émet lui-même, qui doivent sortir par la vraie passerelle. OpenVPN
+résout cela par deux routes `/1` et une route hôte vers le serveur ; `wg-quick` utilise le
+**routage par politique** (*policy routing*) :
+
+```
+wg set wg0 fwmark 51820                               # les paquets émis par WireGuard sont marqués
+ip route add 0.0.0.0/0 dev wg0 table 51820            # une table dont tout va vers wg0
+ip rule add not fwmark 51820 table 51820              # … consultée par tout ce qui n'est pas marqué
+ip rule add table main suppress_prefixlength 0        # mais d'abord la table main, sauf sa route par défaut
+sysctl net.ipv4.conf.all.src_valid_mark=1
+```
+
+Les paquets marqués (les datagrammes du tunnel) suivent la table `main` et sa route par défaut ;
+les autres consultent d'abord `main` en ignorant sa route par défaut (le réseau local reste
+joignable directement : `suppress_prefixlength 0` supprime les routes de longueur 0), puis la
+table 51820 qui les envoie dans `wg0`. `ip rule`, `ip route show table 51820` et `ip route get
+ADRESSE` montrent le résultat ; `wg show wg0 fwmark` vaut `0xca6c` (51820). Côté concentrateur,
+le trafic du poste vers Internet doit être **traduit** (NAT, `masquerade` en sortie de `eth0`) :
+Internet n'a pas de route vers le réseau du VPN. Le DNS suit (`DNS = …` dans `[Interface]`).
+""": """
+
+A tunnel carries only what the **routes** send into it, and WireGuard accepts only what the
+`AllowedIPs` allow: each network to reach must appear, on each side, in the `AllowedIPs` of the
+peer one goes through (and therefore in the routes).
+
+**A LAN behind the concentrator** (`lana` behind `srv`): on the host, `AllowedIPs = VPN,
+lana`; the concentrator **routes** between `wg0` and its LAN (`net.ipv4.ip_forward=1`, made
+persistent in `/etc/sysctl.d/`). Return path: the machines of the LAN must know how to reach the
+VPN network — the concentrator is their default router (the case of this lab), or a static route,
+or NAT on the concentrator.
+
+**Site to site**: the gateway `gwb` of site B is a peer like any other, with a whole network
+behind it. On the concentrator side, `AllowedIPs = VPN_address_of_gwb/32, lanb` ("`lanb` is
+behind this peer"); on the `gwb` side, `AllowedIPs = VPN, lana` ("the VPN network and `lana` are
+behind `srv`"); both gateways route. The other hosts reach `lanb` **through the
+concentrator** (it is their only peer): they add `lanb` to their `AllowedIPs`,
+and `gwb` must accept their VPN addresses (hence the whole `VPN`, not just the address of `srv`).
+WireGuard has no equivalent of `client-to-client`: the kernel of the concentrator does the
+relaying, `ip_forward` is enough.
+
+**Full tunnel** (`AllowedIPs = 0.0.0.0/0`): everything must go through `wg0`… except the encrypted
+UDP datagrams that WireGuard sends itself, which must leave through the real gateway. OpenVPN
+solves this with two `/1` routes and a host route to the server; `wg-quick` uses
+**policy routing**:
+
+```
+wg set wg0 fwmark 51820                               # the packets sent by WireGuard are marked
+ip route add 0.0.0.0/0 dev wg0 table 51820            # a table where everything goes to wg0
+ip rule add not fwmark 51820 table 51820              # … looked up by everything that is not marked
+ip rule add table main suppress_prefixlength 0        # but first the main table, except its default route
+sysctl net.ipv4.conf.all.src_valid_mark=1
+```
+
+The marked packets (the datagrams of the tunnel) follow the `main` table and its default route;
+the others first look up `main`, ignoring its default route (the local network stays reachable
+directly: `suppress_prefixlength 0` suppresses the routes of length 0), then table 51820, which
+sends them into `wg0`. `ip rule`, `ip route show table 51820` and `ip route get
+ADDRESS` show the result; `wg show wg0 fwmark` is `0xca6c` (51820). On the concentrator side,
+the traffic of the host to the Internet must be **translated** (NAT, `masquerade` on the way out of `eth0`):
+the Internet has no route to the VPN network. DNS follows (`DNS = …` in `[Interface]`).
+""",
+    "NAT, *keepalive* et mobilité": "NAT, *keepalive* and mobility",
+    """
+
+Un poste **derrière un NAT** (box, hôtel, 4G) n'a pas d'adresse publique : personne ne peut
+l'appeler. Il n'a donc pas besoin de `ListenPort` (un port aléatoire est choisi) et c'est lui qui
+**initie** la poignée de main vers l'`Endpoint` fixe du concentrateur. La box traduit l'adresse
+et le port source ; le concentrateur voit arriver le datagramme de **l'adresse publique de la
+box** et d'un port choisi par elle, et retient ce couple comme `Endpoint` du pair (`wg show`).
+Tant que la traduction existe dans la box, le concentrateur peut répondre et même **appeler** le
+poste (c'est nécessaire pour qu'une machine du LAN le joigne).
+
+Mais une traduction UDP **expire** après quelques dizaines de secondes sans trafic (30 s par
+défaut pour une entrée Linux non confirmée, deux ou trois minutes ensuite). Un tunnel silencieux
+devient injoignable depuis l'extérieur jusqu'au prochain paquet du poste. `PersistentKeepalive
+= 25` fait émettre par le poste un paquet vide toutes les 25 s : la traduction reste ouverte,
+le concentrateur garde un `Endpoint` valable. Inutile entre deux machines à adresse publique
+(et coûteux sur batterie), indispensable derrière un NAT quand le trafic doit pouvoir venir de
+l'autre côté.
+
+La **mobilité** découle du § @@ref:protocol@@ : l'`Endpoint` est réappris à chaque paquet authentifié. Le poste
+qui change de réseau continue d'émettre vers le concentrateur, qui voit la nouvelle adresse et
+répond au bon endroit — sans renégociation, sans coupure visible. Deux pairs **tous deux**
+derrière un NAT ne peuvent pas se joindre sans relais (ou redirection de port sur une box).
+""": """
+
+A host **behind a NAT** (home router, hotel, 4G) has no public address: nobody can
+call it. It therefore needs no `ListenPort` (a random port is chosen) and it is the one that
+**initiates** the handshake towards the fixed `Endpoint` of the concentrator. The box translates
+the source address and port; the concentrator sees the datagram arrive from **the public address
+of the box** and from a port chosen by it, and keeps that pair as the `Endpoint` of the peer (`wg show`).
+As long as the translation exists in the box, the concentrator can reply and even **call** the
+host (this is needed for a machine of the LAN to reach it).
+
+But a UDP translation **expires** after a few tens of seconds without traffic (30 s by
+default for an unconfirmed Linux entry, two or three minutes afterwards). A silent tunnel
+becomes unreachable from outside until the next packet of the host. `PersistentKeepalive
+= 25` makes the host send an empty packet every 25 s: the translation stays open,
+the concentrator keeps a valid `Endpoint`. Useless between two machines with public addresses
+(and costly on battery), essential behind a NAT when traffic must be able to come from
+the other side.
+
+**Mobility** follows from § @@ref:protocol@@: the `Endpoint` is learnt again with every authenticated packet. The host
+that changes network keeps sending to the concentrator, which sees the new address and
+replies to the right place — no renegotiation, no visible interruption. Two peers that are **both**
+behind a NAT cannot reach each other without a relay (or port forwarding on a box).
+""",
+    "Observation et diagnostic": "Observation and troubleshooting",
+    """
+
+- `wg show` : le premier réflexe. `latest handshake` absent ou oldpc (> 3 min) = pas de
+  session ; `transfer` qui n'augmente qu'en émission = l'autre côté ne répond pas ou nous jette.
+  `endpoint` dit où le pair a été vu pour la dernière fois.
+- `ip -br a` (adresse de `wg0`), `ip route` (une route par préfixe des `AllowedIPs`), `ip rule`
+  et `ip route show table 51820` (tunnel complet), `ip route get ADRESSE` (par où partirait un
+  paquet), `ss -ulnp` (le port d'écoute ; il appartient au noyau, sans processus).
+- **Sur le réseau public** : `tcpdump -ni eth0 udp port 51820` ne montre que des datagrammes UDP
+  (148 et 92 octets pour la poignée de main, puis des paquets de données) entre les adresses
+  publiques — ni adresses internes, ni protocoles, ni identité des pairs. `tcpdump -ni wg0`
+  montre le trafic **en clair** dans le tunnel.
+- `journalctl -u wg-quick@wg0` : les commandes exécutées par `wg-quick` et leurs erreurs. Le noyau
+  ne journalise rien par défaut ; `echo module wireguard +p > /sys/kernel/debug/dynamic_debug/control`
+  puis `dmesg -w` montre les poignées de main et leurs échecs (`Invalid handshake initiation`,
+  `Packet has unallowed src IP`…).
+
+| symptôme | causes classiques |
+|----------|-------------------|
+| aucun `latest handshake` | clé publique fausse d'un côté (c'est le cas le plus fréquent : clés échangées à l'envers), `Endpoint` ou port faux, pare-feu bloquant l'UDP, mauvaise `PresharedKey` |
+| poignée de main OK, mais `ping` sans réponse | `AllowedIPs` incomplets d'un côté (le paquet ou la réponse est jeté), route manquante, `ip_forward` absent sur une passerelle, pare-feu |
+| `ping: sendmsg: Required key not available` | la route envoie le paquet dans `wg0` mais aucun pair n'a cette destination dans ses `AllowedIPs` |
+| `ping: sendmsg: Destination address required` | le pair n'a pas d'`Endpoint` connu (il n'a encore jamais parlé) |
+| `wg0' already exists` | `wg-quick up` ou `systemctl start` sur une interface déjà montée |
+| `RTNETLINK answers: Operation not supported` | module `wireguard` absent du noyau |
+| ça marche en `ping`, pas pour de gros transferts | MTU : `ping -s 1400 -M do`, baisser `MTU` dans `[Interface]` |
+
+WireGuard n'exige pas d'horloges synchronisées (l'horodatage de la poignée de main ne sert qu'à
+rejeter un rejeu), ni de DNS, ni de certificats valides : un tunnel qui ne monte pas est presque
+toujours une affaire de clés, d'adresses ou d'`AllowedIPs`.
+""": """
+
+- `wg show`: the first reflex. `latest handshake` missing or old (> 3 min) = no
+  session; `transfer` that only grows on the sending side = the other side does not answer or drops our packets.
+  `endpoint` says where the peer was last seen.
+- `ip -br a` (address of `wg0`), `ip route` (one route per prefix of the `AllowedIPs`), `ip rule`
+  and `ip route show table 51820` (full tunnel), `ip route get ADDRESS` (which way a
+  packet would leave), `ss -ulnp` (the listening port; it belongs to the kernel, with no process).
+- **On the public network**: `tcpdump -ni eth0 udp port 51820` shows only UDP datagrams
+  (148 and 92 bytes for the handshake, then data packets) between the public
+  addresses — no internal addresses, no protocols, no identity of the peers. `tcpdump -ni wg0`
+  shows the traffic **in the clear** inside the tunnel.
+- `journalctl -u wg-quick@wg0`: the commands run by `wg-quick` and their errors. The kernel
+  logs nothing by default; `echo module wireguard +p > /sys/kernel/debug/dynamic_debug/control`
+  then `dmesg -w` shows the handshakes and their failures (`Invalid handshake initiation`,
+  `Packet has unallowed src IP`…).
+
+| symptom | usual causes |
+|----------|-------------------|
+| no `latest handshake` | wrong public key on one side (the most frequent case: keys exchanged the wrong way round), wrong `Endpoint` or port, firewall blocking UDP, wrong `PresharedKey` |
+| handshake OK, but `ping` gets no reply | incomplete `AllowedIPs` on one side (the packet or the reply is dropped), missing route, no `ip_forward` on a gateway, firewall |
+| `ping: sendmsg: Required key not available` | the route sends the packet into `wg0` but no peer has this destination in its `AllowedIPs` |
+| `ping: sendmsg: Destination address required` | the peer has no known `Endpoint` (it has never spoken yet) |
+| `wg0' already exists` | `wg-quick up` or `systemctl start` on an interface that is already up |
+| `RTNETLINK answers: Operation not supported` | `wireguard` module missing from the kernel |
+| it works with `ping`, not for large transfers | MTU: `ping -s 1400 -M do`, lower `MTU` in `[Interface]` |
+
+WireGuard requires no synchronised clocks (the timestamp of the handshake only serves to
+reject a replay), no DNS, no valid certificates: a tunnel that does not come up is almost
+always a matter of keys, addresses or `AllowedIPs`.
+""",
+    "Sécurité et limites": "Security and limits",
+    """
+
+- **Clés privées** : créées avec `umask 077`, fichiers en mode `600` dans `/etc/wireguard`
+  (mode `700`), jamais copiées ; une clé **par appareil**, jamais partagée entre deux machines
+  (deux pairs avec la même clé se disputeraient l'`Endpoint`).
+- **Clé pré-partagée** (`PresharedKey`, `wg genpsk`) : une clé symétrique de 32 octets mélangée
+  dans la poignée de main, propre à chaque couple de pairs, distribuée hors ligne. Elle ajoute une
+  couche que la cryptanalyse d'un futur ordinateur **quantique** (qui casserait Curve25519) ne
+  lève pas. Un changement de clé pré-partagée ne coupe pas la session en cours : il agit à la
+  **prochaine poignée de main** (dans les deux minutes).
+- **Révocation** = **retirer le pair** (`wg set wg0 peer CLÉ remove`, ou supprimer sa section et
+  `wg syncconf`) : effet immédiat, la session est détruite. Il n'y a **ni liste de révocation ni
+  date d'expiration** : une clé est valable tant qu'elle est configurée. À grande échelle, il faut
+  un inventaire des clés et un outil qui pousse les configurations (c'est ce qu'ajoutent les
+  plans de contrôle). Rotation d'une clé compromise : nouvelle paire, nouvelle clé publique chez
+  tous les pairs.
+- **Surface d'attaque** minime : pas de négociation, pas de réponse aux inconnus (furtivité), code
+  court audité, protocole vérifié formellement (Tamarin). Les pairs ne peuvent pas usurper
+  d'adresse (§ @@ref:allowed-ips@@) : les `AllowedIPs` sont un pare-feu par construction ; on filtre le reste sur
+  `wg0` (`nft … iifname "wg0" …`).
+- **Ce que WireGuard ne fait pas** : authentifier un *utilisateur* (mot de passe, second
+  facteur), attribuer des adresses (chaque poste a la sienne, fixe, dans sa configuration),
+  passer par TCP ou un proxy (réseaux qui bloquent l'UDP : encapsuler dans `udp2raw`,
+  `wstunnel`…), cacher qu'un tunnel existe (métadonnées visibles : adresses, volumes, rythme
+  des keepalives).
+""": """
+
+- **Private keys**: created with `umask 077`, files in mode `600` in `/etc/wireguard`
+  (mode `700`), never copied; one key **per device**, never shared between two machines
+  (two peers with the same key would fight over the `Endpoint`).
+- **Preshared key** (`PresharedKey`, `wg genpsk`): a 32-byte symmetric key mixed
+  into the handshake, specific to each pair of peers, distributed offline. It adds a
+  layer that the cryptanalysis of a future **quantum** computer (which would break Curve25519) does
+  not remove. A change of preshared key does not cut the current session: it takes effect at the
+  **next handshake** (within two minutes).
+- **Revocation** = **removing the peer** (`wg set wg0 peer KEY remove`, or deleting its section and
+  `wg syncconf`): immediate effect, the session is destroyed. There is **neither a revocation list nor
+  an expiry date**: a key is valid as long as it is configured. At large scale, you need
+  an inventory of the keys and a tool that pushes the configurations (this is what the
+  control planes add). Rotation of a compromised key: new key pair, new public key on
+  all the peers.
+- Minimal **attack surface**: no negotiation, no reply to strangers (stealth), short audited
+  code, formally verified protocol (Tamarin). Peers cannot spoof
+  an address (§ @@ref:allowed-ips@@): the `AllowedIPs` are a firewall by construction; the rest is filtered on
+  `wg0` (`nft … iifname "wg0" …`).
+- **What WireGuard does not do**: authenticate a *user* (password, second
+  factor), assign addresses (each host has its own, fixed, in its configuration),
+  go through TCP or a proxy (networks that block UDP: encapsulate in `udp2raw`,
+  `wstunnel`…), hide that a tunnel exists (visible metadata: addresses, volumes, rhythm
+  of the keepalives).
+""",
+    """
+| réseau | préfixe | machines |
+|--------|---------|----------|
+| `wan` (« Internet ») | `{wan}` | `srv` eth0 (`{srv_wan}`), `gwb` eth0 (`{gwb_wan}`), `box` eth0 (`{box_wan}`), `inet` eth0 (`{inet_wan}`, routeur par défaut du wan) |
+| `internet` (« le reste d'Internet ») | `{internet}` | `inet` eth1 (`{inet_internet}`), `web` (`{web}`, serveur web) |
+| `hotel` (derrière le NAT de la box) | `{hotel}` | `box` eth1 (`{box_hotel}`, routeur par défaut), `laptop` (`{laptop}`) |
+| `lana` (site A) | `{lana}` | `srv` eth1 (`{srv_lana}`, routeur par défaut), `m1` (`{m1}`, serveur web) |
+| `lanb` (site B) | `{lanb}` | `gwb` eth1 (`{gwb_lanb}`, routeur par défaut), `m2` (`{m2}`, serveur web) |
+""": """
+| network | prefix | machines |
+|--------|---------|----------|
+| `wan` ("Internet") | `{wan}` | `srv` eth0 (`{srv_wan}`), `gwb` eth0 (`{gwb_wan}`), `box` eth0 (`{box_wan}`), `inet` eth0 (`{inet_wan}`, default router of the wan) |
+| `internet` ("the rest of the Internet") | `{internet}` | `inet` eth1 (`{inet_internet}`), `web` (`{web}`, web server) |
+| `hotel` (behind the NAT of the box) | `{hotel}` | `box` eth1 (`{box_hotel}`, default router), `laptop` (`{laptop}`) |
+| `lana` (site A) | `{lana}` | `srv` eth1 (`{srv_lana}`, default router), `m1` (`{m1}`, web server) |
+| `lanb` (site B) | `{lanb}` | `gwb` eth1 (`{gwb_lanb}`, default router), `m2` (`{m2}`, web server) |
+""",
+    """
+| paramètre | valeur pour **votre** instance |
+|-----------|--------------------------------|
+| réseau du VPN | **`{vpn}`**, port UDP **`{port}`** |
+| adresse VPN de `srv` (concentrateur) | **`{vpn_srv}`** |
+| adresse VPN de `gwb` | **`{vpn_gwb}`** |
+| adresse VPN de `laptop` | **`{vpn_laptop}`** |
+| poste `colleague` : clé publique, adresse VPN | `{pub_colleague}`, **`{vpn_colleague}`** |
+| poste `oldpc` : clé publique, adresse VPN | `{pub_oldpc}`, **`{vpn_oldpc}`** |
+| phrase servie par `http://m1/secret.txt` (partie 4) | à lire depuis `laptop` |
+| phrase servie par `http://m2/secret.txt` (partie 5) | à lire depuis `laptop` |
+""": """
+| parameter | value for **your** instance |
+|-----------|--------------------------------|
+| VPN network | **`{vpn}`**, UDP port **`{port}`** |
+| VPN address of `srv` (concentrator) | **`{vpn_srv}`** |
+| VPN address of `gwb` | **`{vpn_gwb}`** |
+| VPN address of `laptop` | **`{vpn_laptop}`** |
+| host `colleague`: public key, VPN address | `{pub_colleague}`, **`{vpn_colleague}`** |
+| host `oldpc`: public key, VPN address | `{pub_oldpc}`, **`{vpn_oldpc}`** |
+| sentence served by `http://m1/secret.txt` (part 4) | to be read from `laptop` |
+| sentence served by `http://m2/secret.txt` (part 5) | to be read from `laptop` |
+""",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente WireGuard (clés, pairs, `AllowedIPs`, protocole),
+les outils `wg` et `wg-quick`, le routage et le diagnostic.
+
+Ce TP met en place des tunnels **WireGuard** entre trois sites reliés par un réseau `wan` qui
+joue le rôle d'Internet : le **site A** (passerelle et concentrateur `srv`, serveur interne
+`m1`), le **site B** (passerelle `gwb`, machine `m2`) et un poste **nomade** (`laptop`) à l'hôtel, derrière
+la `box` de l'hôtel qui fait du NAT. Le routeur `inet` (le fournisseur d'accès) est le routeur par
+défaut du `wan` ; derrière lui, le réseau `internet` représente le reste d'Internet avec le
+serveur web `web`.
+""": """
+Read the **Informations** tab: it presents WireGuard (keys, peers, `AllowedIPs`, protocol),
+the `wg` and `wg-quick` tools, routing and troubleshooting.
+
+This lab sets up **WireGuard** tunnels between three sites linked by a `wan` network that
+plays the role of the Internet: **site A** (gateway and concentrator `srv`, internal server
+`m1`), **site B** (gateway `gwb`, machine `m2`) and a **roaming** host (`laptop`) at the hotel, behind
+the `box` of the hotel, which does NAT. The router `inet` (the Internet service provider) is the
+default router of the `wan`; behind it, the `internet` network stands for the rest of the Internet,
+with the web server `web`.
+""",
+    """
+Déjà en place (ne pas modifier) : adresses, routes par défaut, le NAT de la `box`, `/etc/hosts`
+(les noms `srv_wan`, `srv_lana`, `gwb_wan`, `gwb_lanb`, `box_wan`, `box_hotel`, `laptop`,
+`inet_wan`, `inet_internet`, `web`, `m1`, `m2`), les serveurs web de `m1`, `m2` et `web` (la page
+`/` affiche l'adresse du client telle que le serveur la voit, `/secret.txt` une phrase). Il n'y a
+**pas de DNS**. `srv`, `gwb` et `laptop` tournent avec systemd (`systemctl`, `journalctl`) ;
+`/shared` est un répertoire commun à toutes les machines pour échanger des fichiers (les clés
+publiques !).
+
+**Plan du TP.**
+
+1. **Clés et premier tunnel** entre `srv` et `gwb`, à la main (`wg genkey`, `ip link`, `wg set`) ;
+2. **Configuration persistante** avec `wg-quick` (`/etc/wireguard/wg0.conf`) et systemd ;
+3. **Poste nomade** (`laptop`) derrière le NAT de l'hôtel : `srv` concentrateur, `PersistentKeepalive`,
+   deux autres postes connus par leur clé publique (`colleague`, `oldpc`) ;
+4. **Accès au LAN** du site A depuis le nomade (`AllowedIPs`, forwarding) ;
+5. **Site à site** : `lanb` ↔ `lana`, le nomade vers `lanb` en passant par `srv` ;
+6. **Tunnel complet** pour le nomade (`0.0.0.0/0`, routage par politique) et NAT sur `srv` ;
+7. **Clé pré-partagée** et **retrait** du pair `oldpc`.
+
+Règles valables pour tout le TP :
+
+- les parties sont à faire **dans l'ordre** ;
+- l'interface s'appelle **`wg0`** partout, les clés sont dans `/etc/wireguard/private.key` et
+  `/etc/wireguard/public.key`, la configuration persistante dans `/etc/wireguard/wg0.conf`
+  (unité `wg-quick@wg0`) ;
+- la configuration d'une partie terminée **reste en place** : à la fin, les trois machines sont
+  reliées en même temps ;
+- l'évaluation observe les tunnels tels qu'ils tournent au moment où elle est lancée (`wg show`,
+  `ping` à travers les tunnels, trafic sur le `wan`) : remontez un tunnel arrêté pour un essai.
+  Les valeurs ci-dessous sont propres à votre instance et doivent être utilisées telles quelles.
+""": """
+Already in place (do not modify): addresses, default routes, the NAT of the `box`, `/etc/hosts`
+(the names `srv_wan`, `srv_lana`, `gwb_wan`, `gwb_lanb`, `box_wan`, `box_hotel`, `laptop`,
+`inet_wan`, `inet_internet`, `web`, `m1`, `m2`), the web servers of `m1`, `m2` and `web` (the page
+`/` shows the address of the client as the server sees it, `/secret.txt` a sentence). There is
+**no DNS**. `srv`, `gwb` and `laptop` run systemd (`systemctl`, `journalctl`);
+`/shared` is a directory common to all the machines, to exchange files (the public
+keys!).
+
+**Plan of the lab.**
+
+1. **Keys and a first tunnel** between `srv` and `gwb`, by hand (`wg genkey`, `ip link`, `wg set`);
+2. **Persistent configuration** with `wg-quick` (`/etc/wireguard/wg0.conf`) and systemd;
+3. **Roaming host** (`laptop`) behind the NAT of the hotel: `srv` as concentrator, `PersistentKeepalive`,
+   two other hosts known by their public key (`colleague`, `oldpc`);
+4. **Access to the LAN** of site A from the roaming host (`AllowedIPs`, forwarding);
+5. **Site to site**: `lanb` ↔ `lana`, the roaming host to `lanb` through `srv`;
+6. **Full tunnel** for the roaming host (`0.0.0.0/0`, policy routing) and NAT on `srv`;
+7. **Preshared key** and **removal** of the peer `oldpc`.
+
+Rules valid for the whole lab:
+
+- the parts must be done **in order**;
+- the interface is called **`wg0`** everywhere, the keys are in `/etc/wireguard/private.key` and
+  `/etc/wireguard/public.key`, the persistent configuration in `/etc/wireguard/wg0.conf`
+  (unit `wg-quick@wg0`);
+- the configuration of a finished part **stays in place**: at the end, the three machines are
+  linked at the same time;
+- the evaluation observes the tunnels as they run at the moment it is started (`wg show`,
+  `ping` through the tunnels, traffic on the `wan`): bring a stopped tunnel back up for a try.
+  The values below are specific to your instance and must be used as they are.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
+projet ; les fichiers de configuration complets y figurent, avec les clés de l'état `final`
+(celles des étudiants sont différentes, évidemment ; `colleague` et `oldpc` ont les clés publiques
+de l'énoncé).
+
+- L'état `final` (onglet *Appliquer une configuration*) applique toute la solution et remplit les
+  formulaires : fichiers de clés, les trois `wg0.conf` de la partie 7, forwarding, NAT, unités
+  systemd, puis des `ping` pour monter les sessions.
+- L'évaluation lit `wg show all dump` (clés, pairs, `AllowedIPs`, *endpoints*, poignées de main),
+  les fichiers `wg0.conf` (la clé privée du fichier doit être celle de l'interface), les unités,
+  les routes (`ip route`, `ip rule`, `ip route get`), puis fait des `ping` et des `curl` **à travers
+  les tunnels** (de `laptop`, `m1`, `m2`, `srv`, `gwb`) pendant que la machine cachée `probe`, sur
+  le `wan`, capture le trafic : on vérifie que le trafic du nomade n'apparaît qu'en UDP {port}
+  depuis la box et que ses requêtes web sortent avec l'adresse publique de `srv`.
+- La sonde se connecte ensuite au concentrateur avec la clé privée de `colleague` (doit obtenir une
+  poignée de main et un `ping`), puis avec celle de `oldpc` (ne doit plus rien obtenir après la
+  partie 7). Ces tentatives apparaissent dans `wg show` sur `srv` (*endpoint* de ces pairs =
+  adresse de la sonde, `{probe}`).
+- Une évaluation dure environ 25 s (capture de 8 s, deux connexions de la sonde).
+""": """
+**For the instructor.** Each question ends with its solution, computed for the addresses of this
+project; the complete configuration files are included, with the keys of the `final` state
+(those of the students are different, of course; `colleague` and `oldpc` have the public keys
+of the handout).
+
+- The `final` state (*Apply Configuration* tab) applies the whole solution and fills in the
+  forms: key files, the three `wg0.conf` of part 7, forwarding, NAT, systemd
+  units, then `ping`s to bring the sessions up.
+- The evaluation reads `wg show all dump` (keys, peers, `AllowedIPs`, *endpoints*, handshakes),
+  the `wg0.conf` files (the private key of the file must be that of the interface), the units,
+  the routes (`ip route`, `ip rule`, `ip route get`), then runs `ping`s and `curl`s **through
+  the tunnels** (from `laptop`, `m1`, `m2`, `srv`, `gwb`) while the hidden machine `probe`, on
+  the `wan`, captures the traffic: it checks that the traffic of the roaming host appears only as UDP {port}
+  from the box and that its web requests leave with the public address of `srv`.
+- The probe then connects to the concentrator with the private key of `colleague` (must get a
+  handshake and a `ping`), then with that of `oldpc` (must get nothing any more after
+  part 7). These attempts show in `wg show` on `srv` (*endpoint* of these peers =
+  address of the probe, `{probe}`).
+- An evaluation takes about 25 s (8 s capture, two connections of the probe).
+""",
+    "Partie 1 — Clés et premier tunnel srv ↔ gwb à la main": "Part 1 — Keys and a first tunnel srv ↔ gwb by hand",
+    "Premier tunnel entre srv et gwb": "First tunnel between srv and gwb",
+    """
+Premier tunnel, à la main, entre les deux passerelles `srv` (site A) et `gwb` (site B), qui ont
+toutes deux une adresse publique sur le `wan`.
+
+**1.** Sur `srv` puis sur `gwb`, créez une paire de clés dans `/etc/wireguard/` (répertoire
+réservé à `root`) :
+
+```
+cd /etc/wireguard
+umask 077
+wg genkey > private.key
+wg pubkey < private.key > public.key
+ls -l ; cat public.key
+```
+
+Échangez les **clés publiques** (par `/shared`, ou en les recopiant) : la clé privée ne quitte
+jamais sa machine.
+
+**2.** Sur `srv`, créez l'interface, configurez-la et adressez-la :
+
+```
+ip link add wg0 type wireguard
+wg set wg0 private-key /etc/wireguard/private.key listen-port {port} \\
+       peer CLÉ_PUBLIQUE_DE_GWB allowed-ips {vpn_gwb}/32 endpoint {gwb_wan}:{port}
+ip address add {vpn_srv}/24 dev wg0
+ip link set wg0 up
+wg show
+```
+
+**3.** Même chose sur `gwb` avec sa clé privée, `listen-port {port}`, le pair `srv`
+(`allowed-ips {vpn_srv}/32`, `endpoint {srv_wan}:{port}`) et l'adresse `{vpn_gwb}/24`.
+
+**4.** Depuis `gwb` : `ping {vpn_srv}`. Observez `wg show` des deux côtés (*latest handshake*,
+*transfer*), puis lancez `tcpdump -ni eth0 udp` sur `srv` pendant un nouveau `ping`. Attendez
+trois minutes sans trafic et relisez `wg show`. Essayez enfin `ping {vpn_laptop}` depuis `gwb` :
+que dit `ping` ?
+""": """
+First tunnel, by hand, between the two gateways `srv` (site A) and `gwb` (site B), which
+both have a public address on the `wan`.
+
+**1.** On `srv` then on `gwb`, create a key pair in `/etc/wireguard/` (a directory
+reserved for `root`):
+
+```
+cd /etc/wireguard
+umask 077
+wg genkey > private.key
+wg pubkey < private.key > public.key
+ls -l ; cat public.key
+```
+
+Exchange the **public keys** (through `/shared`, or by copying them): the private key never
+leaves its machine.
+
+**2.** On `srv`, create the interface, configure it and give it an address:
+
+```
+ip link add wg0 type wireguard
+wg set wg0 private-key /etc/wireguard/private.key listen-port {port} \\
+       peer PUBLIC_KEY_OF_GWB allowed-ips {vpn_gwb}/32 endpoint {gwb_wan}:{port}
+ip address add {vpn_srv}/24 dev wg0
+ip link set wg0 up
+wg show
+```
+
+**3.** The same on `gwb` with its private key, `listen-port {port}`, the peer `srv`
+(`allowed-ips {vpn_srv}/32`, `endpoint {srv_wan}:{port}`) and the address `{vpn_gwb}/24`.
+
+**4.** From `gwb`: `ping {vpn_srv}`. Look at `wg show` on both sides (*latest handshake*,
+*transfer*), then run `tcpdump -ni eth0 udp` on `srv` during a new `ping`. Wait
+three minutes without traffic and read `wg show` again. Finally, try `ping {vpn_laptop}` from `gwb`:
+what does `ping` say?
+""",
+    """
+- protocole et port vus sur le `wan` pendant le `ping` : @@{proto:>UDP|TCP|ICMP|ESP}@@ @@{port:[0-9]+}@@
+- le `ping` (ICMP) est-il visible en clair sur le `wan` ? @@{icmp_wan:>non, il est chiffré dans les datagrammes UDP|oui, entre les deux adresses du tunnel|oui, entre les deux adresses publiques}@@
+- ce qui authentifie le pair : @@{auth:>sa clé publique, connue à l'avance de l'autre pair|une autorité de certification commune|un mot de passe|son adresse IP}@@
+- quand a lieu une poignée de main ? @@{handshake:>quand il y a un paquet à envoyer, puis toutes les deux minutes tant que le trafic dure|une seule fois, à la création de l'interface|toutes les secondes, en permanence}@@
+- `ping` de l'adresse VPN de `laptop` depuis `gwb` : @@{nopeer:>Required key not available : aucun pair n'a cette destination dans ses AllowedIPs|Destination address required : le pair n'a pas d'endpoint|le ping part vers srv qui le jette en silence}@@
+""": """
+- protocol and port seen on the `wan` during the `ping`: @@{proto:>UDP|TCP|ICMP|ESP}@@ @@{port:[0-9]+}@@
+- is the `ping` (ICMP) visible in the clear on the `wan`? @@{icmp_wan:>no, it is encrypted inside the UDP datagrams>>>non, il est chiffré dans les datagrammes UDP|yes, between the two addresses of the tunnel>>>oui, entre les deux adresses du tunnel|yes, between the two public addresses>>>oui, entre les deux adresses publiques}@@
+- what authenticates the peer: @@{auth:>its public key, known in advance by the other peer>>>sa clé publique, connue à l'avance de l'autre pair|a common certificate authority>>>une autorité de certification commune|a password>>>un mot de passe|its IP address>>>son adresse IP}@@
+- when does a handshake take place? @@{handshake:>when there is a packet to send, then every two minutes as long as the traffic lasts>>>quand il y a un paquet à envoyer, puis toutes les deux minutes tant que le trafic dure|only once, when the interface is created>>>une seule fois, à la création de l'interface|every second, all the time>>>toutes les secondes, en permanence}@@
+- `ping` of the VPN address of `laptop` from `gwb`: @@{nopeer:>Required key not available: no peer has this destination in its AllowedIPs>>>Required key not available : aucun pair n'a cette destination dans ses AllowedIPs|Destination address required: the peer has no endpoint>>>Destination address required : le pair n'a pas d'endpoint|the ping goes to srv, which silently drops it>>>le ping part vers srv qui le jette en silence}@@
+""",
+    """
+**Solution.** Sur `srv` (clés de l'état `final`) :
+
+```
+{set_srv}```
+
+Sur `gwb` :
+
+```
+{set_gwb}```
+
+- Sur le `wan`, on ne voit que des datagrammes **UDP {port}** entre `{srv_wan}` et `{gwb_wan}` : 148 et
+  92 octets pour la poignée de main, puis 128 octets par paquet de `ping` (84 octets arrondis à 96, plus
+  32 d'en-tête). `tcpdump -ni wg0` montre l'ICMP en clair. Après trois minutes sans trafic, `latest
+  handshake` vieillit et aucun paquet ne circule : il n'y a pas de session « ouverte », la prochaine
+  donnée relancera une poignée de main.
+- `ping {vpn_laptop}` depuis `gwb` : la route `{vpn}` envoie le paquet dans `wg0` mais aucun pair ne
+  contient cette adresse dans ses `AllowedIPs` : `ping: sendmsg: Required key not available`.
+- L'évaluation lit `wg show all dump` (clé publique de l'interface = celle dérivée de
+  `/etc/wireguard/private.key`, mode 600 ; chaque pair connaît l'autre avec la bonne `AllowedIPs` ; `srv`
+  écoute en UDP {port}), l'adresse de `wg0`, une poignée de main récente et un `ping` dans chaque sens.
+- Réponses : {proto} {port_answer} ; {icmp_wan} ; {auth} ; {handshake} ; {nopeer}.
+""": """
+**Solution.** On `srv` (keys of the `final` state):
+
+```
+{set_srv}```
+
+On `gwb`:
+
+```
+{set_gwb}```
+
+- On the `wan`, only **UDP {port}** datagrams between `{srv_wan}` and `{gwb_wan}` are seen: 148 and
+  92 bytes for the handshake, then 128 bytes per `ping` packet (84 bytes rounded up to 96, plus
+  32 bytes of header). `tcpdump -ni wg0` shows the ICMP in the clear. After three minutes without traffic,
+  `latest handshake` grows older and no packet flows: there is no "open" session, the next
+  data will trigger a new handshake.
+- `ping {vpn_laptop}` from `gwb`: the route `{vpn}` sends the packet into `wg0` but no peer
+  has this address in its `AllowedIPs`: `ping: sendmsg: Required key not available`.
+- The evaluation reads `wg show all dump` (public key of the interface = the one derived from
+  `/etc/wireguard/private.key`, mode 600; each peer knows the other with the right `AllowedIPs`; `srv`
+  listens on UDP {port}), the address of `wg0`, a recent handshake and a `ping` in each direction.
+- Answers: {proto} {port_answer}; {icmp_wan}; {auth}; {handshake}; {nopeer}.
+""",
+    "/etc/wireguard/private.key (mode 600) sur srv et sur gwb : la clé de l'interface wg0": "/etc/wireguard/private.key (mode 600) on srv and on gwb: the key of the wg0 interface",
+    "wg0 de srv connaît la clé publique de gwb (AllowedIPs {gwb}), et réciproquement ({srv})": "wg0 of srv knows the public key of gwb (AllowedIPs {gwb}), and vice versa ({srv})",
+    "wg0 porte {srv} sur srv et {gwb} sur gwb": "wg0 holds {srv} on srv and {gwb} on gwb",
+    "wg0 de srv écoute en UDP {port}": "wg0 of srv listens on UDP {port}",
+    "poignée de main récente entre srv et gwb (latest handshake)": "recent handshake between srv and gwb (latest handshake)",
+    "ping à travers le tunnel dans les deux sens": "ping through the tunnel in both directions",
+    "observation du tunnel sur le wan, identité du pair, poignées de main, cryptokey routing": "observation of the tunnel on the wan, identity of the peer, handshakes, cryptokey routing",
+    "Partie 2 — Configuration persistante : wg-quick et systemd": "Part 2 — Persistent configuration: wg-quick and systemd",
+    "wg-quick et l'unité wg-quick@wg0": "wg-quick and the wg-quick@wg0 unit",
+    """
+Les commandes de la partie 1 ne survivent pas à un redémarrage. `wg-quick` lit un fichier
+`/etc/wireguard/wg0.conf` et fait tout le travail (`ip link`, `wg setconf`, adresse, routes) ;
+l'unité systemd `wg-quick@wg0` le lance au démarrage.
+
+**1.** Sur `srv`, supprimez l'interface de la partie 1 (`ip link del wg0`) et écrivez
+`/etc/wireguard/wg0.conf` (mode `600`) :
+
+```
+[Interface]
+PrivateKey = CLÉ_PRIVÉE_DE_SRV
+Address = {vpn_srv}/24
+ListenPort = {port}
+
+[Peer]
+# gwb, passerelle du site B
+PublicKey = CLÉ_PUBLIQUE_DE_GWB
+Endpoint = {gwb_wan}:{port}
+AllowedIPs = {vpn_gwb}/32
+```
+
+Montez-la avec `wg-quick up wg0` et lisez ce qu'affichent `wg-quick`, `wg show`, `ip a show wg0`
+et `ip route` ; puis démontez-la (`wg-quick down wg0`) et activez l'unité :
+`systemctl enable --now wg-quick@wg0`, `systemctl status wg-quick@wg0`.
+
+**2.** Même chose sur `gwb` : `Address = {vpn_gwb}/24`, `ListenPort = {port}`, pair `srv` avec
+`Endpoint = {srv_wan}:{port}` et `AllowedIPs = {vpn_srv}/32`.
+
+**3.** Vérifiez le `ping` dans les deux sens et comparez le fichier, `wg showconf wg0` et
+`wg-quick strip wg0`. Pour appliquer une modification du fichier sans couper le tunnel :
+`wg syncconf wg0 <(wg-quick strip wg0)` ; `systemctl restart wg-quick@wg0` le coupe et le remonte.
+Que se passe-t-il si on lance `systemctl start wg-quick@wg0` alors que `wg0` a été montée à la main ?
+""": """
+The commands of part 1 do not survive a reboot. `wg-quick` reads a file
+`/etc/wireguard/wg0.conf` and does all the work (`ip link`, `wg setconf`, address, routes);
+the systemd unit `wg-quick@wg0` runs it at boot.
+
+**1.** On `srv`, delete the interface of part 1 (`ip link del wg0`) and write
+`/etc/wireguard/wg0.conf` (mode `600`):
+
+```
+[Interface]
+PrivateKey = PRIVATE_KEY_OF_SRV
+Address = {vpn_srv}/24
+ListenPort = {port}
+
+[Peer]
+# gwb, gateway of site B
+PublicKey = PUBLIC_KEY_OF_GWB
+Endpoint = {gwb_wan}:{port}
+AllowedIPs = {vpn_gwb}/32
+```
+
+Bring it up with `wg-quick up wg0` and read what `wg-quick`, `wg show`, `ip a show wg0`
+and `ip route` display; then bring it down (`wg-quick down wg0`) and enable the unit:
+`systemctl enable --now wg-quick@wg0`, `systemctl status wg-quick@wg0`.
+
+**2.** The same on `gwb`: `Address = {vpn_gwb}/24`, `ListenPort = {port}`, peer `srv` with
+`Endpoint = {srv_wan}:{port}` and `AllowedIPs = {vpn_srv}/32`.
+
+**3.** Check the `ping` in both directions and compare the file, `wg showconf wg0` and
+`wg-quick strip wg0`. To apply a change to the file without cutting the tunnel:
+`wg syncconf wg0 <(wg-quick strip wg0)`; `systemctl restart wg-quick@wg0` takes it down and up again.
+What happens if you run `systemctl start wg-quick@wg0` while `wg0` was brought up by hand?
+""",
+    """
+- `wg-quick strip wg0` retire du fichier : @@{strip:>les clés propres à wg-quick (Address, DNS, MTU, Table, PostUp…), que wg ne connaît pas|la clé privée|les sections [Peer]}@@
+- après `wg-quick up`, `ip route` montre : @@{route:>la route du réseau de l'Address, plus une route par préfixe des AllowedIPs|aucune route : WireGuard route par les clés|seulement une route par défaut vers wg0}@@
+- appliquer un fichier modifié sans couper le tunnel : @@{reload:>wg syncconf wg0 <(wg-quick strip wg0)|systemctl restart wg-quick@wg0|wg-quick down wg0 ; wg-quick up wg0}@@
+- mode du fichier `wg0.conf` : @@{mode:>600 : il contient la clé privée|644 : il ne contient que des clés publiques|755 : wg-quick l'exécute}@@
+- `systemctl start wg-quick@wg0` alors que `wg0` a été montée à la main : @@{already:>systemctl start échoue (wg0 already exists) et l'unité est failed : démonter d'abord|l'unité prend le contrôle de l'interface existante|l'interface est recréée avec le fichier}@@
+""": """
+- `wg-quick strip wg0` removes from the file: @@{strip:>the keys specific to wg-quick (Address, DNS, MTU, Table, PostUp…), which wg does not know>>>les clés propres à wg-quick (Address, DNS, MTU, Table, PostUp…), que wg ne connaît pas|the private key>>>la clé privée|the [Peer] sections>>>les sections [Peer]}@@
+- after `wg-quick up`, `ip route` shows: @@{route:>the route of the network of the Address, plus one route per prefix of the AllowedIPs>>>la route du réseau de l'Address, plus une route par préfixe des AllowedIPs|no route: WireGuard routes by keys>>>aucune route : WireGuard route par les clés|only a default route to wg0>>>seulement une route par défaut vers wg0}@@
+- apply a modified file without cutting the tunnel: @@{reload:>wg syncconf wg0 <(wg-quick strip wg0)|systemctl restart wg-quick@wg0|wg-quick down wg0 ; wg-quick up wg0}@@
+- mode of the `wg0.conf` file: @@{mode:>600: it contains the private key>>>600 : il contient la clé privée|644: it contains only public keys>>>644 : il ne contient que des clés publiques|755: wg-quick runs it>>>755 : wg-quick l'exécute}@@
+- `systemctl start wg-quick@wg0` while `wg0` was brought up by hand: @@{already:>systemctl start fails (wg0 already exists) and the unit is failed: bring it down first>>>systemctl start échoue (wg0 already exists) et l'unité est failed : démonter d'abord|the unit takes over the existing interface>>>l'unité prend le contrôle de l'interface existante|the interface is recreated from the file>>>l'interface est recréée avec le fichier}@@
+""",
+    """
+**Solution.** `/etc/wireguard/wg0.conf` sur `srv` (clés de l'état `final` ; tel qu'il sera à la fin
+de la partie 2, les parties 3, 5 et 7 y ajoutent des pairs) :
+
+```
+{conf_srv}```
+
+`/etc/wireguard/wg0.conf` sur `gwb` (fin de partie 2 ; la partie 5 élargit les `AllowedIPs`) :
+
+```
+{conf_gwb}```
+
+puis, sur chaque machine, `ip link del wg0` (interface de la partie 1), `chmod 600
+/etc/wireguard/wg0.conf` et `systemctl enable --now wg-quick@wg0`.
+
+- `wg-quick up` : `ip link add wg0 type wireguard`, `wg setconf wg0 /dev/fd/63` (le fichier
+  « strippé »), `ip -4 address add … dev wg0`, `ip link set mtu 1420 up dev wg0`, puis une route par
+  `AllowedIPs` qui n'est pas déjà couverte (ici `{vpn}` l'est par l'`Address`).
+- Évalué : la `PrivateKey` du fichier correspond à la clé publique de `wg0` ; `ListenPort`,
+  `Address` ; le pair avec `AllowedIPs` et `Endpoint` ; fichier en mode 600 ; unité `wg-quick@wg0`
+  active **et** activée au démarrage sur les deux machines.
+- Réponses : {strip} ; {route} ; {reload} ; {mode} ; {already}.
+""": """
+**Solution.** `/etc/wireguard/wg0.conf` on `srv` (keys of the `final` state; as it will be at the end
+of part 2, parts 3, 5 and 7 add peers to it):
+
+```
+{conf_srv}```
+
+`/etc/wireguard/wg0.conf` on `gwb` (end of part 2; part 5 widens the `AllowedIPs`):
+
+```
+{conf_gwb}```
+
+then, on each machine, `ip link del wg0` (interface of part 1),
+`chmod 600 /etc/wireguard/wg0.conf` and `systemctl enable --now wg-quick@wg0`.
+
+- `wg-quick up`: `ip link add wg0 type wireguard`, `wg setconf wg0 /dev/fd/63` (the "stripped"
+  file), `ip -4 address add … dev wg0`, `ip link set mtu 1420 up dev wg0`, then one route per
+  `AllowedIPs` prefix not already covered (here `{vpn}` is covered by the `Address`).
+- Evaluated: the `PrivateKey` of the file matches the public key of `wg0`; `ListenPort`,
+  `Address`; the peer with `AllowedIPs` and `Endpoint`; file in mode 600; unit `wg-quick@wg0`
+  active **and** enabled at boot on both machines.
+- Answers: {strip}; {route}; {reload}; {mode}; {already}.
+""",
+    "wg0.conf de srv : PrivateKey de l'interface, Address, ListenPort ; pair gwb avec AllowedIPs et Endpoint": "wg0.conf of srv: PrivateKey of the interface, Address, ListenPort; peer gwb with AllowedIPs and Endpoint",
+    "wg0.conf de gwb : PrivateKey de l'interface, Address, ListenPort ; pair srv avec AllowedIPs et Endpoint": "wg0.conf of gwb: PrivateKey of the interface, Address, ListenPort; peer srv with AllowedIPs and Endpoint",
+    "wg0.conf en mode 600 sur srv et gwb": "wg0.conf in mode 600 on srv and gwb",
+    "wg-quick@wg0 active et activée au démarrage sur srv et sur gwb": "wg-quick@wg0 active and enabled at boot on srv and on gwb",
+    "wg-quick strip, routes, syncconf, mode du fichier, interface déjà montée": "wg-quick strip, routes, syncconf, mode of the file, interface already up",
+    "Partie 3 — Le poste nomade derrière un NAT, srv concentrateur": "Part 3 — The roaming host behind a NAT, srv as concentrator",
+    "Le nomade, PersistentKeepalive, d'autres pairs": "The roaming host, PersistentKeepalive, other peers",
+    """
+Le poste `laptop` est à l'hôtel, derrière la `box` qui fait du NAT : il n'a pas d'adresse publique
+et personne ne peut l'appeler. `srv` devient le **concentrateur** : chaque poste de l'entreprise
+est un pair de son `wg0`.
+
+**1.** Sur `laptop`, créez la paire de clés (`umask 077 ; cd /etc/wireguard ; wg genkey | tee
+private.key | wg pubkey > public.key`) puis `/etc/wireguard/wg0.conf` :
+
+```
+[Interface]
+PrivateKey = CLÉ_PRIVÉE_DE_NOMADE
+Address = {vpn_laptop}/24
+
+[Peer]
+# srv, le concentrateur
+PublicKey = CLÉ_PUBLIQUE_DE_SRV
+Endpoint = {srv_wan}:{port}
+AllowedIPs = {vpn}
+PersistentKeepalive = 25
+```
+
+Pas de `ListenPort` : le nomade appelle, il ne reçoit pas d'appel.
+
+**2.** Sur `srv`, ajoutez à `wg0.conf` le pair `laptop` (sa `PublicKey`, `AllowedIPs =
+{vpn_laptop}/32`, pas d'`Endpoint` : il sera appris) et appliquez (`wg syncconf wg0 <(wg-quick
+strip wg0)`). Ajoutez de même deux autres postes de l'entreprise dont vous ne connaissez que la
+clé publique (première question) : `colleague` (`AllowedIPs = {vpn_colleague}/32`) et `oldpc`
+(`AllowedIPs = {vpn_oldpc}/32`).
+
+**3.** Sur `laptop` : `systemctl enable --now wg-quick@wg0`, `ping {vpn_srv}`, `wg show`. Sur
+`srv`, `wg show` : quel *endpoint* est affiché pour `laptop` ? Sur `laptop`, `tcpdump -ni eth0
+udp` pendant une minute sans autre trafic : les *keepalives*. Sur `srv`, `ping {vpn_laptop}` :
+le concentrateur joint le poste derrière le NAT.
+""": """
+The host `laptop` is at the hotel, behind the `box`, which does NAT: it has no public address
+and nobody can call it. `srv` becomes the **concentrator**: each host of the company
+is a peer of its `wg0`.
+
+**1.** On `laptop`, create the key pair (`umask 077 ; cd /etc/wireguard ; wg genkey | tee
+private.key | wg pubkey > public.key`) then `/etc/wireguard/wg0.conf`:
+
+```
+[Interface]
+PrivateKey = PRIVATE_KEY_OF_LAPTOP
+Address = {vpn_laptop}/24
+
+[Peer]
+# srv, the concentrator
+PublicKey = PUBLIC_KEY_OF_SRV
+Endpoint = {srv_wan}:{port}
+AllowedIPs = {vpn}
+PersistentKeepalive = 25
+```
+
+No `ListenPort`: the roaming host calls, it is never called.
+
+**2.** On `srv`, add the peer `laptop` to `wg0.conf` (its `PublicKey`, `AllowedIPs =
+{vpn_laptop}/32`, no `Endpoint`: it will be learnt) and apply (`wg syncconf wg0 <(wg-quick
+strip wg0)`). Add in the same way two other hosts of the company of which you only know the
+public key (first question): `colleague` (`AllowedIPs = {vpn_colleague}/32`) and `oldpc`
+(`AllowedIPs = {vpn_oldpc}/32`).
+
+**3.** On `laptop`: `systemctl enable --now wg-quick@wg0`, `ping {vpn_srv}`, `wg show`. On
+`srv`, `wg show`: which *endpoint* is shown for `laptop`? On `laptop`, `tcpdump -ni eth0
+udp` for one minute without any other traffic: the *keepalives*. On `srv`, `ping {vpn_laptop}`:
+the concentrator reaches the host behind the NAT.
+""",
+    """
+- l'*endpoint* du nomade affiché par `wg show` sur `srv` : @@{endpoint:>l'adresse publique de la box et un port choisi par son NAT|l'adresse du nomade dans le réseau de l'hôtel et le port 51820|l'adresse VPN du nomade}@@
+- `PersistentKeepalive = 25` sert à : @@{keepalive:>garder ouverte la traduction NAT de la box pour que srv puisse joindre le nomade à tout moment|renouveler les clés de session toutes les 25 secondes|mesurer le délai aller-retour}@@
+- le nomade a-t-il besoin d'un `ListenPort` ? @@{listenport:>non : le nomade appelle, il ne reçoit pas d'appel ; un port aléatoire suffit|oui, le même que srv|oui, il doit être redirigé sur la box}@@
+- qui peut initier la poignée de main ? @@{initiator:>seul le nomade : srv ne connaît son endpoint qu'après son premier paquet|seul srv : c'est le serveur|l'un ou l'autre, indifféremment}@@
+- pour ajouter le portable d'un collègue, on lui demande : @@{colleague_key:>sa clé publique seulement, et on lui donne celle de srv|sa clé privée, pour la mettre dans wg0.conf de srv|un mot de passe}@@
+""": """
+- the *endpoint* of the roaming host shown by `wg show` on `srv`: @@{endpoint:>the public address of the box and a port chosen by its NAT>>>l'adresse publique de la box et un port choisi par son NAT|the address of the roaming host in the hotel network and port 51820>>>l'adresse du nomade dans le réseau de l'hôtel et le port 51820|the VPN address of the roaming host>>>l'adresse VPN du nomade}@@
+- `PersistentKeepalive = 25` is used to: @@{keepalive:>keep the NAT translation of the box open so that srv can reach the roaming host at any time>>>garder ouverte la traduction NAT de la box pour que srv puisse joindre le nomade à tout moment|renew the session keys every 25 seconds>>>renouveler les clés de session toutes les 25 secondes|measure the round-trip time>>>mesurer le délai aller-retour}@@
+- does the roaming host need a `ListenPort`? @@{listenport:>no: the roaming host calls, it is never called; a random port is enough>>>non : le nomade appelle, il ne reçoit pas d'appel ; un port aléatoire suffit|yes, the same as srv>>>oui, le même que srv|yes, it must be forwarded on the box>>>oui, il doit être redirigé sur la box}@@
+- who can initiate the handshake? @@{initiator:>only the roaming host: srv knows its endpoint only after its first packet>>>seul le nomade : srv ne connaît son endpoint qu'après son premier paquet|only srv: it is the server>>>seul srv : c'est le serveur|either of them, it makes no difference>>>l'un ou l'autre, indifféremment}@@
+- to add the laptop of a colleague, you ask them for: @@{colleague_key:>their public key only, and you give them srv's>>>sa clé publique seulement, et on lui donne celle de srv|their private key, to put it in wg0.conf of srv>>>sa clé privée, pour la mettre dans wg0.conf de srv|a password>>>un mot de passe}@@
+""",
+    """
+**Solution.** `/etc/wireguard/wg0.conf` sur `laptop` (fin de partie 3) :
+
+```
+{conf_laptop}```
+
+et sur `srv`, trois sections ajoutées à `wg0.conf` (fin de partie 3) :
+
+```
+{conf_srv}```
+
+puis `wg syncconf wg0 <(wg-quick strip wg0)` sur `srv` et `systemctl enable --now wg-quick@wg0`
+sur `laptop`.
+
+- Sur `srv`, `wg show` montre pour `laptop` `endpoint: {box_wan}:PORT` (la box) et des keepalives
+  (`transfer` qui augmente de 32 octets toutes les 25 s). `ping {vpn_laptop}` depuis `srv` marche tant que
+  la traduction est ouverte : sans keepalive, elle expire après ~30 s d'inactivité.
+- Évalué : `wg0.conf` de `laptop` (clé, `Address`, pair `srv` avec `Endpoint` et `AllowedIPs`),
+  `PersistentKeepalive` sur l'interface ; sur `srv`, le pair `laptop` (`AllowedIPs` {vpn_laptop}/32) avec
+  un *endpoint* à l'adresse de la box, le pair `colleague` ({vpn_colleague}/32, aussi dans le fichier) ;
+  poignée de main récente ; `ping` de `laptop` ; la sonde connectée avec la clé de `colleague` obtient
+  une poignée de main et un `ping` ; sur le `wan`, de l'UDP {port} de la box vers `srv` et aucun ICMP
+  en clair de la box vers le VPN ou les LAN.
+- Réponses : {endpoint} ; {keepalive} ; {listenport} ; {initiator} ; {colleague_key}.
+""": """
+**Solution.** `/etc/wireguard/wg0.conf` on `laptop` (end of part 3):
+
+```
+{conf_laptop}```
+
+and on `srv`, three sections added to `wg0.conf` (end of part 3):
+
+```
+{conf_srv}```
+
+then `wg syncconf wg0 <(wg-quick strip wg0)` on `srv` and `systemctl enable --now wg-quick@wg0`
+on `laptop`.
+
+- On `srv`, `wg show` shows for `laptop` `endpoint: {box_wan}:PORT` (the box) and keepalives
+  (`transfer` growing by 32 bytes every 25 s). `ping {vpn_laptop}` from `srv` works as long as
+  the translation is open: without keepalive, it expires after ~30 s of inactivity.
+- Evaluated: `wg0.conf` of `laptop` (key, `Address`, peer `srv` with `Endpoint` and `AllowedIPs`),
+  `PersistentKeepalive` on the interface; on `srv`, the peer `laptop` (`AllowedIPs` {vpn_laptop}/32) with
+  an *endpoint* at the address of the box, the peer `colleague` ({vpn_colleague}/32, also in the file);
+  recent handshake; `ping` from `laptop`; the probe connected with the key of `colleague` gets
+  a handshake and a `ping`; on the `wan`, UDP {port} from the box to `srv` and no ICMP
+  in the clear from the box to the VPN or the LANs.
+- Answers: {endpoint}; {keepalive}; {listenport}; {initiator}; {colleague_key}.
+""",
+    "wg0.conf de laptop : PrivateKey de l'interface et Address ; pair srv avec Endpoint et AllowedIPs ; PersistentKeepalive": "wg0.conf of laptop: PrivateKey of the interface and Address; peer srv with Endpoint and AllowedIPs; PersistentKeepalive",
+    "wg0 de srv connaît laptop (AllowedIPs {ip}) et l'a vu derrière la box ({box})": "wg0 of srv knows laptop (AllowedIPs {ip}) and has seen it behind the box ({box})",
+    "le pair colleague (clé publique de l'énoncé, AllowedIPs {ip}) sur wg0 de srv et dans wg0.conf": "the peer colleague (public key of the handout, AllowedIPs {ip}) on wg0 of srv and in wg0.conf",
+    "poignée de main récente entre srv et laptop": "recent handshake between srv and laptop",
+    "ping de laptop vers l'adresse VPN de srv": "ping from laptop to the VPN address of srv",
+    "un poste muni de la clé privée de colleague obtient une poignée de main et un ping avec srv": "a host holding the private key of colleague gets a handshake and a ping with srv",
+    "sur le wan : trafic UDP {port} de la box vers srv, aucun ICMP en clair de la box vers le VPN ou les LAN": "on the wan: UDP {port} traffic from the box to srv, no ICMP in the clear from the box to the VPN or the LANs",
+    "endpoint vu du concentrateur, keepalive, ListenPort, initiateur, clé à demander": "endpoint seen from the concentrator, keepalive, ListenPort, initiator, key to ask for",
+    "Partie 4 — Accès au réseau du site A depuis le nomade": "Part 4 — Access to the network of site A from the roaming host",
+    "AllowedIPs et forwarding": "AllowedIPs and forwarding",
+    """
+Le poste `laptop` doit atteindre les machines du site A (`m1`, réseau `{lana}`).
+
+1. Sur `laptop`, `ping {m1}` : le paquet part… par où ? (`ip route get {m1}`). Ajoutez `{lana}`
+   aux `AllowedIPs` du pair `srv` (`AllowedIPs = {vpn}, {lana}`) et relancez l'unité
+   (`systemctl restart wg-quick@wg0`) ; regardez `ip route` et `ip route get {m1}`.
+2. `ping {m1}` de nouveau : pourquoi cela ne marche-t-il pas encore ? Activez le routage sur
+   `srv` : `sysctl -w net.ipv4.ip_forward=1` (et rendez-le persistant dans `/etc/sysctl.d/`).
+3. Depuis `laptop` : `curl http://{m1}/secret.txt` et `curl http://{m1}/` (la page affiche
+   l'adresse du client telle que `m1` la voit).
+""": """
+The host `laptop` must reach the machines of site A (`m1`, network `{lana}`).
+
+1. On `laptop`, `ping {m1}`: the packet leaves… which way? (`ip route get {m1}`). Add `{lana}`
+   to the `AllowedIPs` of the peer `srv` (`AllowedIPs = {vpn}, {lana}`) and restart the unit
+   (`systemctl restart wg-quick@wg0`); look at `ip route` and `ip route get {m1}`.
+2. `ping {m1}` again: why does it not work yet? Enable routing on
+   `srv`: `sysctl -w net.ipv4.ip_forward=1` (and make it persistent in `/etc/sysctl.d/`).
+3. From `laptop`: `curl http://{m1}/secret.txt` and `curl http://{m1}/` (the page shows
+   the address of the client as `m1` sees it).
+""",
+    """
+- phrase lue dans `http://m1/secret.txt` : @@{secret:.+}@@
+- l'adresse « client » affichée par `http://m1/` est : @@{src_seen:>l'adresse VPN du nomade|l'adresse publique de la box|l'adresse de srv sur lana}@@
+- `AllowedIPs = …, lana` sur le nomade signifie : @@{allowed_role:>les paquets vers lana partent dans le tunnel vers srv, et les paquets venus de srv avec une source dans lana sont acceptés|seulement : les paquets vers lana partent dans le tunnel|seulement : les paquets venus de lana sont acceptés}@@
+- sans `lana` dans les `AllowedIPs`, un paquet du nomade vers `m1` : @@{missing:>il suit la route par défaut du nomade (la box) et se perd : lana est un réseau privé|il entre dans wg0 et srv le jette|il provoque Required key not available}@@
+- pourquoi la réponse de `m1` retrouve-t-elle le nomade sans route ajoutée sur `m1` ?
+  @@{return:>srv est le routeur par défaut de m1 et son wg0 porte le réseau du VPN : le pair nomade a cette adresse dans ses AllowedIPs|srv fait du NAT vers lana|le nomade est directement sur lana}@@
+""": """
+- sentence read in `http://m1/secret.txt`: @@{secret:.+}@@
+- the "client" address shown by `http://m1/` is: @@{src_seen:>the VPN address of the roaming host>>>l'adresse VPN du nomade|the public address of the box>>>l'adresse publique de la box|the address of srv on lana>>>l'adresse de srv sur lana}@@
+- `AllowedIPs = …, lana` on the roaming host means: @@{allowed_role:>the packets to lana go into the tunnel to srv, and the packets coming from srv with a source in lana are accepted>>>les paquets vers lana partent dans le tunnel vers srv, et les paquets venus de srv avec une source dans lana sont acceptés|only: the packets to lana go into the tunnel>>>seulement : les paquets vers lana partent dans le tunnel|only: the packets coming from lana are accepted>>>seulement : les paquets venus de lana sont acceptés}@@
+- without `lana` in the `AllowedIPs`, a packet from the roaming host to `m1`: @@{missing:>follows the default route of the roaming host (the box) and gets lost: lana is a private network>>>il suit la route par défaut du nomade (la box) et se perd : lana est un réseau privé|enters wg0 and srv drops it>>>il entre dans wg0 et srv le jette|causes Required key not available>>>il provoque Required key not available}@@
+- why does the reply of `m1` find the roaming host without a route added on `m1`?
+  @@{return:>srv is the default router of m1 and its wg0 holds the VPN network: the roaming peer has this address in its AllowedIPs>>>srv est le routeur par défaut de m1 et son wg0 porte le réseau du VPN : le pair nomade a cette adresse dans ses AllowedIPs|srv does NAT towards lana>>>srv fait du NAT vers lana|the roaming host is directly on lana>>>le nomade est directement sur lana}@@
+""",
+    """
+**Solution.** Sur `laptop`, `AllowedIPs = {vpn}, {lana}` pour le pair `srv` et `systemctl restart
+wg-quick@wg0` (`wg-quick` ajoute `{lana} dev wg0`) ; sur `srv`, `sysctl -w net.ipv4.ip_forward=1` et
+`echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-vpn.conf`.
+
+- Avant : `ip route get {m1}` répond `via {box_hotel} dev eth0` — le paquet part vers la box, qui n'a
+  pas de route vers `{lana}` (réseau privé) : perdu. Après : `dev wg0`, et le pair `srv` a `{lana}`
+  dans ses `AllowedIPs` : chiffré vers `srv`.
+- Sans forwarding, `srv` reçoit les paquets du nomade pour `m1` sur `wg0` mais ne les transmet pas sur
+  `eth1`. Le retour marche parce que `m1` envoie sa réponse à son routeur par défaut `srv` ({srv_lana}),
+  qui a `{vpn}` sur `wg0` ; le *cryptokey routing* choisit le pair dont les `AllowedIPs` contiennent
+  `{vpn_laptop}` : `laptop`.
+- `m1` voit l'adresse **VPN** du nomade ({vpn_laptop}) : pas de NAT à cette étape.
+- Évalué : `AllowedIPs` du pair `srv` sur `laptop` couvrant `{lana}`, `ip route get {m1}` → `wg0`,
+  `ip_forward` sur `srv`, un `ping` de `laptop` vers `m1`, et la page `http://{m1}/` vue du nomade
+  (adresse client dans `{vpn}`).
+- Phrase secrète : « {secret} ».
+""": """
+**Solution.** On `laptop`, `AllowedIPs = {vpn}, {lana}` for the peer `srv` and `systemctl restart
+wg-quick@wg0` (`wg-quick` adds `{lana} dev wg0`); on `srv`, `sysctl -w net.ipv4.ip_forward=1` and
+`echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-vpn.conf`.
+
+- Before: `ip route get {m1}` answers `via {box_hotel} dev eth0` — the packet goes to the box, which has
+  no route to `{lana}` (a private network): lost. After: `dev wg0`, and the peer `srv` has `{lana}`
+  in its `AllowedIPs`: encrypted to `srv`.
+- Without forwarding, `srv` receives the packets of the roaming host for `m1` on `wg0` but does not pass
+  them on to `eth1`. The return works because `m1` sends its reply to its default router `srv` ({srv_lana}),
+  which has `{vpn}` on `wg0`; *cryptokey routing* chooses the peer whose `AllowedIPs` contain
+  `{vpn_laptop}`: `laptop`.
+- `m1` sees the **VPN** address of the roaming host ({vpn_laptop}): no NAT at this step.
+- Evaluated: `AllowedIPs` of the peer `srv` on `laptop` covering `{lana}`, `ip route get {m1}` → `wg0`,
+  `ip_forward` on `srv`, a `ping` from `laptop` to `m1`, and the page `http://{m1}/` seen from the roaming host
+  (client address in `{vpn}`).
+- Secret sentence: "{secret}".
+""",
+    "sur laptop, les AllowedIPs du pair srv couvrent {lana} et ip route get m1 répond wg0": "on laptop, the AllowedIPs of the peer srv cover {lana} and ip route get m1 answers wg0",
+    "routage des paquets (ip_forward) activé sur srv": "packet forwarding (ip_forward) enabled on srv",
+    "ping de laptop vers m1 à travers le tunnel": "ping from laptop to m1 through the tunnel",
+    "http://m1/ vu de laptop affiche son adresse VPN (pas de NAT vers lana)": "http://m1/ seen from laptop shows its VPN address (no NAT towards lana)",
+    "phrase secrète de m1, adresse vue par m1, rôles des AllowedIPs, chemin du retour": "secret sentence of m1, address seen by m1, roles of the AllowedIPs, return path",
+    "Partie 5 — Site à site : le réseau du site B": "Part 5 — Site to site: the network of site B",
+    "lanb derrière gwb, le nomade vers lanb par srv": "lanb behind gwb, the roaming host to lanb through srv",
+    """
+`gwb` est déjà un pair de `srv` (partie 1) : il reste à déclarer, de chaque côté, les réseaux qui
+se trouvent derrière l'autre, et à router.
+
+1. Sur `srv`, le pair `gwb` reçoit `AllowedIPs = {vpn_gwb}/32, {lanb}` (« le réseau `{lanb}` est
+   derrière gwb »). Appliquez avec `systemctl restart wg-quick@wg0` (il faut la route) et regardez
+   `ip route` sur `srv`.
+2. Sur `gwb`, le pair `srv` reçoit `AllowedIPs = {vpn}, {lana}` : tout le réseau du VPN (dont le
+   nomade) et le site A sont derrière `srv`. Appliquez, puis activez le routage sur `gwb`
+   (`ip_forward`, persistant).
+3. Testez `ping {m1}` depuis `m2` et `ping {m2}` depuis `m1`.
+4. Le nomade doit aussi joindre le site B : sur `laptop`, ajoutez `{lanb}` aux `AllowedIPs` du
+   pair `srv`, relancez l'unité, puis depuis `laptop` : `ping {m2}` et `curl http://{m2}/secret.txt`.
+   Essayez de mettre `{lanb}` aussi dans les `AllowedIPs` du pair `laptop` sur `srv` (`wg set`) et
+   regardez `wg show` : à qui appartient le préfixe ?
+""": """
+`gwb` is already a peer of `srv` (part 1): what remains is to declare, on each side, the networks
+that lie behind the other one, and to route.
+
+1. On `srv`, the peer `gwb` gets `AllowedIPs = {vpn_gwb}/32, {lanb}` ("the network `{lanb}` is
+   behind gwb"). Apply with `systemctl restart wg-quick@wg0` (the route is needed) and look at
+   `ip route` on `srv`.
+2. On `gwb`, the peer `srv` gets `AllowedIPs = {vpn}, {lana}`: the whole VPN network (including the
+   roaming host) and site A are behind `srv`. Apply, then enable routing on `gwb`
+   (`ip_forward`, persistent).
+3. Test `ping {m1}` from `m2` and `ping {m2}` from `m1`.
+4. The roaming host must also reach site B: on `laptop`, add `{lanb}` to the `AllowedIPs` of the
+   peer `srv`, restart the unit, then from `laptop`: `ping {m2}` and `curl http://{m2}/secret.txt`.
+   Try putting `{lanb}` in the `AllowedIPs` of the peer `laptop` on `srv` as well (`wg set`) and
+   look at `wg show`: which peer does the prefix belong to?
+""",
+    """
+- phrase lue dans `http://m2/secret.txt` depuis `laptop` : @@{secret:.+}@@
+- pourquoi `gwb` doit-il avoir tout le réseau du VPN (et pas seulement l'adresse de `srv`) dans les `AllowedIPs` du pair `srv` ?
+  @@{gwb_allowed:>pour accepter les paquets du nomade (source dans le VPN) venant par srv, et lui répondre par le tunnel|parce que srv a plusieurs adresses VPN|pour que gwb puisse appeler directement le nomade}@@
+- `lanb` dans les `AllowedIPs` du pair `gwb` sur `srv` produit : @@{srv_lanb:>le cryptokey routing : les paquets pour lanb sont chiffrés vers gwb, ceux venant de gwb avec une source dans lanb sont acceptés (et wg-quick ajoute la route)|seulement une route du noyau vers wg0|une annonce de route envoyée à gwb}@@
+- si `lanb` figure dans les `AllowedIPs` de deux pairs de `srv` : @@{uniq:>le préfixe est retiré au premier pair : un préfixe n'appartient qu'à un pair|les deux pairs reçoivent les paquets|srv refuse la configuration}@@
+""": """
+- sentence read in `http://m2/secret.txt` from `laptop`: @@{secret:.+}@@
+- why must `gwb` have the whole VPN network (and not only the address of `srv`) in the `AllowedIPs` of the peer `srv`?
+  @@{gwb_allowed:>to accept the packets of the roaming host (source in the VPN) coming through srv, and to reply to it through the tunnel>>>pour accepter les paquets du nomade (source dans le VPN) venant par srv, et lui répondre par le tunnel|because srv has several VPN addresses>>>parce que srv a plusieurs adresses VPN|so that gwb can call the roaming host directly>>>pour que gwb puisse appeler directement le nomade}@@
+- `lanb` in the `AllowedIPs` of the peer `gwb` on `srv` produces: @@{srv_lanb:>cryptokey routing: the packets for lanb are encrypted to gwb, those coming from gwb with a source in lanb are accepted (and wg-quick adds the route)>>>le cryptokey routing : les paquets pour lanb sont chiffrés vers gwb, ceux venant de gwb avec une source dans lanb sont acceptés (et wg-quick ajoute la route)|only a kernel route to wg0>>>seulement une route du noyau vers wg0|a route announcement sent to gwb>>>une annonce de route envoyée à gwb}@@
+- if `lanb` is in the `AllowedIPs` of two peers of `srv`: @@{uniq:>the prefix is taken away from the first peer: a prefix belongs to only one peer>>>le préfixe est retiré au premier pair : un préfixe n'appartient qu'à un pair|both peers receive the packets>>>les deux pairs reçoivent les paquets|srv refuses the configuration>>>srv refuse la configuration}@@
+""",
+    """
+**Solution.** Pair `gwb` dans `wg0.conf` de `srv` : `AllowedIPs = {vpn_gwb}/32, {lanb}` ;
+`wg0.conf` de `gwb` (fin de partie 5) :
+
+```
+{conf_gwb}```
+
+`sysctl -w net.ipv4.ip_forward=1` (+ `/etc/sysctl.d/99-vpn.conf`) sur `gwb` ; sur `laptop`,
+`AllowedIPs = {vpn}, {lana}, {lanb}` ; `systemctl restart wg-quick@wg0` partout où les `AllowedIPs`
+ont changé (routes).
+
+- `m2` → `m1` : `gwb` (routeur par défaut de `m2`) a la route `{lana} dev wg0` et le pair `srv` accepte
+  `{lana}` ; `srv` accepte la source `{lanb}` (pair `gwb`) et route vers `eth1`. Retour : `srv`
+  (routeur par défaut de `m1`) a la route `{lanb} dev wg0` → pair `gwb` → `gwb` accepte la source `{lana}`.
+- `laptop` → `m2` : route `{lanb} dev wg0` sur `laptop` → `srv` (forwarding) → pair `gwb` → `gwb`
+  accepte la source `{vpn_laptop}` parce que ses `AllowedIPs` pour `srv` couvrent `{vpn}`. Sans cela, le
+  paquet est jeté silencieusement (`wg show` compte les octets reçus mais `ping` reste muet).
+- Ajouter `{lanb}` au pair `laptop` sur `srv` le **retire** au pair `gwb` (`wg show` le montre) : le site B
+  devient injoignable. Un préfixe n'a qu'un propriétaire.
+- Évalué : `AllowedIPs` de `gwb` sur `srv` couvrant `{lanb}` et route de `srv` vers `{lanb}` par `wg0` ;
+  `AllowedIPs` de `srv` sur `gwb` couvrant `{lana}` et `{vpn}` ; `ip_forward` sur `gwb` ; `AllowedIPs` de
+  `laptop` couvrant `{lanb}` ; les trois `ping` (`m2`→`m1`, `m1`→`m2`, `laptop`→`m2`).
+- Phrase secrète de `m2` : « {secret} ».
+""": """
+**Solution.** Peer `gwb` in `wg0.conf` of `srv`: `AllowedIPs = {vpn_gwb}/32, {lanb}`;
+`wg0.conf` of `gwb` (end of part 5):
+
+```
+{conf_gwb}```
+
+`sysctl -w net.ipv4.ip_forward=1` (+ `/etc/sysctl.d/99-vpn.conf`) on `gwb`; on `laptop`,
+`AllowedIPs = {vpn}, {lana}, {lanb}`; `systemctl restart wg-quick@wg0` wherever the `AllowedIPs`
+have changed (routes).
+
+- `m2` → `m1`: `gwb` (default router of `m2`) has the route `{lana} dev wg0` and the peer `srv` accepts
+  `{lana}`; `srv` accepts the source `{lanb}` (peer `gwb`) and routes to `eth1`. Return: `srv`
+  (default router of `m1`) has the route `{lanb} dev wg0` → peer `gwb` → `gwb` accepts the source `{lana}`.
+- `laptop` → `m2`: route `{lanb} dev wg0` on `laptop` → `srv` (forwarding) → peer `gwb` → `gwb`
+  accepts the source `{vpn_laptop}` because its `AllowedIPs` for `srv` cover `{vpn}`. Without that, the
+  packet is silently dropped (`wg show` counts the bytes received but `ping` stays silent).
+- Adding `{lanb}` to the peer `laptop` on `srv` **removes** it from the peer `gwb` (`wg show` shows it): site B
+  becomes unreachable. A prefix has only one owner.
+- Evaluated: `AllowedIPs` of `gwb` on `srv` covering `{lanb}` and route of `srv` to `{lanb}` through `wg0`;
+  `AllowedIPs` of `srv` on `gwb` covering `{lana}` and `{vpn}`; `ip_forward` on `gwb`; `AllowedIPs` of
+  `laptop` covering `{lanb}`; the three `ping`s (`m2`→`m1`, `m1`→`m2`, `laptop`→`m2`).
+- Secret sentence of `m2`: "{secret}".
+""",
+    "sur srv, les AllowedIPs du pair gwb couvrent {lanb} et la route vers {lanb} passe par wg0": "on srv, the AllowedIPs of the peer gwb cover {lanb} and the route to {lanb} goes through wg0",
+    "sur gwb, les AllowedIPs du pair srv couvrent {lana} et tout {vpn}": "on gwb, the AllowedIPs of the peer srv cover {lana} and the whole of {vpn}",
+    "routage des paquets (ip_forward) activé sur gwb": "packet forwarding (ip_forward) enabled on gwb",
+    "sur laptop, les AllowedIPs du pair srv couvrent {lanb}": "on laptop, the AllowedIPs of the peer srv cover {lanb}",
+    "ping m2 → m1, m1 → m2 et laptop → m2 à travers les tunnels": "ping m2 → m1, m1 → m2 and laptop → m2 through the tunnels",
+    "phrase secrète de m2 ; AllowedIPs de gwb, de srv, unicité d'un préfixe": "secret sentence of m2; AllowedIPs of gwb, of srv, uniqueness of a prefix",
+    "Partie 6 — Tunnel complet pour le nomade et NAT": "Part 6 — Full tunnel for the roaming host and NAT",
+    "AllowedIPs = 0.0.0.0/0, routage par politique, NAT sur srv": "AllowedIPs = 0.0.0.0/0, policy routing, NAT on srv",
+    """
+Depuis l'hôtel, le nomade veut que **tout** son trafic, y compris vers Internet (`web`, `{web}`,
+derrière le routeur `inet` du fournisseur d'accès), passe par le VPN de l'entreprise.
+
+**1.** Depuis `laptop`, `curl http://{web}/` : quelle adresse client `web` voit-il ? Notez
+`ip route` et `ip rule`.
+
+**2.** Sur `laptop`, remplacez les `AllowedIPs` du pair `srv` par `0.0.0.0/0` et relancez
+`wg-quick@wg0` ; lisez `journalctl -u wg-quick@wg0` (les commandes exécutées), puis `ip rule`,
+`ip route show table {port}`, `wg show wg0 fwmark`, `ip route get {web}` et `ip route get
+{srv_wan}`. Refaites le `curl` : pourquoi échoue-t-il ?
+
+**3.** Sur `srv`, faites du **NAT** pour le trafic venant du VPN vers le `wan` :
+
+```
+nft add table ip nat
+nft 'add chain ip nat postrouting {{ type nat hook postrouting priority 100; }}'
+nft add rule ip nat postrouting ip saddr {vpn} oifname eth0 masquerade
+```
+
+(ou écrivez ces règles dans `/etc/nftables.conf` et chargez-le avec `nft -f`). Refaites le
+`curl` depuis `laptop` et vérifiez que `gwb` a toujours sa route par défaut.
+""": """
+From the hotel, the roaming host wants **all** its traffic, including to the Internet (`web`, `{web}`,
+behind the router `inet` of the Internet service provider), to go through the VPN of the company.
+
+**1.** From `laptop`, `curl http://{web}/`: which client address does `web` see? Note down
+`ip route` and `ip rule`.
+
+**2.** On `laptop`, replace the `AllowedIPs` of the peer `srv` with `0.0.0.0/0` and restart
+`wg-quick@wg0`; read `journalctl -u wg-quick@wg0` (the commands run), then `ip rule`,
+`ip route show table {port}`, `wg show wg0 fwmark`, `ip route get {web}` and `ip route get
+{srv_wan}`. Run the `curl` again: why does it fail?
+
+**3.** On `srv`, do **NAT** for the traffic coming from the VPN to the `wan`:
+
+```
+nft add table ip nat
+nft 'add chain ip nat postrouting {{ type nat hook postrouting priority 100; }}'
+nft add rule ip nat postrouting ip saddr {vpn} oifname eth0 masquerade
+```
+
+(or write these rules in `/etc/nftables.conf` and load it with `nft -f`). Run the
+`curl` again from `laptop` and check that `gwb` still has its default route.
+""",
+    """
+- comment les datagrammes UDP chiffrés émis par WireGuard évitent-ils de repasser dans `wg0` ?
+  @@{fwmark:>ils portent la marque 51820 : la règle « not fwmark 51820 » ne les envoie pas dans la table 51820, ils suivent la table main|wg-quick ajoute une route hôte vers srv par la box|le noyau sait qu'ils viennent de wg0}@@
+- la règle `from all lookup main suppress_prefixlength 0` sert à : @@{suppress:>consulter la table main d'abord, mais en ignorant sa route par défaut : le réseau de l'hôtel reste joignable directement|supprimer la route par défaut de la table main|empêcher les paquets de longueur nulle}@@
+- adresse client affichée par `http://web/` depuis `laptop` une fois le tunnel complet et le NAT en place : @@{web_sees:[0-9.]+}@@
+- pourquoi le NAT est-il nécessaire ? @@{nat:>Internet n'a pas de route vers le réseau du VPN : les réponses ne reviendraient pas|WireGuard ne peut pas chiffrer les paquets vers Internet|le nomade n'a pas de route par défaut}@@
+- routeur par défaut de `gwb` après cette partie : @@{gwb_default:[0-9.]+}@@
+""": """
+- how do the encrypted UDP datagrams sent by WireGuard avoid going through `wg0` again?
+  @@{fwmark:>they carry the mark 51820: the rule "not fwmark 51820" does not send them to table 51820, they follow the main table>>>ils portent la marque 51820 : la règle « not fwmark 51820 » ne les envoie pas dans la table 51820, ils suivent la table main|wg-quick adds a host route to srv through the box>>>wg-quick ajoute une route hôte vers srv par la box|the kernel knows that they come from wg0>>>le noyau sait qu'ils viennent de wg0}@@
+- the rule `from all lookup main suppress_prefixlength 0` is used to: @@{suppress:>look up the main table first, but ignoring its default route: the hotel network stays reachable directly>>>consulter la table main d'abord, mais en ignorant sa route par défaut : le réseau de l'hôtel reste joignable directement|delete the default route of the main table>>>supprimer la route par défaut de la table main|block zero-length packets>>>empêcher les paquets de longueur nulle}@@
+- client address shown by `http://web/` from `laptop` once the full tunnel and the NAT are in place: @@{web_sees:[0-9.]+}@@
+- why is NAT needed? @@{nat:>the Internet has no route to the VPN network: the replies would not come back>>>Internet n'a pas de route vers le réseau du VPN : les réponses ne reviendraient pas|WireGuard cannot encrypt the packets to the Internet>>>WireGuard ne peut pas chiffrer les paquets vers Internet|the roaming host has no default route>>>le nomade n'a pas de route par défaut}@@
+- default router of `gwb` after this part: @@{gwb_default:[0-9.]+}@@
+""",
+    """
+**Solution.** `wg0.conf` de `laptop` (fin de partie 6) :
+
+```
+{conf_laptop}```
+
+et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.conf`) :
+
+```
+{nft}```
+
+- Avant : `web` voit `{box_wan}` (le nomade sort par la box, qui le traduit). Après `0.0.0.0/0`,
+  `wg-quick` exécute `wg set wg0 fwmark {port}`, `ip -4 route add 0.0.0.0/0 dev wg0 table {port}`,
+  `ip -4 rule add not fwmark {port} table {port}`, `ip -4 rule add table main suppress_prefixlength 0`,
+  `sysctl net.ipv4.conf.all.src_valid_mark=1` et une table nftables `wg-quick-wg0`. `ip route get {web}`
+  répond `dev wg0 table {port}`, `ip route get {srv_wan}` aussi — mais les datagrammes que WireGuard
+  émet vers `{srv_wan}` sont marqués et prennent `via {box_hotel} dev eth0`. Sans NAT, `web` reçoit des
+  paquets de source `{vpn_laptop}` et ni lui ni `inet` n'ont de route de retour ; avec le `masquerade`,
+  `web` voit `{srv_wan}`.
+- `gwb` garde `default via {inet}` : rien n'a changé pour le site B.
+- Évalué : `0.0.0.0/0` dans les `AllowedIPs` du pair `srv` sur `laptop` ; les deux règles `ip rule` et la
+  route par défaut de la table {port} par `wg0` (`ip route get {web}` → `wg0`) ; la route par défaut
+  intacte sur `gwb` ; une règle `masquerade` (ou `snat` vers une adresse) sur `srv` ; `curl http://{web}/`
+  depuis `laptop` affichant `client={srv_wan}` ; sur le `wan`, des requêtes TCP 80 vers `web` depuis
+  `{srv_wan}` et aucune depuis `{box_wan}`.
+- Réponses : {fwmark} ; {suppress} ; {web_sees} ; {nat} ; {gwb_default}.
+""": """
+**Solution.** `wg0.conf` of `laptop` (end of part 6):
+
+```
+{conf_laptop}```
+
+and on `srv` (file `/etc/nftables.conf`, loaded by `nft -f /etc/nftables.conf`):
+
+```
+{nft}```
+
+- Before: `web` sees `{box_wan}` (the roaming host goes out through the box, which translates it). After `0.0.0.0/0`,
+  `wg-quick` runs `wg set wg0 fwmark {port}`, `ip -4 route add 0.0.0.0/0 dev wg0 table {port}`,
+  `ip -4 rule add not fwmark {port} table {port}`, `ip -4 rule add table main suppress_prefixlength 0`,
+  `sysctl net.ipv4.conf.all.src_valid_mark=1` and an nftables table `wg-quick-wg0`. `ip route get {web}`
+  answers `dev wg0 table {port}`, and so does `ip route get {srv_wan}` — but the datagrams that WireGuard
+  sends to `{srv_wan}` are marked and take `via {box_hotel} dev eth0`. Without NAT, `web` receives
+  packets with source `{vpn_laptop}` and neither it nor `inet` has a return route; with the `masquerade`,
+  `web` sees `{srv_wan}`.
+- `gwb` keeps `default via {inet}`: nothing has changed for site B.
+- Evaluated: `0.0.0.0/0` in the `AllowedIPs` of the peer `srv` on `laptop`; the two `ip rule` rules and the
+  default route of table {port} through `wg0` (`ip route get {web}` → `wg0`); the default route
+  intact on `gwb`; a `masquerade` rule (or `snat` to an address) on `srv`; `curl http://{web}/`
+  from `laptop` showing `client={srv_wan}`; on the `wan`, TCP 80 requests to `web` from
+  `{srv_wan}` and none from `{box_wan}`.
+- Answers: {fwmark}; {suppress}; {web_sees}; {nat}; {gwb_default}.
+""",
+    "sur laptop, les AllowedIPs du pair srv contiennent 0.0.0.0/0": "on laptop, the AllowedIPs of the peer srv contain 0.0.0.0/0",
+    "règles ip rule (not fwmark 51820, suppress_prefixlength 0) et route par défaut de la table 51820 par wg0 sur laptop": "ip rule rules (not fwmark 51820, suppress_prefixlength 0) and default route of table 51820 through wg0 on laptop",
+    "gwb a gardé sa route par défaut vers inet (pas de tunnel complet pour le site B)": "gwb has kept its default route to inet (no full tunnel for site B)",
+    "règle masquerade (nftables ou iptables) sur srv": "masquerade rule (nftables or iptables) on srv",
+    "http://web/ vu de laptop affiche l'adresse publique de srv : tout le trafic passe par le VPN": "http://web/ seen from laptop shows the public address of srv: all the traffic goes through the VPN",
+    "sur le wan : requêtes TCP 80 vers web depuis srv, aucune depuis la box": "on the wan: TCP 80 requests to web from srv, none from the box",
+    "fwmark, suppress_prefixlength, adresse vue par web, rôle du NAT, route par défaut de gwb": "fwmark, suppress_prefixlength, address seen by web, role of the NAT, default route of gwb",
+    "Partie 7 — Clé pré-partagée et retrait d'un pair": "Part 7 — Preshared key and removal of a peer",
+    "PresharedKey et retrait du pair oldpc": "PresharedKey and removal of the peer oldpc",
+    """
+**1. Clé pré-partagée.** Sur `srv` : `wg genpsk`. Mettez cette clé dans le pair `laptop` de `srv`
+(`PresharedKey = …`) et appliquez (`wg syncconf wg0 <(wg-quick strip wg0)`) ; d'abord sans rien
+changer sur `laptop` : le `ping` passe-t-il encore ? Pendant combien de temps (`wg show`) ? Mettez
+ensuite la même clé dans le pair `srv` de `laptop`, appliquez, puis vérifiez
+`wg show wg0 preshared-keys` des deux côtés et le `ping`.
+
+**2. Retrait d'un pair.** Le portable `oldpc` a été volé : retirez sa section de `wg0.conf` sur
+`srv` et appliquez (`wg syncconf wg0 <(wg-quick strip wg0)`, ou `wg set wg0 peer CLÉ_DE_OLDPC
+remove` pour l'effet immédiat). Vérifiez avec `wg show` que `colleague`, `laptop` et `gwb` sont
+toujours là.
+""": """
+**1. Preshared key.** On `srv`: `wg genpsk`. Put this key in the peer `laptop` of `srv`
+(`PresharedKey = …`) and apply (`wg syncconf wg0 <(wg-quick strip wg0)`); first without changing
+anything on `laptop`: does the `ping` still get through? For how long (`wg show`)? Then put
+the same key in the peer `srv` of `laptop`, apply, then check
+`wg show wg0 preshared-keys` on both sides, and the `ping`.
+
+**2. Removal of a peer.** The laptop `oldpc` has been stolen: remove its section from `wg0.conf` on
+`srv` and apply (`wg syncconf wg0 <(wg-quick strip wg0)`, or `wg set wg0 peer KEY_OF_OLDPC
+remove` for an immediate effect). Check with `wg show` that `colleague`, `laptop` and `gwb` are
+still there.
+""",
+    """
+- `PresharedKey` apporte : @@{psk:>une clé symétrique mélangée à la poignée de main, propre à ce couple de pairs : protection contre un futur ordinateur quantique|un mot de passe demandé au nomade à chaque connexion|le remplacement des clés publiques par une clé partagée}@@
+- la clé n'est d'abord mise que sur `srv` : @@{psk_effect:>rien tout de suite : la session en cours continue, la prochaine poignée de main (dans les deux minutes) échoue|le tunnel est coupé immédiatement|rien du tout : la clé est facultative d'un côté}@@
+- pour révoquer un appareil : @@{revoke:>retirer son pair (wg set wg0 peer CLÉ remove, ou supprimer sa section et wg syncconf) : effet immédiat|publier sa clé dans une liste de révocation|attendre l'expiration de sa clé}@@
+- une clé WireGuard expire-t-elle ? @@{expire:>non : une clé est valable tant qu'elle est configurée, il n'y a ni date d'expiration ni CRL|oui, après 825 jours|oui, à chaque redémarrage}@@
+""": """
+- `PresharedKey` brings: @@{psk:>a symmetric key mixed into the handshake, specific to this pair of peers: protection against a future quantum computer>>>une clé symétrique mélangée à la poignée de main, propre à ce couple de pairs : protection contre un futur ordinateur quantique|a password asked of the roaming host at every connection>>>un mot de passe demandé au nomade à chaque connexion|the replacement of the public keys by a shared key>>>le remplacement des clés publiques par une clé partagée}@@
+- the key is first put on `srv` only: @@{psk_effect:>nothing right away: the current session goes on, the next handshake (within two minutes) fails>>>rien tout de suite : la session en cours continue, la prochaine poignée de main (dans les deux minutes) échoue|the tunnel is cut immediately>>>le tunnel est coupé immédiatement|nothing at all: the key is optional on one side>>>rien du tout : la clé est facultative d'un côté}@@
+- to revoke a device: @@{revoke:>remove its peer (wg set wg0 peer KEY remove, or delete its section and wg syncconf): immediate effect>>>retirer son pair (wg set wg0 peer CLÉ remove, ou supprimer sa section et wg syncconf) : effet immédiat|publish its key in a revocation list>>>publier sa clé dans une liste de révocation|wait for its key to expire>>>attendre l'expiration de sa clé}@@
+- does a WireGuard key expire? @@{expire:>no: a key is valid as long as it is configured, there is neither an expiry date nor a CRL>>>non : une clé est valable tant qu'elle est configurée, il n'y a ni date d'expiration ni CRL|yes, after 825 days>>>oui, après 825 jours|yes, at every reboot>>>oui, à chaque redémarrage}@@
+""",
+    """
+**Solution.** Sur `srv`, `wg genpsk` donne une clé (celle de l'état `final` : `{psk}`) à mettre dans
+le pair `laptop` ; sur `laptop`, la même dans le pair `srv` ; `wg syncconf wg0 <(wg-quick strip wg0)`
+des deux côtés. `wg0.conf` de `srv` à la fin du TP (pair `oldpc` supprimé) :
+
+```
+{conf_srv}```
+
+- Clé d'un seul côté : la session en cours (clés de session déjà négociées) continue jusqu'à la
+  prochaine poignée de main, au plus deux minutes avec du trafic ; ensuite les initiations sont
+  rejetées (`latest handshake` n'avance plus, `transfer` n'augmente qu'en émission).
+- `wg set wg0 peer {pub_oldpc} remove` détruit la session de `oldpc` sur-le-champ ; sans date
+  d'expiration ni CRL, c'est la seule révocation possible, d'où l'importance d'un inventaire des clés.
+- Évalué : clé pré-partagée présente et identique des deux côtés (`wg show all dump`), `PresharedKey`
+  dans les deux fichiers ; `colleague` toujours pair de `srv` et `oldpc` absent (interface et fichier) ;
+  la sonde : refusée avec la clé de `oldpc` (aucune poignée de main), acceptée avec celle de `colleague`.
+- Réponses : {psk_answer} ; {psk_effect} ; {revoke} ; {expire}.
+""": """
+**Solution.** On `srv`, `wg genpsk` gives a key (the one of the `final` state: `{psk}`) to put in
+the peer `laptop`; on `laptop`, the same key in the peer `srv`; `wg syncconf wg0 <(wg-quick strip wg0)`
+on both sides. `wg0.conf` of `srv` at the end of the lab (peer `oldpc` deleted):
+
+```
+{conf_srv}```
+
+- Key on one side only: the current session (session keys already negotiated) goes on until the
+  next handshake, at most two minutes with traffic; after that the initiations are
+  rejected (`latest handshake` no longer moves, `transfer` grows only on the sending side).
+- `wg set wg0 peer {pub_oldpc} remove` destroys the session of `oldpc` at once; with neither an expiry
+  date nor a CRL, this is the only possible revocation, hence the importance of an inventory of the keys.
+- Evaluated: preshared key present and identical on both sides (`wg show all dump`), `PresharedKey`
+  in both files; `colleague` still a peer of `srv` and `oldpc` absent (interface and file);
+  the probe: refused with the key of `oldpc` (no handshake), accepted with that of `colleague`.
+- Answers: {psk_answer}; {psk_effect}; {revoke}; {expire}.
+""",
+    "clé pré-partagée sur le pair laptop de srv, identique sur le pair srv de laptop, dans les deux wg0.conf": "preshared key on the peer laptop of srv, identical on the peer srv of laptop, in both wg0.conf files",
+    "le pair oldpc a disparu de wg0 et de wg0.conf sur srv (colleague y est toujours)": "the peer oldpc has gone from wg0 and from wg0.conf on srv (colleague is still there)",
+    "srv n'accorde plus de poignée de main à la clé de oldpc (et toujours à celle de colleague)": "srv no longer grants a handshake to the key of oldpc (and still does to that of colleague)",
+    "rôle de la clé pré-partagée, moment où elle agit, révocation, expiration": "role of the preshared key, when it acts, revocation, expiry",
+}}

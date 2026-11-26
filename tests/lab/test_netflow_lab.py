@@ -7,6 +7,7 @@ The archives of tests/mock_data/netflow/lab/ are real evaluations of one running
 TestRealEvaluations replays what the grader's commands really printed, and changes one answer at a
 time to check that each part is graded on what it claims.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -172,6 +173,17 @@ def _all_texts(grade, ns, lang='fr'):
         yield f"description:{_text(q.title)}", _text(q.description, lang)
 
 
+def _instructor_literals():
+    """The literals of the tr() calls inside instructor() (what strip-instructor removes)."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
 
 # ---------------------------------------------------------------------------
 # data, topology, states
@@ -304,6 +316,33 @@ class TestTexts:
         spec.loader.exec_module(module)
         grade, _ = _run(module, data, {}, lambda m, c: None, instructor_mode=True)
         assert _totals(grade) == (0, 100)
+        # the English of the instructor texts goes with them, the other entries stay
+        kept = module._TRANSLATIONS['en']
+        assert len(_instructor_literals()) == 5 and not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """Every tr() text is French with its English in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py); the English texts are formatted
+        and render, with the instructor solutions in both languages."""
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+        assert all(value and value != key for key, value in english.items())
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 5
+        assert lab.title.resolve('en') == "NetFlow: flow metrology with softflowd and nfdump"
+        assert lab.NetScheme.final._sre_state_description.resolve('en').startswith('Reference solution:')
+        g1, ns1 = _run(lab, data, {}, lambda m, c: None, instructor_mode=True)
+        texts, french = list(_all_texts(g1, ns1, 'en')), dict(_all_texts(g1, ns1))
+        assert len([w for w, t in texts if has_instructor(t)]) == 5
+        for where, text in texts:
+            assert text != french[where], where
+            assert "{'" not in text, where
+            plain = re.sub(r"```.*?```", "", re.sub(r"@@\{[^}]*\}@@", "", text), flags=re.S)
+            assert not re.search(r"(?<!\{)\{[a-z_][a-z_0-9]*\}(?!\})", plain), where
+            assert '</' not in plain, where
+            markdown_to_html(text, show_instructor=True)
 
     def test_english_identifiers(self, lab, data):
         french = re.compile(r'(routeur|collecteur|serveur|flux|balise|delai|gabarit|panne)', re.I)

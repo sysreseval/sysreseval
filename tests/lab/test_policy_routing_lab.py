@@ -932,11 +932,18 @@ def test_stripped_lab_file(lab):
     assert b'Solution' not in stripped and b'Pour l\'enseignant' not in stripped
 
 
-def test_french_only_and_english_identifiers(lab, data, tmp_pub_dir):
-    """The texts are French (no translation table yet); machines, networks, states, data fields, grade
-    elements, part keys and form fields are English."""
-    assert lab._TRANSLATIONS == {} and lab.default_language == 'fr'
+def test_translations_and_english_identifiers(lab, data, tmp_pub_dir):
+    """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+    every lab of the directory by test_draft_misc_translations.py); machines, networks, states, data
+    fields, grade elements, part keys and form fields are English."""
+    import ast
+    import check_sre_translations as cst
+    assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+    english = lab._TRANSLATIONS['en']
+    assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+    assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 25
     assert lab.title.resolve('en') == "Policy routing: ip rule, two ISPs and VRFs"
+    assert lab.NetScheme.isp1_down._sre_state_description.resolve('en').startswith('Failure: ISP 1')
     french = re.compile(r'(routeur|pont|reseau|serveur|sonde|panne|exemple|reponse|commutateur|passerelle|'
                         r'machine_|_machine|exterieur|interne|filtre|regle|journal|parefeu|courrier|adresse|sortie|'
                         r'fournisseur|invite|personnel|marque|bleu|rouge)', re.I)

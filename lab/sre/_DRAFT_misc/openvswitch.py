@@ -748,27 +748,34 @@ Les lignes QoS et Queue ne disparaissent pas d'elles-mêmes quand plus rien ne l
         for c in self.bonus_cmds():
             self.cmd("sw5", c)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (trunk, VLAN et ports internes)"))
+    # the descriptions are evaluated at import time, before _TRANSLATIONS (end of the file): the English inline too
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (trunk, VLAN et ports internes)",
+                                                  en="Part 1: solution (trunk, VLANs and internal ports)"))
     def solve_part1(self):
         self._solve_part1()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (agrégat LACP de hv2)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (agrégat LACP de hv2)",
+                                                  en="Part 2: solution (LACP bond of hv2)"))
     def solve_part2(self):
         self._solve_part2()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (tunnels VXLAN et Geneve, MTU)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (tunnels VXLAN et Geneve, MTU)",
+                                                  en="Part 3: solution (VXLAN and Geneve tunnels, MTU)"))
     def solve_part3(self):
         self._solve_part3()
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (pare-feu avec état de fw4)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (pare-feu avec état de fw4)",
+                                                  en="Part 4: solution (stateful firewall of fw4)"))
     def solve_part4(self):
         self._solve_part4()
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (miroir et limitation de guest5)"))
+    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (miroir et limitation de guest5)",
+                                                  en="Part 5: solution (mirror and policing of guest5)"))
     def solve_part5(self):
         self._solve_part5()
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (files d'attente HTB et set_queue)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (files d'attente HTB et set_queue)",
+                                                  en="Bonus: solution (HTB queues and set_queue)"))
     def solve_bonus(self):
         self._solve_bonus()
 
@@ -1674,5 +1681,1039 @@ ovs-ofctl -O OpenFlow13 add-flow br0 "{flow}"
 
 `h5b` is limited to about {qrate} kbit/s, `h5a` is not (queue 0).
 """,
+        "Open vSwitch : VLAN, agrégation, tunnels, pare-feu avec état et QoS": "Open vSwitch: VLANs, bonding, tunnels, stateful firewall and QoS",
+        """**Sommaire**
+""": """**Contents**
+""",
+        "Un switch dans chaque hyperviseur": "A switch in every hypervisor",
+        """
+
+Les machines virtuelles d'un hyperviseur (KVM, Xen) et les conteneurs d'un hôte ont besoin d'un réseau :
+leurs interfaces virtuelles (`tap`, `veth`) doivent être reliées entre elles et au réseau physique.
+Le pont Linux (`bridge`) fait un switch simple ; **Open vSwitch** (OVS) est un switch logiciel complet :
+
+- des **VLAN** 802.1Q, des **agrégats** de liens avec LACP, des **tunnels** (VXLAN, Geneve, GRE) qui
+  relient les hyperviseurs à travers un réseau IP ;
+- une table de flux **OpenFlow** programmable, du filtrage **avec état** (suivi de connexions du noyau),
+  des **miroirs** de ports, de la **qualité de service** ;
+- une base de configuration (**OVSDB**) que l'on modifie par des transactions, en local ou à distance.
+
+On le trouve dans les hyperviseurs (libvirt, Proxmox, XenServer), dans OpenStack (Neutron), dans
+Kubernetes (OVN-Kubernetes, Antrea) et dans les cartes réseau programmables (*SmartNIC*). Un contrôleur
+peut le piloter (SDN), mais il fonctionne très bien seul, en switch classique enrichi : c'est le cas de
+ce TP.
+""": """
+
+The virtual machines of a hypervisor (KVM, Xen) and the containers of a host need a network: their
+virtual interfaces (`tap`, `veth`) must be connected to each other and to the physical network. The
+Linux bridge (`bridge`) makes a simple switch; **Open vSwitch** (OVS) is a full-featured software switch:
+
+- 802.1Q **VLANs**, link **bonds** with LACP, **tunnels** (VXLAN, Geneve, GRE) that connect the
+  hypervisors across an IP network;
+- a programmable **OpenFlow** flow table, **stateful** filtering (the connection tracking of the kernel),
+  port **mirrors**, **quality of service**;
+- a configuration database (**OVSDB**) modified through transactions, locally or remotely.
+
+It is found in hypervisors (libvirt, Proxmox, XenServer), in OpenStack (Neutron), in Kubernetes
+(OVN-Kubernetes, Antrea) and in programmable network cards (*SmartNIC*). A controller can drive it
+(SDN), but it works very well on its own, as an enhanced classic switch: that is the case in this lab.
+""",
+        "L'architecture d'Open vSwitch": "The architecture of Open vSwitch",
+        "Les composants": "The components",
+        """
+
+| composant | rôle |
+|-----------|------|
+| `ovsdb-server` | la base de configuration (`/etc/openvswitch/conf.db`) ; protocole OVSDB (RFC 7047) |
+| `ovs-vswitchd` | le démon qui fait le switch : il lit la base, tient les tables de flux, apprend les adresses MAC, négocie LACP, parle OpenFlow |
+| le **datapath** | le module `openvswitch` du noyau : le chemin rapide. Il garde un cache des décisions (*megaflows*) et remonte à `ovs-vswitchd` le premier paquet de chaque nouvelle combinaison (*upcall*) |
+
+Un **pont** (*bridge*) est un switch indépendant. Il a toujours un port interne qui porte son nom
+(le port `LOCAL` d'OpenFlow). Tous les ponts d'une machine partagent un seul datapath du noyau,
+`ovs-system`.
+""": """
+
+| component | role |
+|-----------|------|
+| `ovsdb-server` | the configuration database (`/etc/openvswitch/conf.db`); OVSDB protocol (RFC 7047) |
+| `ovs-vswitchd` | the daemon that does the switching: it reads the database, keeps the flow tables, learns the MAC addresses, negotiates LACP, speaks OpenFlow |
+| the **datapath** | the `openvswitch` kernel module: the fast path. It keeps a cache of the decisions (*megaflows*) and passes up to `ovs-vswitchd` the first packet of each new combination (*upcall*) |
+
+A **bridge** is an independent switch. It always has an internal port bearing its name (the OpenFlow
+`LOCAL` port). All the bridges of a machine share a single kernel datapath, `ovs-system`.
+""",
+        "La base OVSDB": "The OVSDB database",
+        """
+
+La configuration est faite de **tables** liées entre elles :
+
+```
+Open_vSwitch ── Bridge ──┬── Port ── Interface
+                         ├── Mirror
+                         └── Controller
+                Port ── QoS ── Queue
+```
+
+- un **port** est ce que voit la logique du switch (VLAN, agrégat, QoS) ; une **interface** est un
+  périphérique réseau (type, options, numéro OpenFlow `ofport`). Un port ordinaire a une interface, un
+  **agrégat** (*bond*) est un port à plusieurs interfaces ;
+- `ovs-vsctl` modifie la base par **transactions** : plusieurs commandes séparées par `--` s'appliquent
+  ensemble ou pas du tout ; `--id=@nom` nomme une ligne créée dans la transaction pour la référencer plus
+  loin.
+
+| commande | effet |
+|----------|-------|
+| `ovs-vsctl show` | vue d'ensemble |
+| `ovs-vsctl list port eth1` | toutes les colonnes d'une ligne (ici, de la table Port) |
+| `ovs-vsctl find interface type=vxlan` | les lignes qui vérifient une condition |
+| `ovs-vsctl set port eth1 tag=10` | écrire une colonne ; `other_config:clé=valeur` pour une colonne de type dictionnaire |
+| `ovs-vsctl clear port eth1 trunks` / `remove port eth1 trunks 20` | vider une colonne, retirer une valeur |
+| `ovs-vsctl get interface eth1 ofport` | lire une colonne |
+""": """
+
+The configuration is made of **tables** linked to each other:
+
+```
+Open_vSwitch ── Bridge ──┬── Port ── Interface
+                         ├── Mirror
+                         └── Controller
+                Port ── QoS ── Queue
+```
+
+- a **port** is what the switch logic sees (VLAN, bond, QoS); an **interface** is a network device (type,
+  options, OpenFlow number `ofport`). An ordinary port has one interface, a **bond** is a port with
+  several interfaces;
+- `ovs-vsctl` modifies the database through **transactions**: several commands separated by `--` apply
+  together or not at all; `--id=@name` names a row created in the transaction so that it can be
+  referenced further on.
+
+| command | effect |
+|---------|--------|
+| `ovs-vsctl show` | overview |
+| `ovs-vsctl list port eth1` | every column of a row (here, of the Port table) |
+| `ovs-vsctl find interface type=vxlan` | the rows that meet a condition |
+| `ovs-vsctl set port eth1 tag=10` | write a column; `other_config:key=value` for a column of type map |
+| `ovs-vsctl clear port eth1 trunks` / `remove port eth1 trunks 20` | empty a column, remove a value |
+| `ovs-vsctl get interface eth1 ofport` | read a column |
+""",
+        "Les types de ports": "The port types",
+        """
+
+| type d'interface | usage |
+|------------------|-------|
+| (vide) `system` | une interface existante de la machine (`eth1`, un `tap` de machine virtuelle) |
+| `internal` | une interface créée par OVS dans la pile réseau de la machine : elle peut porter une adresse IP |
+| `patch` | un lien entre deux ponts de la même machine (`options:peer=...`) |
+| `vxlan`, `geneve`, `gre` | un tunnel vers une autre machine (`options:remote_ip=...`) |
+""": """
+
+| interface type | use |
+|----------------|-----|
+| (empty) `system` | an existing interface of the machine (`eth1`, the `tap` of a virtual machine) |
+| `internal` | an interface created by OVS in the network stack of the machine: it can carry an IP address |
+| `patch` | a link between two bridges of the same machine (`options:peer=...`) |
+| `vxlan`, `geneve`, `gre` | a tunnel to another machine (`options:remote_ip=...`) |
+""",
+        "Les VLAN": "VLANs",
+        """
+
+Les colonnes `tag`, `trunks` et `vlan_mode` d'un port :
+
+| configuration | comportement |
+|---------------|--------------|
+| `tag=10` | port d'**accès** du VLAN 10 : trames non étiquetées, rangées dans le VLAN 10 |
+| ni `tag` ni `trunks` | **trunk de tous les VLAN** (trames étiquetées ; les trames non étiquetées sont dans le VLAN 0) |
+| `trunks=10,20` | trunk limité à ces VLAN : les autres sont jetés à l'entrée et jamais émis |
+| `tag=10 trunks=20,30 vlan_mode=native-untagged` | trunk des VLAN 20 et 30, le VLAN 10 circule **sans étiquette** (VLAN natif) |
+| `vlan_mode=native-tagged` | idem, mais le VLAN natif est émis étiqueté |
+
+`vlan_mode` vaut `access`, `trunk`, `native-tagged` ou `native-untagged`. Sans `vlan_mode`, un port qui
+a un `tag` est un port d'accès, et son `trunks` est ignoré (avec un avertissement dans le journal
+d'`ovs-vswitchd`).
+
+```
+ovs-vsctl add-port br0 eth1 tag=10                          # accès
+ovs-vsctl add-port br0 eth0 trunks=10,20                    # trunk limité
+ovs-vsctl set port eth0 trunks=10,20,30                     # modifier
+```
+
+**Router entre les VLAN.** Un port `internal` étiqueté donne à la machine une interface dans ce VLAN ;
+avec une adresse IP sur chacune et le routage activé, la machine route entre les VLAN (un *router on a
+stick* intégré au switch) :
+
+```
+ovs-vsctl add-port br0 vlan10 tag=10 -- set interface vlan10 type=internal
+ip addr add 192.0.2.1/24 dev vlan10 ; ip link set vlan10 up
+```
+
+(Un **faux pont** fait la même chose : `ovs-vsctl add-br br0-10 br0 10` crée un « pont » `br0-10` qui
+n'est qu'un port interne du VLAN 10 de `br0`.)
+
+`ovs-appctl fdb/show br0` affiche la table MAC apprise, avec le VLAN de chaque adresse.
+""": """
+
+The `tag`, `trunks` and `vlan_mode` columns of a port:
+
+| configuration | behaviour |
+|---------------|-----------|
+| `tag=10` | **access** port of VLAN 10: untagged frames, placed in VLAN 10 |
+| neither `tag` nor `trunks` | **trunk of every VLAN** (tagged frames; untagged frames are in VLAN 0) |
+| `trunks=10,20` | trunk limited to these VLANs: the others are dropped on input and never sent |
+| `tag=10 trunks=20,30 vlan_mode=native-untagged` | trunk of VLANs 20 and 30, VLAN 10 travels **untagged** (native VLAN) |
+| `vlan_mode=native-tagged` | the same, but the native VLAN is sent tagged |
+
+`vlan_mode` is `access`, `trunk`, `native-tagged` or `native-untagged`. Without `vlan_mode`, a port that
+has a `tag` is an access port, and its `trunks` is ignored (with a warning in the log of
+`ovs-vswitchd`).
+
+```
+ovs-vsctl add-port br0 eth1 tag=10                          # access
+ovs-vsctl add-port br0 eth0 trunks=10,20                    # limited trunk
+ovs-vsctl set port eth0 trunks=10,20,30                     # modify
+```
+
+**Routing between the VLANs.** A tagged `internal` port gives the machine an interface in that VLAN;
+with an IP address on each one and routing enabled, the machine routes between the VLANs (a *router on
+a stick* built into the switch):
+
+```
+ovs-vsctl add-port br0 vlan10 tag=10 -- set interface vlan10 type=internal
+ip addr add 192.0.2.1/24 dev vlan10 ; ip link set vlan10 up
+```
+
+(A **fake bridge** does the same: `ovs-vsctl add-br br0-10 br0 10` creates a "bridge" `br0-10` that is
+only an internal port of VLAN 10 of `br0`.)
+
+`ovs-appctl fdb/show br0` shows the learned MAC table, with the VLAN of each address.
+""",
+        "Agrégation de liens": "Link aggregation",
+        """
+
+Un **agrégat** (*bond*) réunit plusieurs liens vers le même équipement en un seul port logique : plus de
+débit, et la survie à la perte d'un lien. Sans agrégat, deux liens parallèles entre deux switchs font
+une **boucle**.
+
+```
+ovs-vsctl add-bond br0 bond0 eth0 eth1 bond_mode=balance-slb
+```
+
+| `bond_mode` | répartition | exige LACP |
+|-------------|-------------|------------|
+| `active-backup` | un seul membre actif, les autres en secours | non |
+| `balance-slb` | par adresse MAC source et VLAN (le switch d'en face n'a rien à configurer) | non |
+| `balance-tcp` | par flux (adresses et ports L3 / L4) | **oui** |
+
+**LACP** (802.1AX, ex-802.3ad) : les deux extrémités échangent des LACPDU (adresse
+`01:80:c2:00:00:02`) pour vérifier qu'elles parlent bien du même agrégat et pour détecter un membre
+défaillant.
+
+- `lacp=active` (envoie des LACPDU), `passive` (répond seulement), `off` ;
+- `other_config:lacp-time=fast` : un LACPDU par seconde (une panne vue en 3 s) au lieu de 30 s (90 s) ;
+- `other_config:lacp-system-id`, `lacp-system-priority` : l'identité annoncée (par défaut l'adresse MAC
+  du pont) ;
+- sans partenaire LACP, un agrégat `lacp=active` est **désactivé** (sauf `other_config:lacp-fallback-ab=true`) :
+  aucun trafic plutôt qu'une boucle.
+
+| commande | contenu |
+|----------|---------|
+| `ovs-appctl bond/show [bond0]` | mode, état LACP (`negotiated`), membres actifs, répartition des flux |
+| `ovs-appctl lacp/show [bond0]` | identités et états LACP de l'acteur (soi) et du partenaire, pour chaque membre |
+
+Chaque **membre** d'un agrégat reste une interface avec son propre numéro OpenFlow.
+""": """
+
+A **bond** joins several links to the same device into a single logical port: more throughput, and
+survival when a link is lost. Without a bond, two parallel links between two switches make a **loop**.
+
+```
+ovs-vsctl add-bond br0 bond0 eth0 eth1 bond_mode=balance-slb
+```
+
+| `bond_mode` | load sharing | requires LACP |
+|-------------|--------------|---------------|
+| `active-backup` | a single active member, the others on standby | no |
+| `balance-slb` | by source MAC address and VLAN (nothing to configure on the switch opposite) | no |
+| `balance-tcp` | by flow (L3 / L4 addresses and ports) | **yes** |
+
+**LACP** (802.1AX, formerly 802.3ad): the two ends exchange LACPDUs (address `01:80:c2:00:00:02`) to
+check that they are indeed talking about the same bond and to detect a failed member.
+
+- `lacp=active` (sends LACPDUs), `passive` (only answers), `off`;
+- `other_config:lacp-time=fast`: one LACPDU per second (a failure seen in 3 s) instead of 30 s (90 s);
+- `other_config:lacp-system-id`, `lacp-system-priority`: the identity announced (by default the MAC
+  address of the bridge);
+- without an LACP partner, a `lacp=active` bond is **disabled** (unless `other_config:lacp-fallback-ab=true`):
+  no traffic rather than a loop.
+
+| command | content |
+|---------|---------|
+| `ovs-appctl bond/show [bond0]` | mode, LACP status (`negotiated`), active members, distribution of the flows |
+| `ovs-appctl lacp/show [bond0]` | LACP identities and states of the actor (self) and of the partner, for each member |
+
+Each **member** of a bond remains an interface with its own OpenFlow number.
+""",
+        "Tunnels et réseaux overlay": "Tunnels and overlay networks",
+        "VXLAN, Geneve, GRE": "VXLAN, Geneve and GRE",
+        """
+
+Un **réseau overlay** transporte des trames Ethernet entre des machines à travers un réseau IP (le réseau
+**sous-jacent**, *underlay*) : deux machines virtuelles de deux hyperviseurs distants sont dans le même
+réseau L2, sans VLAN à étendre dans le data centre.
+
+| encapsulation | transport | identifiant | surcoût sur IPv4 |
+|---------------|-----------|-------------|------------------|
+| **VXLAN** (RFC 7348) | UDP, port **4789** | VNI, 24 bits | 50 octets (Ethernet 14 + IP 20 + UDP 8 + VXLAN 8) |
+| **Geneve** (RFC 8926) | UDP, port **6081** | VNI, 24 bits, et des options extensibles | 50 octets + options |
+| **GRE** (RFC 2784) | IP, protocole 47 | clé de 32 bits (option) | 42 octets avec clé (Ethernet 14 + IP 20 + GRE 8) |
+
+Dans OVS, un tunnel est un port :
+
+```
+ovs-vsctl add-port br-int vx0 -- set interface vx0 type=vxlan \\
+          options:remote_ip=198.51.100.2 options:key=5000
+```
+
+- `options:remote_ip` : l'autre extrémité (le **VTEP** distant) ; `options:local_ip` : l'adresse
+  source (sinon, celle que donne la table de routage) ;
+- `options:key` : le VNI (ou la clé GRE) ; `key=flow` : le VNI est choisi par les entrées de flux
+  (`set_field:5000->tun_id`) ;
+- les paquets encapsulés sont **routés par la machine** (sa table de routage, ses interfaces) : l'interface
+  vers le réseau sous-jacent n'est pas dans le pont ;
+- le datapath du noyau utilise une interface par type de tunnel, créée par OVS : `vxlan_sys_4789`,
+  `genev_sys_6081`, `gre_sys` (visibles avec `ip link`).
+
+Un port de tunnel est un port comme un autre : il peut avoir un `tag`.
+""": """
+
+An **overlay network** carries Ethernet frames between machines across an IP network (the **underlay**
+network): two virtual machines on two distant hypervisors are in the same L2 network, with no VLAN to
+stretch across the data centre.
+
+| encapsulation | transport | identifier | overhead over IPv4 |
+|---------------|-----------|------------|--------------------|
+| **VXLAN** (RFC 7348) | UDP, port **4789** | VNI, 24 bits | 50 bytes (Ethernet 14 + IP 20 + UDP 8 + VXLAN 8) |
+| **Geneve** (RFC 8926) | UDP, port **6081** | VNI, 24 bits, and extensible options | 50 bytes + options |
+| **GRE** (RFC 2784) | IP, protocol 47 | 32-bit key (optional) | 42 bytes with a key (Ethernet 14 + IP 20 + GRE 8) |
+
+In OVS, a tunnel is a port:
+
+```
+ovs-vsctl add-port br-int vx0 -- set interface vx0 type=vxlan \\
+          options:remote_ip=198.51.100.2 options:key=5000
+```
+
+- `options:remote_ip`: the other end (the remote **VTEP**); `options:local_ip`: the source address
+  (otherwise, the one given by the routing table);
+- `options:key`: the VNI (or the GRE key); `key=flow`: the VNI is chosen by the flow entries
+  (`set_field:5000->tun_id`);
+- the encapsulated packets are **routed by the machine** (its routing table, its interfaces): the
+  interface towards the underlay network is not in the bridge;
+- the kernel datapath uses one interface per tunnel type, created by OVS: `vxlan_sys_4789`,
+  `genev_sys_6081`, `gre_sys` (visible with `ip link`).
+
+A tunnel port is a port like any other: it can have a `tag`.
+""",
+        "La MTU": "The MTU",
+        """
+
+Une trame de 1500 octets de charge utile devient, encapsulée en VXLAN, un paquet IP de 1550 octets. Si
+l'interface du réseau sous-jacent a une MTU de 1500, ce paquet ne passe pas : OVS renvoie à la machine
+virtuelle un ICMP *fragmentation needed* (MTU 1450), ou le paquet est perdu. Deux solutions :
+
+- **augmenter la MTU du réseau sous-jacent** (≥ 1550, souvent 1600 ou 9000 : les trames géantes,
+  *jumbo frames*), sur les interfaces des hyperviseurs **et** de tout le chemin ;
+- **réduire la MTU des machines virtuelles** à 1450 (ce que fait OpenStack, par DHCP).
+
+Pour tester : `ping -M do -s 1472 <destination>` (1472 + 8 + 20 = un paquet IP de 1500 octets, sans
+fragmentation). Une machine qui a reçu un *fragmentation needed* garde la MTU réduite en cache dix minutes
+(`ip route get <destination>` affiche `mtu 1450`) ; `ip route flush cache` l'efface (dans un conteneur,
+après `mount -o rw,remount /proc/sys`).
+""": """
+
+A frame with a 1500-byte payload becomes, once encapsulated in VXLAN, an IP packet of 1550 bytes. If the
+interface towards the underlay network has an MTU of 1500, this packet does not get through: OVS sends
+the virtual machine an ICMP *fragmentation needed* (MTU 1450), or the packet is lost. Two solutions:
+
+- **raise the MTU of the underlay network** (≥ 1550, often 1600 or 9000: *jumbo frames*), on the
+  interfaces of the hypervisors **and** of the whole path;
+- **lower the MTU of the virtual machines** to 1450 (what OpenStack does, through DHCP).
+
+To test: `ping -M do -s 1472 <destination>` (1472 + 8 + 20 = an IP packet of 1500 bytes, without
+fragmentation). A machine that has received a *fragmentation needed* keeps the reduced MTU in its cache
+for ten minutes (`ip route get <destination>` shows `mtu 1450`); `ip route flush cache` clears it (in a
+container, after `mount -o rw,remount /proc/sys`).
+""",
+        "VNI et VLAN locaux : l'exemple d'OpenStack": "VNIs and local VLANs: the example of OpenStack",
+        """
+
+Dans un hyperviseur, chaque réseau de locataire reçoit un **VLAN local**, choisi par cet hyperviseur ;
+le réseau est identifié globalement par son **VNI**. Le même réseau peut donc avoir le VLAN 3 sur un
+hyperviseur et le VLAN 7 sur un autre : c'est le tunnel qui fait la correspondance VLAN local ↔ VNI.
+
+OpenStack Neutron organise ainsi chaque hyperviseur : un pont `br-int` (les machines virtuelles, dans
+leur VLAN local) relié par des ports `patch` à un pont `br-tun` (les tunnels, `key=flow`), dont les
+entrées de flux traduisent le VLAN local en VNI à l'émission et le VNI en VLAN local à la réception.
+Avec un port de tunnel par réseau, `tag=<VLAN local>` et `options:key=<VNI>` font la même traduction
+sans écrire de flux.
+""": """
+
+In a hypervisor, each tenant network gets a **local VLAN**, chosen by that hypervisor; the network is
+identified globally by its **VNI**. The same network can thus have VLAN 3 on one hypervisor and VLAN 7
+on another: the tunnel does the mapping local VLAN ↔ VNI.
+
+OpenStack Neutron organises each hypervisor this way: a bridge `br-int` (the virtual machines, in their
+local VLAN) connected by `patch` ports to a bridge `br-tun` (the tunnels, `key=flow`), whose flow entries
+translate the local VLAN into the VNI on sending and the VNI into the local VLAN on receiving. With one
+tunnel port per network, `tag=<local VLAN>` and `options:key=<VNI>` do the same translation without
+writing any flow.
+""",
+        "Le pipeline OpenFlow d'OVS": "The OpenFlow pipeline of OVS",
+        """
+
+Chaque pont a des tables de flux numérotées à partir de 0. Un pont sans contrôleur, en mode `standalone`,
+n'a qu'une entrée, `priority=0 actions=NORMAL` : le traitement d'un switch classique (apprentissage MAC,
+VLAN, agrégats). Les entrées que l'on ajoute passent devant elle si leur priorité est plus forte.
+
+```
+ovs-ofctl -O OpenFlow13 add-flow br0 "table=0,priority=100,arp,actions=NORMAL"
+ovs-ofctl -O OpenFlow13 add-flows br0 fichier          # une entrée par ligne
+ovs-ofctl -O OpenFlow13 replace-flows br0 fichier      # remplacer toute la table
+ovs-ofctl -O OpenFlow13 dump-flows br0                 # entrées et compteurs
+ovs-ofctl -O OpenFlow13 del-flows br0                  # tout supprimer
+```
+
+| écriture | sens |
+|----------|------|
+| `table=N` | la table de l'entrée (0 si absent) |
+| `priority=N` | la plus forte gagne (32768 si absent) |
+| `in_port=N`, `dl_src`, `dl_dst` | port d'entrée (numéro OpenFlow), adresses MAC |
+| `arp`, `ip`, `icmp`, `tcp`, `udp` | protocoles (`tcp` = IPv4 + TCP...) |
+| `nw_src`, `nw_dst`, `tp_src`, `tp_dst` | adresses IPv4, ports TCP / UDP |
+| `actions=NORMAL`, `output:N`, `drop` | traitement classique, émettre sur un port, jeter |
+| `actions=goto_table:1` / `resubmit(,1)` | continuer dans la table 1 |
+| `actions=set_queue:1,NORMAL` | choisir la file d'attente 1 du port de sortie, puis traitement classique |
+
+`ovs-appctl ofproto/trace br0 "in_port=1,tcp,nw_src=...,nw_dst=...,tcp_dst=80"` **simule** un paquet :
+les entrées qu'il traverse, table par table, et à la dernière ligne (`Datapath actions:`) son sort :
+`drop`, ou les ports de sortie. Dans une trace, les drapeaux TCP s'écrivent exactement
+(`tcp_flags=0x012` pour SYN+ACK).
+""": """
+
+Each bridge has flow tables numbered from 0. A bridge without a controller, in `standalone` mode, has a
+single entry, `priority=0 actions=NORMAL`: the processing of a classic switch (MAC learning, VLANs,
+bonds). The entries you add go before it if their priority is higher.
+
+```
+ovs-ofctl -O OpenFlow13 add-flow br0 "table=0,priority=100,arp,actions=NORMAL"
+ovs-ofctl -O OpenFlow13 add-flows br0 file             # one entry per line
+ovs-ofctl -O OpenFlow13 replace-flows br0 file         # replace the whole table
+ovs-ofctl -O OpenFlow13 dump-flows br0                 # entries and counters
+ovs-ofctl -O OpenFlow13 del-flows br0                  # delete everything
+```
+
+| syntax | meaning |
+|--------|---------|
+| `table=N` | the table of the entry (0 if absent) |
+| `priority=N` | the highest wins (32768 if absent) |
+| `in_port=N`, `dl_src`, `dl_dst` | input port (OpenFlow number), MAC addresses |
+| `arp`, `ip`, `icmp`, `tcp`, `udp` | protocols (`tcp` = IPv4 + TCP...) |
+| `nw_src`, `nw_dst`, `tp_src`, `tp_dst` | IPv4 addresses, TCP / UDP ports |
+| `actions=NORMAL`, `output:N`, `drop` | classic processing, send out of a port, drop |
+| `actions=goto_table:1` / `resubmit(,1)` | continue in table 1 |
+| `actions=set_queue:1,NORMAL` | choose queue 1 of the output port, then classic processing |
+
+`ovs-appctl ofproto/trace br0 "in_port=1,tcp,nw_src=...,nw_dst=...,tcp_dst=80"` **simulates** a packet:
+the entries it goes through, table by table, and on the last line (`Datapath actions:`) its fate:
+`drop`, or the output ports. In a trace, the TCP flags are written exactly (`tcp_flags=0x012` for
+SYN+ACK).
+""",
+        "Pare-feu avec état : le suivi de connexions": "Stateful firewall: connection tracking",
+        """
+
+Un filtrage **sans état** juge chaque paquet seul : pour laisser revenir les réponses d'un serveur web,
+il faut autoriser tout ce qui vient de son port 80, même un paquet qu'aucun client n'a demandé. Le
+**suivi de connexions** du noyau (*conntrack*, celui de netfilter) retient les connexions ouvertes ; OVS
+s'en sert avec l'action `ct` et le champ `ct_state` :
+
+- `ct(table=1)` passe le paquet au suivi de connexions, puis le **recircule** (le fait repasser) dans la
+  table 1 avec son état ;
+- `ct(commit)` **enregistre** la connexion : sans `commit`, le noyau l'oublie et ses paquets suivants
+  restent `new` ;
+- `ct(zone=N)` : des tables de connexions séparées (un locataire par zone).
+
+| drapeau de `ct_state` | sens |
+|-----------------------|------|
+| `trk` | le paquet est passé par le suivi de connexions (`-trk` : pas encore) |
+| `new` | premier paquet d'une connexion inconnue |
+| `est` | paquet d'une connexion enregistrée, **dans un sens ou dans l'autre** |
+| `rel` | paquet lié à une connexion enregistrée (un ICMP d'erreur, une connexion de données FTP) |
+| `rpl` | paquet dans le sens de la réponse |
+| `inv` | paquet invalide (incohérent avec l'état TCP...) |
+
+On écrit `ct_state=+trk+est` (ces drapeaux présents), `ct_state=-trk` (absent). Le schéma habituel :
+
+```
+table=0,priority=100,ip,ct_state=-trk,actions=ct(table=1)
+table=1,priority=100,ip,ct_state=+trk+est,actions=NORMAL
+table=1,priority=100,ip,ct_state=+trk+new,<ce qui est autorisé>,actions=ct(commit),NORMAL
+table=1,priority=0,actions=drop
+```
+
+L'ARP n'est pas de l'IP : il passe par sa propre entrée. `ovs-appctl dpctl/dump-conntrack` affiche les
+connexions suivies ; dans une trace, `--ct-next trk,new` (ou `trk,est`) donne l'état que le suivi de
+connexions attribuerait au paquet après `ct()`.
+""": """
+
+**Stateless** filtering judges each packet on its own: to let the replies of a web server back in, you
+must allow everything that comes from its port 80, even a packet no client asked for. The **connection
+tracking** of the kernel (*conntrack*, that of netfilter) remembers the open connections; OVS uses it
+with the `ct` action and the `ct_state` field:
+
+- `ct(table=1)` hands the packet to the connection tracking, then **recirculates** it (sends it through
+  again) in table 1 with its state;
+- `ct(commit)` **records** the connection: without `commit`, the kernel forgets it and its next packets
+  stay `new`;
+- `ct(zone=N)`: separate connection tables (one tenant per zone).
+
+| `ct_state` flag | meaning |
+|-----------------|---------|
+| `trk` | the packet went through the connection tracking (`-trk`: not yet) |
+| `new` | first packet of an unknown connection |
+| `est` | packet of a recorded connection, **in either direction** |
+| `rel` | packet related to a recorded connection (an ICMP error, an FTP data connection) |
+| `rpl` | packet in the reply direction |
+| `inv` | invalid packet (inconsistent with the TCP state...) |
+
+You write `ct_state=+trk+est` (these flags present), `ct_state=-trk` (absent). The usual pattern:
+
+```
+table=0,priority=100,ip,ct_state=-trk,actions=ct(table=1)
+table=1,priority=100,ip,ct_state=+trk+est,actions=NORMAL
+table=1,priority=100,ip,ct_state=+trk+new,<what is allowed>,actions=ct(commit),NORMAL
+table=1,priority=0,actions=drop
+```
+
+ARP is not IP: it goes through its own entry. `ovs-appctl dpctl/dump-conntrack` shows the tracked
+connections; in a trace, `--ct-next trk,new` (or `trk,est`) gives the state the connection tracking
+would assign to the packet after `ct()`.
+""",
+        "Miroirs de ports": "Port mirrors",
+        """
+
+Un **miroir** (*SPAN*, *port mirroring*) envoie une copie de trafic vers un port d'analyse (une sonde, un
+IDS). Une ligne de la table Mirror, référencée par la colonne `mirrors` du pont :
+
+| colonne | sens |
+|---------|------|
+| `select_src_port` | copier ce qu'**émettent** ces ports vers le switch (ce que le switch reçoit d'eux) |
+| `select_dst_port` | copier ce que le switch **émet** vers ces ports |
+| `select_all` | tout le trafic du pont |
+| `select_vlan` | seulement ces VLAN |
+| `output_port` | le port qui reçoit les copies (il ne sert plus au trafic normal) |
+| `output_vlan` | à la place d'un port, un VLAN qui transporte les copies vers une sonde distante (*RSPAN*) |
+
+```
+ovs-vsctl -- --id=@p get port eth1 -- --id=@o get port eth9 \\
+          -- --id=@m create mirror name=m0 select_src_port=@p select_dst_port=@p output_port=@o \\
+          -- set bridge br0 mirrors=@m
+ovs-vsctl clear bridge br0 mirrors                      # supprimer
+```
+""": """
+
+A **mirror** (*SPAN*, *port mirroring*) sends a copy of traffic to an analysis port (a probe, an IDS).
+A row of the Mirror table, referenced by the `mirrors` column of the bridge:
+
+| column | meaning |
+|--------|---------|
+| `select_src_port` | copy what these ports **send** to the switch (what the switch receives from them) |
+| `select_dst_port` | copy what the switch **sends** to these ports |
+| `select_all` | all the traffic of the bridge |
+| `select_vlan` | only these VLANs |
+| `output_port` | the port that receives the copies (it no longer carries normal traffic) |
+| `output_vlan` | instead of a port, a VLAN that carries the copies to a remote probe (*RSPAN*) |
+
+```
+ovs-vsctl -- --id=@p get port eth1 -- --id=@o get port eth9 \\
+          -- --id=@m create mirror name=m0 select_src_port=@p select_dst_port=@p output_port=@o \\
+          -- set bridge br0 mirrors=@m
+ovs-vsctl clear bridge br0 mirrors                      # delete
+```
+""",
+        "Qualité de service": "Quality of service",
+        "Limitation à l'entrée": "Ingress policing",
+        """
+
+La **limitation** (*policing*) jette ce qui dépasse un débit, à l'**entrée** du switch : elle porte sur ce
+qu'émet la machine reliée au port. Deux colonnes de l'**interface** :
+
+- `ingress_policing_rate` : le débit, en **kbit/s** (0 : pas de limite) ;
+- `ingress_policing_burst` : la rafale tolérée, en **kbit** (au moins 10 % du débit est conseillé).
+
+```
+ovs-vsctl set interface eth3 ingress_policing_rate=1000 ingress_policing_burst=100
+```
+
+OVS l'applique par un filtre `tc` (`tc filter show dev eth3 ingress`). Le TCP s'adapte mal à des pertes
+aussi brutales : on mesure plutôt avec un flux UDP (`iperf3 -u -b ...`), dont on lit le débit reçu.
+""": """
+
+**Policing** drops what exceeds a rate, on **input** to the switch: it applies to what the machine
+connected to the port sends. Two columns of the **interface**:
+
+- `ingress_policing_rate`: the rate, in **kbit/s** (0: no limit);
+- `ingress_policing_burst`: the burst tolerated, in **kbit** (at least 10% of the rate is advised).
+
+```
+ovs-vsctl set interface eth3 ingress_policing_rate=1000 ingress_policing_burst=100
+```
+
+OVS applies it through a `tc` filter (`tc filter show dev eth3 ingress`). TCP copes badly with such
+abrupt losses: measure rather with a UDP flow (`iperf3 -u -b ...`), whose received rate you read.
+""",
+        "Files d'attente": "Queues",
+        """
+
+À la **sortie** d'un port, une **QoS** répartit le débit entre des **files** (*queues*), en façonnant le
+trafic (*shaping*) au lieu de le jeter brutalement. Une ligne de la table QoS, référencée par la colonne
+`qos` du **port**, et ses lignes de la table Queue :
+
+- `type=linux-htb` (Hierarchical Token Bucket) : OVS crée les classes `tc` du port (`tc class show dev
+  eth4` : la file N est la classe `1:N+1`) ;
+- `other_config:max-rate` de la QoS (le débit total) et de chaque file (`max-rate`, `min-rate`) : en
+  **bit/s** ;
+- la file 0 reçoit le trafic par défaut ; une entrée de flux choisit une autre file avec
+  `set_queue:N` avant sa sortie.
+
+```
+ovs-vsctl -- set port eth4 qos=@q \\
+          -- --id=@q create qos type=linux-htb other_config:max-rate=100000000 queues:0=@q0 queues:1=@q1 \\
+          -- --id=@q0 create queue other_config:max-rate=100000000 \\
+          -- --id=@q1 create queue other_config:max-rate=1000000
+ovs-ofctl -O OpenFlow13 add-flow br0 "priority=100,ip,nw_src=192.0.2.9,actions=set_queue:1,NORMAL"
+```
+
+Les lignes QoS et Queue ne disparaissent pas d'elles-mêmes quand plus rien ne les référence :
+`ovs-vsctl clear port eth4 qos`, puis `ovs-vsctl --all destroy qos -- --all destroy queue`.
+""": """
+
+On the **output** of a port, a **QoS** shares the rate between **queues**, shaping the traffic instead
+of dropping it abruptly. A row of the QoS table, referenced by the `qos` column of the **port**, and its
+rows of the Queue table:
+
+- `type=linux-htb` (Hierarchical Token Bucket): OVS creates the `tc` classes of the port (`tc class show
+  dev eth4`: queue N is class `1:N+1`);
+- `other_config:max-rate` of the QoS (the total rate) and of each queue (`max-rate`, `min-rate`): in
+  **bit/s**;
+- queue 0 receives the traffic by default; a flow entry chooses another queue with `set_queue:N` before
+  its output.
+
+```
+ovs-vsctl -- set port eth4 qos=@q \\
+          -- --id=@q create qos type=linux-htb other_config:max-rate=100000000 queues:0=@q0 queues:1=@q1 \\
+          -- --id=@q0 create queue other_config:max-rate=100000000 \\
+          -- --id=@q1 create queue other_config:max-rate=1000000
+ovs-ofctl -O OpenFlow13 add-flow br0 "priority=100,ip,nw_src=192.0.2.9,actions=set_queue:1,NORMAL"
+```
+
+The QoS and Queue rows do not disappear by themselves once nothing references them any more:
+`ovs-vsctl clear port eth4 qos`, then `ovs-vsctl --all destroy qos -- --all destroy queue`.
+""",
+        "Les outils de diagnostic": "The diagnostic tools",
+        """
+
+| commande | usage |
+|----------|-------|
+| `ovs-vsctl show`, `list`, `find` | la configuration (OVSDB) |
+| `ovs-ofctl -O OpenFlow13 show br0` | les ports et leurs numéros OpenFlow |
+| `ovs-ofctl -O OpenFlow13 dump-flows br0` | les entrées de flux et leurs compteurs |
+| `ovs-ofctl -O OpenFlow13 dump-ports br0` | les compteurs des ports |
+| `ovs-appctl fdb/show br0` | la table MAC (port, VLAN, adresse, âge) |
+| `ovs-appctl bond/show`, `lacp/show` | les agrégats |
+| `ovs-appctl ofproto/trace br0 "<paquet>"` | simuler un paquet |
+| `ovs-appctl dpctl/dump-conntrack` | les connexions suivies |
+| `ovs-appctl dpctl/dump-flows` | le cache du datapath (*megaflows*) |
+| `ovs-appctl dpif/show` | les ports du datapath, avec leurs numéros |
+| `/var/log/openvswitch/ovs-vswitchd.log` | le journal (avertissements, erreurs de configuration) |
+""": """
+
+| command | use |
+|---------|-----|
+| `ovs-vsctl show`, `list`, `find` | the configuration (OVSDB) |
+| `ovs-ofctl -O OpenFlow13 show br0` | the ports and their OpenFlow numbers |
+| `ovs-ofctl -O OpenFlow13 dump-flows br0` | the flow entries and their counters |
+| `ovs-ofctl -O OpenFlow13 dump-ports br0` | the port counters |
+| `ovs-appctl fdb/show br0` | the MAC table (port, VLAN, address, age) |
+| `ovs-appctl bond/show`, `lacp/show` | the bonds |
+| `ovs-appctl ofproto/trace br0 "<packet>"` | simulate a packet |
+| `ovs-appctl dpctl/dump-conntrack` | the tracked connections |
+| `ovs-appctl dpctl/dump-flows` | the cache of the datapath (*megaflows*) |
+| `ovs-appctl dpif/show` | the ports of the datapath, with their numbers |
+| `/var/log/openvswitch/ovs-vswitchd.log` | the log (warnings, configuration errors) |
+""",
+        "Dans ce TP": "In this lab",
+        """
+
+- Les switchs et les hyperviseurs sont des conteneurs où tournent `ovsdb-server` et `ovs-vswitchd`
+  (démarrés pour vous). Leur datapath est le module `openvswitch` du noyau de la machine hôte. Ne relancez
+  pas Open vSwitch ; si c'est nécessaire : `/usr/share/openvswitch/scripts/ovs-ctl restart`.
+- Les interfaces `ethN` des switchs n'ont pas d'adresse IP : ce sont leurs ports (sauf l'interface vers le
+  réseau sous-jacent d'un hyperviseur).
+- Les « machines virtuelles » sont des conteneurs reliés aux ports des hyperviseurs.
+- Pour capturer : `tcpdump -n -i eth0` (`-e` affiche les adresses MAC et les étiquettes VLAN).
+""": """
+
+- The switches and the hypervisors are containers running `ovsdb-server` and `ovs-vswitchd` (started
+  for you). Their datapath is the `openvswitch` module of the kernel of the host machine. Do not restart
+  Open vSwitch; if it is necessary: `/usr/share/openvswitch/scripts/ovs-ctl restart`.
+- The `ethN` interfaces of the switches have no IP address: they are their ports (except the interface
+  towards the underlay network of a hypervisor).
+- The "virtual machines" are containers connected to the ports of the hypervisors.
+- To capture: `tcpdump -n -i eth0` (`-e` shows the MAC addresses and the VLAN tags).
+""",
+        "Partie 1 : solution (trunk, VLAN et ports internes)": "Part 1: solution (trunk, VLANs and internal ports)",
+        "Partie 2 : solution (agrégat LACP de hv2)": "Part 2: solution (LACP bond of hv2)",
+        "Partie 3 : solution (tunnels VXLAN et Geneve, MTU)": "Part 3: solution (VXLAN and Geneve tunnels, MTU)",
+        "Partie 4 : solution (pare-feu avec état de fw4)": "Part 4: solution (stateful firewall of fw4)",
+        "Partie 5 : solution (miroir et limitation de guest5)": "Part 5: solution (mirror and policing of guest5)",
+        "Bonus : solution (files d'attente HTB et set_queue)": "Bonus: solution (HTB queues and set_queue)",
+        "Solution de référence : toutes les parties et le bonus, formulaires remplis.": "Reference solution: every part and the bonus, forms filled.",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente Open vSwitch, sa base de configuration, les VLAN, les
+agrégats, les tunnels, le suivi de connexions, les miroirs et la qualité de service. Le TP a cinq parties
+indépendantes, chacune sur son propre site, et un bonus à la fin de la cinquième.
+
+| partie | switchs | machines |
+|--------|---------|----------|
+| 1 | `sw1a`, `sw1b` : Open vSwitch démarré, aucun pont ; reliés par leur `eth0` | sur `sw1a` : `user1a` {user1a} (`eth1`), `srv1a` {srv1a} (`eth2`) ; sur `sw1b` : `user1b` {user1b} (`eth1`), `srv1b` {srv1b} (`eth2`) |
+| 2 | `hv2` : pont `br0` avec `vm2` ; `tor2` : switch du data centre, pas de terminal | `vm2` {vm2} (`eth2` de `hv2`) ; `nas2` {nas2} (derrière `tor2`) ; liens `eth0` et `eth1` entre `hv2` et `tor2` |
+| 3 | `hv3a` {hv3a}, `hv3b` {hv3b} : Open vSwitch démarré, aucun pont | routeur `core3` entre les deux ; `red3a` {red3a}, `blue3a` {blue3a} sur `hv3a` ; `red3b` {red3b}, `blue3b` {blue3b} sur `hv3b` |
+| 4 | `fw4` : pont `br0` en switch classique | `client4` {client4}, `web4` {web4} |
+| 5 | `sw5` : pont `br0` en switch classique | `h5a` {h5a} (`eth0`), `h5b` {h5b} (`eth1`), `ids5` {ids5} (`eth2`), `guest5` {guest5} (`eth3`), `srv5` {srv5} (`eth4`) |
+
+Tous les noms sont dans `/etc/hosts`. Les ports des switchs n'ont pas d'adresse IP.
+
+Le travail et le comportement de vos machines sont évalués automatiquement (bouton d'évaluation) :
+l'évaluation lit la configuration des switchs (`ovs-vsctl`, `ovs-appctl`, `ovs-ofctl`), fait passer du
+trafic entre les machines (ping, requêtes TCP, iperf3), capture sur `ids5` et simule sur `fw4` des paquets
+que la partie 4 doit refuser (`ovs-appctl ofproto/trace`).
+""": """
+Read the **Informations** tab: it presents Open vSwitch, its configuration database, VLANs, bonds,
+tunnels, connection tracking, mirrors and quality of service. The lab has five independent parts, each
+on its own site, and a bonus at the end of the fifth.
+
+| part | switches | machines |
+|------|----------|----------|
+| 1 | `sw1a`, `sw1b`: Open vSwitch started, no bridge; connected by their `eth0` | on `sw1a`: `user1a` {user1a} (`eth1`), `srv1a` {srv1a} (`eth2`); on `sw1b`: `user1b` {user1b} (`eth1`), `srv1b` {srv1b} (`eth2`) |
+| 2 | `hv2`: bridge `br0` with `vm2`; `tor2`: switch of the data centre, no terminal | `vm2` {vm2} (`eth2` of `hv2`); `nas2` {nas2} (behind `tor2`); links `eth0` and `eth1` between `hv2` and `tor2` |
+| 3 | `hv3a` {hv3a}, `hv3b` {hv3b}: Open vSwitch started, no bridge | router `core3` between the two; `red3a` {red3a}, `blue3a` {blue3a} on `hv3a`; `red3b` {red3b}, `blue3b` {blue3b} on `hv3b` |
+| 4 | `fw4`: bridge `br0` as a classic switch | `client4` {client4}, `web4` {web4} |
+| 5 | `sw5`: bridge `br0` as a classic switch | `h5a` {h5a} (`eth0`), `h5b` {h5b} (`eth1`), `ids5` {ids5} (`eth2`), `guest5` {guest5} (`eth3`), `srv5` {srv5} (`eth4`) |
+
+All the names are in `/etc/hosts`. The ports of the switches have no IP address.
+
+The work and the behaviour of your machines are evaluated automatically (evaluation button): the
+evaluation reads the configuration of the switches (`ovs-vsctl`, `ovs-appctl`, `ovs-ofctl`), sends
+traffic between the machines (ping, TCP requests, iperf3), captures on `ids5` and simulates on `fw4`
+packets that part 4 must refuse (`ovs-appctl ofproto/trace`).
+""",
+        "Partie 1 — Trunk 802.1Q et ports internes": "Part 1 — 802.1Q trunk and internal ports",
+        "Deux switchs, deux VLAN, un trunk et une passerelle": "Two switches, two VLANs, a trunk and a gateway",
+        """
+Sections @@ref:ovsdb@@ et @@ref:vlan@@. Sur `sw1a` et `sw1b`, Open vSwitch tourne mais n'a aucun pont.
+Deux VLAN : **users** (VLAN **{vu}**, réseau {users1}) et **servers** (VLAN **{vs}**, réseau {servers1}).
+
+1. Sur chaque switch, créez le pont `br0` avec ses trois interfaces : `eth1` (vers `user1a` / `user1b`)
+   dans le VLAN users, `eth2` (vers `srv1a` / `srv1b`) dans le VLAN servers, et `eth0`, le lien entre
+   les deux switchs.
+2. Faites de `eth0` un trunk qui ne transporte **que** ces deux VLAN. `user1a` doit joindre `user1b`, et
+   `srv1a` joindre `srv1b`.
+3. Les machines ont pour passerelle {gwu} (VLAN users) et {gws} (VLAN servers). Créez sur `sw1a` les ports
+   internes `gw-users` et `gw-servers`, chacun dans son VLAN, avec ces adresses (/24). `sw1a` route déjà
+   (`ip_forward` vaut 1) : `user1a` doit joindre `srv1b`.
+4. Regardez `ovs-vsctl show`, la ligne du trunk (`ovs-vsctl list port eth0`) et la table MAC
+   (`ovs-appctl fdb/show br0`) : dans quel VLAN chaque adresse est-elle apprise ?
+""": """
+Sections @@ref:ovsdb@@ and @@ref:vlan@@. On `sw1a` and `sw1b`, Open vSwitch runs but has no bridge.
+Two VLANs: **users** (VLAN **{vu}**, network {users1}) and **servers** (VLAN **{vs}**, network {servers1}).
+
+1. On each switch, create the bridge `br0` with its three interfaces: `eth1` (towards `user1a` / `user1b`)
+   in the users VLAN, `eth2` (towards `srv1a` / `srv1b`) in the servers VLAN, and `eth0`, the link
+   between the two switches.
+2. Make `eth0` a trunk that carries **only** these two VLANs. `user1a` must reach `user1b`, and `srv1a`
+   must reach `srv1b`.
+3. The machines have {gwu} (users VLAN) and {gws} (servers VLAN) as their gateway. On `sw1a`, create the
+   internal ports `gw-users` and `gw-servers`, each in its VLAN, with these addresses (/24). `sw1a` already
+   routes (`ip_forward` is 1): `user1a` must reach `srv1b`.
+4. Look at `ovs-vsctl show`, the row of the trunk (`ovs-vsctl list port eth0`) and the MAC table
+   (`ovs-appctl fdb/show br0`): in which VLAN is each address learned?
+""",
+        "sw1a et sw1b ont chacun un pont avec eth0, eth1 et eth2": "sw1a and sw1b each have a bridge with eth0, eth1 and eth2",
+        "les ports d'accès sont dans les bons VLAN": "the access ports are in the right VLANs",
+        "eth0 est un trunk limité aux deux VLAN, des deux côtés": "eth0 is a trunk limited to the two VLANs, on both sides",
+        "user1a joint user1b et srv1a joint srv1b à travers le trunk": "user1a reaches user1b and srv1a reaches srv1b across the trunk",
+        "sw1a a un port interne avec l'adresse de la passerelle dans chaque VLAN": "sw1a has an internal port with the gateway address in each VLAN",
+        "user1a joint srv1b et srv1a joint user1b (routage par sw1a)": "user1a reaches srv1b and srv1a reaches user1b (routing by sw1a)",
+        "Ports, VLAN et types d'interfaces": "Ports, VLANs and interface types",
+        """
+Sections @@ref:ovsdb@@, @@ref:porttypes@@ et @@ref:vlan@@.
+
+- un port sans `tag` dont la colonne `trunks` est vide : @@{empty:>n'achemine aucun VLAN>>>none|n'achemine que le VLAN 1>>>vlan1|achemine tous les VLAN>>>all|est désactivé>>>disabled}@@
+- un port avec `tag=10 trunks=20,30` et sans `vlan_mode` : @@{both:>trunk des VLAN 10, 20 et 30>>>trunk|trunk des VLAN 20 et 30, le VLAN 10 sans étiquette>>>native|port d'accès du VLAN 10, trunks ignoré>>>access|refusé : erreur de configuration>>>error}@@
+- le type de l'interface qui donne au switch une adresse IP dans un VLAN : @@{type:>system>>>system|patch>>>patch|internal>>>internal|vxlan>>>vxlan}@@
+- le numéro OpenFlow (colonne `ofport`) de l'interface qui porte le nom du pont (`br0`) : @@{local:[0-9]+}@@
+""": """
+Sections @@ref:ovsdb@@, @@ref:porttypes@@ and @@ref:vlan@@.
+
+- a port without `tag` whose `trunks` column is empty: @@{empty:>carries no VLAN>>>none|carries VLAN 1 only>>>vlan1|carries every VLAN>>>all|is disabled>>>disabled}@@
+- a port with `tag=10 trunks=20,30` and no `vlan_mode`: @@{both:>trunk of VLANs 10, 20 and 30>>>trunk|trunk of VLANs 20 and 30, VLAN 10 untagged>>>native|access port of VLAN 10, trunks ignored>>>access|refused: configuration error>>>error}@@
+- the type of the interface that gives the switch an IP address in a VLAN: @@{type:>system>>>system|patch>>>patch|internal>>>internal|vxlan>>>vxlan}@@
+- the OpenFlow number (`ofport` column) of the interface bearing the name of the bridge (`br0`): @@{local:[0-9]+}@@
+""",
+        "un trunk sans liste": "a trunk without a list",
+        "tag et trunks sans vlan_mode": "tag and trunks without vlan_mode",
+        "le type internal": "the internal type",
+        "le numéro OpenFlow du port LOCAL": "the OpenFlow number of the LOCAL port",
+        "Partie 2 — Agrégation de liens et LACP": "Part 2 — Link aggregation and LACP",
+        "Relier l'hyperviseur hv2 par deux liens": "Connecting the hypervisor hv2 with two links",
+        """
+Section @@ref:bond@@. `hv2` est un hyperviseur : sa machine virtuelle `vm2` est sur `eth2`, port du pont
+`br0`. Il est relié au switch du data centre `tor2` par deux liens, `eth0` et `eth1`, qui ne sont encore
+dans aucun pont. `tor2` (pas de terminal : il est géré par l'équipe réseau) attend un agrégat **LACP
+actif**, en mode **`balance-tcp`**, avec des LACPDU **rapides** ; `nas2` est derrière lui.
+
+1. Pourquoi ne faut-il pas ajouter `eth0` et `eth1` à `br0` comme deux ports ordinaires ?
+2. Créez sur `hv2` l'agrégat `bond0` de `eth0` et `eth1`, configuré comme celui de `tor2`.
+3. Vérifiez avec `ovs-appctl bond/show` et `ovs-appctl lacp/show` ; `vm2` doit joindre `nas2`.
+4. Coupez un lien (`ip link set eth1 down` sur `hv2`) : que deviennent l'agrégat et un ping en cours ?
+   Remettez-le (`ip link set eth1 up`).
+""": """
+Section @@ref:bond@@. `hv2` is a hypervisor: its virtual machine `vm2` is on `eth2`, a port of the bridge
+`br0`. It is connected to the data centre switch `tor2` by two links, `eth0` and `eth1`, which are not in
+any bridge yet. `tor2` (no terminal: it is managed by the network team) expects an **active LACP** bond,
+in **`balance-tcp`** mode, with **fast** LACPDUs; `nas2` is behind it.
+
+1. Why must `eth0` and `eth1` not be added to `br0` as two ordinary ports?
+2. On `hv2`, create the bond `bond0` of `eth0` and `eth1`, configured like that of `tor2`.
+3. Check with `ovs-appctl bond/show` and `ovs-appctl lacp/show`; `vm2` must reach `nas2`.
+4. Cut a link (`ip link set eth1 down` on `hv2`): what happens to the bond and to a running ping?
+   Bring it back (`ip link set eth1 up`).
+""",
+        "un port de hv2 réunit eth0 et eth1": "a port of hv2 joins eth0 and eth1",
+        "LACP est négocié avec tor2 sur les deux liens": "LACP is negotiated with tor2 on both links",
+        "l'agrégat répartit par flux (balance-tcp)": "the bond shares the load by flow (balance-tcp)",
+        "LACP rapide": "fast LACP",
+        "vm2 joint nas2 à travers l'agrégat": "vm2 reaches nas2 across the bond",
+        "Ce que disent bond/show et lacp/show": "What bond/show and lacp/show say",
+        """
+Section @@ref:bond@@.
+
+- l'identifiant système LACP (`sys_id`) de `tor2`, le partenaire de votre agrégat : @@{partner:.+}@@
+- le mode d'agrégat qui exige LACP : @@{lacp_mode:>active-backup>>>ab|balance-slb>>>slb|balance-tcp>>>tcp}@@
+- le nombre de ports OpenFlow (`ovs-ofctl -O OpenFlow13 show br0`) qu'occupe `bond0` : @@{ofports:[0-9]+}@@
+""": """
+Section @@ref:bond@@.
+
+- the LACP system ID (`sys_id`) of `tor2`, the partner of your bond: @@{partner:.+}@@
+- the bond mode that requires LACP: @@{lacp_mode:>active-backup>>>ab|balance-slb>>>slb|balance-tcp>>>tcp}@@
+- the number of OpenFlow ports (`ovs-ofctl -O OpenFlow13 show br0`) that `bond0` takes up: @@{ofports:[0-9]+}@@
+""",
+        "l'identifiant système de tor2": "the system ID of tor2",
+        "le mode qui exige LACP": "the mode that requires LACP",
+        "les ports OpenFlow d'un agrégat": "the OpenFlow ports of a bond",
+        "Partie 3 — Overlay VXLAN et Geneve entre hyperviseurs": "Part 3 — VXLAN and Geneve overlay between hypervisors",
+        "Relier les machines virtuelles de deux hyperviseurs": "Connecting the virtual machines of two hypervisors",
+        """
+Sections @@ref:tunnels@@ et @@ref:neutron@@. Deux hyperviseurs, `hv3a` ({hv3a}) et `hv3b` ({hv3b}), sont
+dans deux réseaux séparés par le routeur `core3` : c'est le réseau sous-jacent. Chacun héberge une machine
+du locataire **rouge** (sur `eth1`) et une du locataire **bleu** (sur `eth2`), toutes dans le même réseau
+IP {tenant3}.
+
+| locataire | encapsulation | VNI (clé) | VLAN local sur `hv3a` | VLAN local sur `hv3b` |
+|-----------|---------------|-----------|-----------------------|-----------------------|
+| rouge | VXLAN | {vr} | {rta} | {rtb} |
+| bleu | Geneve | {vb} | {bta} | {btb} |
+
+1. Sur chaque hyperviseur, créez le pont `br-int` avec les ports des machines virtuelles, chacun dans
+   le VLAN local de son locataire (`eth0`, l'interface vers `core3`, reste hors du pont).
+2. Ajoutez les ports de tunnel `vxlan-red` (VXLAN, clé {vr}) et `geneve-blue` (Geneve, clé {vb}) vers
+   l'autre hyperviseur, chacun dans le VLAN local de son locataire. Les rouges doivent se joindre, les
+   bleus aussi ; un rouge ne doit jamais joindre un bleu.
+3. Capturez sur `core3` (`tcpdump -n -i eth0 udp`) pendant un ping : que voyez-vous ?
+4. Un paquet de 1500 octets d'une machine virtuelle passe-t-il (`ping -M do -s {df} ...`) ? Le routeur
+   `core3` accepte les trames géantes : portez la MTU de `eth0` des deux hyperviseurs à **{mtu}** et
+   vérifiez (section @@ref:mtu@@).
+""": """
+Sections @@ref:tunnels@@ and @@ref:neutron@@. Two hypervisors, `hv3a` ({hv3a}) and `hv3b` ({hv3b}), are
+in two networks separated by the router `core3`: this is the underlay network. Each one hosts a machine
+of the **red** tenant (on `eth1`) and one of the **blue** tenant (on `eth2`), all in the same IP network
+{tenant3}.
+
+| tenant | encapsulation | VNI (key) | local VLAN on `hv3a` | local VLAN on `hv3b` |
+|--------|---------------|-----------|----------------------|----------------------|
+| red | VXLAN | {vr} | {rta} | {rtb} |
+| blue | Geneve | {vb} | {bta} | {btb} |
+
+1. On each hypervisor, create the bridge `br-int` with the ports of the virtual machines, each in the
+   local VLAN of its tenant (`eth0`, the interface towards `core3`, stays out of the bridge).
+2. Add the tunnel ports `vxlan-red` (VXLAN, key {vr}) and `geneve-blue` (Geneve, key {vb}) towards the
+   other hypervisor, each in the local VLAN of its tenant. The red machines must reach each other, the
+   blue ones too; a red machine must never reach a blue one.
+3. Capture on `core3` (`tcpdump -n -i eth0 udp`) during a ping: what do you see?
+4. Does a 1500-byte packet from a virtual machine get through (`ping -M do -s {df} ...`)? The router
+   `core3` accepts jumbo frames: raise the MTU of `eth0` of both hypervisors to **{mtu}** and check
+   (section @@ref:mtu@@).
+""",
+        "les tunnels VXLAN et Geneve de {hv} : extrémité et clé": "the VXLAN and Geneve tunnels of {hv}: remote end and key",
+        "red3a joint red3b à travers le tunnel": "red3a reaches red3b through the tunnel",
+        "blue3a joint blue3b à travers le tunnel": "blue3a reaches blue3b through the tunnel",
+        "aucun rouge ne joint un bleu, sur le même hyperviseur ou à travers les tunnels": "no red machine reaches a blue one, on the same hypervisor or through the tunnels",
+        "des paquets de 1500 octets passent dans les deux sens (MTU du réseau sous-jacent)": "1500-byte packets get through in both directions (MTU of the underlay network)",
+        "Ce que montre la capture": "What the capture shows",
+        """
+Sections @@ref:encaps@@ et @@ref:mtu@@.
+
+- le port UDP de destination des paquets du locataire rouge, sur `core3` : @@{vxlan_port:[0-9]+}@@
+- celui des paquets du locataire bleu : @@{geneve_port:[0-9]+}@@
+- le surcoût de l'encapsulation VXLAN sur IPv4, en octets : @@{overhead:[0-9]+}@@
+- le nom de l'interface du noyau qu'Open vSwitch a créée sur `hv3a` pour les ports VXLAN (`ip link`) : @@{device:.+}@@
+""": """
+Sections @@ref:encaps@@ and @@ref:mtu@@.
+
+- the UDP destination port of the packets of the red tenant, on `core3`: @@{vxlan_port:[0-9]+}@@
+- that of the packets of the blue tenant: @@{geneve_port:[0-9]+}@@
+- the overhead of VXLAN encapsulation over IPv4, in bytes: @@{overhead:[0-9]+}@@
+- the name of the kernel interface Open vSwitch created on `hv3a` for the VXLAN ports (`ip link`): @@{device:.+}@@
+""",
+        "le port de VXLAN": "the port of VXLAN",
+        "le port de Geneve": "the port of Geneve",
+        "le surcoût de VXLAN": "the overhead of VXLAN",
+        "l'interface VXLAN du noyau": "the VXLAN interface of the kernel",
+        "Partie 4 — Pare-feu avec état et suivi de connexions": "Part 4 — Stateful firewall and connection tracking",
+        "Un pare-feu avec état sur fw4": "A stateful firewall on fw4",
+        """
+Sections @@ref:pipeline@@ et @@ref:conntrack@@. Le pont `br0` de `fw4` relie `client4` ({client4}) et
+`web4` ({web4}) ; il se comporte pour l'instant en switch classique (`NORMAL`). `web4` a un site web
+(port {web}) et `client4` un service sur le port {cport}. Écrivez avec `ovs-ofctl -O OpenFlow13` une
+politique **avec état** :
+
+- l'ARP passe ;
+- `client4` peut ouvrir des connexions TCP vers le port {web} de `web4`, et pinguer `web4` ;
+- `web4` ne peut **rien** ouvrir vers `client4` (ni connexion TCP, ni ping) : seules passent ses
+  réponses à ce qu'a ouvert `client4` ;
+- tout le reste est jeté.
+
+Utilisez le suivi de connexions et deux tables : la table 0 confie le trafic IP au suivi de connexions,
+qui le fait repasser dans la table 1 ; la table 1 décide selon l'état.
+
+1. Trouvez les numéros OpenFlow des ports (`ovs-ofctl -O OpenFlow13 show br0`).
+2. Écrivez la table (un fichier et `replace-flows` sont commodes) ; testez avec du vrai trafic (`curl
+   http://web4/` depuis `client4`, `curl http://client4:{cport}/` depuis `web4`) et regardez
+   `ovs-appctl dpctl/dump-conntrack`.
+3. Simulez avec `ofproto/trace ... --ct-next trk,new` un SYN+ACK qui viendrait du port {web} de `web4`
+   sans connexion ouverte : passe-t-il ? Passerait-il avec une règle sans état qui autorise ce qui vient
+   du port {web} ?
+""": """
+Sections @@ref:pipeline@@ and @@ref:conntrack@@. The bridge `br0` of `fw4` connects `client4` ({client4})
+and `web4` ({web4}); for now it behaves as a classic switch (`NORMAL`). `web4` has a web site (port {web})
+and `client4` a service on port {cport}. Write a **stateful** policy with `ovs-ofctl -O OpenFlow13`:
+
+- ARP goes through;
+- `client4` can open TCP connections to port {web} of `web4`, and ping `web4`;
+- `web4` can open **nothing** towards `client4` (neither a TCP connection nor a ping): only its replies
+  to what `client4` opened go through;
+- everything else is dropped.
+
+Use the connection tracking and two tables: table 0 hands the IP traffic to the connection tracking,
+which sends it through table 1 again; table 1 decides according to the state.
+
+1. Find the OpenFlow numbers of the ports (`ovs-ofctl -O OpenFlow13 show br0`).
+2. Write the table (a file and `replace-flows` are handy); test with real traffic (`curl
+   http://web4/` from `client4`, `curl http://client4:{cport}/` from `web4`) and look at
+   `ovs-appctl dpctl/dump-conntrack`.
+3. Simulate with `ofproto/trace ... --ct-next trk,new` a SYN+ACK that would come from port {web} of `web4`
+   without an open connection: does it get through? Would it get through with a stateless rule that
+   allows what comes from port {web}?
+""",
+        "client4 atteint le site web de web4, le reste étant filtré": "client4 reaches the web site of web4, the rest being filtered",
+        "client4 pingue web4, le reste étant filtré": "client4 pings web4, the rest being filtered",
+        "web4 n'ouvre rien vers client4 (ni TCP, ni ping)": "web4 opens nothing towards client4 (neither TCP nor ping)",
+        "un SYN+ACK de web4 sans connexion ouverte est jeté (trace)": "a SYN+ACK from web4 without an open connection is dropped (trace)",
+        "la connexion de client4 vers web4 est enregistrée (commit)": "the connection from client4 to web4 is recorded (commit)",
+        "le reste est jeté (trace d'un flux UDP de client4 vers web4)": "the rest is dropped (trace of a UDP flow from client4 to web4)",
+        "Les états du suivi de connexions": "The states of the connection tracking",
+        """
+Section @@ref:conntrack@@.
+
+- l'état (`ct_state`) du premier paquet d'une connexion, après `ct()` : @@{first:>-trk>>>untracked|+trk+est>>>est|+trk+new>>>new|+trk+inv>>>inv}@@
+- le drapeau que portent ensuite les paquets de la connexion, dans les deux sens : @@{flag:>rpl>>>rpl|new>>>new|rel>>>rel|est>>>est}@@
+- l'argument de l'action `ct` qui fait retenir la connexion par le noyau : @@{commit:.+}@@
+""": """
+Section @@ref:conntrack@@.
+
+- the state (`ct_state`) of the first packet of a connection, after `ct()`: @@{first:>-trk>>>untracked|+trk+est>>>est|+trk+new>>>new|+trk+inv>>>inv}@@
+- the flag the packets of the connection then carry, in both directions: @@{flag:>rpl>>>rpl|new>>>new|rel>>>rel|est>>>est}@@
+- the argument of the `ct` action that makes the kernel remember the connection: @@{commit:.+}@@
+""",
+        "l'état du premier paquet": "the state of the first packet",
+        "le drapeau est": "the est flag",
+        "l'argument commit": "the commit argument",
+        "Partie 5 — Miroir de port et limitation de débit": "Part 5 — Port mirror and rate limiting",
+        "Observer h5a, limiter guest5": "Watching h5a, limiting guest5",
+        """
+Sections @@ref:mirror@@ et @@ref:policing@@. Le pont `br0` de `sw5` est un switch classique.
+
+1. Le poste de sécurité `ids5` (port `eth2`) doit recevoir une copie de tout ce qu'émet et reçoit `h5a`
+   (port `eth0`). Créez le miroir, puis vérifiez par une capture sur `ids5` pendant un ping de `h5b` vers
+   `h5a`. (Sans miroir, `ids5` ne voit pas ce trafic : le switch connaît les adresses MAC.)
+2. L'invité `guest5` (port `eth3`) ne doit pas émettre plus de **{rate} kbit/s** : limitez-le à l'entrée du
+   switch, avec une rafale d'un dixième de ce débit. Mesurez avant et après : `iperf3 -c srv5 -p {gport} -u
+   -b {sent}k` depuis `guest5` (le débit reçu est à la fin).
+""": """
+Sections @@ref:mirror@@ and @@ref:policing@@. The bridge `br0` of `sw5` is a classic switch.
+
+1. The security host `ids5` (port `eth2`) must receive a copy of everything `h5a` (port `eth0`) sends
+   and receives. Create the mirror, then check with a capture on `ids5` during a ping from `h5b` to
+   `h5a`. (Without a mirror, `ids5` does not see this traffic: the switch knows the MAC addresses.)
+2. The guest `guest5` (port `eth3`) must not send more than **{rate} kbit/s**: police it on input to the
+   switch, with a burst of one tenth of that rate. Measure before and after: `iperf3 -c srv5 -p {gport} -u
+   -b {sent}k` from `guest5` (the received rate is at the end).
+""",
+        "un miroir copie vers ids5 ce qu'émet et reçoit h5a": "a mirror copies to ids5 what h5a sends and receives",
+        "ids5 voit le ping de h5b vers h5a (capture)": "ids5 sees the ping from h5b to h5a (capture)",
+        "l'entrée de guest5 est limitée au débit demandé": "the input of guest5 is policed at the requested rate",
+        "le débit que srv5 reçoit de guest5 est limité (iperf3)": "the rate srv5 receives from guest5 is limited (iperf3)",
+        "Les unités de la qualité de service": "The units of quality of service",
+        """
+Sections @@ref:policing@@ et @@ref:htb@@.
+
+- l'unité de `ingress_policing_rate` : @@{policing_unit:>bit/s>>>bps|octets/s>>>Bps|kbit/s>>>kbps|paquets/s>>>pps}@@
+- l'unité de `other_config:max-rate` d'une QoS ou d'une file : @@{qos_unit:>kbit/s>>>kbps|Mbit/s>>>mbps|bit/s>>>bps|octets/s>>>Bps}@@
+""": """
+Sections @@ref:policing@@ and @@ref:htb@@.
+
+- the unit of `ingress_policing_rate`: @@{policing_unit:>bit/s>>>bps|bytes/s>>>Bps|kbit/s>>>kbps|packets/s>>>pps}@@
+- the unit of `other_config:max-rate` of a QoS or of a queue: @@{qos_unit:>kbit/s>>>kbps|Mbit/s>>>mbps|bit/s>>>bps|bytes/s>>>Bps}@@
+""",
+        "l'unité de la limitation": "the unit of policing",
+        "l'unité d'une QoS": "the unit of a QoS",
+        "Bonus — Files d'attente HTB": "Bonus — HTB queues",
+        "Une file d'attente pour h5b": "A queue for h5b",
+        """
+Section @@ref:htb@@. Sur le port de `srv5` (`eth4`) de `sw5`, créez une QoS `linux-htb` de débit maximal
+{maxm} Mbit/s avec deux files : la file 0 ({maxm} Mbit/s) et la file {qid}, limitée à **{qrate} kbit/s**.
+Faites passer par la file {qid} le trafic IP émis par `h5b` (une entrée de flux avec `set_queue`), le
+reste du trafic restant traité en `NORMAL`. Mesurez : `iperf3 -c srv5 -p {qport} -u -b {qsent}k` depuis
+`h5b`, puis depuis `h5a`.
+""": """
+Section @@ref:htb@@. On the port of `srv5` (`eth4`) of `sw5`, create a `linux-htb` QoS with a maximum rate
+of {maxm} Mbit/s and two queues: queue 0 ({maxm} Mbit/s) and queue {qid}, limited to **{qrate} kbit/s**.
+Send the IP traffic sent by `h5b` through queue {qid} (a flow entry with `set_queue`), the rest of the
+traffic still being processed by `NORMAL`. Measure: `iperf3 -c srv5 -p {qport} -u -b {qsent}k` from
+`h5b`, then from `h5a`.
+""",
+        "une QoS linux-htb sur le port de srv5, avec une file au débit demandé": "a linux-htb QoS on the port of srv5, with a queue at the requested rate",
+        "une entrée de flux envoie le trafic de h5b dans cette file": "a flow entry sends the traffic of h5b into this queue",
+        "le débit que srv5 reçoit de h5b est limité (iperf3)": "the rate srv5 receives from h5b is limited (iperf3)",
     },
 }

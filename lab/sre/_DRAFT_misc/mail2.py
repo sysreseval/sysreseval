@@ -34,6 +34,7 @@ from ipaddress import IPv4Network
 from typing import Dict
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from grade_helpers import eval_tcp_server, test_dig
@@ -177,6 +178,20 @@ BASE_DOVECOT_CONF = "/etc/dovecot/conf.d/90-firm.conf"
 # A form answer picked from a short list is graded for the instructor only: shown in a
 # self-evaluation, its grade would let a student try every choice. Typed answers count in both.
 CHOICE_SCOPE = params.EXO_EVAL_SCOPE
+# The English label of the right option of each dropdown whose options are French prose (the label
+# written before ">>>" in its English text): the stored answer stays the French option, the English
+# "Answers" texts of the instructor print this label (_with_answers()).
+ANSWERS_EN = {
+    "signer": "the internal certification authority, with its private key ca.key",
+    "san_role": "the names under which the clients reach the server",
+    "client_checks": "the signature by a trusted authority, the requested name in the certificate, the validity",
+    "lmtp_why": "Dovecot stores the message itself: indexes and folders up to date, Sieve filters, quotas",
+    "sieve_when": "on the server, when the message is delivered into the mailbox (LMTP)",
+    "spf_checks": "the IP address of the server delivering the message, for the domain of the MAIL FROM",
+    "dmarc_alignment": "the domain of the From: header must match the domain verified by SPF or by DKIM",
+    "domain_class": "virtual_mailbox_domains: mailboxes without a Unix account, stored by Postfix",
+    "delay_reject": "every refusal is given at RCPT TO, after the client has introduced itself",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -1333,40 +1348,58 @@ postfix/qmgr[892]: 40F661880F0: removed
         for m in PROBES:
             install_smtp_probe(net_scheme=self, machine=m)
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 1 seule : le certificat de mail et le nom imap.firm.tp"))
+    @sre_state(user_allowed=False,
+               description=tr("Solution de la partie 1 seule : le certificat de mail et le nom imap.firm.tp",
+                              en="Solution of part 1 alone: the certificate of mail and the name imap.firm.tp"))
     def part1(self):
         self._solve_part1()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 2 seule : IMAPS sur mail"))
+    @sre_state(user_allowed=False,
+               description=tr("Solution de la partie 2 seule : IMAPS sur mail",
+                              en="Solution of part 2 alone: IMAPS on mail"))
     def part2(self):
         self._solve_part2()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 3 seule : la soumission sur submit (et l'envoi depuis laptop)"))
+    @sre_state(user_allowed=False,
+               description=tr("Solution de la partie 3 seule : la soumission sur submit (et l'envoi depuis laptop)",
+                              en="Solution of part 3 alone: submission on submit (and the send from laptop)"))
     def part3(self):
         self._solve_part3()
         self._solve_part3_send(step=2)
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 4 seule : LMTP et Sieve sur mail"))
+    @sre_state(user_allowed=False,
+               description=tr("Solution de la partie 4 seule : LMTP et Sieve sur mail",
+                              en="Solution of part 4 alone: LMTP and Sieve on mail"))
     def part4(self):
         self._solve_part4()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 5 seule : SPF, DKIM et DMARC"))
+    @sre_state(user_allowed=False,
+               description=tr("Solution de la partie 5 seule : SPF, DKIM et DMARC",
+                              en="Solution of part 5 alone: SPF, DKIM and DMARC"))
     def part5(self):
         self._solve_part5()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 6 seule : le domaine newco.tp en boîtes virtuelles"))
+    @sre_state(user_allowed=False,
+               description=tr("Solution de la partie 6 seule : le domaine newco.tp en boîtes virtuelles",
+                              en="Solution of part 6 alone: the domain newco.tp in virtual mailboxes"))
     def part6(self):
         self._solve_part6()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 7 seule : les restrictions anti-spam de mail"))
+    @sre_state(user_allowed=False,
+               description=tr("Solution de la partie 7 seule : les restrictions anti-spam de mail",
+                              en="Solution of part 7 alone: the anti-spam restrictions of mail"))
     def part7(self):
         self._solve_part7()
 
-    @sre_state(user_allowed=False, description=tr("Solution du bonus seul : old réparé"))
+    @sre_state(user_allowed=False,
+               description=tr("Solution du bonus seul : old réparé",
+                              en="Solution of the bonus alone: old repaired"))
     def bonus(self):
         self._solve_bonus()
 
-    @sre_state(user_allowed=False, description=tr("Solution de référence de tout le TP, bonus compris"))
+    @sre_state(user_allowed=False,
+               description=tr("Solution de référence de tout le TP, bonus compris",
+                              en="Reference solution of the whole lab, bonus included"))
     def final(self):
         """Reference solution: every grade element reaches its maximum.
 
@@ -1402,6 +1435,14 @@ def _int(s, default: int = -1) -> int:
 
 def _words(value: str) -> list:
     return [w for w in re.split(r"[\s,]+", (value or "").strip()) if w]
+
+
+def _with_answers(text: TranslatedText, answers: dict) -> TranslatedText:
+    """*text* (a tr() text) formatted with the right *answers* of a form; in English, a dropdown answer of
+    ANSWERS_EN prints its English label (the stored answer stays the French option)."""
+    return TranslatedText({lang: version.format(**{k: ANSWERS_EN.get(k, v) if lang == 'en' else v
+                                                   for k, v in answers.items()})
+                           for lang, version in text.items()})
 
 
 def _tls_probe_cmd(ip: str, port: int, servername: str, starttls: str | None = None) -> str:
@@ -1687,19 +1728,32 @@ class Grade(Grade0):
         old_spf_records = [r for r in parse_txt_strings(old_spf_out) if r.lower().startswith("v=spf1")]
         old_spf = spf_record_ok(old_spf_records[0] if old_spf_records else "", mx_ip=old_ip, mx_name=OLD_HOST)
 
-        addressing = no_tr(f"""
+        addressing = tr(f"""
 | réseau | adresse | machines |
 |--------|---------|----------|
 | `lan` ({DOMAIN}) | `{d.nets.lan}` | `gw` eth0 (`{d.ips.gw_lan.ip}`), `mail` = `{MAIL_HOST}` (`{mail_ip}`), `submit` = `{SUBMIT_HOST}` (`{submit_ip}`), `pc` (`{ip('pc')}`), `old` = `{OLD_HOST}` (`{old_ip}`) |
 | `wan` (« Internet ») | `{d.nets.wan}` | `gw` eth1 (`{d.ips.gw_wan.ip}`), `dns` (`{dns_ip}`), `peermx` = `{PEER_MX}` (`{ip('peermx')}`), `laptop` (`{laptop_ip}`) |
+""", en=f"""
+| network | address | machines |
+|---------|---------|----------|
+| `lan` ({DOMAIN}) | `{d.nets.lan}` | `gw` eth0 (`{d.ips.gw_lan.ip}`), `mail` = `{MAIL_HOST}` (`{mail_ip}`), `submit` = `{SUBMIT_HOST}` (`{submit_ip}`), `pc` (`{ip('pc')}`), `old` = `{OLD_HOST}` (`{old_ip}`) |
+| `wan` ("Internet") | `{d.nets.wan}` | `gw` eth1 (`{d.ips.gw_wan.ip}`), `dns` (`{dns_ip}`), `peermx` = `{PEER_MX}` (`{ip('peermx')}`), `laptop` (`{laptop_ip}`) |
 """)
-        accounts = no_tr(f"""
+        accounts = tr(f"""
 | machine | compte | mot de passe |
 |---------|--------|--------------|
 | `mail`, `submit` | `alice` | `{d.pw_alice}` |
 | `mail`, `submit` | `carol` | `{d.pw_carol}` |
 | `peermx` | `bob` | `{d.pw_bob}` |
 | `mail` (à créer, partie 6) | `{vaddr}` | `{d.pw_paul}` |
+| `old` | `{OLD_USER}` | `{d.pw_olivia}` |
+""", en=f"""
+| machine | account | password |
+|---------|---------|----------|
+| `mail`, `submit` | `alice` | `{d.pw_alice}` |
+| `mail`, `submit` | `carol` | `{d.pw_carol}` |
+| `peermx` | `bob` | `{d.pw_bob}` |
+| `mail` (to be created, part 6) | `{vaddr}` | `{d.pw_paul}` |
 | `old` | `{OLD_USER}` | `{d.pw_olivia}` |
 """)
 
@@ -1843,9 +1897,9 @@ que le `CN`, et les clients modernes refusent un certificat sans SAN.
   @@{client_checks:>la signature par une autorité de confiance, le nom demandé dans le certificat, la validité|que le mot de passe de l'utilisateur est correct|que le port est bien 993 ou 465|que le certificat est auto-signé}@@
 """)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponses.** {signer} ; le SAN donne {san_role} ; le client vérifie {client_checks}.
-""").format(**q1_answers)
+"""), q1_answers)
             ),
             cheat_answers={"final": q1_answers, "part1": q1_answers},
         )
@@ -2227,9 +2281,9 @@ Journal : `postfix/lmtp[...]: ...: to=<alice@firm.tp>, relay={relay}, ... status
 - le port de ManageSieve : @@{managesieve_port:[0-9]+}@@
 """)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponses.** `{lmtp_relay}` ; {lmtp_why} ; {sieve_when} ; port `{managesieve_port}`.
-""").format(**q4_answers)
+"""), q4_answers)
             ),
             cheat_answers={"final": q4_answers, "part4": q4_answers},
         )
@@ -2353,9 +2407,9 @@ mx.other.tp; dkim=pass ... header.d=firm.tp`.
 - la balise DMARC qui donne l'adresse des rapports agrégés : @@{dmarc_reports:[a-z]+}@@
 """)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponses.** SPF vérifie {spf_checks} ; DMARC exige que {dmarc_alignment} ; les rapports agrégés : `{dmarc_reports}=`.
-""").format(**q5_answers)
+"""), q5_answers)
             ),
             cheat_answers={"final": q5_answers, "part5": q5_answers},
         )
@@ -2473,9 +2527,9 @@ puis `systemctl restart dovecot`.
 @@{domain_class:>virtual_mailbox_domains : des boîtes sans compte Unix, rangées par Postfix|virtual_alias_domains : chaque adresse redirigée vers un compte Unix de firm.tp|mydestination : comme firm.tp, avec des comptes Unix|relay_domains : le courrier est relayé vers un autre serveur}@@
 """)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponse.** {domain_class}.
-""").format(**q6_answers)
+"""), q6_answers)
             ),
             cheat_answers={"final": q6_answers, "part6": q6_answers},
         )
@@ -2569,9 +2623,9 @@ listed: ...` ; un sujet contenant `{word}` → `550 5.7.1 message refusé : cont
   @@{{delay_reject:>tous les refus sont rendus au RCPT TO, après que le client s'est présenté|le serveur attend quelques secondes avant chaque refus|les refus sont différés et envoyés par courrier à l'expéditeur|les restrictions de HELO ne sont plus appliquées}}@@
 """).format(spam_ip=spam_ip)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponses.** `{dnsbl_name}` (l'adresse renversée, suivie de la zone) ; {delay_reject}.
-""").format(**q7_answers)
+"""), q7_answers)
             ),
             cheat_answers={"final": q7_answers, "part7": q7_answers},
         )
@@ -2671,7 +2725,7 @@ courantes de la section @@ref:diagnostic@@ vous guident.
 
 
 # ---------------------------------------------------------------------------
-# English translations of the instructor texts (the course and the questions are French)
+# English translations: texts are French (``tr()``) with their English here, identifiers English
 # ---------------------------------------------------------------------------
 
 _TRANSLATIONS = {
@@ -2713,7 +2767,7 @@ projet.
 **For the instructor.** Every question ends with its solution, computed for the addresses of this
 project.
 
-- The `final` state (tab *Apply a configuration*) applies the whole solution (bonus included) on
+- The `final` state (the *Apply Configuration* tab) applies the whole solution (bonus included) on
   `mail`, `submit`, `dns`, `pc` and `old`, replays the send of part 3 from `laptop` and fills the forms.
   The states `part1` to `part7` and `bonus` apply the solution of a single part: each must give its
   points, and only its own. The solution of each part writes its own files
@@ -3036,7 +3090,7 @@ mx.other.tp; dkim=pass ... header.d=firm.tp`.
         """
 **Réponses.** SPF vérifie {spf_checks} ; DMARC exige que {dmarc_alignment} ; les rapports agrégés : `{dmarc_reports}=`.
 """: """
-**Answers.** SPF checks {spf_checks}; DMARC requires that {dmarc_alignment}; the aggregate reports: `{dmarc_reports}=`.
+**Answers.** SPF checks {spf_checks}; DMARC alignment: {dmarc_alignment}; the aggregate reports: `{dmarc_reports}=`.
 """,
         """
 **Solution.** Sur `dns`, dans `/etc/unbound/unbound.conf.d/firm-tp.conf`, puis `unbound-control reload` :
@@ -3195,5 +3249,1526 @@ listed: ...`; a subject containing `{word}` → `550 5.7.1 message refusé : con
   certificate (internal authority, name `old.oldco.tp`); a message for `olivia@oldco.tp` sent without
   STARTTLS must be accepted; `dig TXT oldco.tp` must authorise `old` and end with `-all`.
 """,
+        "Courrier sécurisé : TLS, soumission, LMTP, SPF/DKIM, anti-spam": "Secure mail: TLS, submission, LMTP, SPF/DKIM, anti-spam",
+        """**Sommaire**
+""": """**Contents**
+""",
+        "Du service en clair au service sécurisé": "From a cleartext service to a secure service",
+        """
+
+Un service de courrier « en clair » (le premier TP) fonctionne : un **MX** Postfix reçoit le courrier
+du domaine et relaie celui du réseau local (`mynetworks`), l'agent `local` le range dans les Maildir,
+Dovecot le donne aux clients en IMAP. Il lui manque tout ce qu'on attend aujourd'hui d'un service de
+courrier :
+
+| besoin | moyen | section |
+|--------|-------|---------|
+| chiffrer ce qui circule entre clients et serveurs | TLS, un certificat signé par une autorité connue des clients | @@ref:tls@@, @@ref:imap@@ |
+| envoyer depuis n'importe où sans faire un relais ouvert | la **soumission** authentifiée (587, 465), SASL | @@ref:submission@@ |
+| ranger le courrier intelligemment | la remise par **LMTP** à Dovecot, les filtres **Sieve** | @@ref:lmtp@@, @@ref:sieve@@ |
+| prouver que le courrier du domaine vient bien de lui | **SPF**, **DKIM**, **DMARC** | @@ref:spf-dkim@@ |
+| héberger plusieurs domaines, des comptes sans compte Unix | les **domaines virtuels** | @@ref:virtual@@ |
+| refuser le spam dès la connexion | les **restrictions** de Postfix, les listes noires | @@ref:antispam@@ |
+
+Une architecture d'entreprise courante sépare les rôles, même sur peu de machines :
+
+```
+                 Internet                                     réseau de l'entreprise
+  MTA d'ailleurs ──(25, STARTTLS)──> MX mail.firm.tp ──(LMTP)──> Dovecot ──(IMAPS 993)──> MUA
+                                        ^    │
+  MUA d'Alice ──(587/465, TLS + AUTH)──> serveur de soumission smtp.firm.tp (relayhost = le MX)
+                                             │
+                                             └──(25, signé DKIM)──> MX des autres domaines
+```
+
+Le serveur de soumission authentifie les utilisateurs et confie tout au MX, qui reste le seul serveur
+à parler aux autres domaines : un seul point de sortie à déclarer dans SPF, à faire signer par DKIM et
+à surveiller.
+""": """
+
+A "cleartext" mail service (the first lab) is running: a Postfix **MX** receives the mail of the
+domain and relays that of the local network (`mynetworks`), the `local` agent stores it in the Maildirs,
+Dovecot hands it to the clients over IMAP. It lacks everything expected of a mail service today:
+
+| need | means | section |
+|------|-------|---------|
+| encrypt what travels between clients and servers | TLS, a certificate signed by an authority the clients know | @@ref:tls@@, @@ref:imap@@ |
+| send from anywhere without running an open relay | authenticated **submission** (587, 465), SASL | @@ref:submission@@ |
+| file the mail intelligently | delivery to Dovecot over **LMTP**, **Sieve** filters | @@ref:lmtp@@, @@ref:sieve@@ |
+| prove that the domain's mail really comes from it | **SPF**, **DKIM**, **DMARC** | @@ref:spf-dkim@@ |
+| host several domains, accounts without a Unix account | **virtual domains** | @@ref:virtual@@ |
+| refuse spam as early as the connection | Postfix **restrictions**, blocklists | @@ref:antispam@@ |
+
+A common company architecture separates the roles, even on few machines:
+
+```
+                 Internet                                     company network
+  MTA elsewhere  ──(25, STARTTLS)──> MX mail.firm.tp ──(LMTP)──> Dovecot ──(IMAPS 993)──> MUA
+                                        ^    │
+  Alice's MUA ──(587/465, TLS + AUTH)──> submission server smtp.firm.tp (relayhost = the MX)
+                                             │
+                                             └──(25, DKIM-signed)──> MX of the other domains
+```
+
+The submission server authenticates the users and hands everything to the MX, which remains the only
+server talking to the other domains: a single exit point to declare in SPF, to have signed by DKIM and
+to monitor.
+""",
+        "TLS pour le courrier : certificats, autorité interne, noms de service": "TLS for mail: certificates, internal authority, service names",
+        """
+
+Tout ce qui circule entre un client et son serveur de courrier (mots de passe, messages) doit être
+chiffré : SMTP et IMAP s'appuient pour cela sur **TLS**, sous deux formes.
+
+| | STARTTLS | TLS implicite |
+|-|----------|---------------|
+| principe | la session commence en clair, la commande `STARTTLS` négocie TLS **sur la même connexion** | TLS dès le premier octet, comme HTTPS |
+| ports | 25, 587, 143 | **465** (SMTPS), **993** (IMAPS), 995 |
+| test | `openssl s_client -connect smtp.firm.tp:587 -starttls smtp` | `openssl s_client -connect imap.firm.tp:993` |
+| risque | un attaquant actif peut retirer `STARTTLS` de la liste des extensions | aucun : la RFC 8314 le recommande pour les clients |
+
+Le serveur présente un **certificat** : une clé publique, le ou les **noms** du serveur
+(`subjectAltName`, SAN ; le `CN` du sujet est un reste historique) et la **signature d'une autorité de
+certification** (CA). Le client vérifie trois choses : la signature vient d'une CA qu'il connaît, le
+nom qu'il a demandé figure dans le SAN, le certificat est dans sa période de validité. Un certificat
+**auto-signé** (comme le `ssl-cert-snakeoil.pem` que Debian installe) échoue à la première
+vérification : chaque client doit l'accepter à la main. Une entreprise a donc intérêt à une **CA
+interne** (ou à une CA publique comme Let's Encrypt) : sa CA signe les certificats de ses serveurs, et
+son certificat racine est installé une fois pour toutes sur ses machines
+(`/usr/local/share/ca-certificates/`, `update-ca-certificates` ; `/etc/ssl/certs/ca-certificates.crt`
+est le lot de confiance que lisent `openssl`, `curl`, `mutt`, Postfix...).
+
+**Noms de service.** Les utilisateurs ne connaissent que des noms de service (`imap.firm.tp`,
+`smtp.firm.tp`), de simples enregistrements A ou CNAME vers les serveurs : on peut changer de machine
+sans reconfigurer les clients. Ces noms doivent figurer dans le SAN du certificat du serveur. Dans le
+TP, ce sont des enregistrements **A** : le serveur `dns`, qui ne sert que des `local-data`, répond à un
+nom CNAME sans l'adresse de sa cible (`dig` montre le CNAME, mais un client obtient `No address
+associated with hostname`).
+
+Création d'un certificat de serveur, en trois étapes :
+
+```
+# 1. la clé privée (jamais transmise, mode 600) et la demande de certificat (CSR) avec les noms
+openssl req -new -newkey rsa:2048 -nodes -keyout /etc/ssl/private/mail.key -out mail.csr \\
+        -subj "/CN=mail.firm.tp" -addext "subjectAltName=DNS:mail.firm.tp,DNS:imap.firm.tp"
+# 2. la CA signe la demande (ses fichiers ca.crt / ca.key), en recopiant les extensions (le SAN)
+openssl x509 -req -in mail.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 365 \\
+        -copy_extensions copy -out /etc/ssl/certs/mail.crt
+# 3. vérifications
+openssl x509 -in /etc/ssl/certs/mail.crt -noout -subject -issuer -dates -ext subjectAltName
+openssl verify -CAfile ca.crt -verify_hostname imap.firm.tp /etc/ssl/certs/mail.crt
+```
+
+Sans `-copy_extensions copy`, `openssl x509 -req` ignore le SAN de la demande. La clé privée et le
+certificat doivent aller ensemble : `openssl x509 -in mail.crt -noout -pubkey` et `openssl pkey -in
+mail.key -pubout` donnent la même clé publique (sinon Postfix désactive TLS et Dovecot refuse de
+démarrer). Côté client, `openssl s_client` termine par `Verify return code: 0 (ok)` quand tout est bon,
+`18 (self-signed certificate)` ou `20 (unable to get local issuer certificate)` sinon ; `-showcerts`
+affiche le certificat reçu, `openssl x509 -noout -fingerprint -sha256` son empreinte. Postfix et Dovecot
+lisent la clé en tant que `root` au démarrage : elle reste en mode 600, propriété de `root`.
+
+| | Postfix | Dovecot |
+|-|---------|---------|
+| certificat | `smtpd_tls_cert_file = /etc/ssl/certs/mail.crt` | `ssl_server_cert_file = /etc/ssl/certs/mail.crt` |
+| clé | `smtpd_tls_key_file = /etc/ssl/private/mail.key` | `ssl_server_key_file = /etc/ssl/private/mail.key` |
+| politique | `smtpd_tls_security_level = may` (25) / `encrypt` (587), `smtpd_tls_wrappermode = yes` (465) | `ssl = required` |
+| côté client | `smtp_tls_security_level = may` : TLS vers les serveurs qui l'offrent | |
+
+Sur le port 25, le TLS reste **opportuniste** (`may`) : un MX qui l'exige (`encrypt`) refuserait le
+courrier des serveurs qui ne savent pas le faire (`530 Must issue a STARTTLS command first`).
+""": """
+
+Everything that travels between a client and its mail server (passwords, messages) must be
+encrypted: SMTP and IMAP rely on **TLS** for this, in two forms.
+
+| | STARTTLS | implicit TLS |
+|-|----------|---------------|
+| principle | the session starts in cleartext, the `STARTTLS` command negotiates TLS **on the same connection** | TLS from the first byte, like HTTPS |
+| ports | 25, 587, 143 | **465** (SMTPS), **993** (IMAPS), 995 |
+| test | `openssl s_client -connect smtp.firm.tp:587 -starttls smtp` | `openssl s_client -connect imap.firm.tp:993` |
+| risk | an active attacker can remove `STARTTLS` from the list of extensions | none: RFC 8314 recommends it for clients |
+
+The server presents a **certificate**: a public key, the **name(s)** of the server
+(`subjectAltName`, SAN; the `CN` of the subject is a historical leftover) and the **signature of a
+certification authority** (CA). The client checks three things: the signature comes from a CA it knows,
+the name it asked for is in the SAN, the certificate is within its validity period. A **self-signed**
+certificate (like the `ssl-cert-snakeoil.pem` Debian installs) fails the first check: every client has
+to accept it by hand. A company is therefore better off with an **internal CA** (or a public CA such
+as Let's Encrypt): its CA signs the certificates of its servers, and its root certificate is installed
+once and for all on its machines (`/usr/local/share/ca-certificates/`, `update-ca-certificates`;
+`/etc/ssl/certs/ca-certificates.crt` is the trust bundle read by `openssl`, `curl`, `mutt`, Postfix...).
+
+**Service names.** The users only know service names (`imap.firm.tp`, `smtp.firm.tp`), simple A or
+CNAME records pointing to the servers: the machine can be changed without reconfiguring the clients.
+These names must appear in the SAN of the server's certificate. In this lab they are **A** records:
+the `dns` server, which only serves `local-data`, answers a CNAME name without the address of its
+target (`dig` shows the CNAME, but a client gets `No address associated with hostname`).
+
+Creating a server certificate, in three steps:
+
+```
+# 1. the private key (never transmitted, mode 600) and the certificate signing request (CSR) with the names
+openssl req -new -newkey rsa:2048 -nodes -keyout /etc/ssl/private/mail.key -out mail.csr \\
+        -subj "/CN=mail.firm.tp" -addext "subjectAltName=DNS:mail.firm.tp,DNS:imap.firm.tp"
+# 2. the CA signs the request (its files ca.crt / ca.key), copying the extensions (the SAN)
+openssl x509 -req -in mail.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 365 \\
+        -copy_extensions copy -out /etc/ssl/certs/mail.crt
+# 3. checks
+openssl x509 -in /etc/ssl/certs/mail.crt -noout -subject -issuer -dates -ext subjectAltName
+openssl verify -CAfile ca.crt -verify_hostname imap.firm.tp /etc/ssl/certs/mail.crt
+```
+
+Without `-copy_extensions copy`, `openssl x509 -req` ignores the SAN of the request. The private key
+and the certificate must go together: `openssl x509 -in mail.crt -noout -pubkey` and `openssl pkey -in
+mail.key -pubout` give the same public key (otherwise Postfix disables TLS and Dovecot refuses to
+start). On the client side, `openssl s_client` ends with `Verify return code: 0 (ok)` when all is well,
+`18 (self-signed certificate)` or `20 (unable to get local issuer certificate)` otherwise; `-showcerts`
+displays the certificate received, `openssl x509 -noout -fingerprint -sha256` its fingerprint. Postfix
+and Dovecot read the key as `root` when they start: it stays in mode 600, owned by `root`.
+
+| | Postfix | Dovecot |
+|-|---------|---------|
+| certificate | `smtpd_tls_cert_file = /etc/ssl/certs/mail.crt` | `ssl_server_cert_file = /etc/ssl/certs/mail.crt` |
+| key | `smtpd_tls_key_file = /etc/ssl/private/mail.key` | `ssl_server_key_file = /etc/ssl/private/mail.key` |
+| policy | `smtpd_tls_security_level = may` (25) / `encrypt` (587), `smtpd_tls_wrappermode = yes` (465) | `ssl = required` |
+| client side | `smtp_tls_security_level = may`: TLS towards the servers that offer it | |
+
+On port 25, TLS stays **opportunistic** (`may`): an MX that required it (`encrypt`) would refuse the
+mail of the servers that cannot do it (`530 Must issue a STARTTLS command first`).
+""",
+        "IMAPS : Dovecot en TLS obligatoire": "IMAPS: Dovecot with mandatory TLS",
+        """
+
+IMAP est un protocole texte dont chaque commande commence par une **étiquette** choisie par le client,
+reprise dans la réponse finale (`OK`, `NO`, `BAD`). Sans TLS, le mot de passe de `LOGIN` circule en
+clair : Dovecot le refuse par défaut, sauf si on l'a autorisé (`auth_allow_cleartext = yes`, ce que
+fait le service de départ). Une fois TLS obligatoire :
+
+```
+* OK [CAPABILITY IMAP4rev1 ... STARTTLS LOGINDISABLED] Dovecot ready.      <- sur le port 143 sans TLS
+a LOGIN alice secret
+a NO [PRIVACYREQUIRED] Cleartext authentication disallowed on non-secure (SSL/TLS) connections.
+```
+
+```
+a LOGIN alice secret            <- sur le port 993 (openssl s_client -connect imap.firm.tp:993)
+a OK [CAPABILITY ...] Logged in
+b LIST "" "*"
+* LIST (\\HasNoChildren \\Trash) "." Trash
+* LIST (\\HasNoChildren \\Sent) "." Sent
+* LIST (\\HasNoChildren) "." INBOX
+c SELECT INBOX
+d FETCH 1 BODY[HEADER]
+e LOGOUT
+```
+
+Réglages de Dovecot (fichiers de `/etc/dovecot/conf.d/`, ou `local.conf`, inclus en dernier, qui
+surcharge tout) :
+
+| paramètre | rôle |
+|-----------|------|
+| `ssl = required`, `ssl_server_cert_file = fichier`, `ssl_server_key_file = fichier` | TLS obligatoire : le port 143 n'accepte plus de mot de passe qu'après `STARTTLS`, le 993 est servi avec ce certificat |
+| `auth_allow_cleartext = no` | aucun mot de passe en clair hors TLS (`LOGINDISABLED`) ; c'est la valeur par défaut |
+| `namespace inbox { mailbox Sent { auto = subscribe  special_use = \\Sent } }` | dossiers **spéciaux** (RFC 6154) créés et abonnés d'office : le client sait où ranger les envois (`\\Sent`), brouillons (`\\Drafts`), corbeille (`\\Trash`), indésirables (`\\Junk`). Debian déclare déjà leur `special_use`, mais sans `auto` : ils n'existent que si un client les crée |
+| `mail_driver = maildir`, `mail_path = ~/Maildir`, `mail_inbox_path = ~/Maildir` | où sont les boîtes (le service de départ) |
+
+`doveconf -n` affiche la configuration qui diffère des valeurs par défaut (les fichiers du certificat y
+sont un bloc `ssl_server { cert_file key_file }`), `doveconf ssl` une valeur effective, `doveadm auth
+test alice` vérifie un mot de passe, `doveadm mailbox list -u alice` les dossiers d'un compte,
+`journalctl -u dovecot` le journal. Ces noms sont ceux de **Dovecot 2.4** (Debian 13) ; la version 2.3
+écrivait `ssl_cert = <fichier`, `ssl_key = <fichier`, `disable_plaintext_auth = yes` et `mail_location`,
+que Dovecot 2.4 refuse (`Unknown setting`) : il ne démarre pas.
+
+Clients : `mutt` lit une boîte distante avec `set folder = imaps://alice@imap.firm.tp/` et `set
+spoolfile = +INBOX` dans `~/.muttrc` (`set imap_user`, `set imap_pass`, `set ssl_force_tls = yes`,
+`set record = +Sent` pour les envois, `set smtp_url = smtps://alice@smtp.firm.tp:465/` pour envoyer) ;
+`curl --url imaps://imap.firm.tp/INBOX -u alice -X 'SEARCH ALL'` interroge en une commande.
+""": """
+
+IMAP is a text protocol in which every command starts with a **tag** chosen by the client, repeated in
+the final reply (`OK`, `NO`, `BAD`). Without TLS, the password of `LOGIN` travels in cleartext:
+Dovecot refuses it by default, unless it has been allowed (`auth_allow_cleartext = yes`, which the
+starting service does). Once TLS is mandatory:
+
+```
+* OK [CAPABILITY IMAP4rev1 ... STARTTLS LOGINDISABLED] Dovecot ready.      <- on port 143 without TLS
+a LOGIN alice secret
+a NO [PRIVACYREQUIRED] Cleartext authentication disallowed on non-secure (SSL/TLS) connections.
+```
+
+```
+a LOGIN alice secret            <- on port 993 (openssl s_client -connect imap.firm.tp:993)
+a OK [CAPABILITY ...] Logged in
+b LIST "" "*"
+* LIST (\\HasNoChildren \\Trash) "." Trash
+* LIST (\\HasNoChildren \\Sent) "." Sent
+* LIST (\\HasNoChildren) "." INBOX
+c SELECT INBOX
+d FETCH 1 BODY[HEADER]
+e LOGOUT
+```
+
+Dovecot settings (files of `/etc/dovecot/conf.d/`, or `local.conf`, included last, which overrides
+everything):
+
+| setting | role |
+|---------|------|
+| `ssl = required`, `ssl_server_cert_file = file`, `ssl_server_key_file = file` | mandatory TLS: port 143 only accepts a password after `STARTTLS`, 993 is served with this certificate |
+| `auth_allow_cleartext = no` | no cleartext password outside TLS (`LOGINDISABLED`); this is the default value |
+| `namespace inbox { mailbox Sent { auto = subscribe  special_use = \\Sent } }` | **special** folders (RFC 6154) created and subscribed automatically: the client knows where to file sent messages (`\\Sent`), drafts (`\\Drafts`), deleted messages (`\\Trash`), junk (`\\Junk`). Debian already declares their `special_use`, but without `auto`: they only exist if a client creates them |
+| `mail_driver = maildir`, `mail_path = ~/Maildir`, `mail_inbox_path = ~/Maildir` | where the mailboxes are (the starting service) |
+
+`doveconf -n` shows the configuration that differs from the default values (the certificate files
+appear there as a block `ssl_server { cert_file key_file }`), `doveconf ssl` one effective value,
+`doveadm auth test alice` checks a password, `doveadm mailbox list -u alice` the folders of an account,
+`journalctl -u dovecot` the log. These names are those of **Dovecot 2.4** (Debian 13); version 2.3
+wrote `ssl_cert = <file`, `ssl_key = <file`, `disable_plaintext_auth = yes` and `mail_location`, which
+Dovecot 2.4 refuses (`Unknown setting`): it does not start.
+
+Clients: `mutt` reads a remote mailbox with `set folder = imaps://alice@imap.firm.tp/` and `set
+spoolfile = +INBOX` in `~/.muttrc` (`set imap_user`, `set imap_pass`, `set ssl_force_tls = yes`,
+`set record = +Sent` for sent messages, `set smtp_url = smtps://alice@smtp.firm.tp:465/` to send);
+`curl --url imaps://imap.firm.tp/INBOX -u alice -X 'SEARCH ALL'` queries in a single command.
+""",
+        "Soumission : ports 587 et 465, SASL, propriété des adresses": "Submission: ports 587 and 465, SASL, address ownership",
+        """
+
+Le **dépôt** d'un message par un utilisateur est séparé du transfert entre serveurs (port 25, jamais
+authentifié) : le port **587** (*submission*, RFC 6409, `STARTTLS` obligatoire) et le port **465**
+(*submissions*, RFC 8314, TLS implicite) sont réservés aux utilisateurs **authentifiés**, où qu'ils
+soient. Dans Postfix ce sont deux services `smtpd` supplémentaires de `master.cf`, avec leurs options :
+
+```
+submission inet n - y - - smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=encrypt
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+  -o smtpd_sender_restrictions=reject_sender_login_mismatch
+smtps inet n - y - - smtpd
+  -o syslog_name=postfix/smtps
+  -o smtpd_tls_wrappermode=yes
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+  -o smtpd_sender_restrictions=reject_sender_login_mismatch
+```
+
+`postconf -M` les liste, `postconf -Me 'submission/inet=submission inet n - y - - smtpd'` en ajoute un,
+`postconf -P 'submission/inet/smtpd_sasl_auth_enable=yes'` lui ajoute une option `-o` ; après une
+modification de `master.cf`, `systemctl restart postfix`.
+
+**SASL** (RFC 4954) : l'extension `AUTH` permet au client de s'identifier, par `PLAIN` ou `LOGIN`
+(identifiant et mot de passe en base64, d'où l'exigence de TLS **avant** : `smtpd_tls_auth_only =
+yes`). Postfix ne vérifie pas lui-même les mots de passe : il interroge **Dovecot** par un socket
+Unix, et les deux logiciels partagent ainsi la même base de comptes :
+
+```
+# main.cf                                  # Dovecot
+smtpd_sasl_type = dovecot                  service auth {
+smtpd_sasl_path = private/auth               unix_listener /var/spool/postfix/private/auth {
+smtpd_tls_auth_only = yes                      mode = 0660
+smtpd_sasl_security_options = noanonymous      user = postfix
+                                               group = postfix
+                                             }
+                                           }
+```
+
+(`private/auth` est relatif à `/var/spool/postfix`, le répertoire de la file). Un client authentifié
+est relayé par `permit_sasl_authenticated` quel que soit son réseau, et son `Received:` porte
+`ESMTPSA` et `(Authenticated sender: alice)`.
+
+**Propriété des adresses.** Authentifié ou non, un client peut annoncer n'importe quel `MAIL FROM`.
+`smtpd_sender_login_maps` dit à Postfix **quel compte possède quelle adresse**, et
+`reject_sender_login_mismatch` refuse (`553 5.7.1 Sender address rejected: not owned by user alice`)
+un client authentifié qui écrit avec l'adresse d'un autre :
+
+```
+# main.cf                                                   # /etc/postfix/sender_login_maps
+smtpd_sender_login_maps = regexp:/etc/postfix/sender_login_maps   /^([^@]+)@firm\\.tp$/   ${1}
+```
+
+(une table `regexp:` n'a pas besoin de `postmap` ; une table `hash:` listerait `alice@firm.tp alice`,
+une ligne par adresse).
+
+**Un serveur de soumission séparé.** Le serveur de soumission n'a pas à connaître les autres domaines :
+`relayhost = [mail.firm.tp]` lui fait confier tout ce qu'il accepte au MX, qui le relaie
+(`mynetworks`), le signe et l'envoie. Test : `swaks --server smtp.firm.tp:587 --tls --auth PLAIN
+--auth-user alice --from alice@firm.tp --to bob@other.tp` ; sans `--auth`, puis avec `--from
+carol@firm.tp`, le serveur doit refuser ; `--server smtp.firm.tp:465 --tlsc` pour le TLS implicite.
+""": """
+
+The **submission** of a message by a user is separate from the transfer between servers (port 25, never
+authenticated): port **587** (*submission*, RFC 6409, `STARTTLS` mandatory) and port **465**
+(*submissions*, RFC 8314, implicit TLS) are reserved for **authenticated** users, wherever they are. In
+Postfix these are two additional `smtpd` services of `master.cf`, with their options:
+
+```
+submission inet n - y - - smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=encrypt
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+  -o smtpd_sender_restrictions=reject_sender_login_mismatch
+smtps inet n - y - - smtpd
+  -o syslog_name=postfix/smtps
+  -o smtpd_tls_wrappermode=yes
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+  -o smtpd_sender_restrictions=reject_sender_login_mismatch
+```
+
+`postconf -M` lists them, `postconf -Me 'submission/inet=submission inet n - y - - smtpd'` adds one,
+`postconf -P 'submission/inet/smtpd_sasl_auth_enable=yes'` adds a `-o` option to it; after a change of
+`master.cf`, `systemctl restart postfix`.
+
+**SASL** (RFC 4954): the `AUTH` extension lets the client identify itself, with `PLAIN` or `LOGIN`
+(login and password in base64, hence the requirement for TLS **beforehand**: `smtpd_tls_auth_only =
+yes`). Postfix does not check the passwords itself: it asks **Dovecot** through a Unix socket, so the
+two programs share the same account base:
+
+```
+# main.cf                                  # Dovecot
+smtpd_sasl_type = dovecot                  service auth {
+smtpd_sasl_path = private/auth               unix_listener /var/spool/postfix/private/auth {
+smtpd_tls_auth_only = yes                      mode = 0660
+smtpd_sasl_security_options = noanonymous      user = postfix
+                                               group = postfix
+                                             }
+                                           }
+```
+
+(`private/auth` is relative to `/var/spool/postfix`, the queue directory). An authenticated client is
+relayed by `permit_sasl_authenticated` whatever its network, and its `Received:` carries `ESMTPSA` and
+`(Authenticated sender: alice)`.
+
+**Address ownership.** Authenticated or not, a client can announce any `MAIL FROM`.
+`smtpd_sender_login_maps` tells Postfix **which account owns which address**, and
+`reject_sender_login_mismatch` refuses (`553 5.7.1 Sender address rejected: not owned by user alice`)
+an authenticated client that writes with someone else's address:
+
+```
+# main.cf                                                   # /etc/postfix/sender_login_maps
+smtpd_sender_login_maps = regexp:/etc/postfix/sender_login_maps   /^([^@]+)@firm\\.tp$/   ${1}
+```
+
+(a `regexp:` table does not need `postmap`; a `hash:` table would list `alice@firm.tp alice`, one line
+per address).
+
+**A separate submission server.** The submission server does not need to know the other domains:
+`relayhost = [mail.firm.tp]` makes it hand everything it accepts to the MX, which relays it
+(`mynetworks`), signs it and sends it. Test: `swaks --server smtp.firm.tp:587 --tls --auth PLAIN
+--auth-user alice --from alice@firm.tp --to bob@other.tp`; without `--auth`, then with `--from
+carol@firm.tp`, the server must refuse; `--server smtp.firm.tp:465 --tlsc` for implicit TLS.
+""",
+        "Remise par LMTP : Postfix confie les boîtes à Dovecot": "Delivery over LMTP: Postfix hands the mailboxes to Dovecot",
+        """
+
+Dans le service de départ, l'agent `local` de Postfix écrit lui-même les fichiers dans `~/Maildir`, et
+Dovecot les découvre après coup. Les deux logiciels savent faire mieux : Postfix remet le message à
+Dovecot par **LMTP** (*Local Mail Transfer Protocol*, RFC 2033), un dialogue identique à SMTP (`LHLO`
+au lieu de `EHLO`, et **une réponse par destinataire** après `DATA`) sur un socket Unix, et c'est
+Dovecot, devenu le **MDA**, qui range le message : il connaît les dossiers, met ses index à jour,
+applique les quotas et les filtres **Sieve** (section @@ref:sieve@@) de l'utilisateur.
+
+```
+# Dovecot                                                # Postfix, main.cf
+service lmtp {                                           mailbox_transport = lmtp:unix:private/dovecot-lmtp
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+}
+```
+
+Le chemin `private/dovecot-lmtp` est relatif à `/var/spool/postfix`, où Postfix tourne enfermé
+(*chroot*) ; `lmtp:unix:` désigne le client `lmtp(8)` de Postfix sur un socket Unix (`lmtp:inet:hôte:24`
+pour un serveur distant). `mailbox_transport` ne concerne que la remise dans les boîtes des comptes
+locaux : les alias et `recipient_delimiter` restent traités par Postfix avant, et l'adresse complète
+(`alice+promo@firm.tp`) est transmise à Dovecot. LMTP reçoit l'adresse complète alors que le compte Unix
+s'appelle `alice` : la configuration Debian (`conf.d/20-lmtp.conf`) fait garder à LMTP la seule partie
+locale (`protocol lmtp { auth_username_format = %{user | username | lower} }`).
+
+Dans le journal, la remise se lit sur deux lignes au lieu d'une :
+
+```
+postfix/lmtp[1234]: 40F661880F0: to=<alice@firm.tp>, relay=mail.firm.tp[private/dovecot-lmtp],
+          delay=0.1, status=sent (250 2.0.0 <alice@firm.tp> 7KxSB3kV... Saved)
+dovecot: lmtp(alice)<1240><7KxSB3kV...>: msgid=<...>: saved mail to INBOX
+```
+
+et le message reçu porte un `Received:` de plus, `by mail.firm.tp with LMTP id ...`, posé par Dovecot.
+""": """
+
+In the starting service, Postfix's `local` agent writes the files into `~/Maildir` itself, and Dovecot
+discovers them afterwards. The two programs can do better: Postfix hands the message to Dovecot over
+**LMTP** (*Local Mail Transfer Protocol*, RFC 2033), a dialogue identical to SMTP (`LHLO` instead of
+`EHLO`, and **one reply per recipient** after `DATA`) on a Unix socket, and it is Dovecot, now the
+**MDA**, that stores the message: it knows the folders, updates its indexes, applies the user's quotas
+and **Sieve** filters (section @@ref:sieve@@).
+
+```
+# Dovecot                                                # Postfix, main.cf
+service lmtp {                                           mailbox_transport = lmtp:unix:private/dovecot-lmtp
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+}
+```
+
+The path `private/dovecot-lmtp` is relative to `/var/spool/postfix`, where Postfix runs locked in
+(*chroot*); `lmtp:unix:` designates Postfix's `lmtp(8)` client on a Unix socket (`lmtp:inet:host:24`
+for a remote server). `mailbox_transport` only concerns the delivery into the mailboxes of the local
+accounts: the aliases and `recipient_delimiter` are still handled by Postfix beforehand, and the full
+address (`alice+promo@firm.tp`) is passed on to Dovecot. LMTP receives the full address whereas the Unix
+account is called `alice`: the Debian configuration (`conf.d/20-lmtp.conf`) makes LMTP keep only the
+local part (`protocol lmtp { auth_username_format = %{user | username | lower} }`).
+
+In the log, the delivery reads on two lines instead of one:
+
+```
+postfix/lmtp[1234]: 40F661880F0: to=<alice@firm.tp>, relay=mail.firm.tp[private/dovecot-lmtp],
+          delay=0.1, status=sent (250 2.0.0 <alice@firm.tp> 7KxSB3kV... Saved)
+dovecot: lmtp(alice)<1240><7KxSB3kV...>: msgid=<...>: saved mail to INBOX
+```
+
+and the message received carries one more `Received:`, `by mail.firm.tp with LMTP id ...`, added by
+Dovecot.
+""",
+        "Trier à la remise : Sieve et ManageSieve": "Sorting at delivery: Sieve and ManageSieve",
+        """
+
+**Sieve** (RFC 5228) est le langage de filtrage du courrier **côté serveur** : un script, propre à chaque
+utilisateur, est exécuté par le MDA (Dovecot LMTP, grâce au greffon *Pigeonhole*) **à la remise de
+chaque message**, avant qu'il n'atteigne la boîte. Les règles s'appliquent donc quel que soit le client
+utilisé ensuite, téléphone compris. Un script est une suite de tests et d'actions :
+
+```
+require ["fileinto", "mailbox", "envelope", "subaddress"];
+
+# le courrier adressé à alice+promo@firm.tp va dans le dossier Promo (créé au besoin)
+if envelope :detail :is "to" "promo" {
+    fileinto :create "Promo";
+    stop;
+}
+# un sujet marqué [SPAM] va dans Junk
+if header :contains "subject" "[SPAM]" {
+    fileinto :create "Junk";
+    stop;
+}
+# tout le reste reste dans INBOX (action implicite : keep)
+```
+
+| élément | rôle |
+|---------|------|
+| `require [...]` | les extensions utilisées : `fileinto`, `mailbox` (`:create`), `envelope`, `subaddress` (`:detail`), `vacation`, `imap4flags`, `regex`... |
+| tests | `header :contains "subject" "x"`, `address :is "from" "bob@other.tp"`, `envelope :detail :is "to" "promo"`, `size :over 1M`, `anyof(...)`, `allof(...)`, `not` |
+| actions | `fileinto "Dossier"`, `redirect "autre@adresse"`, `discard`, `keep`, `stop`, `vacation "texte"`, `addflag "\\\\Seen"` |
+
+Côté Dovecot : le greffon est chargé pour LMTP (`protocol lmtp { mail_plugins { sieve = yes } }`). Sans
+autre réglage, les scripts de l'utilisateur sont dans `~/sieve/`, le script **actif** étant celui que
+désigne le lien `~/.dovecot.sieve`. On peut déposer `~/sieve/filters.sieve` et faire le lien à la main,
+ou passer par **ManageSieve** (RFC 5804, port **4190**, paquet `dovecot-managesieved`), le protocole par
+lequel un client (Thunderbird avec son extension Sieve...) téléverse, liste et active les scripts d'un
+utilisateur après `STARTTLS` et une authentification (`"filters" ACTIVE` dans la réponse à
+`LISTSCRIPTS`). Outils : `sievec script.sieve` vérifie la syntaxe, `sieve-test script.sieve
+message.eml` montre ce que le script ferait d'un message, `doveadm sieve list -u alice` liste les
+scripts d'un compte ; `journalctl -u dovecot` note chaque action (`sieve: ... stored mail into mailbox
+'Promo'`).
+""": """
+
+**Sieve** (RFC 5228) is the **server-side** mail filtering language: a script, specific to each user,
+is run by the MDA (Dovecot LMTP, thanks to the *Pigeonhole* plugin) **when each message is delivered**,
+before it reaches the mailbox. The rules therefore apply whatever client is used afterwards, phones
+included. A script is a sequence of tests and actions:
+
+```
+require ["fileinto", "mailbox", "envelope", "subaddress"];
+
+# mail addressed to alice+promo@firm.tp goes into the Promo folder (created if needed)
+if envelope :detail :is "to" "promo" {
+    fileinto :create "Promo";
+    stop;
+}
+# a subject tagged [SPAM] goes into Junk
+if header :contains "subject" "[SPAM]" {
+    fileinto :create "Junk";
+    stop;
+}
+# everything else stays in INBOX (implicit action: keep)
+```
+
+| element | role |
+|---------|------|
+| `require [...]` | the extensions used: `fileinto`, `mailbox` (`:create`), `envelope`, `subaddress` (`:detail`), `vacation`, `imap4flags`, `regex`... |
+| tests | `header :contains "subject" "x"`, `address :is "from" "bob@other.tp"`, `envelope :detail :is "to" "promo"`, `size :over 1M`, `anyof(...)`, `allof(...)`, `not` |
+| actions | `fileinto "Folder"`, `redirect "other@address"`, `discard`, `keep`, `stop`, `vacation "text"`, `addflag "\\\\Seen"` |
+
+On the Dovecot side: the plugin is loaded for LMTP (`protocol lmtp { mail_plugins { sieve = yes } }`).
+Without any other setting, the user's scripts are in `~/sieve/`, the **active** script being the one
+the link `~/.dovecot.sieve` points to. You can drop `~/sieve/filters.sieve` and make the link by hand,
+or go through **ManageSieve** (RFC 5804, port **4190**, package `dovecot-managesieved`), the protocol
+with which a client (Thunderbird with its Sieve extension...) uploads, lists and activates a user's
+scripts after `STARTTLS` and an authentication (`"filters" ACTIVE` in the reply to `LISTSCRIPTS`).
+Tools: `sievec script.sieve` checks the syntax, `sieve-test script.sieve message.eml` shows what the
+script would do with a message, `doveadm sieve list -u alice` lists the scripts of an account;
+`journalctl -u dovecot` records every action (`sieve: ... stored mail into mailbox 'Promo'`).
+""",
+        "SPF, DKIM et DMARC : qui a le droit d'écrire au nom du domaine": "SPF, DKIM and DMARC: who may write on behalf of the domain",
+        """
+
+N'importe quel serveur peut annoncer `MAIL FROM:<alice@firm.tp>` : rien dans SMTP ne le vérifie. Trois
+mécanismes publiés dans le **DNS** du domaine expéditeur permettent au destinataire de contrôler
+l'origine d'un message.
+
+**SPF** (*Sender Policy Framework*, RFC 7208) : le domaine publie dans un enregistrement TXT la liste des
+serveurs **autorisés à envoyer** en son nom. Le destinataire compare l'**adresse IP du client SMTP** à
+cette liste, pour le domaine du `MAIL FROM` :
+
+```
+firm.tp.  IN TXT "v=spf1 mx -all"
+```
+
+| terme | sens |
+|-------|------|
+| `mx`, `a` | les serveurs MX du domaine, l'adresse A du domaine |
+| `ip4:192.0.2.10`, `ip4:192.0.2.0/24` | une adresse, un réseau |
+| `include:autre.tp` | la politique d'un autre domaine (fournisseur) |
+| `-all`, `~all`, `?all` | tout le reste est refusé (*fail*), suspect (*softfail*), sans avis (*neutral*) |
+
+Le résultat (`pass`, `fail`, `softfail`, `none` sans enregistrement) est écrit par le destinataire dans un
+en-tête `Received-SPF:` (dans Postfix : le serveur de politique `policyd-spf`, paquet
+`postfix-policyd-spf-python`). SPF a une limite : un message **redirigé** (`.forward`, liste) arrive d'un
+serveur qui n'est pas dans la liste de l'expéditeur d'origine.
+
+**DKIM** (*DomainKeys Identified Mail*, RFC 6376) : le serveur expéditeur **signe** chaque message
+(en-têtes choisis et corps) avec une clé privée ; la clé publique est publiée dans le DNS sous le nom
+`sélecteur._domainkey.domaine` (le sélecteur permet plusieurs clés). La signature prouve que le message
+vient bien du domaine et n'a pas été modifié, et elle survit aux redirections.
+
+```
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/simple; d=firm.tp; s=k1;
+        h=From:To:Subject:Date; bh=...; b=...
+```
+
+`d=` domaine signataire, `s=` sélecteur, `h=` en-têtes signés, `bh=` empreinte du corps, `b=` la
+signature. Avec Postfix, **OpenDKIM** fait ce travail comme *milter* (filtre branché sur `smtpd` et
+`cleanup`) :
+
+```
+# /etc/opendkim.conf                        # main.cf
+Domain          firm.tp                      smtpd_milters = inet:localhost:8891
+Selector        k1                           non_smtpd_milters = $smtpd_milters
+KeyFile         /etc/dkimkeys/k1.private     milter_default_action = accept
+Socket          inet:8891@localhost
+Mode            s                            # s = signer, v = vérifier, sv = les deux
+InternalHosts   /etc/opendkim/TrustedHosts   # les clients dont on signe les messages
+```
+
+`opendkim-genkey -b 2048 -d firm.tp -s k1 -D /etc/dkimkeys` crée la clé (`k1.private`, à donner à
+l'utilisateur `opendkim`) et l'enregistrement TXT à publier (`k1.txt`) ; `opendkim-testkey -d firm.tp
+-s k1 -vvv` vérifie que la clé publiée correspond à la clé privée. OpenDKIM interroge le DNS avec son
+propre résolveur (il part de la racine) : dans un réseau fermé, indiquez-lui le serveur avec
+`Nameservers adresse`. Sans `InternalHosts`, OpenDKIM ne signe que ce qui vient de `localhost` ; avec
+`milter_default_action = accept`, un OpenDKIM arrêté ne bloque pas le courrier. Côté destinataire
+(`Mode v`), le résultat est noté dans `Authentication-Results: mx.other.tp; dkim=pass header.d=firm.tp`.
+
+**DMARC** (RFC 7489) complète les deux : le domaine publie dans `_dmarc.firm.tp` ce que le destinataire
+doit faire d'un message qui n'a ni SPF ni DKIM valide **et aligné** sur le domaine du `From:` (`p=none`
+observer, `quarantine` mettre de côté, `reject` refuser) et où envoyer les rapports agrégés (`rua=`) :
+
+```
+_dmarc.firm.tp.  IN TXT "v=DMARC1; p=quarantine; rua=mailto:postmaster@firm.tp"
+```
+
+L'**alignement** est ce qui manquait : SPF vérifie le `MAIL FROM`, DKIM le `d=` de la signature, mais
+c'est le `From:` que lit l'utilisateur ; DMARC exige que l'un des deux corresponde à ce `From:`. Les
+grands fournisseurs exigent aujourd'hui SPF, DKIM et DMARC pour accepter du courrier en volume.
+""": """
+
+Any server can announce `MAIL FROM:<alice@firm.tp>`: nothing in SMTP checks it. Three mechanisms
+published in the **DNS** of the sender's domain let the recipient check where a message comes from.
+
+**SPF** (*Sender Policy Framework*, RFC 7208): the domain publishes in a TXT record the list of the
+servers **allowed to send** on its behalf. The recipient compares the **IP address of the SMTP client**
+with this list, for the domain of the `MAIL FROM`:
+
+```
+firm.tp.  IN TXT "v=spf1 mx -all"
+```
+
+| term | meaning |
+|------|---------|
+| `mx`, `a` | the MX servers of the domain, the A address of the domain |
+| `ip4:192.0.2.10`, `ip4:192.0.2.0/24` | an address, a network |
+| `include:another.tp` | the policy of another domain (a provider) |
+| `-all`, `~all`, `?all` | everything else is refused (*fail*), suspicious (*softfail*), no opinion (*neutral*) |
+
+The result (`pass`, `fail`, `softfail`, `none` without a record) is written by the recipient in a
+`Received-SPF:` header (in Postfix: the policy server `policyd-spf`, package
+`postfix-policyd-spf-python`). SPF has a limit: a **forwarded** message (`.forward`, a list) arrives from
+a server that is not in the list of the original sender.
+
+**DKIM** (*DomainKeys Identified Mail*, RFC 6376): the sending server **signs** every message (chosen
+headers and body) with a private key; the public key is published in the DNS under the name
+`selector._domainkey.domain` (the selector allows several keys). The signature proves that the message
+really comes from the domain and has not been modified, and it survives forwarding.
+
+```
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/simple; d=firm.tp; s=k1;
+        h=From:To:Subject:Date; bh=...; b=...
+```
+
+`d=` signing domain, `s=` selector, `h=` signed headers, `bh=` hash of the body, `b=` the signature.
+With Postfix, **OpenDKIM** does this work as a *milter* (a filter plugged into `smtpd` and `cleanup`):
+
+```
+# /etc/opendkim.conf                        # main.cf
+Domain          firm.tp                      smtpd_milters = inet:localhost:8891
+Selector        k1                           non_smtpd_milters = $smtpd_milters
+KeyFile         /etc/dkimkeys/k1.private     milter_default_action = accept
+Socket          inet:8891@localhost
+Mode            s                            # s = sign, v = verify, sv = both
+InternalHosts   /etc/opendkim/TrustedHosts   # the clients whose messages are signed
+```
+
+`opendkim-genkey -b 2048 -d firm.tp -s k1 -D /etc/dkimkeys` creates the key (`k1.private`, to be given
+to the user `opendkim`) and the TXT record to publish (`k1.txt`); `opendkim-testkey -d firm.tp -s k1
+-vvv` checks that the published key matches the private key. OpenDKIM queries the DNS with its own
+resolver (it starts from the root): in a closed network, give it the server with `Nameservers
+address`. Without `InternalHosts`, OpenDKIM only signs what comes from `localhost`; with
+`milter_default_action = accept`, a stopped OpenDKIM does not block the mail. On the recipient side
+(`Mode v`), the result is recorded in `Authentication-Results: mx.other.tp; dkim=pass header.d=firm.tp`.
+
+**DMARC** (RFC 7489) completes the two: the domain publishes in `_dmarc.firm.tp` what the recipient
+must do with a message that has neither a valid SPF nor a valid DKIM **aligned** with the domain of the
+`From:` (`p=none` observe, `quarantine` set aside, `reject` refuse) and where to send the aggregate
+reports (`rua=`):
+
+```
+_dmarc.firm.tp.  IN TXT "v=DMARC1; p=quarantine; rua=mailto:postmaster@firm.tp"
+```
+
+**Alignment** is what was missing: SPF checks the `MAIL FROM`, DKIM the `d=` of the signature, but the
+user reads the `From:`; DMARC requires one of the two to match this `From:`. The large providers now
+require SPF, DKIM and DMARC to accept mail in volume.
+""",
+        "Plusieurs domaines : alias et boîtes virtuels": "Several domains: virtual aliases and mailboxes",
+        """
+
+`mydestination` ne convient qu'aux domaines dont les utilisateurs sont des comptes Unix, et un nom de
+compte y vaut pour tous les domaines (`alice@firm.tp` et `alice@autre.tp` sont la même boîte). Pour
+héberger d'autres domaines, Postfix a deux classes de domaines **virtuels** :
+
+| classe | paramètres | les adresses du domaine sont |
+|--------|------------|------------------------------|
+| alias virtuels | `virtual_alias_domains`, `virtual_alias_maps` | toutes des alias vers d'autres adresses (aucune boîte) |
+| boîtes virtuelles | `virtual_mailbox_domains`, `virtual_mailbox_maps`, `virtual_mailbox_base`, `virtual_uid_maps`, `virtual_gid_maps` | des boîtes rangées par l'agent `virtual` (ou confiées à Dovecot par `virtual_transport`) |
+
+`virtual_alias_maps` s'applique à **tout** message qui entre, quel que soit le domaine : c'est aussi
+l'endroit des alias d'adresses complètes (`postmaster@firm.tp alice`). Un domaine ne doit être que dans
+une seule classe (jamais à la fois dans `mydestination` et une classe virtuelle).
+
+```
+# main.cf                                           # /etc/postfix/vmailbox  (postmap)
+virtual_mailbox_domains = newco.tp                    paul@newco.tp   newco.tp/paul/Maildir/
+virtual_mailbox_base = /var/mail/vhosts
+virtual_mailbox_maps = hash:/etc/postfix/vmailbox   # /etc/postfix/virtual  (postmap)
+virtual_uid_maps = static:5000                        postmaster@newco.tp  paul@newco.tp
+virtual_gid_maps = static:5000                        abuse@newco.tp       paul@newco.tp
+virtual_alias_maps = hash:/etc/postfix/virtual        postmaster@firm.tp   alice
+```
+
+Le chemin de la table est relatif à `virtual_mailbox_base` ; une barre finale (`.../Maildir/`) demande le
+format Maildir. Toutes les boîtes appartiennent à un seul utilisateur système (`useradd -r -u 5000 -d
+/var/mail/vhosts vmail`, le répertoire lui appartenant). Les adresses `postmaster@` (RFC 5321) et
+`abuse@` (RFC 2142) de chaque domaine sont **obligatoires**.
+
+Côté Dovecot, les utilisateurs virtuels n'ont pas de compte Unix : un fichier `passwd-file` donne leur
+mot de passe, leur uid / gid et leur répertoire (avec `mail_path = ~/Maildir`, Dovecot trouve la boîte
+que Postfix remplit) ; il s'ajoute aux comptes Unix (PAM), Dovecot essayant les bases l'une après
+l'autre :
+
+```
+passdb passwd-file {                         # /etc/dovecot/users
+  passwd_file_path = /etc/dovecot/users      paul@newco.tp:{PLAIN}motdepasse:5000:5000::/var/mail/vhosts/newco.tp/paul
+}
+userdb passwd-file {
+  passwd_file_path = /etc/dovecot/users
+}
+```
+
+`doveadm pw -s SHA512-CRYPT` produit un mot de passe chiffré (`{SHA512-CRYPT}$6$...`) à la place de
+`{PLAIN}` ; `doveadm user paul@newco.tp` montre ce que Dovecot sait du compte (`home`, `mail_path`), et
+l'utilisateur se connecte avec son adresse complète.
+""": """
+
+`mydestination` only suits the domains whose users are Unix accounts, and an account name there is
+valid for all those domains (`alice@firm.tp` and `alice@another.tp` are the same mailbox). To host
+other domains, Postfix has two classes of **virtual** domains:
+
+| class | parameters | the addresses of the domain are |
+|-------|------------|---------------------------------|
+| virtual aliases | `virtual_alias_domains`, `virtual_alias_maps` | all aliases to other addresses (no mailbox) |
+| virtual mailboxes | `virtual_mailbox_domains`, `virtual_mailbox_maps`, `virtual_mailbox_base`, `virtual_uid_maps`, `virtual_gid_maps` | mailboxes stored by the `virtual` agent (or handed to Dovecot by `virtual_transport`) |
+
+`virtual_alias_maps` applies to **every** message that comes in, whatever the domain: it is also the
+place for the aliases of full addresses (`postmaster@firm.tp alice`). A domain must be in one class only
+(never in both `mydestination` and a virtual class).
+
+```
+# main.cf                                           # /etc/postfix/vmailbox  (postmap)
+virtual_mailbox_domains = newco.tp                    paul@newco.tp   newco.tp/paul/Maildir/
+virtual_mailbox_base = /var/mail/vhosts
+virtual_mailbox_maps = hash:/etc/postfix/vmailbox   # /etc/postfix/virtual  (postmap)
+virtual_uid_maps = static:5000                        postmaster@newco.tp  paul@newco.tp
+virtual_gid_maps = static:5000                        abuse@newco.tp       paul@newco.tp
+virtual_alias_maps = hash:/etc/postfix/virtual        postmaster@firm.tp   alice
+```
+
+The path in the table is relative to `virtual_mailbox_base`; a trailing slash (`.../Maildir/`) asks
+for the Maildir format. All the mailboxes belong to a single system user (`useradd -r -u 5000 -d
+/var/mail/vhosts vmail`, the directory belonging to it). The `postmaster@` (RFC 5321) and `abuse@`
+(RFC 2142) addresses of every domain are **mandatory**.
+
+On the Dovecot side, the virtual users have no Unix account: a `passwd-file` gives their password,
+their uid / gid and their directory (with `mail_path = ~/Maildir`, Dovecot finds the mailbox Postfix
+fills); it is added to the Unix accounts (PAM), Dovecot trying the databases one after the other:
+
+```
+passdb passwd-file {                         # /etc/dovecot/users
+  passwd_file_path = /etc/dovecot/users      paul@newco.tp:{PLAIN}password:5000:5000::/var/mail/vhosts/newco.tp/paul
+}
+userdb passwd-file {
+  passwd_file_path = /etc/dovecot/users
+}
+```
+
+`doveadm pw -s SHA512-CRYPT` produces an encrypted password (`{SHA512-CRYPT}$6$...`) to use instead of
+`{PLAIN}`; `doveadm user paul@newco.tp` shows what Dovecot knows of the account (`home`, `mail_path`),
+and the user logs in with their full address.
+""",
+        "Refuser le spam à l'entrée : les restrictions de Postfix": "Refusing spam at the door: Postfix restrictions",
+        """
+
+Le moins coûteux est de refuser un message **pendant le dialogue SMTP**, avant de l'avoir accepté : le
+serveur d'en face doit alors prévenir l'expéditeur (pas de rapport de non-remise envoyé à une adresse
+usurpée). Postfix évalue des listes de **restrictions** à chaque étape ; avec `smtpd_delay_reject = yes`
+(défaut), tous les refus sont rendus au `RCPT TO`, ce qui permet de tout regrouper dans
+`smtpd_recipient_restrictions`, lue de gauche à droite jusqu'à la première décision :
+
+```
+smtpd_helo_required = yes
+smtpd_recipient_restrictions =
+    permit_mynetworks
+    permit_sasl_authenticated
+    reject_unauth_destination
+    reject_invalid_helo_hostname
+    reject_non_fqdn_helo_hostname
+    reject_unknown_sender_domain
+    reject_rbl_client bl.isp.tp
+```
+
+| restriction | refuse | réponse |
+|-------------|--------|---------|
+| `reject_invalid_helo_hostname`, `reject_non_fqdn_helo_hostname` | un `EHLO` mal formé, ou sans domaine (`EHLO spambot`) | `501` / `504 5.5.2 Helo command rejected` |
+| `reject_unknown_sender_domain` | un `MAIL FROM` dont le domaine n'a ni MX ni A | `450 4.1.8 Sender address rejected: Domain not found` |
+| `reject_rbl_client zone` | un client dont l'adresse est inscrite dans la liste noire (DNSBL) `zone` | `554 5.7.1 Service unavailable; Client host [...] blocked using zone` |
+
+`permit_mynetworks` et `permit_sasl_authenticated` d'abord : les utilisateurs du domaine ne sont jamais
+refusés. Une **DNSBL** est une zone DNS : pour savoir si `192.0.2.99` est inscrite, Postfix demande
+l'enregistrement A de `99.2.0.192.bl.isp.tp` (l'adresse renversée suivie de la zone) ; une réponse
+(`127.0.0.2`) veut dire « inscrite », l'enregistrement TXT donne la raison. Les grandes listes publiques
+(Spamhaus...) s'utilisent ainsi.
+
+**Le contenu.** `header_checks` (et `body_checks`) applique des expressions régulières aux en-têtes du
+message, après `DATA` :
+
+```
+# main.cf                                       # /etc/postfix/header_checks
+header_checks = regexp:/etc/postfix/header_checks  /^Subject:.*CASINO/   REJECT message refusé
+```
+
+(une table `regexp:` se relit sans `postmap` ; `postmap -q "Subject: x CASINO" regexp:/etc/postfix/header_checks`
+la teste). Le refus arrive après le point final : `550 5.7.1 message refusé`.
+
+D'autres défenses courantes complètent ces règles : **postscreen** (un tri des clients avant `smtpd`,
+DNSBL pondérées, détection des robots qui parlent avant leur tour), le **greylisting** (refus temporaire
+à la première tentative : les robots ne reviennent pas ; `postgrey`), les filtres de contenu (rspamd,
+SpamAssassin), la limitation de débit (`anvil`). Tester chaque règle avec un message **légitime** autant
+qu'avec un message à refuser : une restriction mal placée refuse tout.
+""": """
+
+The cheapest way is to refuse a message **during the SMTP dialogue**, before having accepted it: the
+server on the other side then has to warn the sender (no non-delivery report sent to a spoofed
+address). Postfix evaluates lists of **restrictions** at every stage; with `smtpd_delay_reject = yes`
+(the default), all the refusals are given at `RCPT TO`, which makes it possible to group everything in
+`smtpd_recipient_restrictions`, read from left to right until the first decision:
+
+```
+smtpd_helo_required = yes
+smtpd_recipient_restrictions =
+    permit_mynetworks
+    permit_sasl_authenticated
+    reject_unauth_destination
+    reject_invalid_helo_hostname
+    reject_non_fqdn_helo_hostname
+    reject_unknown_sender_domain
+    reject_rbl_client bl.isp.tp
+```
+
+| restriction | refuses | reply |
+|-------------|---------|-------|
+| `reject_invalid_helo_hostname`, `reject_non_fqdn_helo_hostname` | a malformed `EHLO`, or one without a domain (`EHLO spambot`) | `501` / `504 5.5.2 Helo command rejected` |
+| `reject_unknown_sender_domain` | a `MAIL FROM` whose domain has neither MX nor A | `450 4.1.8 Sender address rejected: Domain not found` |
+| `reject_rbl_client zone` | a client whose address is listed in the blocklist (DNSBL) `zone` | `554 5.7.1 Service unavailable; Client host [...] blocked using zone` |
+
+`permit_mynetworks` and `permit_sasl_authenticated` first: the users of the domain are never refused.
+A **DNSBL** is a DNS zone: to find out whether `192.0.2.99` is listed, Postfix asks for the A record of
+`99.2.0.192.bl.isp.tp` (the reversed address followed by the zone); an answer (`127.0.0.2`) means
+"listed", the TXT record gives the reason. The large public lists (Spamhaus...) are used this way.
+
+**The content.** `header_checks` (and `body_checks`) applies regular expressions to the headers of the
+message, after `DATA`:
+
+```
+# main.cf                                       # /etc/postfix/header_checks
+header_checks = regexp:/etc/postfix/header_checks  /^Subject:.*CASINO/   REJECT message refusé
+```
+
+(a `regexp:` table is reread without `postmap`; `postmap -q "Subject: x CASINO" regexp:/etc/postfix/header_checks`
+tests it). The refusal comes after the final dot: `550 5.7.1 message refusé`.
+
+Other common defences complement these rules: **postscreen** (a sorting of the clients before `smtpd`,
+weighted DNSBLs, detection of the robots that talk before their turn), **greylisting** (a temporary
+refusal at the first attempt: the robots do not come back; `postgrey`), content filters (rspamd,
+SpamAssassin), rate limiting (`anvil`). Test every rule with a **legitimate** message as well as with a
+message to refuse: a misplaced restriction refuses everything.
+""",
+        "Observation et diagnostic": "Observation and diagnosis",
+        """
+
+**Le journal d'abord.** `/var/log/mail.log` (ou `journalctl -u postfix -f`) raconte chaque message
+en quelques lignes reliées par l'identifiant de file :
+
+```
+postfix/submission/smtpd[900]: connect from laptop.isp.tp[198.51.100.77]
+postfix/submission/smtpd[900]: 40F661880F0: client=laptop.isp.tp[198.51.100.77], sasl_method=PLAIN, sasl_username=alice
+postfix/cleanup[904]: 40F661880F0: message-id=<20261123101206.000894@laptop>
+postfix/qmgr[892]: 40F661880F0: from=<alice@firm.tp>, size=422, nrcpt=1 (queue active)
+postfix/smtp[905]: 40F661880F0: to=<bob@other.tp>, relay=mail.firm.tp[192.0.2.10]:25, delay=0.46,
+           dsn=2.0.0, status=sent (250 2.0.0 Ok: queued as 7C1A2)
+postfix/qmgr[892]: 40F661880F0: removed
+```
+
+**Sur le fil.** `tcpdump -n -A -i eth0 port 25` montre le dialogue en clair ; après `STARTTLS`, ou sur
+465 / 993, on ne voit plus que du TLS, ce qui est le but.
+
+**Erreurs courantes :**
+
+| symptôme | cause habituelle |
+|----------|------------------|
+| `Must issue a STARTTLS command first` | le port exige TLS avant tout (normal sur 587, une erreur sur le port 25 d'un MX) |
+| `warning: TLS library problem: ... key values mismatch`, STARTTLS absent | la clé ne correspond pas au certificat |
+| `SASL authentication failed` | mot de passe faux, ou Dovecot (`service auth`) injoignable (socket absent, mauvais propriétaire) |
+| `Sender address rejected: not owned by user` | `reject_sender_login_mismatch` : l'adresse n'appartient pas au compte authentifié |
+| `Verify return code: 18` / `20` | certificat auto-signé / autorité inconnue du client |
+| `Verify return code: 62 (hostname mismatch)` | le nom demandé n'est pas dans le SAN |
+| `Cleartext authentication disallowed` | normal sur le port 143 sans TLS : utiliser 993 ou `STARTTLS` |
+| `Unknown setting: ssl_cert` (ou `mail_location`...) au démarrage de Dovecot | un réglage de Dovecot 2.3 : voir les noms de la version 2.4 |
+| `status=deferred (... private/dovecot-lmtp ...: No such file or directory)` | `mailbox_transport` désigne un socket que Dovecot n'offre pas |
+| `Received-SPF: Fail` pour son propre serveur | l'enregistrement SPF ne contient pas l'adresse (ou le MX) du serveur qui envoie |
+| `dkim=fail` / `no signature` | clé publiée différente de la clé privée, client absent de `InternalHosts`, milter non branché |
+| `User unknown in virtual mailbox table` | adresse absente de `virtual_mailbox_maps`, ou table non compilée (`postmap`) |
+| tout le monde est refusé | une restriction placée avant `permit_mynetworks`, ou trop large |
+""": """
+
+**The log first.** `/var/log/mail.log` (or `journalctl -u postfix -f`) tells the story of each message
+in a few lines linked by the queue identifier:
+
+```
+postfix/submission/smtpd[900]: connect from laptop.isp.tp[198.51.100.77]
+postfix/submission/smtpd[900]: 40F661880F0: client=laptop.isp.tp[198.51.100.77], sasl_method=PLAIN, sasl_username=alice
+postfix/cleanup[904]: 40F661880F0: message-id=<20261123101206.000894@laptop>
+postfix/qmgr[892]: 40F661880F0: from=<alice@firm.tp>, size=422, nrcpt=1 (queue active)
+postfix/smtp[905]: 40F661880F0: to=<bob@other.tp>, relay=mail.firm.tp[192.0.2.10]:25, delay=0.46,
+           dsn=2.0.0, status=sent (250 2.0.0 Ok: queued as 7C1A2)
+postfix/qmgr[892]: 40F661880F0: removed
+```
+
+**On the wire.** `tcpdump -n -A -i eth0 port 25` shows the dialogue in cleartext; after `STARTTLS`, or
+on 465 / 993, only TLS can be seen, which is the point.
+
+**Common errors:**
+
+| symptom | usual cause |
+|---------|-------------|
+| `Must issue a STARTTLS command first` | the port requires TLS before anything else (normal on 587, an error on port 25 of an MX) |
+| `warning: TLS library problem: ... key values mismatch`, STARTTLS missing | the key does not match the certificate |
+| `SASL authentication failed` | wrong password, or Dovecot (`service auth`) unreachable (socket missing, wrong owner) |
+| `Sender address rejected: not owned by user` | `reject_sender_login_mismatch`: the address does not belong to the authenticated account |
+| `Verify return code: 18` / `20` | self-signed certificate / authority unknown to the client |
+| `Verify return code: 62 (hostname mismatch)` | the name asked for is not in the SAN |
+| `Cleartext authentication disallowed` | normal on port 143 without TLS: use 993 or `STARTTLS` |
+| `Unknown setting: ssl_cert` (or `mail_location`...) when Dovecot starts | a Dovecot 2.3 setting: see the names of version 2.4 |
+| `status=deferred (... private/dovecot-lmtp ...: No such file or directory)` | `mailbox_transport` points to a socket Dovecot does not offer |
+| `Received-SPF: Fail` for one's own server | the SPF record does not contain the address (or the MX) of the sending server |
+| `dkim=fail` / `no signature` | published key different from the private key, client missing from `InternalHosts`, milter not plugged in |
+| `User unknown in virtual mailbox table` | address missing from `virtual_mailbox_maps`, or table not compiled (`postmap`) |
+| everyone is refused | a restriction placed before `permit_mynetworks`, or too broad |
+""",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente TLS pour le courrier, la soumission, LMTP et Sieve,
+SPF / DKIM / DMARC, les domaines virtuels et les défenses contre le spam. Vous êtes l'administrateur du
+domaine **`firm.tp`**, une petite entreprise dont le service de courrier fonctionne... en clair :
+
+- sur `lan`, le serveur **`mail`** = `mail.firm.tp`, le **MX** du domaine : Postfix y reçoit le courrier
+  de `firm.tp` et relaie celui de `lan`, Dovecot sert les boîtes en IMAP, mots de passe en clair
+  acceptés ; le serveur de soumission **`submit`** = `submit.firm.tp` (Postfix y confie tout à `mail`,
+  `relayhost = [mail.firm.tp]` ; rien d'autre n'est configuré) ; le poste **`pc`** d'Alice ; **`old`**, le
+  serveur de `oldco.tp`, une société rachetée (en panne : le bonus) ; le routeur `gw` ;
+- sur `wan`, « l'Internet » : le serveur DNS public **`dns`** (unbound ; les enregistrements de
+  `firm.tp` sont les vôtres : fichier `/etc/unbound/unbound.conf.d/firm-tp.conf`, puis `unbound-control
+  reload`), le serveur de courrier **`peermx`** = `mx.other.tp` du domaine voisin (Postfix, **déjà
+  configuré** : il note le résultat de SPF et de DKIM des messages qu'il reçoit ; vous pouvez y lire
+  `/var/log/mail.log` et la boîte de Bob dans `/home/bob/Maildir`), et **`laptop`**, l'ordinateur
+  portable d'Alice chez elle (`laptop.isp.tp`).
+
+L'entreprise a une **autorité de certification interne** : son certificat et sa clé sont dans
+`/root/ca/` sur `mail` et sur `submit`, et toutes les machines lui font confiance. `mx.other.tp`
+relaie le courrier des machines de `wan` : depuis `laptop`, `swaks --server mx.other.tp --from
+bob@other.tp --to alice@firm.tp` simule un message venu d'un autre domaine.
+
+Chaque partie s'évalue seule : vous pouvez les faire dans l'ordre que vous voulez (l'ordre proposé est
+celui du cours). Quand une partie a besoin de ce qu'une autre construit (un certificat, par exemple),
+la question dit comment s'en passer.
+""": """
+Read the **Informations** tab: it presents TLS for mail, submission, LMTP and Sieve, SPF / DKIM / DMARC,
+virtual domains and the defences against spam. You are the administrator of the domain **`firm.tp`**,
+a small company whose mail service works... in cleartext:
+
+- on `lan`, the server **`mail`** = `mail.firm.tp`, the **MX** of the domain: Postfix receives the mail
+  of `firm.tp` there and relays that of `lan`, Dovecot serves the mailboxes over IMAP, cleartext
+  passwords accepted; the submission server **`submit`** = `submit.firm.tp` (Postfix hands everything
+  to `mail` there, `relayhost = [mail.firm.tp]`; nothing else is configured); Alice's host **`pc`**;
+  **`old`**, the server of `oldco.tp`, a company that was bought (broken: the bonus); the router `gw`;
+- on `wan`, "the Internet": the public DNS server **`dns`** (unbound; the records of `firm.tp` are
+  yours: file `/etc/unbound/unbound.conf.d/firm-tp.conf`, then `unbound-control reload`), the mail
+  server **`peermx`** = `mx.other.tp` of the neighbouring domain (Postfix, **already configured**: it
+  records the result of SPF and DKIM for the messages it receives; you can read `/var/log/mail.log`
+  there and Bob's mailbox in `/home/bob/Maildir`), and **`laptop`**, Alice's laptop at home
+  (`laptop.isp.tp`).
+
+The company has an **internal certification authority**: its certificate and its key are in
+`/root/ca/` on `mail` and on `submit`, and every machine trusts it. `mx.other.tp` relays the mail of
+the machines of `wan`: from `laptop`, `swaks --server mx.other.tp --from bob@other.tp --to
+alice@firm.tp` simulates a message coming from another domain.
+
+Each part is graded on its own: you can do them in any order you like (the order proposed is that of
+the course). When a part needs what another one builds (a certificate, for example), the question
+says how to do without it.
+""",
+        """
+Comptes utilisateurs :
+""": """
+User accounts:
+""",
+        """
+Les réponses aux questions et l'état des serveurs sont évalués automatiquement (bouton d'évaluation) :
+l'évaluation **envoie elle-même des messages de test** (expéditeurs `someone@isp.tp`, `carol@firm.tp`,
+sujet `[SRE] ...`), en dépose dans certaines boîtes, puis les efface ; ils apparaissent dans les
+journaux, c'est normal. La boîte d'Alice contient aussi un message de Bob (sujet `[SRE] Message pour
+Alice`) dont la phrase est demandée à la partie 2. Les mots de passe, la phrase, le sélecteur DKIM et le
+mot interdit de la partie 7 sont propres à votre instance du TP. Après chaque modification d'un fichier
+de configuration, **relancez le service** et vérifiez dans le journal qu'il a bien démarré.
+""": """
+The answers to the questions and the state of the servers are graded automatically (evaluation button):
+the evaluation **sends test messages itself** (senders `someone@isp.tp`, `carol@firm.tp`, subject
+`[SRE] ...`), drops some into certain mailboxes, then removes them; they show up in the logs, this is
+normal. Alice's mailbox also holds a message from Bob (subject `[SRE] Message pour Alice`) whose
+sentence is asked for in part 2. The passwords, the sentence, the DKIM selector and the forbidden word
+of part 7 are specific to your instance of the lab. After each change to a configuration file,
+**restart the service** and check in the log that it started properly.
+""",
+        "Partie 1 — Le certificat du serveur, signé par l'autorité interne": "Part 1 — The server's certificate, signed by the internal authority",
+        "Le certificat du serveur, signé par l'autorité interne ; le nom imap.firm.tp": "The server's certificate, signed by the internal authority; the name imap.firm.tp",
+        """
+Les clients d'Alice joindront le serveur IMAP sous le **nom de service** `imap.firm.tp`, et le
+certificat du serveur doit être signé par l'autorité interne (section @@ref:tls@@ de l'onglet
+Informations) :
+
+1. sur `dns`, ajoutez le nom `imap.firm.tp` (un enregistrement A vers l'adresse de `mail`) ;
+   `unbound-control reload`, puis `dig imap.firm.tp` et `getent hosts imap.firm.tp` depuis `pc` ;
+2. sur `mail`, créez une clé privée **`/etc/ssl/private/mail.key`** (mode 600, propriété de `root`) et une
+   demande de certificat (CSR) pour `CN=mail.firm.tp` avec les noms alternatifs (SAN) `mail.firm.tp` et
+   `imap.firm.tp` (`openssl req -new -newkey rsa:2048 -nodes -addext "subjectAltName=DNS:..."`) ;
+3. signez-la avec l'autorité de `/root/ca/` (`openssl x509 -req -CA ... -CAkey ... -CAcreateserial -days
+   365 -copy_extensions copy`) pour obtenir **`/etc/ssl/certs/mail.crt`** (chemins imposés : ils sont
+   évalués) ;
+4. vérifiez : `openssl x509 -in /etc/ssl/certs/mail.crt -noout -subject -issuer -dates -ext
+   subjectAltName`, `openssl verify -CAfile /root/ca/ca.crt -verify_hostname imap.firm.tp
+   /etc/ssl/certs/mail.crt`, et que la clé correspond bien au certificat.
+""": """
+Alice's clients will reach the IMAP server under the **service name** `imap.firm.tp`, and the server's
+certificate must be signed by the internal authority (section @@ref:tls@@ of the Informations tab):
+
+1. on `dns`, add the name `imap.firm.tp` (an A record pointing to the address of `mail`);
+   `unbound-control reload`, then `dig imap.firm.tp` and `getent hosts imap.firm.tp` from `pc`;
+2. on `mail`, create a private key **`/etc/ssl/private/mail.key`** (mode 600, owned by `root`) and a
+   certificate signing request (CSR) for `CN=mail.firm.tp` with the alternative names (SAN)
+   `mail.firm.tp` and `imap.firm.tp` (`openssl req -new -newkey rsa:2048 -nodes -addext
+   "subjectAltName=DNS:..."`);
+3. sign it with the authority of `/root/ca/` (`openssl x509 -req -CA ... -CAkey ... -CAcreateserial -days
+   365 -copy_extensions copy`) to obtain **`/etc/ssl/certs/mail.crt`** (imposed paths: they are
+   graded);
+4. check: `openssl x509 -in /etc/ssl/certs/mail.crt -noout -subject -issuer -dates -ext
+   subjectAltName`, `openssl verify -CAfile /root/ca/ca.crt -verify_hostname imap.firm.tp
+   /etc/ssl/certs/mail.crt`, and that the key really matches the certificate.
+""",
+        """
+**Questions.**
+
+- qui signe le certificat du serveur ?
+  @@{signer:>l'autorité de certification interne, avec sa clé privée ca.key|le serveur mail lui-même, avec mail.key|Dovecot, au premier démarrage|le client, à la première connexion}@@
+- à quoi sert le `subjectAltName` ?
+  @@{san_role:>les noms sous lesquels les clients joignent le serveur|les adresses électroniques des utilisateurs|le nom de l'autorité de certification|les adresses IP autorisées à se connecter}@@
+- ce qu'un client vérifie en recevant le certificat :
+  @@{client_checks:>la signature par une autorité de confiance, le nom demandé dans le certificat, la validité|que le mot de passe de l'utilisateur est correct|que le port est bien 993 ou 465|que le certificat est auto-signé}@@
+""": """
+**Questions.**
+
+- who signs the server's certificate?
+  @@{signer:>the internal certification authority, with its private key ca.key>>>l'autorité de certification interne, avec sa clé privée ca.key|the mail server itself, with mail.key>>>le serveur mail lui-même, avec mail.key|Dovecot, at its first start>>>Dovecot, au premier démarrage|the client, at the first connection>>>le client, à la première connexion}@@
+- what is the `subjectAltName` for?
+  @@{san_role:>the names under which the clients reach the server>>>les noms sous lesquels les clients joignent le serveur|the users' email addresses>>>les adresses électroniques des utilisateurs|the name of the certification authority>>>le nom de l'autorité de certification|the IP addresses allowed to connect>>>les adresses IP autorisées à se connecter}@@
+- what a client checks when it receives the certificate:
+  @@{client_checks:>the signature by a trusted authority, the requested name in the certificate, the validity>>>la signature par une autorité de confiance, le nom demandé dans le certificat, la validité|that the user's password is correct>>>que le mot de passe de l'utilisateur est correct|that the port is indeed 993 or 465>>>que le port est bien 993 ou 465|that the certificate is self-signed>>>que le certificat est auto-signé}@@
+""",
+        "imap.firm.tp désigne mail": "imap.firm.tp points to mail",
+        "/etc/ssl/certs/mail.crt est signé par l'autorité interne et vaut pour imap.firm.tp": "/etc/ssl/certs/mail.crt is signed by the internal authority and is valid for imap.firm.tp",
+        "le SAN du certificat contient mail.firm.tp et imap.firm.tp": "the certificate's SAN contains mail.firm.tp and imap.firm.tp",
+        "/etc/ssl/private/mail.key correspond au certificat ; mode 600, propriété de root": "/etc/ssl/private/mail.key matches the certificate; mode 600, owned by root",
+        "qui signe, rôle du SAN, ce que vérifie le client": "who signs, role of the SAN, what the client checks",
+        "Partie 2 — IMAPS : Dovecot en TLS obligatoire": "Part 2 — IMAPS: Dovecot with mandatory TLS",
+        "IMAPS : lire sa boîte seulement en TLS": "IMAPS: reading one's mailbox over TLS only",
+        """
+Dovecot sert les boîtes de `mail`, mais accepte encore les mots de passe en clair et présente le
+certificat auto-signé de Debian (section @@ref:imap@@ de l'onglet Informations). Alice doit lire sa boîte
+depuis `pc` comme depuis `laptop`, **toujours chiffré** :
+
+1. TLS **obligatoire** avec le certificat **`/etc/ssl/certs/mail.crt`** et sa clé (ceux de la partie 1 ;
+   si vous ne l'avez pas faite, un certificat auto-signé créé à ces chemins suffit pour cette partie :
+   `openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=mail.firm.tp -keyout ... -out ...`) : `ssl =
+   required`, `ssl_server_cert_file`, `ssl_server_key_file` ; plus aucun mot de passe en clair hors TLS
+   (`auth_allow_cleartext = no`) ;
+2. déclarez les dossiers spéciaux `Drafts`, `Sent`, `Trash` et `Junk` créés et abonnés automatiquement
+   (`auto = subscribe`, `special_use`) ;
+3. relancez Dovecot, vérifiez `doveconf -n`, puis depuis `pc` : `openssl s_client -connect
+   imap.firm.tp:993` (avec le certificat de la partie 1 : `Verify return code: 0 (ok)`) et un dialogue à
+   la main (`a LOGIN alice ...`, `b LIST "" "*"`, `c SELECT INBOX`, `d FETCH 1 BODY[HEADER]`, `e LOGOUT`) ;
+   avec `nc mail.firm.tp 143`, essayez `a LOGIN` sans TLS ;
+4. configurez `mutt` sur `pc` (`~/.muttrc` : `set folder = imaps://alice@imap.firm.tp/`, `set spoolfile =
+   +INBOX`, `set imap_user`, `set imap_pass`, `set ssl_force_tls = yes`, `set record = +Sent`...) et lisez
+   le message de Bob (sujet `[SRE] Message pour Alice`) : sa phrase est demandée ci-dessous.
+""": """
+Dovecot serves the mailboxes of `mail`, but still accepts cleartext passwords and presents Debian's
+self-signed certificate (section @@ref:imap@@ of the Informations tab). Alice must read her mailbox from
+`pc` as well as from `laptop`, **always encrypted**:
+
+1. **mandatory** TLS with the certificate **`/etc/ssl/certs/mail.crt`** and its key (those of part 1;
+   if you have not done it, a self-signed certificate created at these paths is enough for this part:
+   `openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=mail.firm.tp -keyout ... -out ...`): `ssl =
+   required`, `ssl_server_cert_file`, `ssl_server_key_file`; no cleartext password at all outside TLS
+   (`auth_allow_cleartext = no`);
+2. declare the special folders `Drafts`, `Sent`, `Trash` and `Junk`, created and subscribed
+   automatically (`auto = subscribe`, `special_use`);
+3. restart Dovecot, check `doveconf -n`, then from `pc`: `openssl s_client -connect
+   imap.firm.tp:993` (with the certificate of part 1: `Verify return code: 0 (ok)`) and a dialogue by
+   hand (`a LOGIN alice ...`, `b LIST "" "*"`, `c SELECT INBOX`, `d FETCH 1 BODY[HEADER]`, `e LOGOUT`);
+   with `nc mail.firm.tp 143`, try `a LOGIN` without TLS;
+4. configure `mutt` on `pc` (`~/.muttrc`: `set folder = imaps://alice@imap.firm.tp/`, `set spoolfile =
+   +INBOX`, `set imap_user`, `set imap_pass`, `set ssl_force_tls = yes`, `set record = +Sent`...) and read
+   Bob's message (subject `[SRE] Message pour Alice`): its sentence is asked for below.
+""",
+        """
+**Questions.**
+
+- le port d'IMAP en TLS implicite : @@{imaps_port:[0-9]+}@@
+- ce que répond Dovecot à `a LOGIN alice ...` sur le port 143 sans TLS, une fois TLS obligatoire :
+  @@{plaintext_result:>NO [PRIVACYREQUIRED] Cleartext authentication disallowed|OK Logged in|BAD Error in IMAP command|NO [AUTHENTICATIONFAILED] Authentication failed}@@
+- la phrase du message de Bob pour Alice : @@{secret:[A-Za-z ]+}@@
+""": """
+**Questions.**
+
+- the port of IMAP with implicit TLS: @@{imaps_port:[0-9]+}@@
+- what Dovecot replies to `a LOGIN alice ...` on port 143 without TLS, once TLS is mandatory:
+  @@{plaintext_result:>NO [PRIVACYREQUIRED] Cleartext authentication disallowed|OK Logged in|BAD Error in IMAP command|NO [AUTHENTICATIONFAILED] Authentication failed}@@
+- the sentence of Bob's message for Alice: @@{secret:[A-Za-z ]+}@@
+""",
+        "Dovecot : ssl = required": "Dovecot: ssl = required",
+        "sur le port 143, LOGIN est refusé sans TLS et accepté après STARTTLS": "on port 143, LOGIN is refused without TLS and accepted after STARTTLS",
+        "le certificat présenté sur le port 993 est /etc/ssl/certs/mail.crt": "the certificate presented on port 993 is /etc/ssl/certs/mail.crt",
+        "connexion IMAPS d'alice acceptée ; le message de test est visible": "alice's IMAPS connection accepted; the test message is visible",
+        "les dossiers spéciaux (Drafts, Sent, Trash, Junk) sont créés et abonnés automatiquement": "the special folders (Drafts, Sent, Trash, Junk) are created and subscribed automatically",
+        "la phrase du message de Bob": "the sentence of Bob's message",
+        "port d'IMAPS": "IMAPS port",
+        "réponse à un LOGIN en clair": "reply to a cleartext LOGIN",
+        "Partie 3 — Soumission authentifiée : ports 587 et 465": "Part 3 — Authenticated submission: ports 587 and 465",
+        "Soumission authentifiée sur submit : ports 587 et 465, SASL, propriété des adresses": "Authenticated submission on submit: ports 587 and 465, SASL, address ownership",
+        """
+Alice doit envoyer son courrier depuis `pc` comme depuis `laptop` par le serveur de soumission
+**`submit`**, sous le nom de service **`smtp.firm.tp`** (section @@ref:submission@@ de l'onglet
+Informations). Sur `submit`, Postfix confie déjà tout à `mail` (`relayhost`) et Dovecot tourne avec les
+comptes `alice` et `carol` :
+
+1. sur `dns`, ajoutez le nom `smtp.firm.tp` (un enregistrement A vers l'adresse de `submit`) ;
+2. sur `submit`, créez avec l'autorité de `/root/ca/` le certificat du serveur :
+   **`/etc/ssl/private/smtp.key`** et **`/etc/ssl/certs/smtp.crt`**, SAN `smtp.firm.tp` et `submit.firm.tp`
+   (même méthode qu'à la partie 1) ; déclarez-les à Postfix (`smtpd_tls_cert_file`, `smtpd_tls_key_file`) ;
+3. faites vérifier les mots de passe par Dovecot : socket `service auth` côté Dovecot
+   (`/var/spool/postfix/private/auth`, utilisateur `postfix`), `smtpd_sasl_type = dovecot` et
+   `smtpd_sasl_path = private/auth` côté Postfix ; `AUTH` ne doit être proposé qu'en TLS
+   (`smtpd_tls_auth_only = yes`) ;
+4. ajoutez dans `master.cf` le service **`submission`** (port 587 : TLS obligatoire, authentification
+   activée, relais réservé aux clients authentifiés) et le service **`smtps`** (port 465 : TLS implicite
+   `smtpd_tls_wrappermode = yes`, mêmes options) ;
+5. interdisez l'usurpation entre utilisateurs : un client authentifié `alice` ne peut écrire qu'en tant
+   que `alice@firm.tp` (`smtpd_sender_login_maps`, puis `reject_sender_login_mismatch` dans
+   `smtpd_sender_restrictions` des deux services) ;
+6. relancez Dovecot et Postfix, puis testez depuis `laptop` : `swaks --server smtp.firm.tp:587 --tls
+   --auth PLAIN --auth-user alice --from alice@firm.tp --to bob@other.tp` doit aboutir (**laissez ce
+   message dans la boîte de Bob**, il est évalué : lisez ses `Received:` sur `peermx`) ; le même envoi
+   sans `--auth` doit être refusé, de même avec `--from carol@firm.tp` ; `swaks --server
+   smtp.firm.tp:465 --tlsc --auth PLAIN --auth-user alice ...` doit aboutir aussi.
+""": """
+Alice must send her mail from `pc` as well as from `laptop` through the submission server
+**`submit`**, under the service name **`smtp.firm.tp`** (section @@ref:submission@@ of the Informations
+tab). On `submit`, Postfix already hands everything to `mail` (`relayhost`) and Dovecot runs with the
+accounts `alice` and `carol`:
+
+1. on `dns`, add the name `smtp.firm.tp` (an A record pointing to the address of `submit`);
+2. on `submit`, create the server's certificate with the authority of `/root/ca/`:
+   **`/etc/ssl/private/smtp.key`** and **`/etc/ssl/certs/smtp.crt`**, SAN `smtp.firm.tp` and `submit.firm.tp`
+   (same method as in part 1); declare them to Postfix (`smtpd_tls_cert_file`, `smtpd_tls_key_file`);
+3. have the passwords checked by Dovecot: a `service auth` socket on the Dovecot side
+   (`/var/spool/postfix/private/auth`, user `postfix`), `smtpd_sasl_type = dovecot` and
+   `smtpd_sasl_path = private/auth` on the Postfix side; `AUTH` must only be offered over TLS
+   (`smtpd_tls_auth_only = yes`);
+4. add to `master.cf` the **`submission`** service (port 587: mandatory TLS, authentication enabled,
+   relaying reserved for authenticated clients) and the **`smtps`** service (port 465: implicit TLS
+   `smtpd_tls_wrappermode = yes`, same options);
+5. forbid spoofing between users: an authenticated client `alice` can only write as `alice@firm.tp`
+   (`smtpd_sender_login_maps`, then `reject_sender_login_mismatch` in the `smtpd_sender_restrictions`
+   of both services);
+6. restart Dovecot and Postfix, then test from `laptop`: `swaks --server smtp.firm.tp:587 --tls
+   --auth PLAIN --auth-user alice --from alice@firm.tp --to bob@other.tp` must succeed (**leave this
+   message in Bob's mailbox**, it is graded: read its `Received:` headers on `peermx`); the same send
+   without `--auth` must be refused, and likewise with `--from carol@firm.tp`; `swaks --server
+   smtp.firm.tp:465 --tlsc --auth PLAIN --auth-user alice ...` must succeed too.
+""",
+        """
+**Questions.**
+
+- le mot du `Received:` de `submit` qui dit que le message a été déposé en TLS **et** authentifié :
+  @@{auth_word:>ESMTPSA|ESMTP|ESMTPS|SMTP}@@
+- le code de la réponse de `submit` quand `alice` authentifiée écrit `MAIL FROM:<carol@firm.tp>` :
+  @@{mismatch_code:[0-9]+}@@
+""": """
+**Questions.**
+
+- the word of `submit`'s `Received:` saying that the message was submitted over TLS **and** authenticated:
+  @@{auth_word:>ESMTPSA|ESMTP|ESMTPS|SMTP}@@
+- the code of `submit`'s reply when the authenticated `alice` writes `MAIL FROM:<carol@firm.tp>`:
+  @@{mismatch_code:[0-9]+}@@
+""",
+        "smtp.firm.tp désigne submit": "smtp.firm.tp points to submit",
+        "le certificat du port 587 est signé par l'autorité interne, au nom de smtp.firm.tp": "the certificate of port 587 is signed by the internal authority, in the name of smtp.firm.tp",
+        "services submission (587) et smtps (465) déclarés et en écoute": "submission (587) and smtps (465) services declared and listening",
+        "AUTH (PLAIN ou LOGIN) n'est proposé qu'après STARTTLS": "AUTH (PLAIN or LOGIN) is only offered after STARTTLS",
+        "sans authentification, le port 587 refuse de relayer": "without authentication, port 587 refuses to relay",
+        "alice authentifiée depuis wan est relayée jusqu'à mx.other.tp, en ESMTPSA": "alice, authenticated from wan, is relayed to mx.other.tp, in ESMTPSA",
+        "en TLS implicite sur le port 465, alice s'authentifie et envoie": "with implicit TLS on port 465, alice authenticates and sends",
+        "alice authentifiée ne peut pas écrire en tant que carol@firm.tp": "authenticated alice cannot write as carol@firm.tp",
+        "la boîte de bob contient un message de alice@firm.tp déposé depuis laptop sur submit en ESMTPSA": "bob's mailbox contains a message from alice@firm.tp submitted from laptop to submit in ESMTPSA",
+        "code du refus d'expéditeur": "code of the sender refusal",
+        "ESMTPSA": "ESMTPSA",
+        "Partie 4 — Remise par Dovecot : LMTP et Sieve": "Part 4 — Delivery by Dovecot: LMTP and Sieve",
+        "Remise par LMTP et tri par Sieve sur mail": "Delivery over LMTP and sorting with Sieve on mail",
+        """
+Sur `mail`, Postfix écrit encore lui-même les messages dans les Maildir ; faites-les remettre à Dovecot
+par LMTP, puis triez le courrier d'Alice à la remise (sections @@ref:lmtp@@ et @@ref:sieve@@ de l'onglet
+Informations) :
+
+1. côté Dovecot, déclarez le socket LMTP que Postfix joindra : `service lmtp { unix_listener
+   /var/spool/postfix/private/dovecot-lmtp { ... } }` (mode `0600`, utilisateur et groupe `postfix`) ;
+   vérifiez dans `doveconf -n` que `protocol lmtp` ne garde que la partie locale des adresses
+   (`auth_username_format`, réglage Debian) ; relancez Dovecot et vérifiez `ls -l
+   /var/spool/postfix/private/dovecot-lmtp` ;
+2. côté Postfix, `mailbox_transport = lmtp:unix:private/dovecot-lmtp`, puis `systemctl reload postfix` ;
+   depuis `laptop`, envoyez un message à `alice@firm.tp` par `mx.other.tp` et suivez-le dans le journal
+   (`postfix/lmtp`, `dovecot: lmtp(alice)`), puis repérez le `Received: ... with LMTP` du message ;
+3. chargez le greffon Sieve pour LMTP (`protocol lmtp { mail_plugins { sieve = yes } }`) et écrivez le
+   script d'Alice dans `/home/alice/sieve/filters.sieve` (propriétaire `alice`) : les messages adressés à
+   **`alice+promo@firm.tp`** vont dans le dossier **`Promo`** (créé au besoin), ceux dont le sujet
+   contient **`[SPAM]`** vont dans **`Junk`**, le reste dans `INBOX` ; vérifiez la syntaxe avec `sievec`
+   et rendez le script actif (le lien `/home/alice/.dovecot.sieve`) ;
+4. testez par `mx.other.tp` (un message à `alice+promo@firm.tp`, un autre dont le sujet commence par
+   `[SPAM]`) et regardez les dossiers `.Promo/new` et `.Junk/new` du Maildir d'Alice ;
+5. depuis `pc`, dialoguez avec ManageSieve : `openssl s_client -connect mail.firm.tp:4190 -starttls
+   sieve`, `AUTHENTICATE "PLAIN" "..."` (la chaîne base64 de `\\0alice\\0motdepasse` : `printf
+   '\\0alice\\0mdp' | base64`) et `LISTSCRIPTS` : le script d'Alice doit apparaître `ACTIVE`.
+""": """
+On `mail`, Postfix still writes the messages into the Maildirs itself; have them delivered to Dovecot
+over LMTP, then sort Alice's mail at delivery (sections @@ref:lmtp@@ and @@ref:sieve@@ of the
+Informations tab):
+
+1. on the Dovecot side, declare the LMTP socket Postfix will connect to: `service lmtp { unix_listener
+   /var/spool/postfix/private/dovecot-lmtp { ... } }` (mode `0600`, user and group `postfix`);
+   check in `doveconf -n` that `protocol lmtp` keeps only the local part of the addresses
+   (`auth_username_format`, a Debian setting); restart Dovecot and check `ls -l
+   /var/spool/postfix/private/dovecot-lmtp`;
+2. on the Postfix side, `mailbox_transport = lmtp:unix:private/dovecot-lmtp`, then `systemctl reload postfix`;
+   from `laptop`, send a message to `alice@firm.tp` through `mx.other.tp` and follow it in the log
+   (`postfix/lmtp`, `dovecot: lmtp(alice)`), then spot the `Received: ... with LMTP` of the message;
+3. load the Sieve plugin for LMTP (`protocol lmtp { mail_plugins { sieve = yes } }`) and write Alice's
+   script in `/home/alice/sieve/filters.sieve` (owner `alice`): the messages addressed to
+   **`alice+promo@firm.tp`** go into the **`Promo`** folder (created if needed), those whose subject
+   contains **`[SPAM]`** go into **`Junk`**, the rest into `INBOX`; check the syntax with `sievec`
+   and make the script active (the link `/home/alice/.dovecot.sieve`);
+4. test through `mx.other.tp` (one message to `alice+promo@firm.tp`, another whose subject starts with
+   `[SPAM]`) and look at the folders `.Promo/new` and `.Junk/new` of Alice's Maildir;
+5. from `pc`, talk to ManageSieve: `openssl s_client -connect mail.firm.tp:4190 -starttls
+   sieve`, `AUTHENTICATE "PLAIN" "..."` (the base64 string of `\\0alice\\0password`: `printf
+   '\\0alice\\0pwd' | base64`) and `LISTSCRIPTS`: Alice's script must appear `ACTIVE`.
+""",
+        """
+**Questions.**
+
+- la valeur de `relay=` sur la ligne `postfix/lmtp` du journal : @@{lmtp_relay:[^ ]+}@@
+- pourquoi confier la remise à Dovecot plutôt que laisser Postfix écrire dans les boîtes ?
+  @@{lmtp_why:>Dovecot range lui-même le message : index et dossiers à jour, filtres Sieve, quotas|LMTP chiffre les messages dans la boîte|LMTP remplace SMTP entre les serveurs de courrier|Postfix ne sait pas écrire au format Maildir}@@
+- quand et où un script Sieve s'exécute-t-il ?
+  @@{sieve_when:>sur le serveur, au moment de la remise du message dans la boîte (LMTP)|sur le poste de l'utilisateur, à l'ouverture du client de courrier|sur le serveur, à chaque connexion IMAP|sur le serveur du domaine expéditeur, à l'envoi}@@
+- le port de ManageSieve : @@{managesieve_port:[0-9]+}@@
+""": """
+**Questions.**
+
+- the value of `relay=` on the `postfix/lmtp` line of the log: @@{lmtp_relay:[^ ]+}@@
+- why hand the delivery to Dovecot rather than let Postfix write into the mailboxes?
+  @@{lmtp_why:>Dovecot stores the message itself: indexes and folders up to date, Sieve filters, quotas>>>Dovecot range lui-même le message : index et dossiers à jour, filtres Sieve, quotas|LMTP encrypts the messages in the mailbox>>>LMTP chiffre les messages dans la boîte|LMTP replaces SMTP between mail servers>>>LMTP remplace SMTP entre les serveurs de courrier|Postfix cannot write in the Maildir format>>>Postfix ne sait pas écrire au format Maildir}@@
+- when and where does a Sieve script run?
+  @@{sieve_when:>on the server, when the message is delivered into the mailbox (LMTP)>>>sur le serveur, au moment de la remise du message dans la boîte (LMTP)|on the user's host, when the mail client is opened>>>sur le poste de l'utilisateur, à l'ouverture du client de courrier|on the server, at every IMAP connection>>>sur le serveur, à chaque connexion IMAP|on the server of the sender's domain, when the message is sent>>>sur le serveur du domaine expéditeur, à l'envoi}@@
+- the port of ManageSieve: @@{managesieve_port:[0-9]+}@@
+""",
+        "Dovecot offre un socket LMTP à Postfix dans /var/spool/postfix/private": "Dovecot offers Postfix an LMTP socket in /var/spool/postfix/private",
+        "mailbox_transport confie la remise à Dovecot par LMTP": "mailbox_transport hands the delivery to Dovecot over LMTP",
+        "les messages rangés chez alice sont passés par LMTP (Received: ... with LMTP)": "the messages stored for alice went through LMTP (Received: ... with LMTP)",
+        "le greffon sieve est chargé pour la remise LMTP": "the sieve plugin is loaded for LMTP delivery",
+        "ManageSieve (port 4190, STARTTLS) : alice se connecte et a un script actif": "ManageSieve (port 4190, STARTTLS): alice logs in and has an active script",
+        "un message pour alice+promo@firm.tp est rangé dans le dossier Promo": "a message for alice+promo@firm.tp is stored in the Promo folder",
+        "un message dont le sujet contient [SPAM] est rangé dans Junk": "a message whose subject contains [SPAM] is stored in Junk",
+        "la ligne relay= du journal ; port de ManageSieve": "the relay= line of the log; ManageSieve port",
+        "pourquoi LMTP ; quand Sieve s'exécute": "why LMTP; when Sieve runs",
+        "Partie 5 — SPF, DKIM et DMARC": "Part 5 — SPF, DKIM and DMARC",
+        "SPF, DKIM et DMARC : authentifier le courrier de firm.tp": "SPF, DKIM and DMARC: authenticating the mail of firm.tp",
+        """
+`mx.other.tp` vérifie SPF (en-tête `Received-SPF:`) et DKIM (en-tête `Authentication-Results:`) sur les
+messages qu'il reçoit (section @@ref:spf-dkim@@ de l'onglet Informations). Regardez ces deux en-têtes sur
+un message reçu par Bob avant de commencer. Tout le courrier de `firm.tp` sort par `mail` :
+
+1. **SPF** : publiez sur `dns` l'enregistrement TXT de `firm.tp` autorisant **le MX du domaine** et
+   refusant tout le reste (`-all`) ; vérifiez avec `dig TXT firm.tp`, envoyez un message par `mail` et
+   lisez le `Received-SPF:` chez Bob ; envoyez-en un depuis `laptop` directement à `mx.other.tp` avec
+   `--from alice@firm.tp` et comparez ;
+2. **DKIM** : sur `mail`, créez une clé pour le sélecteur **`{selector}`** avec `opendkim-genkey`
+   (répertoire `/etc/dkimkeys`, propriétaire `opendkim`), configurez `/etc/opendkim.conf` (domaine,
+   sélecteur, clé, socket `inet:8891@localhost`, mode signature, les machines de `lan` dans
+   `InternalHosts`), branchez le milter dans Postfix (`smtpd_milters`, `non_smtpd_milters`,
+   `milter_default_action = accept`), lancez OpenDKIM et relancez Postfix ;
+3. publiez la clé publique (fichier `{selector}.txt`) dans le DNS sous `{selector}._domainkey.firm.tp`
+   (une seule ligne `local-data` entre apostrophes) et vérifiez avec `dig TXT` ; un message envoyé par
+   `mail` à Bob doit porter un `DKIM-Signature:` et `mx.other.tp` doit noter `dkim=pass` ;
+4. **DMARC** : publiez l'enregistrement de `firm.tp` (nom `_dmarc.firm.tp`, politique `quarantine`,
+   rapports agrégés à `postmaster@firm.tp`).
+""": """
+`mx.other.tp` checks SPF (`Received-SPF:` header) and DKIM (`Authentication-Results:` header) on the
+messages it receives (section @@ref:spf-dkim@@ of the Informations tab). Look at these two headers on a
+message received by Bob before starting. All the mail of `firm.tp` leaves through `mail`:
+
+1. **SPF**: publish on `dns` the TXT record of `firm.tp` authorising **the MX of the domain** and
+   refusing everything else (`-all`); check with `dig TXT firm.tp`, send a message through `mail` and
+   read the `Received-SPF:` at Bob's; send one from `laptop` directly to `mx.other.tp` with
+   `--from alice@firm.tp` and compare;
+2. **DKIM**: on `mail`, create a key for the selector **`{selector}`** with `opendkim-genkey`
+   (directory `/etc/dkimkeys`, owner `opendkim`), configure `/etc/opendkim.conf` (domain, selector,
+   key, socket `inet:8891@localhost`, signing mode, the machines of `lan` in `InternalHosts`), plug the
+   milter into Postfix (`smtpd_milters`, `non_smtpd_milters`, `milter_default_action = accept`), start
+   OpenDKIM and restart Postfix;
+3. publish the public key (file `{selector}.txt`) in the DNS under `{selector}._domainkey.firm.tp`
+   (a single `local-data` line between single quotes) and check with `dig TXT`; a message sent by
+   `mail` to Bob must carry a `DKIM-Signature:` and `mx.other.tp` must record `dkim=pass`;
+4. **DMARC**: publish the record of `firm.tp` (name `_dmarc.firm.tp`, policy `quarantine`, aggregate
+   reports to `postmaster@firm.tp`).
+""",
+        """
+**Questions.**
+
+- SPF permet au destinataire de vérifier :
+  @@{spf_checks:>l'adresse IP du serveur qui remet le message, pour le domaine du MAIL FROM|le contenu du message|le mot de passe de l'expéditeur|le certificat TLS du serveur expéditeur}@@
+- l'alignement exigé par DMARC :
+  @@{dmarc_alignment:>le domaine de l'en-tête From: doit correspondre au domaine vérifié par SPF ou par DKIM|le message doit être chiffré de bout en bout|le serveur doit avoir un nom inverse|la signature DKIM doit couvrir tout le corps du message}@@
+- la balise DMARC qui donne l'adresse des rapports agrégés : @@{dmarc_reports:[a-z]+}@@
+""": """
+**Questions.**
+
+- SPF lets the recipient check:
+  @@{spf_checks:>the IP address of the server delivering the message, for the domain of the MAIL FROM>>>l'adresse IP du serveur qui remet le message, pour le domaine du MAIL FROM|the content of the message>>>le contenu du message|the sender's password>>>le mot de passe de l'expéditeur|the TLS certificate of the sending server>>>le certificat TLS du serveur expéditeur}@@
+- the alignment DMARC requires:
+  @@{dmarc_alignment:>the domain of the From: header must match the domain verified by SPF or by DKIM>>>le domaine de l'en-tête From: doit correspondre au domaine vérifié par SPF ou par DKIM|the message must be encrypted end to end>>>le message doit être chiffré de bout en bout|the server must have a reverse name>>>le serveur doit avoir un nom inverse|the DKIM signature must cover the whole body of the message>>>la signature DKIM doit couvrir tout le corps du message}@@
+- the DMARC tag giving the address of the aggregate reports: @@{dmarc_reports:[a-z]+}@@
+""",
+        "enregistrement SPF de firm.tp : le MX autorisé, -all": "SPF record of firm.tp: the MX authorised, -all",
+        "un message relayé par mail obtient Received-SPF: Pass sur mx.other.tp": "a message relayed by mail gets Received-SPF: Pass on mx.other.tp",
+        "clé publique DKIM publiée pour le sélecteur {selector}": "DKIM public key published for the selector {selector}",
+        "le message relayé par mail est signé (d=firm.tp, s={selector})": "the message relayed by mail is signed (d=firm.tp, s={selector})",
+        "mx.other.tp vérifie la signature : dkim=pass": "mx.other.tp verifies the signature: dkim=pass",
+        "enregistrement DMARC de firm.tp : politique et adresse des rapports": "DMARC record of firm.tp: policy and report address",
+        "balise rua": "rua tag",
+        "ce que vérifie SPF ; l'alignement DMARC": "what SPF checks; DMARC alignment",
+        "Partie 6 — Un second domaine : boîtes virtuelles": "Part 6 — A second domain: virtual mailboxes",
+        "Un second domaine sur mail : newco.tp en boîtes virtuelles": "A second domain on mail: newco.tp in virtual mailboxes",
+        """
+L'entreprise héberge maintenant le courrier de sa filiale **`newco.tp`**, dont les utilisateurs n'ont pas
+de compte Unix sur `mail` (section @@ref:virtual@@ de l'onglet Informations) :
+
+1. sur `dns`, publiez l'enregistrement MX de `newco.tp` désignant `mail.firm.tp` ;
+2. sur `mail`, créez l'utilisateur système `vmail` (uid et gid 5000, répertoire `/var/mail/vhosts`, qui
+   lui appartient) ; déclarez `newco.tp` en **boîtes virtuelles** (`virtual_mailbox_domains`,
+   `virtual_mailbox_base = /var/mail/vhosts`, `virtual_mailbox_maps`, `virtual_uid_maps`,
+   `virtual_gid_maps`) avec la boîte de **`paul@newco.tp`** dans **`newco.tp/paul/Maildir/`** (chemin
+   imposé : il est évalué) ;
+3. alias virtuels (`virtual_alias_maps`, `postmap`) : `postmaster@newco.tp` et `abuse@newco.tp` remis à
+   `paul@newco.tp`, `postmaster@firm.tp` et `abuse@firm.tp` remis à `alice` ;
+4. côté Dovecot, ajoutez une base `passwd-file` (`passdb` et `userdb`, fichier `/etc/dovecot/users`)
+   donnant à `paul@newco.tp` son mot de passe (tableau de la première question), l'uid / gid 5000 et le
+   répertoire `/var/mail/vhosts/newco.tp/paul` ; relancez Postfix et Dovecot ;
+5. testez depuis `laptop` par `mx.other.tp`, puis lisez la boîte de Paul en IMAP (`STARTTLS`) avec
+   l'identifiant `paul@newco.tp` ; `doveadm user paul@newco.tp`.
+""": """
+The company now hosts the mail of its subsidiary **`newco.tp`**, whose users have no Unix account on
+`mail` (section @@ref:virtual@@ of the Informations tab):
+
+1. on `dns`, publish the MX record of `newco.tp` pointing to `mail.firm.tp`;
+2. on `mail`, create the system user `vmail` (uid and gid 5000, directory `/var/mail/vhosts`, which
+   belongs to it); declare `newco.tp` as **virtual mailboxes** (`virtual_mailbox_domains`,
+   `virtual_mailbox_base = /var/mail/vhosts`, `virtual_mailbox_maps`, `virtual_uid_maps`,
+   `virtual_gid_maps`) with the mailbox of **`paul@newco.tp`** in **`newco.tp/paul/Maildir/`** (imposed
+   path: it is graded);
+3. virtual aliases (`virtual_alias_maps`, `postmap`): `postmaster@newco.tp` and `abuse@newco.tp`
+   delivered to `paul@newco.tp`, `postmaster@firm.tp` and `abuse@firm.tp` delivered to `alice`;
+4. on the Dovecot side, add a `passwd-file` database (`passdb` and `userdb`, file `/etc/dovecot/users`)
+   giving `paul@newco.tp` his password (table of the first question), uid / gid 5000 and the directory
+   `/var/mail/vhosts/newco.tp/paul`; restart Postfix and Dovecot;
+5. test from `laptop` through `mx.other.tp`, then read Paul's mailbox over IMAP (`STARTTLS`) with the
+   login `paul@newco.tp`; `doveadm user paul@newco.tp`.
+""",
+        """
+**Question.** La classe de domaine qui convient à `newco.tp` :
+@@{domain_class:>virtual_mailbox_domains : des boîtes sans compte Unix, rangées par Postfix|virtual_alias_domains : chaque adresse redirigée vers un compte Unix de firm.tp|mydestination : comme firm.tp, avec des comptes Unix|relay_domains : le courrier est relayé vers un autre serveur}@@
+""": """
+**Question.** The domain class suited to `newco.tp`:
+@@{domain_class:>virtual_mailbox_domains: mailboxes without a Unix account, stored by Postfix>>>virtual_mailbox_domains : des boîtes sans compte Unix, rangées par Postfix|virtual_alias_domains: every address redirected to a Unix account of firm.tp>>>virtual_alias_domains : chaque adresse redirigée vers un compte Unix de firm.tp|mydestination: like firm.tp, with Unix accounts>>>mydestination : comme firm.tp, avec des comptes Unix|relay_domains: the mail is relayed to another server>>>relay_domains : le courrier est relayé vers un autre serveur}@@
+""",
+        "l'enregistrement MX de newco.tp désigne mail.firm.tp": "the MX record of newco.tp points to mail.firm.tp",
+        "newco.tp est un domaine de boîtes virtuelles": "newco.tp is a virtual mailbox domain",
+        "un message pour paul@newco.tp arrive dans sa boîte virtuelle": "a message for paul@newco.tp reaches his virtual mailbox",
+        "paul@newco.tp se connecte en IMAP et voit ses messages": "paul@newco.tp logs in over IMAP and sees his messages",
+        "postmaster@ et abuse@ de newco.tp arrivent chez paul ; postmaster@firm.tp désigne alice": "postmaster@ and abuse@ of newco.tp reach paul; postmaster@firm.tp points to alice",
+        "classe de domaine": "domain class",
+        "Partie 7 — Refuser le spam à l'entrée du MX": "Part 7 — Refusing spam at the door of the MX",
+        "Anti-spam : les restrictions de Postfix sur mail": "Anti-spam: Postfix restrictions on mail",
+        """
+`mail` accepte aujourd'hui tout message pour `firm.tp`. Faites-lui refuser, **pendant le dialogue
+SMTP**, le courrier des robots (section @@ref:antispam@@ de l'onglet Informations), sans jamais refuser
+celui des utilisateurs du domaine ni celui d'un serveur correct :
+
+1. un client qui ne se présente pas (`smtpd_helo_required`), ou qui se présente avec un nom invalide ou
+   sans domaine (`EHLO spambot`) ;
+2. un expéditeur dont le domaine n'existe pas (ni MX ni A) ;
+3. un client inscrit dans la liste noire **`bl.isp.tp`** que publie le DNS du fournisseur ;
+4. tout message dont le sujet contient le mot **`{word}`** (`header_checks`, une table `regexp:`).
+
+Placez les restrictions dans `smtpd_recipient_restrictions`, **après** `permit_mynetworks`,
+`permit_sasl_authenticated` et `reject_unauth_destination`, relancez Postfix, et testez chaque règle
+depuis `laptop` avec `swaks --server mail.firm.tp` (options `--ehlo`, `--from`, `--header "Subject: ..."`),
+**ainsi qu'un message correct**, qui doit toujours passer. `dig` permet d'interroger la liste noire.
+""": """
+`mail` currently accepts every message for `firm.tp`. Make it refuse, **during the SMTP dialogue**, the
+mail of robots (section @@ref:antispam@@ of the Informations tab), without ever refusing that of the
+users of the domain nor that of a proper server:
+
+1. a client that does not introduce itself (`smtpd_helo_required`), or that introduces itself with an
+   invalid name or one without a domain (`EHLO spambot`);
+2. a sender whose domain does not exist (neither MX nor A);
+3. a client listed in the blocklist **`bl.isp.tp`** published by the provider's DNS;
+4. any message whose subject contains the word **`{word}`** (`header_checks`, a `regexp:` table).
+
+Place the restrictions in `smtpd_recipient_restrictions`, **after** `permit_mynetworks`,
+`permit_sasl_authenticated` and `reject_unauth_destination`, restart Postfix, and test each rule
+from `laptop` with `swaks --server mail.firm.tp` (options `--ehlo`, `--from`, `--header "Subject: ..."`),
+**as well as a proper message**, which must always get through. `dig` lets you query the blocklist.
+""",
+        """
+**Questions.**
+
+- le nom DNS que Postfix interroge pour savoir si l'adresse `{spam_ip}` est inscrite dans `bl.isp.tp` :
+  @@{{dnsbl_name:[0-9A-Za-z.-]+}}@@
+- avec `smtpd_delay_reject = yes` (valeur par défaut) :
+  @@{{delay_reject:>tous les refus sont rendus au RCPT TO, après que le client s'est présenté|le serveur attend quelques secondes avant chaque refus|les refus sont différés et envoyés par courrier à l'expéditeur|les restrictions de HELO ne sont plus appliquées}}@@
+""": """
+**Questions.**
+
+- the DNS name Postfix queries to find out whether the address `{spam_ip}` is listed in `bl.isp.tp`:
+  @@{{dnsbl_name:[0-9A-Za-z.-]+}}@@
+- with `smtpd_delay_reject = yes` (the default value):
+  @@{{delay_reject:>every refusal is given at RCPT TO, after the client has introduced itself>>>tous les refus sont rendus au RCPT TO, après que le client s'est présenté|the server waits a few seconds before each refusal>>>le serveur attend quelques secondes avant chaque refus|the refusals are deferred and sent by mail to the sender>>>les refus sont différés et envoyés par courrier à l'expéditeur|the HELO restrictions are no longer applied>>>les restrictions de HELO ne sont plus appliquées}}@@
+""",
+        "un client qui se présente sans nom de domaine est refusé": "a client introducing itself without a domain name is refused",
+        "un expéditeur d'un domaine inexistant est refusé": "a sender from a non-existent domain is refused",
+        "un client inscrit dans bl.isp.tp est refusé": "a client listed in bl.isp.tp is refused",
+        "un message dont le sujet contient le mot interdit est refusé après DATA": "a message whose subject contains the forbidden word is refused after DATA",
+        "nom interrogé dans la DNSBL": "name queried in the DNSBL",
+        "smtpd_delay_reject": "smtpd_delay_reject",
+        "Bonus — Dépanner le serveur de oldco.tp": "Bonus — Troubleshooting the server of oldco.tp",
+        "Bonus : dépanner le serveur de oldco.tp": "Bonus: troubleshooting the server of oldco.tp",
+        """
+L'entreprise a racheté **`oldco.tp`**, dont le serveur `old` (`old.oldco.tp`, sur `lan`) a été remonté à
+la hâte. Rien ne va : `olivia` ne peut plus lire sa boîte en IMAPS ; les clients de messagerie
+signalent un STARTTLS cassé sur le port 25 ; les serveurs qui ne savent pas faire de TLS ne peuvent plus
+lui remettre de courrier ; et les messages de `oldco.tp` échouent au contrôle SPF chez les
+destinataires. Les fichiers `/etc/ssl/certs/old.crt` et `/etc/ssl/private/old.key` sont corrects,
+l'enregistrement MX de `oldco.tp` aussi.
+
+Trouvez et corrigez les **quatre** pannes (sur `old`, et dans `/etc/unbound/unbound.conf.d/oldco-tp.conf`
+sur `dns`) : journaux, `postconf -n`, `doveconf -n`, `openssl s_client`, `dig` et la table des erreurs
+courantes de la section @@ref:diagnostic@@ vous guident.
+""": """
+The company has bought **`oldco.tp`**, whose server `old` (`old.oldco.tp`, on `lan`) was set up again in
+a hurry. Nothing works: `olivia` can no longer read her mailbox over IMAPS; the mail clients report a
+broken STARTTLS on port 25; the servers that cannot do TLS can no longer deliver mail to it; and the
+messages of `oldco.tp` fail the SPF check at the recipients'. The files `/etc/ssl/certs/old.crt` and
+`/etc/ssl/private/old.key` are correct, and so is the MX record of `oldco.tp`.
+
+Find and fix the **four** faults (on `old`, and in `/etc/unbound/unbound.conf.d/oldco-tp.conf` on
+`dns`): logs, `postconf -n`, `doveconf -n`, `openssl s_client`, `dig` and the table of common errors
+in section @@ref:diagnostic@@ will guide you.
+""",
+        "Dovecot démarre et olivia lit sa boîte en IMAPS": "Dovecot starts and olivia reads her mailbox over IMAPS",
+        "STARTTLS fonctionne sur le port 25 de old, avec son certificat": "STARTTLS works on port 25 of old, with its certificate",
+        "un serveur sans TLS peut remettre un message à old": "a server without TLS can deliver a message to old",
+        "l'enregistrement SPF de oldco.tp autorise old": "the SPF record of oldco.tp authorises old",
     },
 }

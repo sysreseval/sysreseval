@@ -54,7 +54,9 @@ from utils import random_password
 default_language = 'fr'
 tr = make_tr(default_language)
 
-title = tr("LDAP : annuaire OpenLDAP, comptes Unix centralisés, ACL, TLS et réplication")
+# evaluated at import time, before _TRANSLATIONS (end of the file): the English inline too
+title = tr("LDAP : annuaire OpenLDAP, comptes Unix centralisés, ACL, TLS et réplication",
+           en="LDAP: an OpenLDAP directory, centralised Unix accounts, ACLs, TLS and replication")
 shared_path = True
 allow_self_grade = True
 no_mark_on_self_grade = True
@@ -798,7 +800,10 @@ explique les échecs (`Invalid credentials`, `Confidentiality required`, certifi
     @sre_state(user_allowed=False,
                description=tr("Solution de référence : les deux serveurs sont reconstruits à neuf, puis l'annuaire "
                               "complet, les ACL, TLS, la réplication et le client m1 (nslcd, NSS, PAM) sont "
-                              "configurés ; le travail en cours sur les serveurs est perdu"))
+                              "configurés ; le travail en cours sur les serveurs est perdu",
+                              en="Reference solution: both servers are rebuilt from scratch, then the whole directory, "
+                                 "the ACLs, TLS, replication and the client m1 (nslcd, NSS, PAM) are configured; the "
+                                 "work in progress on the servers is lost"))
     def final(self):
         """The whole solution.  Step 1: ldap1 rebuilt from scratch, the directory loaded, the
         departure and the password change, the ACLs, TLS + LDAPS, ``simple_bind=128``, syncprov.

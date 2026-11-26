@@ -599,8 +599,12 @@ class TestTexts:
                 markdown_to_html(text, show_instructor=True)
         literals = _instructor_literals()
         assert len(literals) == INSTRUCTOR_TEXTS
-        assert set(lab._TRANSLATIONS) == {'en'} and set(lab._TRANSLATIONS['en']) == set(literals)
-        assert all(value and value != key for key, value in lab._TRANSLATIONS['en'].items())
+        # every tr() text has its English (the course, the questions, the grade elements, the parts)
+        import check_sre_translations as cst
+        english = lab._TRANSLATIONS['en']
+        assert set(lab._TRANSLATIONS) == {'en'} and set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+        assert set(literals) <= set(english) and all(english.values())
+        assert all(english[key] != key for key in literals)
         # the title and the description of the reference state are bilingual too (inline)
         assert _text(lab.title, 'en') != _text(lab.title, 'fr')
         description = lab.NetScheme.final._sre_state_description if hasattr(lab.NetScheme.final, '_sre_state_description') \
@@ -661,6 +665,9 @@ class TestTexts:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         assert not any('**Solution.**' in value for value in module._TRANSLATIONS.get('en', {}).values())
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         # (the hash of a question covers the languages of its text: without the English instructor
         # texts the stripped file has other hashes, so its own cheat answers fill the form)
         grade, _, _ = _replay(lab, 'solved', tmp_pub_dir, instructor_mode=True, module=module, answers='cheat')

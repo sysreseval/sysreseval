@@ -26,6 +26,7 @@ from ipaddress import IPv4Address, IPv4Interface, IPv4Network
 from typing import Dict, List
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks
@@ -815,27 +816,32 @@ Documentation : [FRR — BGP](https://docs.frrouting.org/en/latest/bgp.html) (se
         # the customer's unstable prefix flaps for ever (part 4)
         self.cmd('dmp_cust', f"sleep 5; setsid -f {FLAP_SCRIPT} > /dev/null 2>&1", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (communautés)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (communautés)",
+                                                  en="Part 1: solution (communities)"))
     def solve_ne(self):
         self._apply(self.solution_ne())
         self.cmd('ne_r1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (multichemin)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (multichemin)",
+                                                  en="Part 2: solution (multipath)"))
     def solve_mp(self):
         self._apply_mp()
         self.cmd('mp_r1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (confédération)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (confédération)",
+                                                  en="Part 3: solution (confederation)"))
     def solve_cf(self):
         self._apply_cf()
         self.cmd('cf_r1', f"sleep {CONVERGE_WAIT}", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (amortissement)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (amortissement)",
+                                                  en="Part 4: solution (dampening)"))
     def solve_dmp(self):
         self._apply(self.solution_dmp())
         self.cmd('dmp_r1', f"sleep {DAMPENING_WAIT}", step=2, timeout=DAMPENING_WAIT + 30)
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (graceful shutdown)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (graceful shutdown)",
+                                                  en="Bonus: solution (graceful shutdown)"))
     def solve_gs(self):
         self._apply(self.solution_gs())
         self.cmd('gs_r1', f"sleep {CONVERGE_WAIT}", step=2)
@@ -872,9 +878,10 @@ def _int(s):
 _OPENERS = ("router ", "interface ", "route-map ", "address-family ")
 
 
-def _vtysh_text(solution: Dict[str, List[str]]) -> str:
-    """The reference configuration of a part, as vtysh sessions (one block per router); the lines
-    inside a block (``router``, ``route-map``, ``address-family``...) are indented."""
+def _vtysh_text(solution: Dict[str, List[str]]) -> Dict[str, str]:
+    """The reference configuration of a part, as vtysh sessions (one block per router), one text per
+    language (the French one has a space before the colon); the lines inside a block (``router``,
+    ``route-map``, ``address-family``...) are indented."""
     blocks = []
     for router, cmds in solution.items():
         body, depth = ["configure terminal"], 1
@@ -886,8 +893,9 @@ def _vtysh_text(solution: Dict[str, List[str]]) -> str:
             body.append(" " * depth + c)
             if c.startswith(_OPENERS):
                 depth += 1
-        blocks.append(f"`{router}` :\n\n```\n" + "\n".join(body + ["end", "write"]) + "\n```")
-    return "\n\n".join(blocks)
+        blocks.append((router, "\n".join(body + ["end", "write"])))
+    return {lang: "\n\n".join(f"`{router}`{colon}\n\n```\n{body}\n```" for router, body in blocks)
+            for lang, colon in (('fr', " :"), ('en', ":"))}
 
 
 def _running_config(grade: Grade0, router: str) -> Dict:
@@ -899,6 +907,14 @@ def _running_config(grade: Grade0, router: str) -> Dict:
 def _counters(output: str) -> List[int]:
     """The transmitted packets of ``cat /sys/class/net/eth{0,1,2}/statistics/tx_packets``."""
     return [int(x) for x in re.findall(r'^\s*(\d+)\s*$', output or '', re.M)]
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value gives one value per language (the
+    table of the sites, the result of _vtysh_text)."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
 
 
 class Grade(Grade0):
@@ -974,13 +990,17 @@ class Grade(Grade0):
         gs_isp1_own = get_bgp_prefix(self, 'gs_isp1', net('gs_own'), allow_error=True)
 
         # ---------------- texts shared by the questions ---------------------------
-        sites = [('ne', "1 — communautés bien connues", "`ne_r1` ; `ne_isp`, `ne_far`, `ne_cust` sans terminal"),
-                 ('mp', "2 — multichemin", "`mp_r1`, l'hôte `mp_h1` ; `mp_isp1`, `mp_isp2` sans terminal"),
-                 ('cf', "3 — confédération", "`cf_r1`, `cf_r2` (à configurer), `cf_r3`, `cf_r4` (déjà "
-                                            "configurés) ; `cf_ext1`, `cf_ext2` sans terminal"),
-                 ('dmp', "4 — amortissement", "`dmp_r1` ; `dmp_isp`, `dmp_cust` sans terminal"),
-                 ('gs', "bonus — graceful shutdown", "`gs_r1` ; `gs_isp1`, `gs_isp2` sans terminal")]
-        site_rows = "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites)
+        sites = [('ne', tr("1 — communautés bien connues"),
+                  tr("`ne_r1` ; `ne_isp`, `ne_far`, `ne_cust` sans terminal")),
+                 ('mp', tr("2 — multichemin"), tr("`mp_r1`, l'hôte `mp_h1` ; `mp_isp1`, `mp_isp2` sans terminal")),
+                 ('cf', tr("3 — confédération"), tr("`cf_r1`, `cf_r2` (à configurer), `cf_r3`, `cf_r4` (déjà "
+                                                    "configurés) ; `cf_ext1`, `cf_ext2` sans terminal")),
+                 ('dmp', tr("4 — amortissement"), tr("`dmp_r1` ; `dmp_isp`, `dmp_cust` sans terminal")),
+                 ('gs', tr("bonus — graceful shutdown"), tr("`gs_r1` ; `gs_isp1`, `gs_isp2` sans terminal"))]
+        # one table per language (its cells are tr() texts)
+        site_rows = {lang: "\n".join(f"| {part.resolve(lang)} | `{site}_*` | {machines.resolve(lang)} |"
+                                     for site, part, machines in sites)
+                     for lang in ('fr', 'en')}
         members: Dict[str, List[str]] = {}
         for m, nets in MACHINE_IFACES.items():
             for i, n in enumerate(nets):
@@ -999,7 +1019,7 @@ class Grade(Grade0):
         self.question_dummy(
             title=tr("Organisation du TP"),
             hash="4693cc9ece3b2af0",
-            description=tr("""
+            description=_by_language(tr("""
 Lisez l'onglet **Informations** : il présente les communautés (dont les communautés bien connues),
 le multichemin, les confédérations, l'amortissement des oscillations et le *graceful shutdown*, leur
 configuration avec FRR et les commandes de diagnostic.
@@ -1044,7 +1064,7 @@ dans `{pub}`.
 
 **Évaluation.** Chaque évaluation lit vos réponses, l'état de BGP sur les routeurs (sessions, tables,
 configuration), les tables de routage, et lance des `ping` et une série de flux depuis `mp_h1`.
-""").format(site_rows=site_rows, our_as=d.our_as, as_rows=as_rows, pub=net('pub'), addressing=addressing)
+"""), site_rows=site_rows, our_as=d.our_as, as_rows=as_rows, pub=net('pub'), addressing=addressing)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
 instance. Les états `solve_ne`, `solve_mp`, `solve_cf`, `solve_dmp` et `solve_gs` (onglet *Appliquer
@@ -1085,7 +1105,7 @@ marqué **`no-advertise`** (sections @@ref:communities@@ et @@ref:well-known@@).
 """).format(asi=EXT_AS['ne_isp'], asf=EXT_AS['ne_far'], asc=EXT_AS['ne_cust'], own=net('ne_own'), c1=net('ne_c1'),
             c2=net('ne_c2'), c3=net('ne_c3'), isp=addr('ne_isp', 'ne_l1'), te1=net('ne_te1'), te2=net('ne_te2'),
             far_addr=host('ne_far'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1098,7 +1118,7 @@ chez `ne_r1` : `ne_cust` ne l'annonce à personne.
 Évaluation : `ne_te_isp` (3 : les deux /24 chez `ne_isp` avec `no-export`), `ne_te_far` (3 : `ne_far`
 a `{own}` mais aucun des /24), `ne_c1_isp` (2 : `{c1}` chez `ne_isp` avec `no-export`), `ne_c1_far`
 (2 : absent de `ne_far`), `ne_reach` (2 : `ne_far` joint `{te_addr}`).
-""").format(solution=_vtysh_text(ns.solution_ne()), c2=net('ne_c2'), c3=net('ne_c3'), own=net('ne_own'),
+"""), solution=_vtysh_text(ns.solution_ne()), c2=net('ne_c2'), c3=net('ne_c3'), own=net('ne_own'),
             c1=net('ne_c1'), te_addr=host('ne_te1'))),
         )
         cheat_ne = {'c2': 'no-export', 'count': '1', 'value': NO_EXPORT_VALUE, 'c3': 'never'}
@@ -1190,7 +1210,7 @@ annoncé par chacun avec un AS_PATH d'un seul AS. L'hôte `mp_h1` (`{h1}`) est d
    façon durable (section @@ref:hash@@).
 """).format(as1=EXT_AS['mp_isp1'], as2=EXT_AS['mp_isp2'], q=net('mp_q'), p=net('mp_p'), h1=d.ips.mp_h1.ip,
             flows=FLOWS_SCRIPT, p_addr=host('mp_p'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1206,7 +1226,7 @@ compris), environ 20 par lien.
 Évaluation : `mp_relax_conf` (1), `mp_three_paths` (3 : trois prochains sauts dans le noyau pour
 `{p}`), `mp_bgp_flags` (1 : les trois chemins installés), `mp_hash` (2), `mp_spread` (3 : chacun des
 trois liens porte au moins {min_flows} des {count} flux de l'évaluation).
-""").format(solution=_vtysh_text(ns.solution_mp()), sysctl=ns.MP_SYSCTL, q=net('mp_q'), p=net('mp_p'),
+"""), solution=_vtysh_text(ns.solution_mp()), sysctl=ns.MP_SYSCTL, q=net('mp_q'), p=net('mp_p'),
             min_flows=FLOW_MIN_PER_LINK, count=FLOW_COUNT)),
         )
         cheat_mp = {'q_paths': '2', 'relax': 'neighbor_as', 'hash': 'addresses', 'default': 'on'}
@@ -1303,7 +1323,7 @@ de bouclage, session eBGP de confédération de `cf_r3` vers `cf_r2` (`{r2l23}`)
             e2=EXT_AS['cf_ext2'], pe2=net('cf_e2'), r2l23=addr('cf_r2', 'cf_l23'), lp=LOCAL_PREF_EXT2,
             s2net=net('cf_s2'), n=net('cf_n'), l=net('cf_l'), r3l23=addr('cf_r3', 'cf_l23'),
             ext1=addr('cf_ext1', 'cf_le1'), e1addr=host('cf_e1'), e2addr=host('cf_e2'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1316,7 +1336,7 @@ membres) ; `cf_ext1` reçoit `{our_as} {e2}` : les AS membres disparaissent à l
 Évaluation : `cf_conf` (2 : un par routeur), `cf_sessions` (3 : iBGP `cf_r1`–`cf_r2`, `cf_r2`–`cf_r3`,
 `cf_r1`–`cf_ext1`), `cf_ext1_path` (3), `cf_ext2_path` (2), `cf_inside` (2 : `({s2})` vu de `cf_r1`),
 `cf_localpref` (2), `cf_no_export` (3), `cf_local_as` (2), `cf_ping` (2).
-""").format(solution=_vtysh_text(ns.solution_cf()), pe2=net('cf_e2'), s2=d.cf_sub2, e2=EXT_AS['cf_ext2'],
+"""), solution=_vtysh_text(ns.solution_cf()), pe2=net('cf_e2'), s2=d.cf_sub2, e2=EXT_AS['cf_ext2'],
             lp=LOCAL_PREF_EXT2, our_as=d.our_as, n=net('cf_n'), l=net('cf_l'))),
         )
         cheat_cf = {'path': f"{d.our_as} {EXT_AS['cf_ext2']}", 'attr': 'localpref', 'nexthop': 'unchanged'}
@@ -1428,7 +1448,7 @@ toutes les {half} s, et chaque changement repart vers `dmp_isp` et tout l'Intern
    reçoit plus alors que `{s}` reste annoncé.
 """).format(asi=EXT_AS['dmp_isp'], asc=EXT_AS['dmp_cust'], s=net('dmp_s'), f=net('dmp_f'),
             half=FLAP_HALF_PERIOD, h=h, r=r, s_=s, m=m)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1440,7 +1460,7 @@ la route ne sera réutilisée qu'après {m} min au plus.
 
 Évaluation : `dmp_conf` (3 : les quatre paramètres), `dmp_suppressed` (4 : `{f}` supprimé sur
 `dmp_r1`), `dmp_not_propagated` (3 : `{f}` absent de `dmp_isp`, `{s}` présent).
-""").format(solution=_vtysh_text(ns.solution_dmp()), f=net('dmp_f'), s_=s, m=m, s=net('dmp_s'))),
+"""), solution=_vtysh_text(ns.solution_dmp()), f=net('dmp_f'), s_=s, m=m, s=net('dmp_s'))),
         )
         cheat_dmp = {'penalty': '1000', 'halved': str(h), 'code': 'd', 'why': 'convergence'}
         q4 = self.question_form(
@@ -1466,9 +1486,16 @@ peut être supprimée** (RFC 7196).
 """).format(h=h)),
             cheat_answers={"final": cheat_dmp, "solve_dmp": cheat_dmp},
         )
-        conf_ok = dmp_cfg['router_bgp'].get('dampening') == (h, r, s, m)
+        damping = dmp_cfg['router_bgp'].get('dampening')     # (half-life, reuse, suppress, max) or None
+        conf_ok = damping == (h, r, s, m)
+        # FRR flags a path as damped only while it is announced: during the half-period the flap script
+        # keeps the prefix withdrawn, the path is a history entry (nothing in dampened-paths). Above the
+        # suppress limit configured on dmp_r1, it is suppressed again at its next announcement.
         suppressed = (any(e['damped'] for e in dmp_damped.get(str(net('dmp_f')), []))
-                      or any(p['damped'] for p in dmp_f['paths']))
+                      or any(p['damped'] for p in dmp_f['paths'])
+                      or (damping is not None
+                          and any(p['history'] and (p['dampening_penalty'] or 0) >= damping[2]
+                                  for p in dmp_f['paths'])))
         self.add_grade_element(
             title=no_tr("dmp_conf"), max_grade=3, grade_part=part4, grade=3 * int(conf_ok),
             description=tr("paramètres de l'amortissement"),
@@ -1515,7 +1542,7 @@ Le lien vers `gs_isp1` doit passer en maintenance. **Sans fermer la session**, f
 trafic **sortant** de `gs_r1` vers `{inet}` **et** le trafic **entrant** de `gs_isp1` vers `{own}`
 passent par `gs_isp2` (section @@ref:gshut@@). `gs_isp1` applique la communauté GRACEFUL_SHUTDOWN.
 """).format(as1=EXT_AS['gs_isp1'], as2=EXT_AS['gs_isp2'], inet=net('gs_inet'), own=net('gs_own'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1529,7 +1556,7 @@ les routes envoyées à `gs_isp2` et ne viderait pas le lien.)
 Évaluation (bonus) : `gs_conf` (1), `gs_out` (2 : `{inet}` par `gs_isp2`), `gs_in` (2 : `gs_isp1`
 préfère `{own}` par `gs_isp2`, sa route directe porte la communauté), `gs_session` (1 : session avec
 `gs_isp1` toujours établie).
-""").format(solution=_vtysh_text(ns.solution_gs()), inet=net('gs_inet'), isp2=gs_isp2, own=net('gs_own'))),
+"""), solution=_vtysh_text(ns.solution_gs()), inet=net('gs_inet'), isp2=gs_isp2, own=net('gs_own'))),
         )
         out_ok = best_via(gs_routes, net('gs_inet'), gs_isp2)
         best_isp1 = next((p for p in gs_isp1_own['paths'] if p['best']), {})
@@ -1555,4 +1582,1030 @@ préfère `{own}` par `gs_isp2`, sa route directe porte la communauté), `gs_ses
         )
 
 
-_TRANSLATIONS = {}
+# English translations of every tr() text (the course, the questions, the grade elements, the instructor texts)
+_TRANSLATIONS = {'en': {
+    "BGP : communautés, multichemin, confédérations et amortissement": "BGP: communities, multipath, confederations and dampening",
+    """
+**Sommaire**
+""": """
+**Contents**
+""",
+    "Les communautés": "Communities",
+    """
+Une **communauté** (RFC 1997) est une étiquette de 32 bits attachée à une route, notée `AS:valeur`
+(deux nombres de 16 bits ; l'AS est celui qui en définit le sens). Une route peut en porter
+plusieurs. Les communautés ne changent rien par elles-mêmes : ce sont les **politiques** des
+routeurs (`match community`) qui leur donnent un sens. Usages courants :
+
+- **marquer l'origine** d'une route (client, pair, fournisseur, site) pour la filtrer plus loin ;
+- **demander quelque chose à son fournisseur**, qui publie la liste des communautés qu'il
+  comprend : allonger l'AS_PATH vers tel pair, baisser la `local-preference`, ne pas annoncer dans
+  telle région…
+
+### @@sec:well-known@@ Les communautés bien connues
+
+Quelques valeurs de l'AS 65535 ont un sens fixé par une RFC, appliqué **par tous les routeurs sans
+configuration** :
+
+| nom (FRR) | valeur | effet |
+|-----------|--------|-------|
+| `no-export` | 65535:65281 (0xFFFFFF01) | ne pas annoncer la route hors de l'AS (ni hors de la confédération, section @@ref:confed@@) |
+| `no-advertise` | 65535:65282 | ne l'annoncer à **aucun** pair, même interne |
+| `local-AS` (NO_EXPORT_SUBCONFED) | 65535:65283 | ne pas l'annoncer hors de l'AS membre d'une confédération |
+| `blackhole` | 65535:666 | demande de blackholing de la destination (RFC 7999) |
+| `graceful-shutdown` | 65535:0 | lien bientôt en maintenance (RFC 8326, section @@ref:gshut@@) |
+
+**Où s'applique la vérification.** Un routeur décide d'annoncer une route à un pair d'après les
+communautés qu'elle porte **dans sa table**, **avant** la route-map de sortie. Une communauté
+ajoutée par la route-map de sortie est donc **transmise au pair** et c'est **lui** qui l'appliquera.
+C'est l'usage classique de `no-export` en ingénierie de trafic : un AS annonce son bloc à tous et,
+à un seul fournisseur, des préfixes plus spécifiques marqués `no-export` ; le fournisseur les utilise
+(la plus longue correspondance attire chez lui le trafic de ses clients vers ces préfixes) mais ne les
+propage pas : le reste de l'Internet ne voit que le bloc.
+
+### @@sec:communities-frr@@ Avec FRR
+
+```
+ip prefix-list TE seq 5 permit 198.51.100.0/24
+route-map TO-ISP permit 10
+ match ip address prefix-list TE
+ set community no-export additive        ! additive : ajoutée aux communautés déjà présentes
+exit
+route-map TO-ISP permit 20
+exit
+bgp community-list standard NOEXP seq 5 permit no-export
+route-map X permit 10
+ match community NOEXP
+```
+
+- Sans `additive`, `set community` **remplace** toutes les communautés de la route.
+- FRR envoie les communautés à ses pairs par défaut (`neighbor X send-community`, visible avec
+  `show running-config all`).
+- `show bgp ipv4 unicast P` affiche la ligne `Community:` d'un chemin ; `show bgp ipv4 unicast
+  community no-export` liste les routes qui portent une communauté. La vue d'ensemble `show bgp ipv4
+  unicast` ne les montre pas.
+- Il existe aussi les communautés **étendues** (RFC 4360, 64 bits : cibles de route des VPN, bande
+  passante) et les **grandes** communautés (RFC 8092, `AS:valeur1:valeur2` sur 3 × 32 bits, pour les
+  numéros d'AS de 32 bits).
+""": """
+A **community** (RFC 1997) is a 32-bit tag attached to a route, written `AS:value`
+(two 16-bit numbers; the AS is the one that defines its meaning). A route may carry
+several. Communities change nothing by themselves: the **policies** of the
+routers (`match community`) give them a meaning. Common uses:
+
+- **marking the origin** of a route (customer, peer, provider, site) to filter it further on;
+- **asking something of one's provider**, which publishes the list of the communities it
+  understands: prepend the AS_PATH towards a given peer, lower the `local-preference`, do not
+  announce in a given region…
+
+### @@sec:well-known@@ Well-known communities
+
+A few values of AS 65535 have a meaning fixed by an RFC, applied **by every router without any
+configuration**:
+
+| name (FRR) | value | effect |
+|-----------|--------|-------|
+| `no-export` | 65535:65281 (0xFFFFFF01) | do not announce the route outside the AS (nor outside the confederation, section @@ref:confed@@) |
+| `no-advertise` | 65535:65282 | announce it to **no** peer, not even an internal one |
+| `local-AS` (NO_EXPORT_SUBCONFED) | 65535:65283 | do not announce it outside the member AS of a confederation |
+| `blackhole` | 65535:666 | request to blackhole the destination (RFC 7999) |
+| `graceful-shutdown` | 65535:0 | link soon under maintenance (RFC 8326, section @@ref:gshut@@) |
+
+**Where the check applies.** A router decides whether to announce a route to a peer from the
+communities the route carries **in its table**, **before** the outbound route-map. A community
+added by the outbound route-map is therefore **passed on to the peer**, and **the peer** is the one
+that applies it. This is the classic use of `no-export` in traffic engineering: an AS announces its
+block to everyone and, to a single provider, more specific prefixes tagged `no-export`; the provider
+uses them (the longest match draws to it the traffic its customers send to these prefixes) but does
+not propagate them: the rest of the Internet only sees the block.
+
+### @@sec:communities-frr@@ With FRR
+
+```
+ip prefix-list TE seq 5 permit 198.51.100.0/24
+route-map TO-ISP permit 10
+ match ip address prefix-list TE
+ set community no-export additive        ! additive: added to the communities already present
+exit
+route-map TO-ISP permit 20
+exit
+bgp community-list standard NOEXP seq 5 permit no-export
+route-map X permit 10
+ match community NOEXP
+```
+
+- Without `additive`, `set community` **replaces** all the communities of the route.
+- FRR sends the communities to its peers by default (`neighbor X send-community`, visible with
+  `show running-config all`).
+- `show bgp ipv4 unicast P` shows the `Community:` line of a path; `show bgp ipv4 unicast
+  community no-export` lists the routes that carry a community. The overview `show bgp ipv4
+  unicast` does not show them.
+- There are also **extended** communities (RFC 4360, 64 bits: route targets of VPNs, link
+  bandwidth) and **large** communities (RFC 8092, `AS:value1:value2` on 3 × 32 bits, for
+  32-bit AS numbers).
+""",
+    "Plusieurs chemins : l'ECMP": "Several paths: ECMP",
+    """
+BGP choisit **un** meilleur chemin par préfixe (le processus de décision). Avec le **multichemin**,
+il installe aussi dans la table de routage les autres chemins **équivalents** : le noyau répartit
+alors le trafic entre plusieurs prochains sauts (**ECMP**, *Equal-Cost Multi-Path*).
+
+Deux chemins sont équivalents quand ils sont à égalité jusqu'à la métrique IGP vers le prochain saut :
+même `weight`, même `LOCAL_PREF`, même **longueur** d'AS_PATH, même `ORIGIN`, même `MED`, même type
+(eBGP ou iBGP) — et, par défaut, **le même AS voisin** (le premier AS de l'AS_PATH).
+
+- FRR active le multichemin **par défaut** (jusqu'à 64 chemins, `maximum-paths` n'apparaît dans la
+  configuration que s'il est changé) : deux sessions parallèles avec le même fournisseur donnent deux
+  prochains sauts sans rien configurer.
+- `bgp bestpath as-path multipath-relax` (mode `router bgp`) lève la condition du même AS voisin : seule
+  la longueur de l'AS_PATH compte. C'est ce qui permet de répartir entre **deux fournisseurs** (un
+  service présent chez les deux, un réseau de diffusion de contenu…).
+- `maximum-paths N` (address-family) limite le nombre de chemins eBGP installés, `maximum-paths ibgp N`
+  celui des chemins iBGP.
+- `show bgp ipv4 unicast` marque les chemins installés avec le meilleur par `=` (`multipath` dans le
+  détail d'un préfixe) ; `ip route` montre une route à plusieurs `nexthop`.
+
+### @@sec:hash@@ La répartition dans le noyau
+
+Le noyau ne répartit pas paquet par paquet (les segments d'une connexion arriveraient dans le
+désordre) mais **flux par flux** : il calcule un hachage d'en-têtes du paquet et en déduit le prochain
+saut. `net.ipv4.fib_multipath_hash_policy` choisit les champs :
+
+| valeur | champs | effet |
+|--------|--------|-------|
+| 0 (défaut) | adresses source et destination | tout le trafic entre deux machines suit le même chemin |
+| 1 | adresses, protocole et **ports** | les connexions d'une même machine se répartissent |
+
+```
+sysctl -w net.ipv4.fib_multipath_hash_policy=1                       # immédiat
+echo net.ipv4.fib_multipath_hash_policy=1 > /etc/sysctl.d/90-ecmp.conf  # au démarrage
+```
+""": """
+BGP chooses **one** best path per prefix (the decision process). With **multipath**, it also
+installs the other **equivalent** paths in the routing table: the kernel then spreads the traffic
+over several next hops (**ECMP**, *Equal-Cost Multi-Path*).
+
+Two paths are equivalent when they tie up to the IGP metric towards the next hop: same `weight`,
+same `LOCAL_PREF`, same AS_PATH **length**, same `ORIGIN`, same `MED`, same type (eBGP or iBGP) —
+and, by default, **the same neighbour AS** (the first AS of the AS_PATH).
+
+- FRR enables multipath **by default** (up to 64 paths; `maximum-paths` only appears in the
+  configuration when it is changed): two parallel sessions with the same provider give two next
+  hops without configuring anything.
+- `bgp bestpath as-path multipath-relax` (`router bgp` mode) lifts the same-neighbour-AS
+  condition: only the AS_PATH length counts. This is what allows load sharing between **two
+  providers** (a service present at both, a content delivery network…).
+- `maximum-paths N` (address-family) limits the number of eBGP paths installed, `maximum-paths
+  ibgp N` that of iBGP paths.
+- `show bgp ipv4 unicast` marks with `=` the paths installed alongside the best one (`multipath` in
+  the detail of a prefix); `ip route` shows a route with several `nexthop`.
+
+### @@sec:hash@@ Load sharing in the kernel
+
+The kernel does not share the traffic packet by packet (the segments of a connection would arrive
+out of order) but **flow by flow**: it computes a hash of packet headers and derives the next hop
+from it. `net.ipv4.fib_multipath_hash_policy` chooses the fields:
+
+| value | fields | effect |
+|--------|--------|-------|
+| 0 (default) | source and destination addresses | all the traffic between two machines follows the same path |
+| 1 | addresses, protocol and **ports** | the connections of one machine are spread |
+
+```
+sysctl -w net.ipv4.fib_multipath_hash_policy=1                       # immediate
+echo net.ipv4.fib_multipath_hash_policy=1 > /etc/sysctl.d/90-ecmp.conf  # at boot
+```
+""",
+    "Les confédérations": "Confederations",
+    """
+Les routeurs iBGP d'un AS doivent être maillés (n(n−1)/2 sessions) : une route apprise d'un pair iBGP
+n'est pas réannoncée à un autre. Deux solutions existent : le **réflecteur de routes** et la
+**confédération** (RFC 5065), qui découpe l'AS en plusieurs **AS membres** (des numéros privés).
+
+- Chaque AS membre est maillé en interne ; entre AS membres, les sessions sont des sessions
+  **eBGP de confédération**.
+- Vu de l'extérieur, la confédération est **un seul AS**, son **identifiant** : les voisins externes
+  déclarent `remote-as IDENTIFIANT`.
+- À l'intérieur, l'AS_PATH garde la trace des AS membres traversés dans un segment à part,
+  `AS_CONFED_SEQUENCE`, affiché **entre parenthèses** (`(65102) 64500`) ; il ne compte pas dans la
+  longueur de l'AS_PATH et sert à détecter les boucles entre membres. Il est **retiré** à la sortie :
+  l'extérieur ne voit que l'identifiant.
+- Sur une session eBGP de confédération, les attributs se comportent **comme en iBGP** : le
+  `NEXT_HOP`, la `LOCAL_PREF` et le `MED` sont **conservés**. L'IGP doit donc couvrir toute la
+  confédération (ou `next-hop-self` aux bords).
+- `no-export` garde une route dans la confédération entière ; `local-AS` (NO_EXPORT_SUBCONFED) la
+  garde dans son AS membre.
+
+```
+router bgp 65101                                ! le numéro de l'AS membre
+ bgp confederation identifier 64512             ! l'AS vu de l'extérieur
+ bgp confederation peers 65102                  ! les autres AS membres (voisins de confédération)
+ neighbor 10.0.0.2 remote-as 65101              ! iBGP dans l'AS membre
+ neighbor 10.0.0.2 update-source lo
+ neighbor 10.1.0.2 remote-as 65102              ! eBGP de confédération
+ neighbor 192.0.2.1 remote-as 64500             ! eBGP externe
+```
+
+`show bgp neighbors` indique le type de chaque session (`confed-external` dans le détail d'un chemin) ;
+`show bgp ipv4 unicast P` montre l'AS_PATH avec ses parenthèses.
+""": """
+The iBGP routers of an AS must be fully meshed (n(n−1)/2 sessions): a route learnt from an iBGP
+peer is not re-announced to another one. Two solutions exist: the **route reflector** and the
+**confederation** (RFC 5065), which splits the AS into several **member ASes** (private numbers).
+
+- Each member AS is meshed internally; between member ASes, the sessions are **confederation
+  eBGP** sessions.
+- Seen from outside, the confederation is **a single AS**, its **identifier**: the external
+  neighbours declare `remote-as IDENTIFIER`.
+- Inside, the AS_PATH keeps track of the member ASes crossed in a separate segment,
+  `AS_CONFED_SEQUENCE`, shown **in parentheses** (`(65102) 64500`); it does not count in the
+  AS_PATH length and is used to detect loops between members. It is **removed** on the way out:
+  the outside only sees the identifier.
+- On a confederation eBGP session, the attributes behave **as in iBGP**: the `NEXT_HOP`, the
+  `LOCAL_PREF` and the `MED` are **kept**. The IGP must therefore cover the whole confederation
+  (or `next-hop-self` at the edges).
+- `no-export` keeps a route within the whole confederation; `local-AS` (NO_EXPORT_SUBCONFED) keeps
+  it within its member AS.
+
+```
+router bgp 65101                                ! the number of the member AS
+ bgp confederation identifier 64512             ! the AS seen from outside
+ bgp confederation peers 65102                  ! the other member ASes (confederation neighbours)
+ neighbor 10.0.0.2 remote-as 65101              ! iBGP within the member AS
+ neighbor 10.0.0.2 update-source lo
+ neighbor 10.1.0.2 remote-as 65102              ! confederation eBGP
+ neighbor 192.0.2.1 remote-as 64500             ! external eBGP
+```
+
+`show bgp neighbors` gives the type of each session (`confed-external` in the detail of a path);
+`show bgp ipv4 unicast P` shows the AS_PATH with its parentheses.
+""",
+    "Amortir les oscillations": "Dampening route flaps",
+    """
+Une route qui oscille (*flap* : annoncée, retirée, annoncée…) fait recalculer et réannoncer chaque
+routeur de l'Internet à chaque changement. L'**amortissement** (*route flap dampening*, RFC 2439)
+pénalise ces routes :
+
+- chaque **retrait** ajoute **1000** à la pénalité de la route (une modification de ses attributs,
+  500) ; la pénalité **décroît exponentiellement** : elle est divisée par deux à chaque **demi-vie**
+  (*half-life*) ;
+- quand elle dépasse le seuil de **suppression**, la route est **supprimée** : gardée dans la table
+  (`d` : *damped*) mais ni choisie ni annoncée, même si elle est à nouveau présente ;
+- elle est réutilisée quand la pénalité redescend sous le seuil de **réutilisation**, et au plus tard
+  au bout de la **durée maximale de suppression**.
+
+| paramètre (FRR) | défaut |
+|-----------------|--------|
+| demi-vie | 15 min |
+| seuil de réutilisation | 750 |
+| seuil de suppression | 2000 |
+| durée maximale de suppression | 60 min |
+
+```
+router bgp 64512
+ address-family ipv4 unicast
+  bgp dampening 10 800 2500 40         ! demi-vie, réutilisation, suppression, durée maximale
+```
+
+- FRR n'amortit que les routes reçues en **eBGP** ; une configuration aux valeurs par défaut s'affiche
+  `bgp dampening` sans paramètres.
+- `show bgp ipv4 unicast dampening parameters`, `… dampening dampened-paths` (les routes supprimées et
+  l'heure de leur réutilisation), `… dampening flap-statistics` (le nombre d'oscillations) ; le détail
+  d'un préfixe donne sa pénalité.
+- L'amortissement est **déconseillé aujourd'hui** sous sa forme d'origine : un seul événement
+  (une panne de lien) produit plusieurs mises à jour successives pendant que BGP explore les chemins
+  de rechange, et une route stable mais malchanceuse se retrouve supprimée longtemps. La RFC 7196
+  recommande, si on l'utilise, un seuil de suppression bien plus haut (6000).
+""": """
+A route that flaps (*flap*: announced, withdrawn, announced…) makes every router of the Internet
+recompute and re-announce at each change. **Dampening** (*route flap dampening*, RFC 2439)
+penalises these routes:
+
+- each **withdrawal** adds **1000** to the penalty of the route (a change of its attributes,
+  500); the penalty **decays exponentially**: it is halved after each **half-life**;
+- when it exceeds the **suppress** threshold, the route is **suppressed**: kept in the table
+  (`d`: *damped*) but neither chosen nor announced, even when it is present again;
+- it is reused when the penalty falls back below the **reuse** threshold, and at the latest after
+  the **maximum suppress time**.
+
+| parameter (FRR) | default |
+|-----------------|--------|
+| half-life | 15 min |
+| reuse threshold | 750 |
+| suppress threshold | 2000 |
+| maximum suppress time | 60 min |
+
+```
+router bgp 64512
+ address-family ipv4 unicast
+  bgp dampening 10 800 2500 40         ! half-life, reuse, suppress, maximum time
+```
+
+- FRR only dampens the routes received over **eBGP**; a configuration with the default values is
+  shown as `bgp dampening` without parameters.
+- `show bgp ipv4 unicast dampening parameters`, `… dampening dampened-paths` (the suppressed routes
+  and the time of their reuse), `… dampening flap-statistics` (the number of flaps); the detail of a
+  prefix gives its penalty.
+- Dampening is **discouraged today** in its original form: a single event (a link failure)
+  produces several successive updates while BGP explores the alternative paths, and a stable but
+  unlucky route ends up suppressed for a long time. RFC 7196 recommends, if it is used, a much
+  higher suppress threshold (6000).
+""",
+    "Une maintenance sans coupure : graceful shutdown": "Maintenance without an outage: graceful shutdown",
+    """
+Couper une session BGP pour une maintenance (`neighbor X shutdown`) retire brutalement ses routes :
+le temps que les autres routeurs choisissent un autre chemin, du trafic est perdu. La communauté
+**GRACEFUL_SHUTDOWN** (65535:0, RFC 8326) permet de **vider** le lien d'abord, sans le couper : les
+routes qui passent par lui reçoivent une `LOCAL_PREF` de **0**, les chemins de secours deviennent les
+meilleurs, et la session peut ensuite être coupée sans perte.
+
+- Le routeur qui part en maintenance marque les routes qu'il **annonce** sur ce lien avec la
+  communauté ; le voisin, qui l'applique (FRR le fait de lui-même), leur donne une `LOCAL_PREF` de 0 :
+  le trafic **entrant** se déplace.
+- Il baisse lui-même la préférence des routes qu'il **reçoit** sur ce lien : le trafic **sortant** se
+  déplace.
+
+Avec FRR, `bgp graceful-shutdown` (mode `router bgp`) le fait pour **toutes** les sessions eBGP du
+routeur (dans les deux sens). `neighbor X graceful-shutdown` ne vise qu'une session, mais n'agit que
+sur les routes **reçues** de X (communauté et `LOCAL_PREF` 0) : pour le trafic entrant, on ajoute la
+communauté aux routes annoncées à X par une route-map de sortie (`set community graceful-shutdown
+additive`).
+""": """
+Shutting down a BGP session for maintenance (`neighbor X shutdown`) withdraws its routes abruptly:
+until the other routers have chosen another path, traffic is lost. The **GRACEFUL_SHUTDOWN**
+community (65535:0, RFC 8326) makes it possible to **drain** the link first, without cutting it:
+the routes through it get a `LOCAL_PREF` of **0**, the backup paths become the best ones, and the
+session can then be shut down without loss.
+
+- The router going into maintenance tags the routes it **announces** on that link with the
+  community; the neighbour, which applies it (FRR does so by itself), gives them a `LOCAL_PREF` of
+  0: the **incoming** traffic moves.
+- It lowers the preference of the routes it **receives** on that link itself: the **outgoing**
+  traffic moves.
+
+With FRR, `bgp graceful-shutdown` (`router bgp` mode) does this for **all** the eBGP sessions of the
+router (in both directions). `neighbor X graceful-shutdown` targets a single session, but only acts
+on the routes **received** from X (community and `LOCAL_PREF` 0): for the incoming traffic, the
+community is added to the routes announced to X by an outbound route-map (`set community
+graceful-shutdown additive`).
+""",
+    "FRR et vtysh": "FRR and vtysh",
+    """
+Les routeurs font tourner **FRRouting** ; on les configure avec `vtysh` (`configure terminal`,
+`write` pour enregistrer dans `/etc/frr/frr.conf`, `no` devant une ligne pour la supprimer). Rappels
+utiles :
+
+- une session **eBGP** ne s'ouvre aux routes qu'avec une politique en entrée et en sortie (RFC 8212 :
+  mention `(Policy)` dans `show bgp summary`) ou `no bgp ebgp-requires-policy` ;
+- `network P` n'annonce `P` que si une route identique existe dans la table de routage ;
+- entre loopbacks : `neighbor X update-source lo` ; `neighbor X next-hop-self` en iBGP.
+
+```
+show bgp ipv4 unicast summary              # sessions, état, préfixes reçus
+show bgp ipv4 unicast                      # table BGP : meilleur chemin (>), multichemin (=), supprimé (d)
+show bgp ipv4 unicast P                    # détail : AS_PATH, communautés, local-pref, multipath
+show bgp neighbors A.B.C.D                 # détail d'une session
+show bgp ipv4 unicast neighbors A.B.C.D advertised-routes
+show bgp ipv4 unicast community no-export
+show bgp ipv4 unicast dampening dampened-paths | flap-statistics | parameters
+clear bgp A.B.C.D [soft in|soft out]
+show ip ospf neighbor                      # l'IGP de la confédération
+```
+
+Documentation : [FRR — BGP](https://docs.frrouting.org/en/latest/bgp.html) (sections *Communities*,
+*Multipath*, *Confederation*, *Route Flap Dampening*, *Graceful Shutdown*).
+""": """
+The routers run **FRRouting**; they are configured with `vtysh` (`configure terminal`, `write` to
+save into `/etc/frr/frr.conf`, `no` in front of a line to remove it). Useful reminders:
+
+- an **eBGP** session only exchanges routes with an inbound and an outbound policy (RFC 8212:
+  `(Policy)` in `show bgp summary`) or with `no bgp ebgp-requires-policy`;
+- `network P` only announces `P` if an identical route exists in the routing table;
+- between loopbacks: `neighbor X update-source lo`; `neighbor X next-hop-self` in iBGP.
+
+```
+show bgp ipv4 unicast summary              # sessions, state, prefixes received
+show bgp ipv4 unicast                      # BGP table: best path (>), multipath (=), suppressed (d)
+show bgp ipv4 unicast P                    # detail: AS_PATH, communities, local-pref, multipath
+show bgp neighbors A.B.C.D                 # detail of a session
+show bgp ipv4 unicast neighbors A.B.C.D advertised-routes
+show bgp ipv4 unicast community no-export
+show bgp ipv4 unicast dampening dampened-paths | flap-statistics | parameters
+clear bgp A.B.C.D [soft in|soft out]
+show ip ospf neighbor                      # the IGP of the confederation
+```
+
+Documentation: [FRR — BGP](https://docs.frrouting.org/en/latest/bgp.html) (sections *Communities*,
+*Multipath*, *Confederation*, *Route Flap Dampening*, *Graceful Shutdown*).
+""",
+    "Diagnostic": "Troubleshooting",
+    """
+- `ip route` : les routes BGP portent `proto bgp`, une route ECMP a plusieurs `nexthop` ;
+- `ip -s link show ethX` : les compteurs de paquets d'une interface (la répartition des flux) ;
+- `tcpdump -nvi ethX tcp port 179` : les messages BGP ; `/var/log/frr/frr.log` : le journal.
+
+| symptôme | causes à vérifier |
+|----------|-------------------|
+| un préfixe marqué `no-export` est quand même propagé | communauté perdue (`set community` sans `additive` ailleurs), route-map pas appliquée (`clear bgp X soft out`) |
+| un seul prochain saut malgré deux fournisseurs | AS voisins différents sans `multipath-relax`, AS_PATH de longueurs différentes |
+| tout le trafic d'une machine sur le même lien | hachage sur les seules adresses (`fib_multipath_hash_policy`) |
+| session de confédération en `Active` / `Idle` | AS membre ou identifiant différent, `confederation peers` oublié, pas de route vers la loopback du pair |
+| AS membres visibles hors de la confédération | le routeur de bord n'est pas configuré en confédération |
+| route marquée `d` | amortissement : attendre la réutilisation ou `clear bgp ipv4 unicast dampening` |
+""": """
+- `ip route`: the BGP routes carry `proto bgp`, an ECMP route has several `nexthop`;
+- `ip -s link show ethX`: the packet counters of an interface (how the flows are spread);
+- `tcpdump -nvi ethX tcp port 179`: the BGP messages; `/var/log/frr/frr.log`: the log.
+
+| symptom | causes to check |
+|----------|-------------------|
+| a prefix tagged `no-export` is propagated all the same | community lost (`set community` without `additive` elsewhere), route-map not applied (`clear bgp X soft out`) |
+| a single next hop despite two providers | different neighbour ASes without `multipath-relax`, AS_PATHs of different lengths |
+| all the traffic of a machine on the same link | hash on the addresses only (`fib_multipath_hash_policy`) |
+| confederation session in `Active` / `Idle` | different member AS or identifier, `confederation peers` forgotten, no route to the loopback of the peer |
+| member ASes visible outside the confederation | the border router is not configured as part of the confederation |
+| route marked `d` | dampening: wait for the reuse or `clear bgp ipv4 unicast dampening` |
+""",
+    "Partie 1 : solution (communautés)": "Part 1: solution (communities)",
+    "Partie 2 : solution (multichemin)": "Part 2: solution (multipath)",
+    "Partie 3 : solution (confédération)": "Part 3: solution (confederation)",
+    "Partie 4 : solution (amortissement)": "Part 4: solution (dampening)",
+    "Bonus : solution (graceful shutdown)": "Bonus: solution (graceful shutdown)",
+    "1 — communautés bien connues": "1 — well-known communities",
+    "`ne_r1` ; `ne_isp`, `ne_far`, `ne_cust` sans terminal": "`ne_r1`; `ne_isp`, `ne_far`, `ne_cust` without a terminal",
+    "2 — multichemin": "2 — multipath",
+    "`mp_r1`, l'hôte `mp_h1` ; `mp_isp1`, `mp_isp2` sans terminal": "`mp_r1`, the host `mp_h1`; `mp_isp1`, `mp_isp2` without a terminal",
+    "3 — confédération": "3 — confederation",
+    "`cf_r1`, `cf_r2` (à configurer), `cf_r3`, `cf_r4` (déjà configurés) ; `cf_ext1`, `cf_ext2` sans terminal": "`cf_r1`, `cf_r2` (to be configured), `cf_r3`, `cf_r4` (already configured); `cf_ext1`, `cf_ext2` without a terminal",
+    "4 — amortissement": "4 — dampening",
+    "`dmp_r1` ; `dmp_isp`, `dmp_cust` sans terminal": "`dmp_r1`; `dmp_isp`, `dmp_cust` without a terminal",
+    "bonus — graceful shutdown": "bonus — graceful shutdown",
+    "`gs_r1` ; `gs_isp1`, `gs_isp2` sans terminal": "`gs_r1`; `gs_isp1`, `gs_isp2` without a terminal",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente les communautés (dont les communautés bien connues),
+le multichemin, les confédérations, l'amortissement des oscillations et le *graceful shutdown*, leur
+configuration avec FRR et les commandes de diagnostic.
+
+**Le réseau.** Il est fait de **cinq sites indépendants**, un par partie. Chaque site a sa couleur
+sur le schéma :
+
+| partie | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- Vous êtes l'opérateur de l'**AS {our_as}** : ses routeurs sont les `*_r1` de chaque site, et les
+  quatre routeurs `cf_r*` (l'AS {our_as} y est une confédération). Les autres routeurs appartiennent à
+  d'autres opérateurs : vous n'avez pas de terminal sur eux.
+- Les routeurs font tourner **FRRouting** (FRR) avec `bgpd` (et `ospfd` dans la confédération) :
+  configurez-les avec `vtysh`. Les sessions BGP de vos routeurs existent déjà, avec leurs politiques
+  (route-map `ALL`), sauf sur `cf_r1` et `cf_r2`.
+- Toutes les adresses sont en place, y compris les interfaces de bouclage (`lo`). Les fichiers
+  `/etc/hosts` contiennent les noms : `ne_isp-eth1` désigne l'adresse de l'interface `eth1` de
+  `ne_isp`, `cf_r2-lo` son adresse de bouclage.
+
+**Les AS des autres opérateurs.**
+
+| routeur | AS |
+|---------|----|
+{as_rows}
+
+**Plan d'adressage.** Les liens entre routeurs sont des /30. Les préfixes annoncés en BGP sont pris
+dans `{pub}`.
+
+| réseau | préfixe | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Enregistrez la configuration de FRR (`write` dans `vtysh`).
+- Une route-map modifiée prend effet au bout de quelques secondes ; `clear bgp A.B.C.D soft in|out`
+  la réapplique aussitôt.
+
+**Évaluation.** Chaque évaluation lit vos réponses, l'état de BGP sur les routeurs (sessions, tables,
+configuration), les tables de routage, et lance des `ping` et une série de flux depuis `mp_h1`.
+""": """
+Read the **Informations** tab: it presents communities (the well-known communities included),
+multipath, confederations, route flap dampening and *graceful shutdown*, their configuration with
+FRR and the troubleshooting commands.
+
+**The network.** It is made of **five independent sites**, one per part. Each site has its own
+colour on the diagram of the *Schema* tab:
+
+| part | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- You are the operator of **AS {our_as}**: its routers are the `*_r1` of each site, and the four
+  routers `cf_r*` (AS {our_as} is a confederation there). The other routers belong to other
+  operators: you have no terminal on them.
+- The routers run **FRRouting** (FRR) with `bgpd` (and `ospfd` in the confederation): configure
+  them with `vtysh`. The BGP sessions of your routers already exist, with their policies (route-map
+  `ALL`), except on `cf_r1` and `cf_r2`.
+- All the addresses are in place, the loopback interfaces (`lo`) included. The `/etc/hosts` files
+  contain the names: `ne_isp-eth1` is the address of the interface `eth1` of `ne_isp`, `cf_r2-lo`
+  the loopback address of `cf_r2`.
+
+**The ASes of the other operators.**
+
+| router | AS |
+|---------|----|
+{as_rows}
+
+**Addressing plan.** The links between routers are /30s. The prefixes announced in BGP are taken
+from `{pub}`.
+
+| network | prefix | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Instructions.**
+
+- The parts are **independent**: do them in any order you like. A completed part earns all its
+  points, whatever the state of the others.
+- Save the FRR configuration (`write` in `vtysh`).
+- A modified route-map takes effect after a few seconds; `clear bgp A.B.C.D soft in|out` applies it
+  again at once.
+
+**Evaluation.** Each evaluation reads your answers, the state of BGP on the routers (sessions,
+tables, configuration), the routing tables, and runs `ping` commands and a series of flows from
+`mp_h1`.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_ne`, `solve_mp`, `solve_cf`, `solve_dmp` et `solve_gs` (onglet *Appliquer
+une configuration*) appliquent la solution d'une seule partie et remplissent ses formulaires. L'état
+`final` les applique toutes et attend {wait} s (la suppression du préfixe instable) puis remplit tous
+les formulaires : une évaluation lancée dès son retour donne tous les points, bonus compris.
+
+`dmp_cust` retire et réannonce son préfixe instable toutes les {half} s (`{script}`, lancé par l'état
+initial ; il ne survit pas au redémarrage de la machine).
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance. The
+states `solve_ne`, `solve_mp`, `solve_cf`, `solve_dmp` and `solve_gs` (*Apply Configuration* tab)
+apply the solution of a single part and fill in its forms. The state `final` applies them all,
+waits {wait} s (the suppression of the unstable prefix), then fills in all the forms: an evaluation
+run as soon as it returns gives all the points, bonus included.
+
+`dmp_cust` withdraws and re-announces its unstable prefix every {half} s (`{script}`, started by the
+initial state; it does not survive a restart of the machine).
+""",
+    "Partie 1 — communautés bien connues (site ne)": "Part 1 — well-known communities (site ne)",
+    "Communautés bien connues": "Well-known communities",
+    """
+`ne_r1` a un fournisseur, `ne_isp` (AS {asi}), qui a lui-même pour pair `ne_far` (AS {asf}, « le
+reste de l'Internet »), et un client, `ne_cust` (AS {asc}). Il annonce votre bloc `{own}`.
+
+`ne_cust` annonce trois préfixes : `{c1}` sans communauté, `{c2}` marqué **`no-export`** et `{c3}`
+marqué **`no-advertise`** (sections @@ref:communities@@ et @@ref:well-known@@).
+
+1. **Observation.** Sur `ne_r1`, quels préfixes de `ne_cust` reçoit-on, avec quelles communautés
+   (`show bgp ipv4 unicast P`) ? Lesquels annonce-t-il à `ne_isp` (`show bgp ipv4 unicast neighbors
+   {isp} advertised-routes`) ? Pourquoi ?
+2. **Ingénierie de trafic.** Annoncez à `ne_isp` (et seulement à lui) les deux /24 `{te1}` et `{te2}`
+   de votre bloc, marqués **`no-export`** : `ne_isp` doit les recevoir, `ne_far` ne voir que `{own}`.
+   Les routes statiques vers `blackhole` de ces deux /24 existent déjà.
+3. **Demande du client.** `ne_cust` veut que `{c1}` ne soit pas propagé au-delà de votre fournisseur :
+   marquez-le **`no-export`** vers `ne_isp`.
+4. Vérifiez chez `ne_isp` (`advertised-routes`) et chez `ne_far` (`ping {far_addr}` depuis `ne_r1`
+   passe toujours).
+""": """
+`ne_r1` has a provider, `ne_isp` (AS {asi}), which itself has `ne_far` as a peer (AS {asf}, "the
+rest of the Internet"), and a customer, `ne_cust` (AS {asc}). It announces your block `{own}`.
+
+`ne_cust` announces three prefixes: `{c1}` without a community, `{c2}` tagged **`no-export`** and
+`{c3}` tagged **`no-advertise`** (sections @@ref:communities@@ and @@ref:well-known@@).
+
+1. **Observation.** On `ne_r1`, which prefixes of `ne_cust` are received, with which communities
+   (`show bgp ipv4 unicast P`)? Which ones does it announce to `ne_isp` (`show bgp ipv4 unicast
+   neighbors {isp} advertised-routes`)? Why?
+2. **Traffic engineering.** Announce to `ne_isp` (and only to it) the two /24s `{te1}` and `{te2}`
+   of your block, tagged **`no-export`**: `ne_isp` must receive them, `ne_far` must see only
+   `{own}`. The static routes to `blackhole` of these two /24s already exist.
+3. **Customer request.** `ne_cust` wants `{c1}` not to be propagated beyond your provider: tag it
+   **`no-export`** towards `ne_isp`.
+4. Check at `ne_isp` (`advertised-routes`) and at `ne_far` (`ping {far_addr}` from `ne_r1` still
+   works).
+""",
+    """
+**Solution.**
+
+{solution}
+
+La route-map de sortie ajoute la communauté **après** la vérification des communautés bien connues
+par `ne_r1` : les routes partent chez `ne_isp`, qui les garde pour lui. `{c2}` (`no-export` posé par
+le client) n'est pas annoncé à `ne_isp` (session eBGP) ; `{c3}` (`no-advertise`) n'arrive même pas
+chez `ne_r1` : `ne_cust` ne l'annonce à personne.
+
+Évaluation : `ne_te_isp` (3 : les deux /24 chez `ne_isp` avec `no-export`), `ne_te_far` (3 : `ne_far`
+a `{own}` mais aucun des /24), `ne_c1_isp` (2 : `{c1}` chez `ne_isp` avec `no-export`), `ne_c1_far`
+(2 : absent de `ne_far`), `ne_reach` (2 : `ne_far` joint `{te_addr}`).
+""": """
+**Solution.**
+
+{solution}
+
+The outbound route-map adds the community **after** `ne_r1` has checked the well-known
+communities: the routes go to `ne_isp`, which keeps them to itself. `{c2}` (`no-export` set by the
+customer) is not announced to `ne_isp` (eBGP session); `{c3}` (`no-advertise`) does not even reach
+`ne_r1`: `ne_cust` announces it to nobody.
+
+Evaluation: `ne_te_isp` (3: the two /24s at `ne_isp` with `no-export`), `ne_te_far` (3: `ne_far`
+has `{own}` but none of the /24s), `ne_c1_isp` (2: `{c1}` at `ne_isp` with `no-export`),
+`ne_c1_far` (2: absent from `ne_far`), `ne_reach` (2: `ne_far` reaches `{te_addr}`).
+""",
+    "Observations sur le site ne": "Observations on site ne",
+    """
+- communauté de `{c2}` vue par `ne_r1` : @@{{c2:[a-zA-Z0-9:-]+}}@@
+- au départ, nombre de préfixes de `ne_cust` que `ne_r1` annonce à `ne_isp` : @@{{count:[0-9]+}}@@
+- valeur de `no-export` (forme `AS:valeur`) : @@{{value:[0-9:]+}}@@
+- `{c3}` :
+  @@{{c3:>n'arrive jamais chez ne_r1>>>never|arrive chez ne_r1 qui ne le réannonce pas>>>stops|arrive chez ne_isp qui ne le réannonce pas>>>isp|est propagé partout>>>everywhere}}@@
+""": """
+- community of `{c2}` seen by `ne_r1`: @@{{c2:[a-zA-Z0-9:-]+}}@@
+- at the start, number of prefixes of `ne_cust` that `ne_r1` announces to `ne_isp`: @@{{count:[0-9]+}}@@
+- value of `no-export` (form `AS:value`): @@{{value:[0-9:]+}}@@
+- `{c3}`:
+  @@{{c3:>never reaches ne_r1>>>never|reaches ne_r1, which does not re-announce it>>>stops|reaches ne_isp, which does not re-announce it>>>isp|is propagated everywhere>>>everywhere}}@@
+""",
+    """
+**Solution.** **no-export** ; **1** (`{c1}` seulement) ; **{value}** (0xFFFFFF01) ; `{c3}`
+**n'arrive jamais chez `ne_r1`** (`no-advertise` : `ne_cust` ne l'annonce à aucun pair).
+
+Évaluation : `ne_q_c2`, `ne_q_count`, `ne_q_value` (1 chacun) et, pour l'enseignant seulement,
+`ne_q_c3` (1).
+""": """
+**Solution.** **no-export**; **1** (`{c1}` only); **{value}** (0xFFFFFF01); `{c3}` **never reaches
+`ne_r1`** (`no-advertise`: `ne_cust` announces it to no peer).
+
+Evaluation: `ne_q_c2`, `ne_q_count`, `ne_q_value` (1 each) and, for the instructor only, `ne_q_c3`
+(1).
+""",
+    "les /24 annoncés au fournisseur avec no-export": "the /24s announced to the provider with no-export",
+    "au-delà du fournisseur, seul le bloc est visible": "beyond the provider, only the block is visible",
+    "préfixe du client marqué no-export vers le fournisseur": "customer prefix tagged no-export towards the provider",
+    "préfixe du client non propagé au-delà": "customer prefix not propagated beyond",
+    "le reste de l'Internet joint toujours le bloc": "the rest of the Internet still reaches the block",
+    "communauté posée par le client": "community set by the customer",
+    "préfixes du client annoncés au fournisseur": "customer prefixes announced to the provider",
+    "valeur de no-export": "value of no-export",
+    "effet de no-advertise": "effect of no-advertise",
+    "Partie 2 — multichemin (site mp)": "Part 2 — multipath (site mp)",
+    "Répartir le trafic sur plusieurs chemins": "Spreading the traffic over several paths",
+    """
+`mp_r1` a deux liens et deux sessions avec `mp_isp1` (AS {as1}), une session avec `mp_isp2`
+(AS {as2}). `mp_isp1` annonce `{q}` ; un service présent chez les deux fournisseurs, `{p}`, est
+annoncé par chacun avec un AS_PATH d'un seul AS. L'hôte `mp_h1` (`{h1}`) est derrière `mp_r1`.
+
+1. **Observation.** Sur `mp_r1` : combien de prochains sauts pour `{q}` et pour `{p}` (`ip route`,
+   `show bgp ipv4 unicast`, marque `=`) ? Pourquoi `mp_isp2` n'est-il pas utilisé pour `{p}` (section
+   @@ref:multipath@@) ?
+2. **Multichemin entre fournisseurs.** Faites installer par `mp_r1` les trois chemins de `{p}`.
+3. **Répartition.** Depuis `mp_h1`, `python3 {flows} {p_addr} 60 40000` envoie un datagramme UDP depuis
+   chacun de 60 ports source. Regardez les compteurs des interfaces de `mp_r1` (`ip -s link`) :
+   comment se répartissent ces flux ? Faites en sorte qu'ils se répartissent sur les trois liens, de
+   façon durable (section @@ref:hash@@).
+""": """
+`mp_r1` has two links and two sessions with `mp_isp1` (AS {as1}), and one session with `mp_isp2`
+(AS {as2}). `mp_isp1` announces `{q}`; a service present at both providers, `{p}`, is announced by
+each of them with an AS_PATH of a single AS. The host `mp_h1` (`{h1}`) is behind `mp_r1`.
+
+1. **Observation.** On `mp_r1`: how many next hops for `{q}` and for `{p}` (`ip route`, `show bgp
+   ipv4 unicast`, mark `=`)? Why is `mp_isp2` not used for `{p}` (section @@ref:multipath@@)?
+2. **Multipath between providers.** Make `mp_r1` install the three paths of `{p}`.
+3. **Load sharing.** From `mp_h1`, `python3 {flows} {p_addr} 60 40000` sends one UDP datagram from
+   each of 60 source ports. Look at the interface counters of `mp_r1` (`ip -s link`): how are these
+   flows spread? Make them spread over the three links, persistently (section @@ref:hash@@).
+""",
+    """
+**Solution.**
+
+{solution}
+
+et, sur `mp_r1` : `sysctl -w {sysctl}=1` et `echo {sysctl}=1 > /etc/sysctl.d/90-ecmp.conf`.
+
+FRR installe déjà les deux chemins de `mp_isp1` (même AS voisin, multichemin actif par défaut) :
+`{q}` a deux prochains sauts. Pour `{p}`, le chemin de `mp_isp2` a un autre AS voisin : il n'entre
+dans le multichemin qu'avec `multipath-relax`. Avec le hachage par défaut (adresses seulement), les 60
+flux de `mp_h1` vers la même adresse partent tous par le même lien ; avec `{sysctl}=1` (ports
+compris), environ 20 par lien.
+
+Évaluation : `mp_relax_conf` (1), `mp_three_paths` (3 : trois prochains sauts dans le noyau pour
+`{p}`), `mp_bgp_flags` (1 : les trois chemins installés), `mp_hash` (2), `mp_spread` (3 : chacun des
+trois liens porte au moins {min_flows} des {count} flux de l'évaluation).
+""": """
+**Solution.**
+
+{solution}
+
+and, on `mp_r1`: `sysctl -w {sysctl}=1` and `echo {sysctl}=1 > /etc/sysctl.d/90-ecmp.conf`.
+
+FRR already installs the two paths of `mp_isp1` (same neighbour AS, multipath active by default):
+`{q}` has two next hops. For `{p}`, the path of `mp_isp2` has another neighbour AS: it only joins
+the multipath set with `multipath-relax`. With the default hash (addresses only), the 60 flows of
+`mp_h1` to the same address all leave by the same link; with `{sysctl}=1` (ports included), about
+20 per link.
+
+Evaluation: `mp_relax_conf` (1), `mp_three_paths` (3: three next hops in the kernel for `{p}`),
+`mp_bgp_flags` (1: the three paths installed), `mp_hash` (2), `mp_spread` (3: each of the three
+links carries at least {min_flows} of the {count} flows of the evaluation).
+""",
+    "Observations sur le site mp": "Observations on site mp",
+    """
+- au départ, nombre de prochains sauts de `mp_r1` vers `{q}` : @@{{q_paths:[0-9]+}}@@
+- au départ, le chemin de `mp_isp2` vers `{p}` n'est pas installé avec les deux autres car :
+  @@{{relax:>son AS voisin n'est pas celui du meilleur chemin>>>neighbor_as|son AS_PATH est plus long>>>longer|sa local-preference est plus basse>>>locpref|maximum-paths vaut 1 par défaut>>>maxpaths}}@@
+- par défaut, le noyau choisit le prochain saut d'un paquet d'après :
+  @@{{hash:>les adresses source et destination>>>addresses|les adresses et les ports>>>ports|un tirage paquet par paquet>>>packet|le premier prochain saut toujours>>>first}}@@
+- avec FRR, le multichemin eBGP :
+  @@{{default:>est actif sans configuration>>>on|demande maximum-paths>>>off|n'existe qu'entre deux AS voisins différents>>>relax}}@@
+""": """
+- at the start, number of next hops of `mp_r1` towards `{q}`: @@{{q_paths:[0-9]+}}@@
+- at the start, the path of `mp_isp2` towards `{p}` is not installed with the other two because:
+  @@{{relax:>its neighbour AS is not that of the best path>>>neighbor_as|its AS_PATH is longer>>>longer|its local-preference is lower>>>locpref|maximum-paths is 1 by default>>>maxpaths}}@@
+- by default, the kernel chooses the next hop of a packet from:
+  @@{{hash:>the source and destination addresses>>>addresses|the addresses and the ports>>>ports|a random draw packet by packet>>>packet|always the first next hop>>>first}}@@
+- with FRR, eBGP multipath:
+  @@{{default:>is active without any configuration>>>on|needs maximum-paths>>>off|only exists between two different neighbour ASes>>>relax}}@@
+""",
+    """
+**Solution.** **2** ; **son AS voisin n'est pas celui du meilleur chemin** ; **les adresses source et
+destination** (`fib_multipath_hash_policy` 0) ; **actif sans configuration**.
+
+Évaluation : `mp_q_paths` (1) et, pour l'enseignant seulement, `mp_q_relax`, `mp_q_hash`,
+`mp_q_default` (1 chacun).
+""": """
+**Solution.** **2**; **its neighbour AS is not that of the best path**; **the source and
+destination addresses** (`fib_multipath_hash_policy` 0); **active without any configuration**.
+
+Evaluation: `mp_q_paths` (1) and, for the instructor only, `mp_q_relax`, `mp_q_hash`,
+`mp_q_default` (1 each).
+""",
+    "condition du même AS voisin levée": "same-neighbour-AS condition lifted",
+    "trois prochains sauts vers le service": "three next hops towards the service",
+    "trois chemins BGP installés": "three BGP paths installed",
+    "hachage sur les ports": "hash on the ports",
+    "flux répartis sur les trois liens": "flows spread over the three links",
+    "prochains sauts par défaut": "next hops by default",
+    "condition du même AS voisin": "same-neighbour-AS condition",
+    "hachage par défaut": "default hash",
+    "multichemin par défaut": "multipath by default",
+    "Partie 3 — confédération (site cf)": "Part 3 — confederation (site cf)",
+    "Une confédération": "A confederation",
+    """
+Dans ce site, l'AS **{our_as}** est une **confédération** de deux AS membres (section
+@@ref:confed@@) : **{s1}** (`cf_r1`, `cf_r2`) et **{s2}** (`cf_r3`, `cf_r4`). Les quatre routeurs
+sont en ligne ; OSPF tourne déjà entre eux (liens internes et adresses de bouclage). `cf_ext1`
+(AS {e1}, `{pe1}`) est relié à `cf_r1`, `cf_ext2` (AS {e2}, `{pe2}`) à `cf_r4` ; tous deux voient
+l'AS {our_as}.
+
+`cf_r3` et `cf_r4` sont configurés (regardez leur configuration) : session iBGP entre leurs adresses
+de bouclage, session eBGP de confédération de `cf_r3` vers `cf_r2` (`{r2l23}`), session avec
+`cf_ext2`. `cf_r4` donne une `local-preference` de {lp} aux routes de `cf_ext2` et annonce `{s2net}`,
+`{n}` marqué **`no-export`** et `{l}` marqué **`local-AS`**.
+
+1. **Configuration.** Configurez BGP sur `cf_r1` et `cf_r2` (AS membre {s1}) : identifiant et pairs
+   de la confédération, session iBGP entre leurs adresses de bouclage (`next-hop-self` de `cf_r1` vers
+   `cf_r2`), session eBGP de confédération de `cf_r2` vers `cf_r3` (`{r3l23}`), session de `cf_r1` avec
+   `cf_ext1` (`{ext1}`).
+2. **Observation.** Comparez l'AS_PATH de `{pe2}` sur `cf_r1`, `cf_r2` et (d'après ce que reçoit
+   `cf_ext1` : `show bgp ipv4 unicast neighbors {ext1} advertised-routes` sur `cf_r1`) chez `cf_ext1`.
+   Que devient la `local-preference` posée par `cf_r4` ? Où vont `{n}` et `{l}` ?
+3. Vérifiez que `cf_ext1` et `cf_ext2` échangent leurs préfixes (`ping -I {e1addr} {e2addr}` depuis…
+   l'évaluation le fait).
+""": """
+In this site, AS **{our_as}** is a **confederation** of two member ASes (section
+@@ref:confed@@): **{s1}** (`cf_r1`, `cf_r2`) and **{s2}** (`cf_r3`, `cf_r4`). The four routers form
+a chain; OSPF already runs between them (internal links and loopback addresses). `cf_ext1` (AS
+{e1}, `{pe1}`) is connected to `cf_r1`, `cf_ext2` (AS {e2}, `{pe2}`) to `cf_r4`; both of them see
+AS {our_as}.
+
+`cf_r3` and `cf_r4` are configured (look at their configuration): an iBGP session between their
+loopback addresses, a confederation eBGP session from `cf_r3` to `cf_r2` (`{r2l23}`), a session
+with `cf_ext2`. `cf_r4` gives a `local-preference` of {lp} to the routes of `cf_ext2` and announces
+`{s2net}`, `{n}` tagged **`no-export`** and `{l}` tagged **`local-AS`**.
+
+1. **Configuration.** Configure BGP on `cf_r1` and `cf_r2` (member AS {s1}): identifier and peers
+   of the confederation, an iBGP session between their loopback addresses (`next-hop-self` from
+   `cf_r1` to `cf_r2`), a confederation eBGP session from `cf_r2` to `cf_r3` (`{r3l23}`), a session
+   of `cf_r1` with `cf_ext1` (`{ext1}`).
+2. **Observation.** Compare the AS_PATH of `{pe2}` on `cf_r1`, on `cf_r2` and (from what `cf_ext1`
+   receives: `show bgp ipv4 unicast neighbors {ext1} advertised-routes` on `cf_r1`) at `cf_ext1`.
+   What becomes of the `local-preference` set by `cf_r4`? Where do `{n}` and `{l}` go?
+3. Check that `cf_ext1` and `cf_ext2` exchange their prefixes (`ping -I {e1addr} {e2addr}` from…
+   the evaluation does it).
+""",
+    """
+**Solution.**
+
+{solution}
+
+Vu de `cf_r1`, `{pe2}` a l'AS_PATH `({s2}) {e2}` et la `local-preference` {lp} (conservée entre AS
+membres) ; `cf_ext1` reçoit `{our_as} {e2}` : les AS membres disparaissent à la sortie. `{n}`
+(`no-export`) va jusqu'à `cf_r1` mais pas chez `cf_ext1` ; `{l}` (`local-AS`) reste dans l'AS membre
+{s2} (`cf_r3`, `cf_r4`).
+
+Évaluation : `cf_conf` (2 : un par routeur), `cf_sessions` (3 : iBGP `cf_r1`–`cf_r2`, `cf_r2`–`cf_r3`,
+`cf_r1`–`cf_ext1`), `cf_ext1_path` (3), `cf_ext2_path` (2), `cf_inside` (2 : `({s2})` vu de `cf_r1`),
+`cf_localpref` (2), `cf_no_export` (3), `cf_local_as` (2), `cf_ping` (2).
+""": """
+**Solution.**
+
+{solution}
+
+Seen from `cf_r1`, `{pe2}` has the AS_PATH `({s2}) {e2}` and the `local-preference` {lp} (kept
+between member ASes); `cf_ext1` receives `{our_as} {e2}`: the member ASes disappear on the way out.
+`{n}` (`no-export`) goes as far as `cf_r1` but not to `cf_ext1`; `{l}` (`local-AS`) stays within
+member AS {s2} (`cf_r3`, `cf_r4`).
+
+Evaluation: `cf_conf` (2: one per router), `cf_sessions` (3: iBGP `cf_r1`–`cf_r2`,
+`cf_r2`–`cf_r3`, `cf_r1`–`cf_ext1`), `cf_ext1_path` (3), `cf_ext2_path` (2), `cf_inside` (2:
+`({s2})` seen from `cf_r1`), `cf_localpref` (2), `cf_no_export` (3), `cf_local_as` (2), `cf_ping`
+(2).
+""",
+    "Observations sur le site cf": "Observations on site cf",
+    """
+- AS_PATH de `{pe2}` reçu par `cf_ext1` : @@{{path:[0-9 ]+}}@@
+- l'attribut conservé d'un AS membre à l'autre et jamais transmis à un AS externe :
+  @@{{attr:>LOCAL_PREF>>>localpref|ORIGIN>>>origin|AS_PATH>>>aspath|COMMUNITY>>>community}}@@
+- le NEXT_HOP d'une route passée par une session eBGP de confédération :
+  @@{{nexthop:>est conservé, comme en iBGP>>>unchanged|devient l'adresse du routeur qui l'annonce, comme en eBGP>>>self|est retiré>>>removed}}@@
+""": """
+- AS_PATH of `{pe2}` received by `cf_ext1`: @@{{path:[0-9 ]+}}@@
+- the attribute kept from one member AS to another and never passed on to an external AS:
+  @@{{attr:>LOCAL_PREF>>>localpref|ORIGIN>>>origin|AS_PATH>>>aspath|COMMUNITY>>>community}}@@
+- the NEXT_HOP of a route passed over a confederation eBGP session:
+  @@{{nexthop:>is kept, as in iBGP>>>unchanged|becomes the address of the router announcing it, as in eBGP>>>self|is removed>>>removed}}@@
+""",
+    """
+**Solution.** **{path}** ; **LOCAL_PREF** ; **conservé, comme en iBGP**.
+
+Évaluation : `cf_q_path` (1) et, pour l'enseignant seulement, `cf_q_attr`, `cf_q_nexthop` (1 chacun).
+""": """
+**Solution.** **{path}**; **LOCAL_PREF**; **kept, as in iBGP**.
+
+Evaluation: `cf_q_path` (1) and, for the instructor only, `cf_q_attr`, `cf_q_nexthop` (1 each).
+""",
+    "cf_r1 et cf_r2 dans la confédération": "cf_r1 and cf_r2 in the confederation",
+    "sessions de cf_r1 et cf_r2 établies": "sessions of cf_r1 and cf_r2 established",
+    "cf_ext1 voit l'identifiant de la confédération": "cf_ext1 sees the identifier of the confederation",
+    "cf_ext2 voit l'identifiant de la confédération": "cf_ext2 sees the identifier of the confederation",
+    "l'AS membre traversé est visible dans la confédération": "the member AS crossed is visible inside the confederation",
+    "local-preference conservée": "local-preference kept",
+    "no-export : dans la confédération, pas au-delà": "no-export: within the confederation, not beyond",
+    "local-AS : dans l'AS membre seulement": "local-AS: within the member AS only",
+    "cf_ext1 et cf_ext2 se joignent": "cf_ext1 and cf_ext2 reach each other",
+    "AS_PATH vu de l'extérieur": "AS_PATH seen from outside",
+    "attribut conservé entre AS membres": "attribute kept between member ASes",
+    "NEXT_HOP en eBGP de confédération": "NEXT_HOP over confederation eBGP",
+    "Partie 4 — amortissement des oscillations (site dmp)": "Part 4 — route flap dampening (site dmp)",
+    "Amortir une route instable": "Dampening an unstable route",
+    """
+`dmp_r1` a un fournisseur, `dmp_isp` (AS {asi}), et un client, `dmp_cust` (AS {asc}), qui annonce
+`{s}` et `{f}`. La liaison de ce client vers `{f}` est instable : le préfixe apparaît et disparaît
+toutes les {half} s, et chaque changement repart vers `dmp_isp` et tout l'Internet.
+
+1. **Observation.** Sur `dmp_r1`, regardez `{f}` apparaître et disparaître (`show bgp ipv4 unicast`,
+   `/var/log/frr/frr.log`), et ce que voit `dmp_isp` (`advertised-routes`).
+2. **Amortissement.** Activez l'amortissement sur `dmp_r1` avec : demi-vie **{h}** min, seuil de
+   réutilisation **{r}**, seuil de suppression **{s_}**, durée maximale de suppression **{m}** min
+   (section @@ref:dampening@@).
+3. Suivez la pénalité de `{f}` (`show bgp ipv4 unicast {f}`, `show bgp ipv4 unicast dampening
+   flap-statistics`) jusqu'à sa suppression (environ une minute), puis vérifiez que `dmp_isp` ne le
+   reçoit plus alors que `{s}` reste annoncé.
+""": """
+`dmp_r1` has a provider, `dmp_isp` (AS {asi}), and a customer, `dmp_cust` (AS {asc}), which
+announces `{s}` and `{f}`. The link of this customer towards `{f}` is unstable: the prefix appears
+and disappears every {half} s, and each change travels on to `dmp_isp` and the whole Internet.
+
+1. **Observation.** On `dmp_r1`, watch `{f}` appear and disappear (`show bgp ipv4 unicast`,
+   `/var/log/frr/frr.log`), and what `dmp_isp` sees (`advertised-routes`).
+2. **Dampening.** Enable dampening on `dmp_r1` with: half-life **{h}** min, reuse threshold
+   **{r}**, suppress threshold **{s_}**, maximum suppress time **{m}** min (section
+   @@ref:dampening@@).
+3. Follow the penalty of `{f}` (`show bgp ipv4 unicast {f}`, `show bgp ipv4 unicast dampening
+   flap-statistics`) until it is suppressed (about one minute), then check that `dmp_isp` no longer
+   receives it while `{s}` is still announced.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Chaque retrait ajoute 1000 à la pénalité de `{f}` ; au-delà de {s_} (trois ou quatre oscillations, en
+une minute environ), la route est supprimée (`d` dans `show bgp ipv4 unicast`, `suppressed due to
+dampening`) et n'est plus annoncée à `dmp_isp`. Tant que le préfixe oscille, la pénalité reste haute :
+la route ne sera réutilisée qu'après {m} min au plus.
+
+Évaluation : `dmp_conf` (3 : les quatre paramètres), `dmp_suppressed` (4 : `{f}` supprimé sur
+`dmp_r1`), `dmp_not_propagated` (3 : `{f}` absent de `dmp_isp`, `{s}` présent).
+""": """
+**Solution.**
+
+{solution}
+
+Each withdrawal adds 1000 to the penalty of `{f}`; beyond {s_} (three or four flaps, in about one
+minute), the route is suppressed (`d` in `show bgp ipv4 unicast`, `suppressed due to
+dampening`) and no longer announced to `dmp_isp`. As long as the prefix keeps flapping, the penalty
+stays high: the route will only be reused after {m} min at most.
+
+Evaluation: `dmp_conf` (3: the four parameters), `dmp_suppressed` (4: `{f}` suppressed on
+`dmp_r1`), `dmp_not_propagated` (3: `{f}` absent from `dmp_isp`, `{s}` present).
+""",
+    "Observations sur le site dmp": "Observations on site dmp",
+    """
+- pénalité ajoutée par un retrait de la route : @@{penalty:[0-9]+}@@
+- avec vos paramètres, durée (en minutes) au bout de laquelle une pénalité est divisée par deux :
+  @@{halved:[0-9]+}@@
+- code d'état d'une route supprimée dans `show bgp ipv4 unicast` :
+  @@{code:>d>>>d|h>>>h|s>>>s|r>>>r}@@
+- l'amortissement est déconseillé aujourd'hui car :
+  @@{why:>un seul événement produit plusieurs mises à jour et une route stable peut être supprimée>>>convergence|il demande trop de mémoire>>>memory|il ne marche qu'en iBGP>>>ibgp|il est incompatible avec RPKI>>>rpki}@@
+""": """
+- penalty added by one withdrawal of the route: @@{penalty:[0-9]+}@@
+- with your parameters, time (in minutes) after which a penalty is halved:
+  @@{halved:[0-9]+}@@
+- state code of a suppressed route in `show bgp ipv4 unicast`:
+  @@{code:>d>>>d|h>>>h|s>>>s|r>>>r}@@
+- dampening is discouraged today because:
+  @@{why:>a single event produces several updates and a stable route may be suppressed>>>convergence|it needs too much memory>>>memory|it only works in iBGP>>>ibgp|it is incompatible with RPKI>>>rpki}@@
+""",
+    """
+**Solution.** **1000** ; **{h}** ; **d** (*damped* ; `h` = historique d'une route retirée) ; **un seul
+événement produit plusieurs mises à jour** (exploration des chemins de rechange) **et une route stable
+peut être supprimée** (RFC 7196).
+
+Évaluation : `dmp_q_penalty`, `dmp_q_halved` (1 chacun) et, pour l'enseignant seulement, `dmp_q_code`,
+`dmp_q_why` (1 chacun).
+""": """
+**Solution.** **1000**; **{h}**; **d** (*damped*; `h` = history of a withdrawn route); **a single
+event produces several updates** (exploration of the alternative paths) **and a stable route may be
+suppressed** (RFC 7196).
+
+Evaluation: `dmp_q_penalty`, `dmp_q_halved` (1 each) and, for the instructor only, `dmp_q_code`,
+`dmp_q_why` (1 each).
+""",
+    "paramètres de l'amortissement": "dampening parameters",
+    "route instable supprimée": "unstable route suppressed",
+    "route supprimée non propagée": "suppressed route not propagated",
+    "pénalité d'un retrait": "penalty of a withdrawal",
+    "demi-vie": "half-life",
+    "code d'une route supprimée": "code of a suppressed route",
+    "limites de l'amortissement": "limits of dampening",
+    "Bonus — graceful shutdown (site gs)": "Bonus — graceful shutdown (site gs)",
+    "Bonus : vider un lien avant une maintenance": "Bonus: draining a link before maintenance",
+    """
+`gs_r1` a deux fournisseurs, `gs_isp1` (AS {as1}) et `gs_isp2` (AS {as2}), qui sont pairs entre eux.
+`gs_isp1` annonce `{inet}` ; `gs_r1` annonce `{own}`. Dans les deux sens, le trafic passe par le lien
+direct `gs_r1`–`gs_isp1` (le chemin par `gs_isp2` est plus long d'un AS).
+
+Le lien vers `gs_isp1` doit passer en maintenance. **Sans fermer la session**, faites en sorte que le
+trafic **sortant** de `gs_r1` vers `{inet}` **et** le trafic **entrant** de `gs_isp1` vers `{own}`
+passent par `gs_isp2` (section @@ref:gshut@@). `gs_isp1` applique la communauté GRACEFUL_SHUTDOWN.
+""": """
+`gs_r1` has two providers, `gs_isp1` (AS {as1}) and `gs_isp2` (AS {as2}), which are peers of each
+other. `gs_isp1` announces `{inet}`; `gs_r1` announces `{own}`. In both directions, the traffic goes
+over the direct link `gs_r1`–`gs_isp1` (the path through `gs_isp2` is one AS longer).
+
+The link to `gs_isp1` must go into maintenance. **Without closing the session**, make the
+**outgoing** traffic of `gs_r1` towards `{inet}` **and** the **incoming** traffic of `gs_isp1`
+towards `{own}` go through `gs_isp2` (section @@ref:gshut@@). `gs_isp1` applies the
+GRACEFUL_SHUTDOWN community.
+""",
+    """
+**Solution.**
+
+{solution}
+
+`neighbor … graceful-shutdown` donne une `local-preference` de 0 aux routes reçues de `gs_isp1` :
+`{inet}` passe par `gs_isp2` ({isp2}). La route-map ajoute la communauté aux routes annoncées à
+`gs_isp1`, qui leur donne une `local-preference` de 0 et préfère le chemin par `gs_isp2`. La session
+reste établie : elle peut ensuite être coupée sans perte. (`bgp graceful-shutdown` marquerait aussi
+les routes envoyées à `gs_isp2` et ne viderait pas le lien.)
+
+Évaluation (bonus) : `gs_conf` (1), `gs_out` (2 : `{inet}` par `gs_isp2`), `gs_in` (2 : `gs_isp1`
+préfère `{own}` par `gs_isp2`, sa route directe porte la communauté), `gs_session` (1 : session avec
+`gs_isp1` toujours établie).
+""": """
+**Solution.**
+
+{solution}
+
+`neighbor … graceful-shutdown` gives a `local-preference` of 0 to the routes received from
+`gs_isp1`: `{inet}` goes through `gs_isp2` ({isp2}). The route-map adds the community to the routes
+announced to `gs_isp1`, which gives them a `local-preference` of 0 and prefers the path through
+`gs_isp2`. The session stays established: it can then be shut down without loss. (`bgp
+graceful-shutdown` would also tag the routes sent to `gs_isp2` and would not drain the link.)
+
+Evaluation (bonus): `gs_conf` (1), `gs_out` (2: `{inet}` through `gs_isp2`), `gs_in` (2: `gs_isp1`
+prefers `{own}` through `gs_isp2`, its direct route carries the community), `gs_session` (1: session
+with `gs_isp1` still established).
+""",
+    "graceful-shutdown vers gs_isp1": "graceful-shutdown towards gs_isp1",
+    "trafic sortant par gs_isp2": "outgoing traffic through gs_isp2",
+    "trafic entrant par gs_isp2": "incoming traffic through gs_isp2",
+    "session avec gs_isp1 maintenue": "session with gs_isp1 kept up",
+}}

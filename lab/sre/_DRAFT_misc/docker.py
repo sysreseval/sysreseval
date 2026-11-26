@@ -722,7 +722,8 @@ comme celui des machines `docker1` et `docker2` de ce TP).
         self.cmd('docker1', self.legacy_cmd(), step=4, timeout=60)
 
     @sre_state(user_allowed=True, description=tr(
-        "Recharge les images du TP et recrée `legacy` (après un `docker system prune -a` par exemple)."))
+        "Recharge les images du TP et recrée `legacy` (après un `docker system prune -a` par exemple).",
+        en="Loads the lab's images again and recreates `legacy` (after a `docker system prune -a`, for example)."))
     def restore_docker(self):
         for m in ('docker1', 'docker2'):
             load_images(self, m)
@@ -784,39 +785,48 @@ comme celui des machines `docker1` et `docker2` de ce TP).
         self.run_quiet('docker1', self.cmds_routed(), step=2)
         self.cmd('gw', f"ip route replace {d.nets.routed} via {d.ip('docker1')}", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 seule : le conteneur web."))
+    @sre_state(user_allowed=False, description=tr("Partie 1 seule : le conteneur web.",
+                                                  en="Part 1 alone: the web container."))
     def solve_containers(self):
         self._solve_containers()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 seule : l'image sre/app et le conteneur app."))
+    @sre_state(user_allowed=False, description=tr("Partie 2 seule : l'image sre/app et le conteneur app.",
+                                                  en="Part 2 alone: the sre/app image and the app container."))
     def solve_dockerfile(self):
         self._solve_dockerfile()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 seule : Redis et le volume cachedata."))
+    @sre_state(user_allowed=False, description=tr("Partie 3 seule : Redis et le volume cachedata.",
+                                                  en="Part 3 alone: Redis and the cachedata volume."))
     def solve_volumes(self):
         self._solve_volumes()
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 seule : les réseaux backend et isolated."))
+    @sre_state(user_allowed=False, description=tr("Partie 4 seule : les réseaux backend et isolated.",
+                                                  en="Part 4 alone: the backend and isolated networks."))
     def solve_networks(self):
         self._solve_networks()
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 seule : les réponses sur legacy."))
+    @sre_state(user_allowed=False, description=tr("Partie 5 seule : les réponses sur legacy.",
+                                                  en="Part 5 alone: the answers about legacy."))
     def solve_inspect(self):
         pass
 
-    @sre_state(user_allowed=False, description=tr("Partie 6 seule : le réseau macvlan et edge."))
+    @sre_state(user_allowed=False, description=tr("Partie 6 seule : le réseau macvlan et edge.",
+                                                  en="Part 6 alone: the macvlan network and edge."))
     def solve_macvlan(self):
         self._solve_macvlan()
 
-    @sre_state(user_allowed=False, description=tr("Partie 7 seule : le registre et l'image tirée par docker2."))
+    @sre_state(user_allowed=False, description=tr("Partie 7 seule : le registre et l'image tirée par docker2.",
+                                                  en="Part 7 alone: the registry and the image pulled by docker2."))
     def solve_registry(self):
         self._solve_registry()
 
-    @sre_state(user_allowed=False, description=tr("Partie 8 seule : le conteneur sandbox."))
+    @sre_state(user_allowed=False, description=tr("Partie 8 seule : le conteneur sandbox.",
+                                                  en="Part 8 alone: the sandbox container."))
     def solve_limits(self):
         self._solve_limits()
 
-    @sre_state(user_allowed=False, description=tr("Bonus seul : le réseau routé et la route de gw."))
+    @sre_state(user_allowed=False, description=tr("Bonus seul : le réseau routé et la route de gw.",
+                                                  en="Bonus alone: the routed network and the route on gw."))
     def solve_routed(self):
         self._solve_routed()
 
@@ -1776,5 +1786,1235 @@ Sur `gw` : `ip route add {subnet} via {docker1}`.
 {cmds}
 On `gw`: `ip route add {subnet} via {docker1}`.
 """,
+    "Docker : conteneurs, images, volumes et réseaux": "Docker: containers, images, volumes and networks",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "Conteneurs et machines virtuelles": "Containers and virtual machines",
+    """
+
+Une **machine virtuelle** émule un ordinateur complet : un hyperviseur fait tourner un second noyau,
+avec son propre système. Un **conteneur** n'est qu'un groupe de **processus ordinaires** du noyau de
+l'hôte, auxquels le noyau montre une vue restreinte du système : leurs fichiers, leurs interfaces
+réseau, leurs processus, leur nom de machine. Pas de second noyau : un conteneur démarre en une
+fraction de seconde et ne coûte que la mémoire de ses processus.
+
+Conséquences :
+
+- un conteneur Linux tourne sur un noyau Linux (Docker Desktop, sur Windows ou macOS, cache une
+  petite machine virtuelle Linux) ;
+- l'isolation est celle que le noyau garantit : plus faible que celle d'un hyperviseur ; root dans
+  un conteneur reste root pour le noyau, d'où l'intérêt des utilisateurs non privilégiés et des
+  capacités réduites (section @@ref:limits@@) ;
+- un conteneur est fait pour **un service** (un processus principal) ; on assemble plusieurs
+  conteneurs plutôt que d'en remplir un seul.
+
+Docker a popularisé le conteneur comme **unité de livraison** : une **image** contient
+l'application et tout ce dont elle a besoin (bibliothèques, interpréteur, fichiers), elle se
+construit à partir d'un fichier texte (le `Dockerfile`), se range dans un **registre** et
+s'exécute à l'identique sur le poste du développeur, en test et en production.
+""": """
+
+A **virtual machine** emulates a complete computer: a hypervisor runs a second kernel, with its own
+system. A **container** is only a group of **ordinary processes** of the host's kernel, to which the
+kernel shows a restricted view of the system: their files, their network interfaces, their
+processes, their host name. No second kernel: a container starts in a fraction of a second and only
+costs the memory of its processes.
+
+Consequences:
+
+- a Linux container runs on a Linux kernel (Docker Desktop, on Windows or macOS, hides a small Linux
+  virtual machine);
+- the isolation is the one the kernel guarantees: weaker than that of a hypervisor; root in a
+  container is still root for the kernel, hence the value of unprivileged users and reduced
+  capabilities (section @@ref:limits@@);
+- a container is meant for **one service** (one main process); several containers are put together
+  rather than one container being filled with everything.
+
+Docker made the container popular as a **unit of delivery**: an **image** holds the application and
+everything it needs (libraries, interpreter, files); it is built from a text file (the
+`Dockerfile`), stored in a **registry** and runs identically on the developer's workstation, in
+testing and in production.
+""",
+    "Les briques du noyau : namespaces et cgroups": "The kernel's building blocks: namespaces and cgroups",
+    """
+
+Les **namespaces** donnent à un groupe de processus sa propre vue d'une ressource :
+
+| namespace | ce que le conteneur voit |
+|-----------|--------------------------|
+| `mnt` | son propre arbre de fichiers (la racine est le système de fichiers de l'image) |
+| `pid` | ses propres numéros de processus : son processus principal est le **PID 1** |
+| `net` | ses propres interfaces, adresses, routes, règles de pare-feu, ports |
+| `uts` | son propre nom de machine (par défaut l'identifiant court du conteneur) |
+| `ipc` | ses propres files de messages et mémoires partagées |
+| `user` | (optionnel) ses propres numéros d'utilisateur |
+| `cgroup` | sa propre vue de la hiérarchie des cgroups |
+
+Les **cgroups** (*control groups*, version 2 ici) comptent et **limitent** ce que consomme un
+groupe de processus : mémoire (`memory.max`), processeur (`cpu.max`), nombre de processus
+(`pids.max`), entrées-sorties. Chaque conteneur a son cgroup, par exemple
+`/sys/fs/cgroup/system.slice/docker-<id>.scope/`.
+
+Sur l'hôte, les processus d'un conteneur sont visibles comme les autres (`ps`, `top`) ; leur
+numéro de processus « vu de l'hôte » donne accès à leurs namespaces :
+
+```
+P=$(docker inspect -f '{{.State.Pid}}' web)   # le PID 1 du conteneur, vu de l'hôte
+nsenter -t $P -n ip addr                       # une commande de l'hôte dans le namespace réseau du conteneur
+ls /proc/$P/root/etc                           # le système de fichiers du conteneur
+```
+""": """
+
+**Namespaces** give a group of processes its own view of a resource:
+
+| namespace | what the container sees |
+|-----------|--------------------------|
+| `mnt` | its own file tree (the root is the image's file system) |
+| `pid` | its own process numbers: its main process is **PID 1** |
+| `net` | its own interfaces, addresses, routes, firewall rules, ports |
+| `uts` | its own host name (by default the container's short id) |
+| `ipc` | its own message queues and shared memory |
+| `user` | (optional) its own user numbers |
+| `cgroup` | its own view of the cgroup hierarchy |
+
+**Cgroups** (*control groups*, version 2 here) account for and **limit** what a group of processes
+consumes: memory (`memory.max`), processor (`cpu.max`), number of processes (`pids.max`),
+input/output. Each container has its own cgroup, for example
+`/sys/fs/cgroup/system.slice/docker-<id>.scope/`.
+
+On the host, the processes of a container are visible like any others (`ps`, `top`); their process
+number "as seen from the host" gives access to their namespaces:
+
+```
+P=$(docker inspect -f '{{.State.Pid}}' web)   # the container's PID 1, as seen from the host
+nsenter -t $P -n ip addr                       # a host command in the container's network namespace
+ls /proc/$P/root/etc                           # the container's file system
+```
+""",
+    "Architecture de Docker": "Docker's architecture",
+    """
+
+- **`docker`**, le client en ligne de commande : il ne fait rien lui-même, il envoie des requêtes
+  HTTP (API REST) au démon par la socket `/var/run/docker.sock` (ou à un démon distant :
+  `DOCKER_HOST`, contextes). Être membre du groupe `docker` revient à être root sur la machine.
+- **`dockerd`**, le démon : il gère les images, les réseaux, les volumes, le pare-feu, et confie
+  l'exécution des conteneurs à containerd.
+- **`containerd`** : stocke les images (contenus et instantanés de systèmes de fichiers) et gère
+  le cycle de vie des conteneurs ; il lance pour chacun un petit processus
+  `containerd-shim-runc-v2` qui reste son parent.
+- **`runc`** : crée réellement le conteneur (namespaces, cgroup, racine, capacités) selon la
+  spécification de l'**OCI** (*Open Container Initiative*), puis s'efface.
+- Un **registre** (Docker Hub par défaut, `docker.io`) distribue les images par HTTP.
+
+Les fichiers : `/etc/docker/daemon.json` (configuration du démon, absent = valeurs par défaut),
+`/var/lib/docker` (volumes, réseaux, état du démon), `/var/lib/containerd` (les images).
+`docker info` résume la configuration, `docker version` les versions du client et du démon,
+`journalctl -u docker` les messages du démon.
+
+Les machines `docker1` et `docker2` de ce TP sont elles-mêmes des conteneurs (privilégiés, avec
+systemd) dans lesquels tourne un Docker complet : du « Docker dans Docker ».
+""": """
+
+- **`docker`**, the command-line client: it does nothing itself, it sends HTTP requests (REST API)
+  to the daemon through the socket `/var/run/docker.sock` (or to a remote daemon: `DOCKER_HOST`,
+  contexts). Being a member of the `docker` group amounts to being root on the machine.
+- **`dockerd`**, the daemon: it manages the images, the networks, the volumes and the firewall, and
+  hands the execution of the containers over to containerd.
+- **`containerd`**: stores the images (contents and file system snapshots) and manages the life
+  cycle of the containers; for each one it starts a small `containerd-shim-runc-v2` process that
+  remains its parent.
+- **`runc`**: actually creates the container (namespaces, cgroup, root, capabilities) following the
+  **OCI** (*Open Container Initiative*) specification, then steps aside.
+- A **registry** (Docker Hub by default, `docker.io`) distributes the images over HTTP.
+
+The files: `/etc/docker/daemon.json` (the daemon's configuration; absent = default values),
+`/var/lib/docker` (volumes, networks, state of the daemon), `/var/lib/containerd` (the images).
+`docker info` sums up the configuration, `docker version` the versions of the client and the
+daemon, `journalctl -u docker` the daemon's messages.
+
+The machines `docker1` and `docker2` of this lab are themselves containers (privileged, with
+systemd) in which a complete Docker runs: "Docker in Docker".
+""",
+    "Images et couches": "Images and layers",
+    """
+
+Une image est une **pile de couches** en lecture seule (chaque couche : les fichiers ajoutés,
+modifiés ou supprimés par une étape de construction) plus une **configuration** (commande par
+défaut, variables d'environnement, utilisateur, ports exposés, healthcheck, étiquettes). Au
+lancement d'un conteneur, une couche **inscriptible** propre au conteneur est posée par-dessus
+(système de fichiers *overlay*) : les couches de l'image sont partagées entre tous les conteneurs
+qui l'utilisent, et ce qu'un conteneur écrit disparaît avec lui.
+
+Le nom d'une image : `[registre/][espace/]dépôt[:étiquette]`. `nginx:alpine` est
+`docker.io/library/nginx:alpine` ; sans étiquette, c'est `:latest` (une étiquette comme une autre,
+pas forcément la plus récente). Une étiquette est une **étiquette mobile** : elle peut désigner
+demain une autre image. L'**empreinte** (*digest*, `sha256:...`) désigne un contenu précis,
+immuable : `nginx@sha256:...`. Une image peut regrouper plusieurs architectures (amd64, arm64)
+derrière un **index** ; `docker pull` prend celle de la machine.
+
+| commande | rôle |
+|----------|------|
+| `docker images` / `docker image ls` | les images locales |
+| `docker pull nginx:alpine` | télécharger depuis le registre |
+| `docker image inspect nginx:alpine` | la configuration (JSON) ; `-f '{{.Config.Cmd}}'` pour un champ |
+| `docker history nginx:alpine` | les couches et les étapes qui les ont produites |
+| `docker tag src dst` | donner un nom de plus à une image (aucune copie) |
+| `docker rmi nom` | retirer un nom ; l'image disparaît avec son dernier nom |
+| `docker save -o f.tar nom` / `docker load -i f.tar` | exporter / importer une image en archive |
+| `docker image prune` | supprimer les images sans nom |
+
+**Ce TP n'a pas d'accès à Internet** : les images utiles sont déjà chargées sur `docker1` et
+`docker2` (`docker images`) ; `docker pull` vers Docker Hub échoue.
+""": """
+
+An image is a **stack of read-only layers** (each layer: the files added, modified or deleted by one
+build step) plus a **configuration** (default command, environment variables, user, exposed ports,
+healthcheck, labels). When a container starts, a **writable** layer of its own is laid on top
+(*overlay* file system): the image's layers are shared by every container using it, and what a
+container writes disappears with it.
+
+The name of an image: `[registry/][namespace/]repository[:tag]`. `nginx:alpine` is
+`docker.io/library/nginx:alpine`; without a tag, it is `:latest` (a tag like any other, not
+necessarily the most recent one). A tag is a **moving label**: tomorrow it may point to another
+image. The **digest** (`sha256:...`) designates a precise, immutable content: `nginx@sha256:...`.
+An image may group several architectures (amd64, arm64) behind an **index**; `docker pull` takes
+the one of the machine.
+
+| command | role |
+|----------|------|
+| `docker images` / `docker image ls` | the local images |
+| `docker pull nginx:alpine` | download from the registry |
+| `docker image inspect nginx:alpine` | the configuration (JSON); `-f '{{.Config.Cmd}}'` for one field |
+| `docker history nginx:alpine` | the layers and the steps that produced them |
+| `docker tag src dst` | give an image one more name (no copy) |
+| `docker rmi name` | remove a name; the image disappears with its last name |
+| `docker save -o f.tar name` / `docker load -i f.tar` | export / import an image as an archive |
+| `docker image prune` | delete the images without a name |
+
+**This lab has no Internet access**: the images you need are already loaded on `docker1` and
+`docker2` (`docker images`); `docker pull` from Docker Hub fails.
+""",
+    "Le Dockerfile": "The Dockerfile",
+    """
+
+`docker build -t nom:étiquette répertoire` construit une image à partir du fichier `Dockerfile` du
+répertoire (le **contexte**, envoyé au moteur de construction BuildKit ; un fichier
+`.dockerignore` en exclut des fichiers). Chaque instruction est une étape :
+
+| instruction | effet |
+|-------------|-------|
+| `FROM image` | l'image de départ (toujours la première instruction) |
+| `RUN commande` | exécute une commande pendant la construction : **une couche** |
+| `COPY src dst` | copie des fichiers du contexte dans l'image : **une couche** (`--chown=`, `--chmod=`) |
+| `WORKDIR /app` | répertoire courant des instructions suivantes et du conteneur |
+| `ENV NOM=valeur` | variable d'environnement (construction et exécution) |
+| `ARG NOM=défaut` | variable de construction seulement (`--build-arg NOM=...`) |
+| `USER nom` | utilisateur des `RUN` suivants et du processus du conteneur |
+| `EXPOSE 8080` | **documente** le port d'écoute (ne publie rien) |
+| `HEALTHCHECK CMD ...` | commande de santé lancée périodiquement dans le conteneur |
+| `LABEL clé=valeur` | métadonnée de l'image |
+| `ENTRYPOINT [...]` / `CMD [...]` | la commande du conteneur (`CMD` = arguments par défaut, remplaçables) |
+
+Seuls `RUN`, `COPY` et `ADD` ajoutent des fichiers ; les autres instructions ne modifient que la
+configuration.
+
+**Le cache.** BuildKit réutilise le résultat d'une étape tant que l'instruction et ses entrées
+(fichiers copiés, étape précédente) n'ont pas changé ; dès qu'une étape change, toutes les
+suivantes sont refaites. On place donc en premier ce qui change rarement (dépendances) et en
+dernier ce qui change souvent (le code).
+
+**Forme exec et forme shell.** `CMD ["python3", "app.py"]` (forme *exec*, un tableau JSON) lance
+`python3` directement : c'est le PID 1 du conteneur, il reçoit le signal `SIGTERM` de `docker stop`.
+`CMD python3 app.py` (forme *shell*) lance `/bin/sh -c "python3 app.py"` : le PID 1 est le shell,
+qui ne transmet pas les signaux ; `docker stop` attend 10 secondes puis tue tout (`SIGKILL`).
+
+**Utilisateur.** Par défaut, le processus tourne en root. Un `USER` non privilégié limite les
+dégâts d'une faille de l'application :
+
+```
+RUN adduser -D -u 1500 app      # Alpine (BusyBox) ; Debian : useradd -u 1500 app
+USER app
+```
+
+**Healthcheck.** Docker lance la commande dans le conteneur (code de retour 0 = sain) et tient l'état
+`starting`, puis `healthy` ou `unhealthy` (`docker ps`, `docker inspect -f '{{.State.Health.Status}}'`) :
+
+```
+HEALTHCHECK --interval=5s --timeout=3s --start-period=20s --start-interval=1s \\
+  CMD wget -qO- http://127.0.0.1:8080/health || exit 1
+```
+
+Les images Alpine ont `wget` (BusyBox) mais pas `curl`. Sans Internet, `RUN apk add` ou
+`pip install` échouent ; et n'écrivez pas de ligne `# syntax=docker/dockerfile:1` en tête du
+fichier : BuildKit irait chercher cette image sur Docker Hub.
+""": """
+
+`docker build -t name:tag directory` builds an image from the `Dockerfile` file of the directory
+(the **context**, sent to the BuildKit build engine; a `.dockerignore` file excludes files from
+it). Each instruction is a step:
+
+| instruction | effect |
+|-------------|-------|
+| `FROM image` | the starting image (always the first instruction) |
+| `RUN command` | runs a command during the build: **one layer** |
+| `COPY src dst` | copies files from the context into the image: **one layer** (`--chown=`, `--chmod=`) |
+| `WORKDIR /app` | current directory of the following instructions and of the container |
+| `ENV NAME=value` | environment variable (build and run time) |
+| `ARG NAME=default` | build-time variable only (`--build-arg NAME=...`) |
+| `USER name` | user of the following `RUN` instructions and of the container's process |
+| `EXPOSE 8080` | **documents** the listening port (publishes nothing) |
+| `HEALTHCHECK CMD ...` | health command run periodically in the container |
+| `LABEL key=value` | metadata of the image |
+| `ENTRYPOINT [...]` / `CMD [...]` | the container's command (`CMD` = default arguments, replaceable) |
+
+Only `RUN`, `COPY` and `ADD` add files; the other instructions only modify the
+configuration.
+
+**The cache.** BuildKit reuses the result of a step as long as the instruction and its inputs
+(copied files, previous step) have not changed; as soon as a step changes, all the following ones
+are done again. So what rarely changes (dependencies) goes first and what changes often (the code)
+goes last.
+
+**Exec form and shell form.** `CMD ["python3", "app.py"]` (*exec* form, a JSON array) starts
+`python3` directly: it is the container's PID 1, it receives the `SIGTERM` signal of `docker stop`.
+`CMD python3 app.py` (*shell* form) starts `/bin/sh -c "python3 app.py"`: PID 1 is the shell,
+which does not pass the signals on; `docker stop` waits 10 seconds then kills everything (`SIGKILL`).
+
+**User.** By default, the process runs as root. An unprivileged `USER` limits the damage of a flaw
+in the application:
+
+```
+RUN adduser -D -u 1500 app      # Alpine (BusyBox); Debian: useradd -u 1500 app
+USER app
+```
+
+**Healthcheck.** Docker runs the command in the container (exit code 0 = healthy) and keeps the state
+`starting`, then `healthy` or `unhealthy` (`docker ps`, `docker inspect -f '{{.State.Health.Status}}'`):
+
+```
+HEALTHCHECK --interval=5s --timeout=3s --start-period=20s --start-interval=1s \\
+  CMD wget -qO- http://127.0.0.1:8080/health || exit 1
+```
+
+Alpine images have `wget` (BusyBox) but not `curl`. Without Internet, `RUN apk add` or
+`pip install` fail; and do not write a `# syntax=docker/dockerfile:1` line at the top of the
+file: BuildKit would go and fetch that image from Docker Hub.
+""",
+    "Vie d'un conteneur": "Life cycle of a container",
+    """
+
+| commande | rôle |
+|----------|------|
+| `docker run -d --name web nginx:alpine` | créer et démarrer en arrière-plan (`-d`) un conteneur nommé |
+| `docker run --rm -it alpine sh` | un conteneur interactif (`-it`), supprimé à la sortie (`--rm`) |
+| `docker ps` / `docker ps -a` | les conteneurs actifs / tous, arrêtés compris |
+| `docker logs -f web` | la sortie standard et d'erreur du processus principal |
+| `docker exec -it web sh` | une commande de plus dans un conteneur actif |
+| `docker stop web` / `docker start web` | arrêter (`SIGTERM`, puis `SIGKILL` après 10 s) / redémarrer |
+| `docker rm -f web` | supprimer (`-f` : même s'il tourne) |
+| `docker inspect web` | toute la configuration et l'état (JSON) |
+| `docker cp web:/etc/nginx/nginx.conf .` | copier un fichier depuis / vers un conteneur |
+| `docker stats` | consommation en direct |
+
+Un conteneur arrêté garde sa couche inscriptible : `docker start` le relance avec les fichiers
+qu'il avait modifiés. Un nouveau conteneur (`docker rm` puis `docker run`) repart de l'image.
+
+**Politique de redémarrage** (`--restart`) : `no` (défaut), `on-failure[:N]` (si le processus
+sort avec un code non nul), `always` (toujours, y compris au démarrage du démon), `unless-stopped`
+(comme `always`, sauf si on l'a arrêté à la main).
+""": """
+
+| command | role |
+|----------|------|
+| `docker run -d --name web nginx:alpine` | create and start a named container in the background (`-d`) |
+| `docker run --rm -it alpine sh` | an interactive container (`-it`), deleted on exit (`--rm`) |
+| `docker ps` / `docker ps -a` | the running containers / all of them, stopped ones included |
+| `docker logs -f web` | the standard output and error of the main process |
+| `docker exec -it web sh` | one more command in a running container |
+| `docker stop web` / `docker start web` | stop (`SIGTERM`, then `SIGKILL` after 10 s) / start again |
+| `docker rm -f web` | delete (`-f`: even if it is running) |
+| `docker inspect web` | the whole configuration and state (JSON) |
+| `docker cp web:/etc/nginx/nginx.conf .` | copy a file from / to a container |
+| `docker stats` | live resource usage |
+
+A stopped container keeps its writable layer: `docker start` starts it again with the files it had
+modified. A new container (`docker rm` then `docker run`) starts again from the image.
+
+**Restart policy** (`--restart`): `no` (default), `on-failure[:N]` (if the process exits with a
+non-zero code), `always` (always, including when the daemon starts), `unless-stopped` (like
+`always`, unless it was stopped by hand).
+""",
+    "Publier un port": "Publishing a port",
+    """
+
+Un conteneur sur le réseau `bridge` par défaut a une adresse privée (`172.17.0.x`) que seul l'hôte
+peut joindre. **Publier** un port (`-p 8081:80` : port 8081 de l'hôte vers le port 80 du conteneur ;
+`-p 127.0.0.1:8081:80` : sur une seule adresse de l'hôte ; `-p 80` : un port libre de l'hôte choisi
+par Docker, voir `docker port`) le rend accessible depuis les autres machines :
+
+- pour le trafic qui **arrive** sur l'hôte, Docker ajoute une règle de **DNAT** dans la table `nat`
+  du pare-feu (chaîne **`DOCKER`**, appelée depuis `PREROUTING` pour les adresses locales) qui
+  réécrit la destination `hôte:8081` en `172.17.0.2:80` ; la réponse repasse par l'hôte
+  (MASQUERADE pour les connexions sortantes des conteneurs) ;
+- pour une connexion faite **depuis l'hôte lui-même** vers `localhost:8081`, le trafic ne passe pas
+  par `PREROUTING` : c'est le **`docker-proxy`**, un petit relais en espace utilisateur que Docker
+  lance par port publié (visible dans `ss -ltnp`), qui accepte la connexion et la relaie.
+
+```
+iptables -t nat -S DOCKER          # les règles de DNAT des ports publiés
+ss -ltnp | grep docker-proxy       # les relais en écoute
+```
+
+Les machines de ce TP montrent aussi des chaînes `DOCKER_OUTPUT` et `DOCKER_POSTROUTING` : elles
+viennent du Docker de la machine **hôte** qui fait tourner le TP (le résolveur DNS de ses réseaux,
+`127.0.0.11`), pas du Docker de `docker1`.
+""": """
+
+A container on the default `bridge` network has a private address (`172.17.0.x`) that only the host
+can reach. **Publishing** a port (`-p 8081:80`: port 8081 of the host to port 80 of the container;
+`-p 127.0.0.1:8081:80`: on a single address of the host; `-p 80`: a free port of the host chosen
+by Docker, see `docker port`) makes it reachable from the other machines:
+
+- for the traffic that **arrives** at the host, Docker adds a **DNAT** rule to the `nat` table of
+  the firewall (chain **`DOCKER`**, called from `PREROUTING` for the local addresses) which rewrites
+  the destination `host:8081` into `172.17.0.2:80`; the reply goes back through the host
+  (MASQUERADE for the outgoing connections of the containers);
+- for a connection made **from the host itself** to `localhost:8081`, the traffic does not go
+  through `PREROUTING`: it is the **`docker-proxy`**, a small user-space relay that Docker starts
+  for each published port (visible in `ss -ltnp`), that accepts the connection and relays it.
+
+```
+iptables -t nat -S DOCKER          # the DNAT rules of the published ports
+ss -ltnp | grep docker-proxy       # the listening relays
+```
+
+The machines of this lab also show `DOCKER_OUTPUT` and `DOCKER_POSTROUTING` chains: they come
+from the Docker of the **host** machine that runs the lab (the DNS resolver of its networks,
+`127.0.0.11`), not from the Docker of `docker1`.
+""",
+    "Stocker des données": "Storing data",
+    """
+
+Ce qu'un conteneur écrit dans sa couche inscriptible disparaît avec lui. Pour garder des données :
+
+| type | option | où sont les données |
+|------|--------|----------------------|
+| **volume nommé** | `-v cachedata:/data` ou `--mount type=volume,src=cachedata,dst=/data` | géré par Docker : `/var/lib/docker/volumes/cachedata/_data` sur l'hôte |
+| **montage lié** (*bind mount*) | `-v /srv/www:/usr/share/nginx/html:ro` ou `--mount type=bind,...` | un répertoire existant de l'hôte |
+| **tmpfs** | `--tmpfs /tmp` | en mémoire, perdu à l'arrêt |
+
+- Un volume nommé est créé au premier usage (`docker run -v nom:...`) ou par `docker volume
+  create nom` ; il survit à la suppression du conteneur et peut être monté dans un autre.
+  `docker volume ls`, `docker volume inspect nom` (champ `Mountpoint`), `docker volume rm nom`.
+- Au premier montage d'un volume **vide**, Docker y copie le contenu de l'image à cet endroit ; un
+  montage lié, lui, masque ce que l'image contenait.
+- Le suffixe `:ro` monte en lecture seule : le conteneur ne peut pas modifier ces fichiers.
+- `docker rm -v` supprime aussi les volumes **anonymes** du conteneur, jamais les volumes nommés.
+
+Redis, par exemple, écrit ses données dans `/data` : lancé avec `--appendonly yes`, il journalise
+chaque écriture dans des fichiers (`appendonlydir/`) relus à son redémarrage.
+""": """
+
+What a container writes in its writable layer disappears with it. To keep data:
+
+| type | option | where the data lives |
+|------|--------|----------------------|
+| **named volume** | `-v cachedata:/data` or `--mount type=volume,src=cachedata,dst=/data` | managed by Docker: `/var/lib/docker/volumes/cachedata/_data` on the host |
+| **bind mount** | `-v /srv/www:/usr/share/nginx/html:ro` or `--mount type=bind,...` | an existing directory of the host |
+| **tmpfs** | `--tmpfs /tmp` | in memory, lost when the container stops |
+
+- A named volume is created on first use (`docker run -v name:...`) or by `docker volume
+  create name`; it survives the deletion of the container and can be mounted in another one.
+  `docker volume ls`, `docker volume inspect name` (field `Mountpoint`), `docker volume rm name`.
+- The first time an **empty** volume is mounted, Docker copies into it what the image holds at that
+  location; a bind mount, on the other hand, hides what the image contained.
+- The `:ro` suffix mounts read-only: the container cannot modify those files.
+- `docker rm -v` also deletes the **anonymous** volumes of the container, never the named volumes.
+
+Redis, for example, writes its data in `/data`: started with `--appendonly yes`, it logs every
+write in files (`appendonlydir/`) read again when it restarts.
+""",
+    "Réseaux Docker": "Docker networks",
+    """
+
+`docker network ls` liste les réseaux ; trois existent toujours : `bridge` (le réseau par défaut),
+`host` et `none`.
+""": """
+
+`docker network ls` lists the networks; three always exist: `bridge` (the default network),
+`host` and `none`.
+""",
+    "Le réseau bridge par défaut": "The default bridge network",
+    """
+
+Le pont Linux `docker0` (`172.17.0.1/16`) relie les conteneurs lancés sans option `--network`.
+Chacun reçoit une paire d'interfaces **veth** : `eth0` dans le conteneur, l'autre bout (`vethXXXX`)
+attachée à `docker0` sur l'hôte ; la route par défaut du conteneur passe par `172.17.0.1`, et
+l'hôte fait du MASQUERADE pour la sortie. **Pas de résolution de noms** entre conteneurs sur ce
+réseau (seulement les adresses, qui changent à chaque création).
+""": """
+
+The Linux bridge `docker0` (`172.17.0.1/16`) connects the containers started without a `--network`
+option. Each one gets a pair of **veth** interfaces: `eth0` in the container, the other end
+(`vethXXXX`) attached to `docker0` on the host; the container's default route goes through
+`172.17.0.1`, and the host does MASQUERADE for outgoing traffic. **No name resolution** between
+containers on this network (only the addresses, which change at every creation).
+""",
+    "Les réseaux définis par l'utilisateur": "User-defined networks",
+    """
+
+```
+docker network create --subnet 10.20.30.0/24 --gateway 10.20.30.254 backend
+docker run -d --name alpha --network backend --ip 10.20.30.10 alpine sleep infinity
+docker run -d --name beta --network backend alpine sleep infinity
+docker network connect autre beta       # une interface de plus, sur un second réseau
+```
+
+Chaque réseau est un pont Linux de plus (`br-<début de l'identifiant>`). Sans `--subnet`, Docker
+prend un sous-réseau libre dans ses réserves (`172.18.0.0/16`, `172.19.0.0/16`...). Sur un réseau
+défini par l'utilisateur, le **DNS intégré** de Docker répond aux noms des conteneurs (et à leurs
+alias, `--network-alias`) : dans chaque conteneur, `/etc/resolv.conf` désigne `127.0.0.11`, un
+résolveur que `dockerd` fait écouter dans le namespace réseau du conteneur. Deux réseaux
+différents sont isolés l'un de l'autre.
+
+`--internal` crée un réseau **sans accès à l'extérieur** : pas de route par défaut, pas de NAT ; ses
+conteneurs ne se parlent qu'entre eux.
+""": """
+
+```
+docker network create --subnet 10.20.30.0/24 --gateway 10.20.30.254 backend
+docker run -d --name alpha --network backend --ip 10.20.30.10 alpine sleep infinity
+docker run -d --name beta --network backend alpine sleep infinity
+docker network connect other beta       # one more interface, on a second network
+```
+
+Each network is one more Linux bridge (`br-<start of the id>`). Without `--subnet`, Docker takes
+a free subnet from its pools (`172.18.0.0/16`, `172.19.0.0/16`...). On a user-defined network,
+Docker's **embedded DNS** answers the names of the containers (and their aliases,
+`--network-alias`): in each container, `/etc/resolv.conf` points to `127.0.0.11`, a resolver that
+`dockerd` makes listen in the container's network namespace. Two different networks are isolated
+from each other.
+
+`--internal` creates a network **without access to the outside**: no default route, no NAT; its
+containers only talk to each other.
+""",
+    "macvlan : un conteneur sur le réseau physique": "macvlan: a container on the physical network",
+    """
+
+Un réseau **macvlan** donne au conteneur une interface **sur le réseau de l'hôte**, avec sa propre
+adresse MAC et une adresse du réseau local : les autres machines le joignent directement, sans
+publication de port ni NAT, comme une machine de plus.
+
+```
+docker network create -d macvlan --subnet 10.1.2.0/24 --gateway 10.1.2.254 \\
+    --ip-range 10.1.2.64/28 -o parent=eth0 lanmac
+docker run -d --name edge --network lanmac --ip 10.1.2.70 nginx:alpine
+```
+
+- `parent` : l'interface physique de l'hôte ; `--gateway` : le **vrai** routeur du réseau local ;
+- `--ip-range` : la plage que Docker peut attribuer ; Docker ne connaît pas les machines du réseau
+  local, il faut lui réserver des adresses que personne d'autre n'utilise ;
+- le commutateur voit une adresse MAC de plus derrière le port de l'hôte (certains commutateurs
+  ou hyperviseurs l'interdisent) ;
+- le noyau ne fait **pas** passer le trafic entre l'interface parente et ses interfaces macvlan :
+  l'hôte lui-même ne joint pas ses conteneurs macvlan (il faudrait une interface macvlan de plus
+  sur l'hôte).
+
+`ipvlan` est une variante où tous les conteneurs partagent l'adresse MAC de l'hôte.
+""": """
+
+A **macvlan** network gives the container an interface **on the host's network**, with its own MAC
+address and an address of the local network: the other machines reach it directly, with no port
+publishing and no NAT, like one more machine.
+
+```
+docker network create -d macvlan --subnet 10.1.2.0/24 --gateway 10.1.2.254 \\
+    --ip-range 10.1.2.64/28 -o parent=eth0 lanmac
+docker run -d --name edge --network lanmac --ip 10.1.2.70 nginx:alpine
+```
+
+- `parent`: the physical interface of the host; `--gateway`: the **real** router of the local
+  network;
+- `--ip-range`: the range Docker may assign; Docker does not know the machines of the local
+  network, so you must reserve for it addresses that nobody else uses;
+- the switch sees one more MAC address behind the host's port (some switches or hypervisors
+  forbid it);
+- the kernel does **not** pass traffic between the parent interface and its macvlan interfaces:
+  the host itself does not reach its macvlan containers (it would need one more macvlan interface
+  on the host).
+
+`ipvlan` is a variant where all the containers share the MAC address of the host.
+""",
+    "Le mode routé": "Routed mode",
+    """
+
+Un réseau bridge peut se passer de NAT : avec l'option
+`-o com.docker.network.bridge.gateway_mode_ipv4=routed`, les conteneurs gardent leur adresse
+quand ils sortent, et les autres machines les joignent **à leur adresse**, à condition de savoir
+router ce sous-réseau vers l'hôte (une route statique sur le routeur du réseau, ou un protocole de
+routage). Docker n'ouvre que les ports **publiés** (`-p 80` suffit : le port du conteneur, sur son
+adresse) et le ping ; le reste est rejeté.
+
+```
+docker network create --subnet 10.40.0.0/24 -o com.docker.network.bridge.gateway_mode_ipv4=routed routed
+docker run -d --name direct --network routed --ip 10.40.0.10 -p 80 nginx:alpine
+ip route add 10.40.0.0/24 via <adresse de l'hôte Docker>      # sur le routeur
+```
+""": """
+
+A bridge network can do without NAT: with the option
+`-o com.docker.network.bridge.gateway_mode_ipv4=routed`, the containers keep their address when
+they go out, and the other machines reach them **at their address**, provided they know how to
+route that subnet to the host (a static route on the network's router, or a routing protocol).
+Docker only opens the **published** ports (`-p 80` is enough: the container's port, on its
+address) and ping; the rest is rejected.
+
+```
+docker network create --subnet 10.40.0.0/24 -o com.docker.network.bridge.gateway_mode_ipv4=routed routed
+docker run -d --name direct --network routed --ip 10.40.0.10 -p 80 nginx:alpine
+ip route add 10.40.0.0/24 via <address of the Docker host>    # on the router
+```
+""",
+    "host et none": "host and none",
+    """
+
+`--network host` : le conteneur partage le namespace réseau de l'hôte (ses interfaces, ses ports :
+pas de publication, pas d'isolation réseau). `--network none` : seulement `lo`.
+""": """
+
+`--network host`: the container shares the host's network namespace (its interfaces, its ports:
+no publishing, no network isolation). `--network none`: only `lo`.
+""",
+    "Sous le capot": "Under the hood",
+    """
+
+Tout ce que Docker fait pour le réseau se voit avec les outils habituels :
+
+```
+ip link show type bridge                 # docker0, br-xxxx
+ip link show master docker0              # les veth des conteneurs du réseau par défaut
+bridge link                              # les ports de chaque pont
+ip -d link show vethXXXX                 # une veth ; le n° après @if est l'interface de l'autre bout
+iptables -t nat -S                       # DNAT des ports publiés, MASQUERADE de sortie
+iptables -S DOCKER-FORWARD               # le filtrage entre réseaux, et vers les ports publiés
+nsenter -t $(docker inspect -f '{{.State.Pid}}' web) -n ip -br addr   # eth0 du conteneur
+```
+
+Dans un conteneur, `cat /sys/class/net/eth0/iflink` donne le numéro de l'interface de l'autre bout
+sur l'hôte (`ip -o link | grep '^N:'`).
+""": """
+
+Everything Docker does for the network can be seen with the usual tools:
+
+```
+ip link show type bridge                 # docker0, br-xxxx
+ip link show master docker0              # the veths of the containers of the default network
+bridge link                              # the ports of each bridge
+ip -d link show vethXXXX                 # one veth; the number after @if is the interface at the other end
+iptables -t nat -S                       # DNAT of the published ports, outgoing MASQUERADE
+iptables -S DOCKER-FORWARD               # the filtering between networks, and to the published ports
+nsenter -t $(docker inspect -f '{{.State.Pid}}' web) -n ip -br addr   # eth0 of the container
+```
+
+In a container, `cat /sys/class/net/eth0/iflink` gives the number of the interface at the other end,
+on the host (`ip -o link | grep '^N:'`).
+""",
+    "Registres, étiquettes et empreintes": "Registries, tags and digests",
+    """
+
+Un **registre** stocke des dépôts d'images et les sert par une API HTTP (`/v2/`) : Docker Hub, les
+registres des hébergeurs, ou le vôtre, avec l'image officielle `registry` (le projet
+*distribution*) :
+
+```
+docker run -d --name registry --restart always -p 5000:5000 -v registry-data:/var/lib/registry registry
+docker tag sre/app:1.0 localhost:5000/sre/app:1.0     # le nom de l'image désigne le registre
+docker push localhost:5000/sre/app:1.0
+curl http://localhost:5000/v2/_catalog                 # {"repositories":["sre/app"]}
+curl http://localhost:5000/v2/sre/app/tags/list
+```
+
+Le registre répond à `docker push` / `docker pull` avec l'en-tête `Docker-Content-Digest` :
+l'empreinte de ce qu'il stocke sous cette étiquette ; une image récupérée par `docker pull` garde
+cette empreinte (`docker image inspect -f '{{.Id}} {{.RepoDigests}}'`).
+
+Docker exige **HTTPS** pour parler à un registre, sauf pour `localhost` et `127.0.0.0/8`, et sauf
+les registres déclarés non sécurisés dans `/etc/docker/daemon.json` :
+
+```
+{
+  "insecure-registries": ["docker1:5000"]
+}
+```
+
+`daemon.json` est relu sans redémarrer le démon ni ses conteneurs par **`systemctl reload docker`**
+(signal `SIGHUP`) pour les réglages qui le permettent, dont `insecure-registries` ; un
+`systemctl restart docker` arrête tous les conteneurs (ceux qui ont une politique de redémarrage
+repartent). `docker info` montre les registres non sécurisés retenus. Une erreur de syntaxe dans
+`daemon.json` empêche le démon de redémarrer : vérifiez avec `dockerd --validate`.
+""": """
+
+A **registry** stores image repositories and serves them through an HTTP API (`/v2/`): Docker Hub,
+the registries of the hosting providers, or your own, with the official `registry` image (the
+*distribution* project):
+
+```
+docker run -d --name registry --restart always -p 5000:5000 -v registry-data:/var/lib/registry registry
+docker tag sre/app:1.0 localhost:5000/sre/app:1.0     # the name of the image designates the registry
+docker push localhost:5000/sre/app:1.0
+curl http://localhost:5000/v2/_catalog                 # {"repositories":["sre/app"]}
+curl http://localhost:5000/v2/sre/app/tags/list
+```
+
+The registry answers `docker push` / `docker pull` with the `Docker-Content-Digest` header: the
+digest of what it stores under that tag; an image fetched by `docker pull` keeps that digest
+(`docker image inspect -f '{{.Id}} {{.RepoDigests}}'`).
+
+Docker requires **HTTPS** to talk to a registry, except for `localhost` and `127.0.0.0/8`, and
+except for the registries declared insecure in `/etc/docker/daemon.json`:
+
+```
+{
+  "insecure-registries": ["docker1:5000"]
+}
+```
+
+**`systemctl reload docker`** (signal `SIGHUP`) reads `daemon.json` again without restarting the
+daemon or its containers, for the settings that allow it, `insecure-registries` among them; a
+`systemctl restart docker` stops every container (those with a restart policy start again).
+`docker info` shows the insecure registries it has retained. A syntax error in `daemon.json`
+prevents the daemon from restarting: check with `dockerd --validate`.
+""",
+    "Limiter et durcir un conteneur": "Limiting and hardening a container",
+    """
+
+| option | effet |
+|--------|-------|
+| `--memory 128m` | mémoire maximale (`memory.max` du cgroup) ; au-delà, le noyau tue un processus |
+| `--cpus 0.5` | un demi-processeur au plus (`cpu.max` = `50000 100000`) |
+| `--pids-limit 50` | nombre maximal de processus (bombes fork) |
+| `--read-only` | racine en lecture seule (ajoutez `--tmpfs /tmp` si l'application écrit) |
+| `--cap-drop ALL` (`--cap-add NET_BIND_SERVICE`) | retirer les **capacités** Linux de root dans le conteneur |
+| `--security-opt no-new-privileges` | interdit de gagner des droits (programmes setuid) |
+| `--user 1000:1000` | utilisateur et groupe du processus |
+
+`docker inspect` (champ `HostConfig`) montre ce qui a été demandé ; `docker stats` la
+consommation. Root dans un conteneur sans `--cap-drop` garde des capacités dangereuses (et
+`--privileged` les donne **toutes**, avec l'accès aux périphériques de l'hôte : à réserver aux cas
+comme celui des machines `docker1` et `docker2` de ce TP).
+""": """
+
+| option | effect |
+|--------|-------|
+| `--memory 128m` | maximum memory (`memory.max` of the cgroup); beyond it, the kernel kills a process |
+| `--cpus 0.5` | half a processor at most (`cpu.max` = `50000 100000`) |
+| `--pids-limit 50` | maximum number of processes (fork bombs) |
+| `--read-only` | read-only root (add `--tmpfs /tmp` if the application writes) |
+| `--cap-drop ALL` (`--cap-add NET_BIND_SERVICE`) | remove the Linux **capabilities** of root in the container |
+| `--security-opt no-new-privileges` | forbids gaining privileges (setuid programs) |
+| `--user 1000:1000` | user and group of the process |
+
+`docker inspect` (field `HostConfig`) shows what was requested; `docker stats` the resource usage.
+Root in a container without `--cap-drop` keeps dangerous capabilities (and `--privileged` gives
+**all** of them, with access to the host's devices: to be kept for cases such as the machines
+`docker1` and `docker2` of this lab).
+""",
+    "Aide-mémoire": "Cheat sheet",
+    """
+
+| besoin | commande |
+|--------|----------|
+| lancer un service | `docker run -d --name web --restart unless-stopped -p 8081:80 nginx:alpine` |
+| voir les conteneurs, les journaux | `docker ps -a`, `docker logs -f web` |
+| entrer dans un conteneur | `docker exec -it web sh` |
+| construire une image | `docker build -t sre/app:1.0 -t sre/app:latest /root/app` |
+| un champ de la configuration | `docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' web` |
+| état de santé | `docker inspect -f '{{.State.Health.Status}}' app` |
+| volume nommé | `docker run -v cachedata:/data ...`, `docker volume inspect cachedata` |
+| réseau | `docker network create --subnet S --gateway G nom`, `docker run --network nom --ip A` |
+| macvlan | `docker network create -d macvlan --subnet S --gateway G --ip-range R -o parent=eth0 nom` |
+| registre | `docker tag img localhost:5000/dépôt:tag && docker push localhost:5000/dépôt:tag` |
+| registre HTTP | `/etc/docker/daemon.json` : `insecure-registries`, puis `systemctl reload docker` |
+| namespaces d'un conteneur | `nsenter -t $(docker inspect -f '{{.State.Pid}}' c) -n ip addr` |
+| ménage | `docker rm -f c`, `docker image prune`, `docker network rm n`, `docker volume rm v` |
+""": """
+
+| need | command |
+|--------|----------|
+| start a service | `docker run -d --name web --restart unless-stopped -p 8081:80 nginx:alpine` |
+| see the containers, the logs | `docker ps -a`, `docker logs -f web` |
+| enter a container | `docker exec -it web sh` |
+| build an image | `docker build -t sre/app:1.0 -t sre/app:latest /root/app` |
+| one field of the configuration | `docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' web` |
+| health state | `docker inspect -f '{{.State.Health.Status}}' app` |
+| named volume | `docker run -v cachedata:/data ...`, `docker volume inspect cachedata` |
+| network | `docker network create --subnet S --gateway G name`, `docker run --network name --ip A` |
+| macvlan | `docker network create -d macvlan --subnet S --gateway G --ip-range R -o parent=eth0 name` |
+| registry | `docker tag img localhost:5000/repository:tag && docker push localhost:5000/repository:tag` |
+| HTTP registry | `/etc/docker/daemon.json`: `insecure-registries`, then `systemctl reload docker` |
+| namespaces of a container | `nsenter -t $(docker inspect -f '{{.State.Pid}}' c) -n ip addr` |
+| clean-up | `docker rm -f c`, `docker image prune`, `docker network rm n`, `docker volume rm v` |
+""",
+    "Recharge les images du TP et recrée `legacy` (après un `docker system prune -a` par exemple).": "Loads the lab's images again and recreates `legacy` (after a `docker system prune -a`, for example).",
+    "Partie 1 seule : le conteneur web.": "Part 1 alone: the web container.",
+    "Partie 2 seule : l'image sre/app et le conteneur app.": "Part 2 alone: the sre/app image and the app container.",
+    "Partie 3 seule : Redis et le volume cachedata.": "Part 3 alone: Redis and the cachedata volume.",
+    "Partie 4 seule : les réseaux backend et isolated.": "Part 4 alone: the backend and isolated networks.",
+    "Partie 5 seule : les réponses sur legacy.": "Part 5 alone: the answers about legacy.",
+    "Partie 6 seule : le réseau macvlan et edge.": "Part 6 alone: the macvlan network and edge.",
+    "Partie 7 seule : le registre et l'image tirée par docker2.": "Part 7 alone: the registry and the image pulled by docker2.",
+    "Partie 8 seule : le conteneur sandbox.": "Part 8 alone: the sandbox container.",
+    "Bonus seul : le réseau routé et la route de gw.": "Bonus alone: the routed network and the route on gw.",
+    "Toute la solution (bonus compris) et les réponses.": "The whole solution (bonus included) and the answers.",
+    """
+| machine | rôle | adresse |
+|---------|------|---------|
+| `docker1` | hôte Docker : **vous travaillez ici** (parties 1 à 8) | `{docker1}` |
+| `docker2` | second hôte Docker (partie 7) | `{docker2}` |
+| `gw` | routeur entre `lan` et `ext` | `{gw}` (`lan`), `{gw_ext}` (`ext`) |
+| `client` | poste extérieur : vos essais de connexion | `{client}` |
+""": """
+| machine | role | address |
+|---------|------|---------|
+| `docker1` | Docker host: **you work here** (parts 1 to 8) | `{docker1}` |
+| `docker2` | second Docker host (part 7) | `{docker2}` |
+| `gw` | router between `lan` and `ext` | `{gw}` (`lan`), `{gw_ext}` (`ext`) |
+| `client` | outside host: your connection tests | `{client}` |
+""",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente les conteneurs, l'architecture de Docker, les images
+et le `Dockerfile`, le stockage, les réseaux, les registres et le durcissement.
+
+**Le réseau.** Le réseau local `lan` (`{lan}`, un commutateur) relie les deux hôtes Docker et le
+routeur `gw` ; `gw` le relie au réseau `ext` (`{ext}`) de `client`. Les machines se connaissent par
+leur nom (`/etc/hosts`), mais les conteneurs, eux, ne voient pas ce fichier : depuis un conteneur,
+utilisez les adresses.
+""": """
+Read the **Informations** tab: it presents containers, the architecture of Docker, images and the
+`Dockerfile`, storage, networks, registries and hardening.
+
+**The network.** The local network `lan` (`{lan}`, a switch) connects the two Docker hosts and the
+router `gw`; `gw` connects it to the network `ext` (`{ext}`) of `client`. The machines know each
+other by name (`/etc/hosts`), but the containers do not see that file: from a container, use the
+addresses.
+""",
+    """
+- Docker {version} (démon, client, `docker compose`, `docker buildx`) tourne sur `docker1` et
+  `docker2`, en root. **Pas d'accès à Internet** : `docker pull` depuis Docker Hub échoue. Les
+  images utiles sont déjà chargées (`docker images`) : `alpine`, `busybox`, `hello-world`,
+  `nginx:alpine`, `python:alpine`, `redis:alpine`, `registry`.
+- Ne lancez pas `docker system prune -a` ni `docker rmi` sur ces images : elles ne se
+  téléchargent pas. Si c'est fait, appliquez l'état **`restore_docker`**, qui les recharge (et
+  recrée le conteneur `legacy` de la partie 5).
+- Les noms des conteneurs, images, réseaux et volumes donnés dans les questions sont **imposés** ;
+  les ports et les valeurs à utiliser sont propres à votre TP.
+
+**Consignes.** Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une
+partie terminée rapporte tous ses points, quel que soit l'état des autres. Seule la partie 7 touche
+au démon de `docker2` ; ne redémarrez jamais celui de `docker1` (`systemctl restart docker`
+arrêterait vos conteneurs).
+
+**Évaluation.** Chaque évaluation lit l'état des deux démons Docker (`docker inspect` de vos
+conteneurs, images, réseaux et volumes), regarde dans les namespaces de quelques conteneurs depuis
+`docker1` (`nsenter`), lance des requêtes HTTP depuis `client` et lit la table des voisins et les
+routes de `gw`.
+""": """
+- Docker {version} (daemon, client, `docker compose`, `docker buildx`) runs on `docker1` and
+  `docker2`, as root. **No Internet access**: `docker pull` from Docker Hub fails. The images you
+  need are already loaded (`docker images`): `alpine`, `busybox`, `hello-world`,
+  `nginx:alpine`, `python:alpine`, `redis:alpine`, `registry`.
+- Do not run `docker system prune -a` or `docker rmi` on these images: they cannot be downloaded
+  again. If it has happened, apply the **`restore_docker`** state, which loads them again (and
+  recreates the `legacy` container of part 5).
+- The names of the containers, images, networks and volumes given in the questions are **fixed**;
+  the ports and the values to use are specific to your lab.
+
+**Instructions.** The parts are **independent**: do them in any order. A completed part gives all
+its points, whatever the state of the others. Only part 7 touches the daemon of `docker2`; never
+restart the one of `docker1` (`systemctl restart docker` would stop your containers).
+
+**Evaluation.** Each evaluation reads the state of the two Docker daemons (`docker inspect` of your
+containers, images, networks and volumes), looks into the namespaces of a few containers from
+`docker1` (`nsenter`), sends HTTP requests from `client` and reads the neighbour table and the
+routes of `gw`.
+""",
+    "Partie 1 — images et conteneurs": "Part 1 — images and containers",
+    "Un premier service : nginx": "A first service: nginx",
+    """
+Sur `docker1` :
+
+1. Écrivez une page `{www}/index.html` qui contient le texte **`{token}`**.
+2. Lancez en arrière-plan un conteneur nommé **`web`**, de l'image `nginx:alpine`, qui :
+   - publie le port **{port}** de `docker1` vers le port 80 du conteneur (section @@ref:ports@@) ;
+   - monte le répertoire `{www}` de `docker1` sur `{root}` (la racine du site de nginx), **en lecture
+     seule** (section @@ref:storage@@) ;
+   - redémarre de lui-même, sauf si on l'a arrêté à la main (section @@ref:lifecycle@@).
+3. Vérifiez depuis `client` : `curl http://docker1:{port}/`.
+
+L'évaluation lit la configuration de `web` (`docker inspect`) et demande la page depuis `client`.
+""": """
+On `docker1`:
+
+1. Write a page `{www}/index.html` that contains the text **`{token}`**.
+2. Start in the background a container named **`web`**, from the image `nginx:alpine`, that:
+   - publishes port **{port}** of `docker1` to port 80 of the container (section @@ref:ports@@);
+   - mounts the directory `{www}` of `docker1` on `{root}` (the site root of nginx), **read-only**
+     (section @@ref:storage@@);
+   - restarts by itself, unless it was stopped by hand (section @@ref:lifecycle@@).
+3. Check from `client`: `curl http://docker1:{port}/`.
+
+The evaluation reads the configuration of `web` (`docker inspect`) and requests the page from
+`client`.
+""",
+    "Journaux et couche inscriptible": "Logs and writable layer",
+    """
+- La commande qui affiche les journaux (la sortie de nginx) du conteneur `web` : @@{logs:.+}@@
+- Dans `web`, vous modifiez `/etc/nginx/conf.d/default.conf` (dans le conteneur, pas dans un
+  volume). Après `docker stop web` puis `docker start web`, la modification est :
+  @@{after_start:>conservée>>>kept|perdue>>>lost}@@
+- Après `docker rm -f web` puis le même `docker run` qu'au départ, elle est :
+  @@{after_rm:>conservée>>>kept|perdue>>>lost}@@
+""": """
+- The command that displays the logs (the output of nginx) of the container `web`: @@{logs:.+}@@
+- In `web`, you modify `/etc/nginx/conf.d/default.conf` (in the container, not in a
+  volume). After `docker stop web` then `docker start web`, the modification is:
+  @@{after_start:>kept>>>kept|lost>>>lost}@@
+- After `docker rm -f web` then the same `docker run` as at the start, it is:
+  @@{after_rm:>kept>>>kept|lost>>>lost}@@
+""",
+    "web tourne, créé depuis une image nginx": "web is running, created from an nginx image",
+    "le port {port} de docker1 est publié vers le port 80": "port {port} of docker1 is published to port 80",
+    "politique de redémarrage unless-stopped": "restart policy unless-stopped",
+    "{www} monté en lecture seule sur la racine du site": "{www} mounted read-only on the site root",
+    "client reçoit la page avec le texte demandé": "client receives the page with the requested text",
+    "commande des journaux": "logs command",
+    "couche inscriptible d'un conteneur": "writable layer of a container",
+    "Partie 2 — construire une image": "Part 2 — building an image",
+    "L'image sre/app": "The sre/app image",
+    """
+Le répertoire `{dir}` de `docker1` contient `app.py`, une petite application web en Python
+(bibliothèque standard seulement) qui écoute sur le port {port} : `GET /` renvoie une ligne JSON
+(version, nom de machine, utilisateur, nombre de visites), `GET /health` répond `OK`.
+
+1. Écrivez `{dir}/Dockerfile` (section @@ref:dockerfile@@) :
+   - partir de l'image `python:alpine` ;
+   - créer un utilisateur **`app`** d'uid **{uid}** et faire tourner l'application sous ce compte ;
+   - copier `app.py` dans `/app`, répertoire de travail ;
+   - définir la variable d'environnement **`APP_VERSION={version}`** ;
+   - documenter le port {port} ;
+   - un **healthcheck** qui interroge `http://127.0.0.1:{port}/health` (avec `wget`) ;
+   - la commande `python3 app.py`, **en forme exec**.
+2. Construisez l'image avec les deux étiquettes **`{image}:{version}`** et **`{image}:latest`**.
+3. Lancez un conteneur **`app`** de cette image qui publie le port **{published}** de `docker1` vers le
+   port {port}, et attendez qu'il soit `healthy` (`docker ps`).
+4. Depuis `client` : `curl http://docker1:{published}/`.
+""": """
+The directory `{dir}` of `docker1` holds `app.py`, a small web application in Python
+(standard library only) that listens on port {port}: `GET /` returns a JSON line
+(version, host name, user, number of visits), `GET /health` answers `OK`.
+
+1. Write `{dir}/Dockerfile` (section @@ref:dockerfile@@):
+   - start from the image `python:alpine`;
+   - create a user **`app`** with uid **{uid}** and run the application under that account;
+   - copy `app.py` into `/app`, the working directory;
+   - set the environment variable **`APP_VERSION={version}`**;
+   - document port {port};
+   - a **healthcheck** that queries `http://127.0.0.1:{port}/health` (with `wget`);
+   - the command `python3 app.py`, **in exec form**.
+2. Build the image with the two tags **`{image}:{version}`** and **`{image}:latest`**.
+3. Start a container **`app`** from this image that publishes port **{published}** of `docker1` to
+   port {port}, and wait until it is `healthy` (`docker ps`).
+4. From `client`: `curl http://docker1:{published}/`.
+""",
+    "Forme exec et cache": "Exec form and cache",
+    """
+- Avec `CMD ["python3", "app.py"]`, le PID 1 du conteneur est :
+  @@{pid1:>python3, qui reçoit le SIGTERM de docker stop>>>exec|/bin/sh, qui ne transmet pas le signal>>>shell}@@
+- Vous modifiez `app.py` puis relancez le même `docker build` : BuildKit
+  @@{cache:>refait toutes les étapes>>>all|réutilise le cache jusqu'à COPY app.py et refait les suivantes>>>from_copy|ne refait que la dernière étape>>>last}@@
+""": """
+- With `CMD ["python3", "app.py"]`, the PID 1 of the container is:
+  @@{pid1:>python3, which receives the SIGTERM of docker stop>>>exec|/bin/sh, which does not pass the signal on>>>shell}@@
+- You modify `app.py` then run the same `docker build` again: BuildKit
+  @@{cache:>does every step again>>>all|reuses the cache up to COPY app.py and does the following steps again>>>from_copy|only does the last step again>>>last}@@
+""",
+    "l'image a les deux étiquettes {v} et latest": "the image has the two tags {v} and latest",
+    "USER : un utilisateur non privilégié": "USER: an unprivileged user",
+    "EXPOSE {port}": "EXPOSE {port}",
+    "ENV APP_VERSION={v}": "ENV APP_VERSION={v}",
+    "un HEALTHCHECK": "a HEALTHCHECK",
+    "CMD en forme exec": "CMD in exec form",
+    "app tourne, depuis {img}, port {port} publié": "app is running, from {img}, port {port} published",
+    "app est healthy": "app is healthy",
+    "le processus de app a l'uid {uid}": "the process of app has uid {uid}",
+    "client reçoit la page de app, version {v}": "client receives the page of app, version {v}",
+    "forme exec, cache de construction": "exec form, build cache",
+    "Partie 3 — des données qui survivent au conteneur": "Part 3 — data that outlives the container",
+    "Redis et son volume": "Redis and its volume",
+    """
+Sur `docker1` (section @@ref:storage@@) :
+
+1. Lancez un conteneur **`cache`** de l'image `redis:alpine`, avec la commande
+   `redis-server --appendonly yes` (Redis journalise alors chaque écriture dans `/data`), et le
+   **volume nommé `{volume}`** monté sur `/data`.
+2. Enregistrez la clé **`token`** avec la valeur **`{token}`** (`docker exec cache redis-cli SET ...`).
+3. Supprimez le conteneur (`docker stop` puis `docker rm`), recréez-le à l'identique et vérifiez
+   que la clé est toujours là.
+
+L'évaluation interroge Redis dans le conteneur `cache` et cherche la valeur dans les fichiers du
+volume, côté `docker1`.
+""": """
+On `docker1` (section @@ref:storage@@):
+
+1. Start a container **`cache`** from the image `redis:alpine`, with the command
+   `redis-server --appendonly yes` (Redis then logs every write in `/data`), and the
+   **named volume `{volume}`** mounted on `/data`.
+2. Store the key **`token`** with the value **`{token}`** (`docker exec cache redis-cli SET ...`).
+3. Delete the container (`docker stop` then `docker rm`), create it again identically and check
+   that the key is still there.
+
+The evaluation queries Redis in the container `cache` and looks for the value in the files of the
+volume, on the `docker1` side.
+""",
+    "Où sont les données ?": "Where is the data?",
+    """
+- Le répertoire de `docker1` qui contient les données du volume `cachedata` : @@{path:/[^ ]*}@@
+""": """
+- The directory of `docker1` that holds the data of the volume `cachedata`: @@{path:/[^ ]*}@@
+""",
+    "cache tourne, depuis une image redis": "cache is running, from a redis image",
+    "le volume nommé {v} est monté sur /data": "the named volume {v} is mounted on /data",
+    "Redis en mode appendonly": "Redis in appendonly mode",
+    "la clé token a la valeur demandée": "the key token has the requested value",
+    "la valeur est écrite dans les fichiers du volume": "the value is written in the files of the volume",
+    "emplacement du volume sur l'hôte": "location of the volume on the host",
+    "Partie 4 — réseaux définis par l'utilisateur": "Part 4 — user-defined networks",
+    "Le réseau backend et un réseau interne": "The backend network and an internal network",
+    """
+Sur `docker1` (section @@ref:user-networks@@) :
+
+1. Créez le réseau **`backend`** de sous-réseau **`{subnet}`** et de passerelle **`{gateway}`**.
+2. Lancez sur ce réseau deux conteneurs `alpine` qui restent actifs (`sleep infinity`) :
+   **`alpha`**, à l'adresse fixe **`{alpha}`**, et **`beta`**. Vérifiez que `beta` joint `alpha`
+   **par son nom**.
+3. Créez le réseau **interne** **`isolated`** (sans accès à l'extérieur) et lancez dessus, et
+   seulement dessus, un conteneur `alpine` actif **`vault`**. Vérifiez que `vault` ne joint ni
+   `client` ni `gw`.
+
+L'évaluation lit les réseaux et, depuis `docker1`, résout et joint `alpha` dans le namespace réseau
+de `beta`, et tente de joindre `client` et `gw` depuis celui de `vault`.
+""": """
+On `docker1` (section @@ref:user-networks@@):
+
+1. Create the network **`backend`** with subnet **`{subnet}`** and gateway **`{gateway}`**.
+2. Start on this network two `alpine` containers that stay running (`sleep infinity`):
+   **`alpha`**, at the fixed address **`{alpha}`**, and **`beta`**. Check that `beta` reaches `alpha`
+   **by its name**.
+3. Create the **internal** network **`isolated`** (without access to the outside) and start on it,
+   and only on it, a running `alpine` container **`vault`**. Check that `vault` reaches neither
+   `client` nor `gw`.
+
+The evaluation reads the networks and, from `docker1`, resolves and reaches `alpha` in the network
+namespace of `beta`, and tries to reach `client` and `gw` from the one of `vault`.
+""",
+    "Et sur le réseau par défaut ?": "And on the default network?",
+    """
+- Deux conteneurs lancés sans `--network` (réseau `bridge` par défaut) : `ping alpha` depuis
+  l'autre, `alpha` étant le nom du premier,
+  @@{default_dns:>fonctionne>>>works|échoue : pas de DNS intégré sur le bridge par défaut>>>fails}@@
+""": """
+- Two containers started without `--network` (default `bridge` network): `ping alpha` from the
+  other one, `alpha` being the name of the first one,
+  @@{default_dns:>works>>>works|fails: no embedded DNS on the default bridge>>>fails}@@
+""",
+    "backend : pont, sous-réseau {s}, passerelle {g}": "backend: bridge, subnet {s}, gateway {g}",
+    "alpha a l'adresse {a} sur backend": "alpha has the address {a} on backend",
+    "beta est sur backend": "beta is on backend",
+    "le DNS intégré résout alpha pour beta": "the embedded DNS resolves alpha for beta",
+    "beta joint alpha": "beta reaches alpha",
+    "isolated est un réseau interne": "isolated is an internal network",
+    "vault seulement sur isolated, ne joint ni client ni gw": "vault only on isolated, reaches neither client nor gw",
+    "pas de DNS sur le bridge par défaut": "no DNS on the default bridge",
+    "Partie 5 — sous le capot": "Part 5 — under the hood",
+    "Le conteneur legacy": "The legacy container",
+    """
+Un collègue a lancé sur `docker1` le conteneur **`legacy`** (nginx), qui publie le port
+**{port}**. Sans le modifier, retrouvez avec `docker inspect`, `ip`, `iptables` et `ss` comment
+Docker l'a branché (sections @@ref:default-bridge@@, @@ref:ports@@ et @@ref:underhood@@), et
+répondez ci-dessous. Si `legacy` a disparu, l'état `restore_docker` le recrée.
+""": """
+A colleague has started the container **`legacy`** (nginx) on `docker1`; it publishes port
+**{port}**. Without modifying it, find out with `docker inspect`, `ip`, `iptables` and `ss` how
+Docker connected it (sections @@ref:default-bridge@@, @@ref:ports@@ and @@ref:underhood@@), and
+answer below. If `legacy` has disappeared, the `restore_docker` state recreates it.
+""",
+    "Comment legacy est branché": "How legacy is connected",
+    """
+- L'adresse IPv4 de `legacy` sur le réseau par défaut : @@{legacy_ip:[0-9.]+}@@
+- L'adresse IPv4 de l'interface `docker0` de `docker1` : @@{docker0_ip:[0-9.]+}@@
+- La destination (`adresse:port`) vers laquelle la règle de DNAT réécrit les connexions qui
+  arrivent sur le port publié : @@{dnat:[0-9.:]+}@@
+- La chaîne de la table `nat` qui contient cette règle : @@{chain:[A-Za-z_-]+}@@
+- Le nom du processus de `docker1` qui écoute sur le port publié (et relaie les connexions faites
+  depuis `docker1` lui-même) : @@{process:[A-Za-z0-9_.-]+}@@
+""": """
+- The IPv4 address of `legacy` on the default network: @@{legacy_ip:[0-9.]+}@@
+- The IPv4 address of the `docker0` interface of `docker1`: @@{docker0_ip:[0-9.]+}@@
+- The destination (`address:port`) to which the DNAT rule rewrites the connections that
+  arrive on the published port: @@{dnat:[0-9.:]+}@@
+- The chain of the `nat` table that holds this rule: @@{chain:[A-Za-z_-]+}@@
+- The name of the process of `docker1` that listens on the published port (and relays the
+  connections made from `docker1` itself): @@{process:[A-Za-z0-9_.-]+}@@
+""",
+    "adresse de legacy": "address of legacy",
+    "adresse de docker0": "address of docker0",
+    "destination du DNAT": "DNAT destination",
+    "chaîne de la règle": "chain of the rule",
+    "processus à l'écoute": "listening process",
+    "Partie 6 — un conteneur sur le réseau local": "Part 6 — a container on the local network",
+    "Le réseau macvlan": "The macvlan network",
+    """
+Sur `docker1` (section @@ref:macvlan@@) :
+
+1. Créez le réseau **`{net}`** de pilote **macvlan**, rattaché à l'interface `eth0` de `docker1`, avec
+   le sous-réseau de `lan` (`{lan}`), le vrai routeur de `lan` comme passerelle (`gw`, `{gw}`) et la
+   plage d'adresses réservée à Docker **`{range}`**.
+2. Lancez sur ce réseau un conteneur `nginx:alpine` nommé **`edge`**, à l'adresse **`{edge}`**.
+3. Vérifiez depuis `client` : `curl http://{edge}/`, sans aucun port publié. Essayez aussi
+   `ping {edge}` depuis `docker1`.
+
+L'évaluation lit le réseau, demande la page depuis `client`, puis lit l'adresse MAC que `gw` associe
+à `{edge}`.
+""": """
+On `docker1` (section @@ref:macvlan@@):
+
+1. Create the network **`{net}`** with the **macvlan** driver, attached to the interface `eth0` of
+   `docker1`, with the subnet of `lan` (`{lan}`), the real router of `lan` as gateway (`gw`, `{gw}`)
+   and the address range reserved for Docker **`{range}`**.
+2. Start on this network an `nginx:alpine` container named **`edge`**, at the address **`{edge}`**.
+3. Check from `client`: `curl http://{edge}/`, without any published port. Also try
+   `ping {edge}` from `docker1`.
+
+The evaluation reads the network, requests the page from `client`, then reads the MAC address that
+`gw` associates with `{edge}`.
+""",
+    "docker1 ne joint pas edge": "docker1 does not reach edge",
+    """
+- Le `ping` de l'adresse de `edge` échoue depuis `docker1` parce que
+  @@{host_ping:>le pare-feu de Docker le bloque>>>firewall|le noyau ne fait pas passer le trafic entre l'interface parente et ses interfaces macvlan>>>kernel|edge n'a pas de route vers docker1>>>route}@@
+""": """
+- The `ping` of the address of `edge` fails from `docker1` because
+  @@{host_ping:>Docker's firewall blocks it>>>firewall|the kernel does not pass traffic between the parent interface and its macvlan interfaces>>>kernel|edge has no route to docker1>>>route}@@
+""",
+    "{n} : macvlan, parent eth0, sous-réseau et passerelle de lan": "{n}: macvlan, parent eth0, subnet and gateway of lan",
+    "plage {r}": "range {r}",
+    "edge a l'adresse {a}": "edge has the address {a}",
+    "client reçoit la page de edge à son adresse": "client receives the page of edge at its address",
+    "gw voit l'adresse MAC propre de edge": "gw sees edge's own MAC address",
+    "l'hôte et ses interfaces macvlan": "the host and its macvlan interfaces",
+    "Partie 7 — un registre privé": "Part 7 — a private registry",
+    "Le registre de docker1, l'image sur docker2": "The registry of docker1, the image on docker2",
+    """
+Section @@ref:registry@@.
+
+1. Sur `docker1`, lancez le conteneur **`registry`** de l'image `registry` : port 5000 publié,
+   volume nommé **`{volume}`** sur `/var/lib/registry`, redémarrage **toujours**.
+2. Sur `docker1`, dans `{tools}` (qui contient `hello.sh`), écrivez un `Dockerfile` : à partir de
+   `busybox`, avec l'étiquette (`LABEL`) **`sre.token={token}`**, qui copie `hello.sh` et le lance.
+   Construisez l'image **`{repo}:{tag}`** et poussez-la dans le registre sous le nom
+   **`localhost:5000/{repo}:{tag}`**.
+3. Sur `docker2`, autorisez le registre `docker1:5000` (qui parle HTTP, sans TLS) **sans redémarrer
+   le démon**, récupérez **`docker1:5000/{repo}:{tag}`** et lancez-en un conteneur nommé **`hello`**.
+
+L'évaluation lit le catalogue du registre depuis `client`, la configuration de `docker2` et compare
+l'empreinte de l'image du conteneur `hello` à celle que le registre sert.
+""": """
+Section @@ref:registry@@.
+
+1. On `docker1`, start the container **`registry`** from the image `registry`: port 5000 published,
+   named volume **`{volume}`** on `/var/lib/registry`, restart **always**.
+2. On `docker1`, in `{tools}` (which holds `hello.sh`), write a `Dockerfile`: from `busybox`, with
+   the label (`LABEL`) **`sre.token={token}`**, that copies `hello.sh` and runs it.
+   Build the image **`{repo}:{tag}`** and push it into the registry under the name
+   **`localhost:5000/{repo}:{tag}`**.
+3. On `docker2`, allow the registry `docker1:5000` (which speaks HTTP, without TLS) **without
+   restarting the daemon**, pull **`docker1:5000/{repo}:{tag}`** and start a container named
+   **`hello`** from it.
+
+The evaluation reads the catalogue of the registry from `client` and the configuration of
+`docker2`, and compares the digest of the image of the container `hello` with the one the registry
+serves.
+""",
+    "Registres non sécurisés": "Insecure registries",
+    """
+- `docker push localhost:5000/...` fonctionne sans configuration parce que
+  @@{localhost:>Docker accepte HTTP pour 127.0.0.0/8 et localhost>>>loopback|le registre a un certificat>>>tls|registry est une image officielle>>>official}@@
+- `docker2` doit déclarer `docker1:5000` dans `insecure-registries` parce que
+  @@{docker2:>le registre ne parle que HTTP, sans TLS>>>http|le registre exige un mot de passe>>>auth|docker1 n'est pas dans le DNS>>>dns}@@
+""": """
+- `docker push localhost:5000/...` works without any configuration because
+  @@{localhost:>Docker accepts HTTP for 127.0.0.0/8 and localhost>>>loopback|the registry has a certificate>>>tls|registry is an official image>>>official}@@
+- `docker2` must declare `docker1:5000` in `insecure-registries` because
+  @@{docker2:>the registry only speaks HTTP, without TLS>>>http|the registry requires a password>>>auth|docker1 is not in the DNS>>>dns}@@
+""",
+    "registry tourne, port 5000 publié, redémarrage always": "registry is running, port 5000 published, restart always",
+    "le volume {v} sur /var/lib/registry": "the volume {v} on /var/lib/registry",
+    "le registre sert {r}:{t}": "the registry serves {r}:{t}",
+    "docker2 accepte le registre docker1:5000 en HTTP": "docker2 accepts the registry docker1:5000 over HTTP",
+    "docker2 a un conteneur hello de l'image du registre": "docker2 has a container hello from the registry's image",
+    "son image est celle que sert le registre, avec l'étiquette sre.token": "its image is the one the registry serves, with the label sre.token",
+    "registres non sécurisés": "insecure registries",
+    "Partie 8 — limiter et durcir": "Part 8 — limiting and hardening",
+    "Le conteneur sandbox": "The sandbox container",
+    """
+Sur `docker1`, lancez un conteneur `alpine` actif (`sleep infinity`) nommé **`sandbox`**
+(section @@ref:limits@@) :
+
+- au plus **{memory} Mo** de mémoire, **{cpus}** processeur et **{pids}** processus ;
+- racine en **lecture seule** ;
+- **aucune capacité** Linux, et interdiction de gagner des droits (`no-new-privileges`) ;
+- sous l'utilisateur et le groupe **{uid}:{uid}**.
+""": """
+On `docker1`, start a running `alpine` container (`sleep infinity`) named **`sandbox`**
+(section @@ref:limits@@):
+
+- at most **{memory} MB** of memory, **{cpus}** processor and **{pids}** processes;
+- **read-only** root;
+- **no** Linux **capability**, and no gaining of privileges (`no-new-privileges`);
+- under the user and group **{uid}:{uid}**.
+""",
+    "sandbox tourne (alpine)": "sandbox is running (alpine)",
+    "mémoire limitée à {m} Mo": "memory limited to {m} MB",
+    "{c} processeur": "{c} processor",
+    "{p} processus au plus": "{p} processes at most",
+    "racine en lecture seule": "read-only root",
+    "toutes les capacités retirées": "all capabilities dropped",
+    "no-new-privileges": "no-new-privileges",
+    "utilisateur {u}:{u}": "user {u}:{u}",
+    "Bonus — un réseau sans NAT, en mode routé": "Bonus — a network without NAT, in routed mode",
+    "Le réseau routed": "The routed network",
+    """
+Section @@ref:routed@@.
+
+1. Sur `docker1`, créez le réseau **`routed`** de sous-réseau **`{subnet}`**, en **mode routé**.
+2. Lancez dessus un conteneur `nginx:alpine` nommé **`direct`**, à l'adresse **`{direct}`**, qui
+   publie son port 80.
+3. Sur `gw`, ajoutez la route vers `{subnet}` par `docker1`.
+4. Depuis `client` : `curl http://{direct}/` (l'adresse du conteneur, sans NAT).
+""": """
+Section @@ref:routed@@.
+
+1. On `docker1`, create the network **`routed`** with subnet **`{subnet}`**, in **routed mode**.
+2. Start on it an `nginx:alpine` container named **`direct`**, at the address **`{direct}`**, that
+   publishes its port 80.
+3. On `gw`, add the route to `{subnet}` via `docker1`.
+4. From `client`: `curl http://{direct}/` (the address of the container, without NAT).
+""",
+    "routed : mode routé, sous-réseau {s}": "routed: routed mode, subnet {s}",
+    "direct à l'adresse {a}, port 80 publié": "direct at the address {a}, port 80 published",
+    "gw route {s} par docker1": "gw routes {s} via docker1",
+    "client joint direct à son adresse": "client reaches direct at its address",
     },
 }

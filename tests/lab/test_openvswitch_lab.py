@@ -352,6 +352,19 @@ class TestLab:
 # ---------------------------------------------------------------------------
 
 
+def _instructor_literals():
+    """The French literals of the tr() calls inside instructor()."""
+    ast = check_sre_translations.ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 def _texts(lab, data, instructor=True):
     name = _running_name()
     marker = Path(params.instructor_mode_marker_filename(name))
@@ -389,14 +402,24 @@ class TestTexts:
             refs |= set(re.findall(r'@@ref:([a-z0-9_-]+)@@', _text(q.description)))
         assert refs and refs <= tags, refs - tags
 
-    def test_instructor_translations(self, lab):
+    def test_translations(self, lab):
+        """Every tr() text has its English in _TRANSLATIONS, the twelve instructor texts among them (the
+        markup kept: checked for every lab of the directory by test_draft_misc_translations.py)."""
         tree = check_sre_translations.ast.parse(_LAB_PATH.read_text())
         tr_strings = check_sre_translations.get_tr_strings(tree)
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
         english = lab._TRANSLATIONS['en']
-        assert set(english) <= set(tr_strings) and None not in english.values() and len(english) == 12
+        assert set(english) == set(tr_strings) and all(english.values())
         assert all(english[k] != k for k in english)
+        literals = _instructor_literals()
+        assert len(literals) == 12 and set(literals) <= set(english)
         for fr, en in english.items():
             assert set(re.findall(r'\{(\w+)', fr)) == set(re.findall(r'\{(\w+)', en)), fr[:60]
+        # evaluated at import time, before _TRANSLATIONS: the English is inline
+        assert lab.title.resolve('en') == 'Open vSwitch: VLANs, bonding, tunnels, stateful firewall and QoS'
+        for state in ('solve_part1', 'solve_part2', 'solve_part3', 'solve_part4', 'solve_part5', 'solve_bonus', 'final'):
+            description = getattr(lab.NetScheme, state)._sre_state_description
+            assert description.resolve('en') == english[description.resolve('fr')], state
 
     def test_fragments_in_both_languages(self, lab, data, tmp_pub_dir):
         _, _, grade = _texts(lab, data)
@@ -445,5 +468,9 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('openvswitch_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the student texts stays, that of the instructor texts goes
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade = _replay(module, _evaluation('final'), answers='final')
         assert _totals(grade) == (TOTAL, TOTAL, 6)

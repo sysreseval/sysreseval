@@ -400,11 +400,21 @@ class TestTexts:
             assert value not in text, value
 
     def test_instructor_translations(self, lab):
+        """Every tr() text has its English (the markup kept: checked for every lab of the directory by
+        test_draft_misc_translations.py), the 21 instructor texts among them."""
         tree = check_sre_translations.ast.parse(_LAB_PATH.read_text())
         tr_strings = check_sre_translations.get_tr_strings(tree)
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
         english = lab._TRANSLATIONS['en']
-        assert set(english) <= set(tr_strings) and None not in english.values() and len(english) == 21
-        assert all(english[k] != k for k in english)
+        assert set(english) == set(tr_strings) and all(english.values())
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 21
+        # the course headings that are names, and one list of quantities, read the same in both languages
+        assert {k for k in english if english[k] == k} == {'k3s', 'kubectl', 'StatefulSet', 'NetworkPolicy',
+                                                           'requests 50m / 32Mi, limits 200m / 64Mi'}
+        assert lab.title.resolve('en') == "Kubernetes: deployments, services and the network of a cluster"
+        for state in ('reset_release', 'reset_secure'):
+            description = getattr(lab.NetScheme, state)._sre_state_description
+            assert description.resolve('en').startswith('Recreates the '), state
         for fr, en in english.items():
             assert set(re.findall(r'\{(\w+)\}', fr)) == set(re.findall(r'\{(\w+)\}', en)), fr[:60]
 
@@ -445,5 +455,7 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('kubernetes_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the other texts is kept
+        assert len(module._TRANSLATIONS['en']) == len(lab._TRANSLATIONS['en']) - 21
         grade = _replay(module, _evaluation('final'), answers='final')
         assert _totals(grade) == (TOTAL, TOTAL, BONUS)

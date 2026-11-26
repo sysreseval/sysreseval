@@ -9,6 +9,7 @@ not installed, the duplicate router-id hides the MTU fault...).  Covers the data
 state ops, the two-pass grading contract (nothing done: 0; everything: 100 + 6 bonus points; **each
 part alone gives exactly its points and everything but one part the rest**; variants) and the texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -760,6 +761,22 @@ def _simulate_with_answers(lab, data, tmp_pub_dir, cheat):
 # ---------------------------------------------------------------------------
 
 
+def _tr_literals():
+    import check_sre_translations
+    return check_sre_translations.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+
+
+def _instructor_literals():
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 def _all_texts(grade, ns):
     texts = [('informations', _text(ns.informations))]
     for q in grade.get_questions_ordered():
@@ -828,16 +845,48 @@ class TestTexts:
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 15 and result.warnings == []
+        assert result.calls == len(_instructor_literals()) == 15 and result.warnings == []
         assert b'**Solution.**' not in result.data and b"Pour l'enseignant" not in result.data
+        assert b'**For the instructor.**' not in result.data and b'instructor(' not in result.data
         stripped = tmp_path / 'ospfv3_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('ospfv3_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the instructor texts goes with them, the rest stays
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 6)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py), the instructor texts included."""
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == _tr_literals() and all(english.values())
+        assert set(_instructor_literals()) <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 15
+        assert _text(lab.title, 'en') == "OSPFv3 and BGP: IPv6 routing"
+        assert _text(lab.NetScheme.solve_ospf._sre_state_description, 'en') == "Part 1: solution (OSPFv3, one area)"
+        g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert has_instructor(fr) and has_instructor(en) and fr != en, _text(q.title)
+            assert '**Solution.**' in en or '**For the instructor.**' in en, _text(q.title)
+            # the values built in code read in the language of the text (the site table, the vtysh blocks)
+            assert 'aucune adresse globale' not in en and '` :\n' not in en, _text(q.title)
+            assert "{'" not in en and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", en), _text(q.title)
+            markdown_to_html(en, show_instructor=True)
+        organisation = _text(g1.get_questions_ordered()[0].description, 'en')
+        assert "| 1 — OSPFv3, one area | `o1_*` |" in organisation
+        assert "| `un_link` | no global address | `un_r1` eth0, `un_r2` eth0 |" in organisation
+        assert "| 1 — OSPFv3, une zone | `o1_*` |" in _text(g1.get_questions_ordered()[0].description, 'fr')
+        solution = _text(g1.get_questions_ordered()[1].description, 'fr')
+        assert "`o1_r1` :\n\n```\nconfigure terminal" in solution
+        assert "`o1_r1`:\n\n```\nconfigure terminal" in _text(g1.get_questions_ordered()[1].description, 'en')
 
     def test_english_identifiers(self, lab, data):
         """Machines, networks, states, data fields, grade elements, part keys and form fields are English."""

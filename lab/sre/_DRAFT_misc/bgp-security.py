@@ -29,6 +29,7 @@ from ipaddress import IPv4Address, IPv4Interface, IPv4Network
 from typing import Dict, List
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks
@@ -921,26 +922,27 @@ Documentation : [FRR — BGP](https://docs.frrouting.org/en/latest/bgp.html) (se
             self.file(r, "/etc/frr/frr.conf", self._frr_conf(r), permissions=0o640, owner="frr:frr", step=2)
             self.cmd(r, "systemctl start frr", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (RPKI)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (RPKI)", en="Part 1: solution (RPKI)"))
     def solve_rov(self):
         self._apply_rov()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (maximum-prefix)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (maximum-prefix)",
+                                                  en="Part 2: solution (maximum-prefix)"))
     def solve_pfx(self):
         self._apply(self.solution_pfx())
         self.cmd('pfx_r1', f"sleep {CONVERGE_WAIT}", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (GTSM)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (GTSM)", en="Part 3: solution (GTSM)"))
     def solve_gtsm(self):
         self._apply_gtsm()
         self.cmd('gtsm_r1', f"sleep {CONVERGE_WAIT}", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (RTBH)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (RTBH)", en="Part 4: solution (RTBH)"))
     def solve_bh(self):
         self._apply_bh()
         self.cmd('bh_r1', f"sleep {CONVERGE_WAIT}", step=3)
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (BFD)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (BFD)", en="Bonus: solution (BFD)"))
     def solve_bfd(self):
         self._apply(self.solution_bfd())
         self.cmd('bfd_r1', f"sleep {CONVERGE_WAIT}", step=2)
@@ -976,9 +978,10 @@ def _int(s):
 _OPENERS = ("router ", "interface ", "route-map ", "address-family ", "profile ")
 
 
-def _vtysh_text(solution: Dict[str, List[str]]) -> str:
-    """The reference configuration of a part, as vtysh sessions (one block per router); the lines
-    inside a block (``router``, ``route-map``, ``address-family``, ``rpki``, ``bfd``...) are indented."""
+def _vtysh_text(solution: Dict[str, List[str]]) -> Dict[str, str]:
+    """The reference configuration of a part, as vtysh sessions (one block per router), one text per
+    language (the French one has a space before the colon); the lines inside a block (``router``,
+    ``route-map``, ``address-family``, ``rpki``, ``bfd``...) are indented."""
     blocks = []
     for router, cmds in solution.items():
         body, depth = ["configure terminal"], 1
@@ -990,8 +993,25 @@ def _vtysh_text(solution: Dict[str, List[str]]) -> str:
             body.append(" " * depth + c)
             if c.startswith(_OPENERS) or c in ("rpki", "bfd"):
                 depth += 1
-        blocks.append(f"`{router}` :\n\n```\n" + "\n".join(body + ["end", "write"]) + "\n```")
-    return "\n\n".join(blocks)
+        blocks.append((router, "\n".join(body + ["end", "write"])))
+    return {lang: "\n\n".join(f"`{router}`{colon}\n\n```\n{body}\n```" for router, body in blocks)
+            for lang, colon in (('fr', " :"), ('en', ":"))}
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value (a tr() text, the result of
+    _vtysh_text) gives one value per language."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
+
+
+def _join(separator: str, items):
+    """``separator.join(items)`` for plain strings and tr() texts (``str.join`` refuses translated texts)."""
+    text = ""
+    for k, item in enumerate(items):
+        text = (text + separator if k else text) + item
+    return text
 
 
 def _running_config(grade: Grade0, router: str) -> Dict:
@@ -1090,34 +1110,35 @@ class Grade(Grade0):
             step=2, timeout=CUT_SECONDS + 20, allow_error=True)
 
         # ---------------- texts shared by the questions ---------------------------
-        sites = [('rov', "1 — validation de l'origine (RPKI)",
-                  "`rov_r1`, `rov_rpki` (le validateur) ; `rov_isp1`, `rov_isp2`, `rov_peer` sans terminal"),
-                 ('pfx', "2 — limiter les préfixes reçus", "`pfx_r1` ; `pfx_isp`, `pfx_c1`, `pfx_c2` sans terminal"),
-                 ('gtsm', "3 — GTSM", "`gtsm_r1` ; `gtsm_isp`, `gtsm_mid`, `gtsm_par` sans terminal"),
-                 ('bh', "4 — RTBH", "`bh_r1` ; `bh_isp`, `bh_cust`, `bh_srv` sans terminal"),
-                 ('bfd', "bonus — BFD", "`bfd_r1`, `bfd_isp1` ; `bfd_isp2`, le pont `bfd_sw` sans terminal")]
-        site_rows = "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites)
-        members: Dict[str, List[str]] = {}
+        sites = [('rov', tr("1 — validation de l'origine (RPKI)"),
+                  tr("`rov_r1`, `rov_rpki` (le validateur) ; `rov_isp1`, `rov_isp2`, `rov_peer` sans terminal")),
+                 ('pfx', tr("2 — limiter les préfixes reçus"),
+                  tr("`pfx_r1` ; `pfx_isp`, `pfx_c1`, `pfx_c2` sans terminal")),
+                 ('gtsm', "3 — GTSM", tr("`gtsm_r1` ; `gtsm_isp`, `gtsm_mid`, `gtsm_par` sans terminal")),
+                 ('bh', "4 — RTBH", tr("`bh_r1` ; `bh_isp`, `bh_cust`, `bh_srv` sans terminal")),
+                 ('bfd', "bonus — BFD", tr("`bfd_r1`, `bfd_isp1` ; `bfd_isp2`, le pont `bfd_sw` sans terminal"))]
+        site_rows = _join("\n", ("| " + part + f" | `{site}_*` | " + machines + " |" for site, part, machines in sites))
+        members: Dict[str, list] = {}
         for m, nets in MACHINE_IFACES.items():
             for i, n in enumerate(nets):
                 if m == BRIDGE or m == 'bh_srv':
                     continue
                 key = COLLISION_DOMAINS.get(n, n)
                 members.setdefault(key, []).append(f"`{m}` eth{i} (`{addr(m, n)}`)")
-        members['bh_lan'].append(f"`bh_srv` (`{victim}` et `{control}`)")
-        address_rows = [f"| `{n}` | `{net(n) if n != 'bh_lan' else net('bh_cust')}` | {', '.join(v)} |"
+        members['bh_lan'].append(tr("`bh_srv` (`{victim}` et `{control}`)").format(victim=victim, control=control))
+        address_rows = [f"| `{n}` | `{net(n) if n != 'bh_lan' else net('bh_cust')}` | " + _join(", ", v) + " |"
                         for n, v in members.items()]
         address_rows += [f"| `{site}_lo` | `{net(site + '_lo')}` | "
                          + ", ".join(f"`{r}` `{lo(r)}`" for r in FRR_ROUTERS + ['gtsm_mid'] if site_of(r) == site)
                          + " |" for site in SITE_NUMBER]
-        addressing = "\n".join(address_rows)
+        addressing = _join("\n", address_rows)
         as_rows = "\n".join(f"| `{r}` | {asn} |" for r, asn in EXT_AS.items())
 
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
             hash="4ca6c605f65d06c4",
-            description=tr("""
+            description=_by_language(tr("""
 Lisez l'onglet **Informations** : il présente les menaces sur BGP et les protections de ce TP
 (RPKI et validation de l'origine, `maximum-prefix`, GTSM, RTBH, BFD), leur configuration avec FRR
 et les commandes de diagnostic.
@@ -1163,8 +1184,8 @@ vôtres comme ceux des autres AS) sont pris dans `{pub}`.
 **Évaluation.** Chaque évaluation lit vos réponses, l'état de BGP sur les routeurs (sessions, tables,
 RPKI, BFD, configuration), les tables de routage, et lance des `ping`. Elle coupe aussi pendant
 {cut} s le lien de `bfd_r1` vers `bfd_isp1` (bonus).
-""").format(site_rows=site_rows, our_as=d.our_as, as_rows=as_rows, pub=net('pub'), addressing=addressing,
-            cut=CUT_SECONDS)
+"""), site_rows=site_rows, our_as=d.our_as, as_rows=as_rows, pub=net('pub'), addressing=addressing,
+               cut=CUT_SECONDS)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
 instance. Les états `solve_rov`, `solve_pfx`, `solve_gtsm`, `solve_bh` et `solve_bfd` (onglet
@@ -1217,7 +1238,7 @@ Le validateur `rov_rpki` (`{rpki}`, réseau d'administration `rov_mgmt`) sert en
 """).format(as1=EXT_AS['rov_isp1'], as2=EXT_AS['rov_isp2'], asp=EXT_AS['rov_peer'], own=net('rov_own'),
             te=net('rov_te'), rpki=ns.rpki_addr(), port=RTR_PORT, roa_file=ROA_FILE, roa_rows=roa_rows,
             h=net('rov_h'), m24=net('rov_m24'), lp=VALID_LOCAL_PREF, our_as=d.our_as, refresh=STAYRTR_REFRESH)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1241,7 +1262,7 @@ chemin de `rov_isp1` pour `{h}`, meilleur chemin par `rov_isp2`), `rov_subprefix
 `{m}` par `rov_isp2`), `rov_kernel` (2), `rov_notfound` (2 : `{n1}` toujours accepté), `rov_valid_pref`
 (2 : local-preference {lp} des routes valides), `rov_roa` (4 : `{te}` et `{own}` valides et acceptés
 par `rov_peer`).
-""").format(solution=_vtysh_text(ns.solution_rov()), own=net('rov_own'), fixed=json.dumps(ns.roas(True)[-1]),
+"""), solution=_vtysh_text(ns.solution_rov()), own=net('rov_own'), fixed=json.dumps(ns.roas(True)[-1]),
             h=net('rov_h'), m24=net('rov_m24'), m=net('rov_m'), as1=EXT_AS['rov_isp1'], as2=EXT_AS['rov_isp2'],
             isp2=isp2, n1=net('rov_n1'), lp=VALID_LOCAL_PREF, te=net('rov_te'))),
         )
@@ -1366,7 +1387,7 @@ réannonce tout à son fournisseur.
 """).format(asi=EXT_AS['pfx_isp'], as1=EXT_AS['pfx_c1'], as2=EXT_AS['pfx_c2'], c1a=c1_prefixes[0],
             c1d=c1_prefixes[-1], c2a=net('pfx_c2a'), c2b=net('pfx_c2b'), isp=addr('pfx_isp', 'pfx_l1'),
             limit=d.pfx_limit, threshold=d.pfx_threshold)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1380,7 +1401,7 @@ au-dessus selon {threshold} % de {limit}).
 Évaluation : `pfx_conf_c1`, `pfx_conf_c2` (2 chacun : limite {limit}, seuil {threshold}, sans
 `warning-only` ni `restart`), `pfx_c2_down` (3), `pfx_c1_up` (2 : établi, 4 préfixes), `pfx_leak` (3 : plus
 aucune route de la fuite chez `pfx_isp`, les 4 de `pfx_c1` toujours là).
-""").format(solution=_vtysh_text(ns.solution_pfx()), count=LEAK_COUNT, total=LEAK_COUNT + 2, c2=c2,
+"""), solution=_vtysh_text(ns.solution_pfx()), count=LEAK_COUNT, total=LEAK_COUNT + 2, c2=c2,
             limit=d.pfx_limit, threshold=d.pfx_threshold)),
         )
         cheat_pfx = {'state': 'Idle (PfxCt)', 'count': str(LEAK_COUNT + 2), 'restore': 'clear', 'warning': 'leak'}
@@ -1479,7 +1500,7 @@ sépare de `gtsm_r1`. Ils retentent d'ouvrir la session toutes les {retry} s.
    d'en face attend la fin de sa tentative précédente (`OpenSent`), restée sans réponse.
 """).format(asi=EXT_AS['gtsm_isp'], isp=gisp, asp=EXT_AS['gtsm_par'], r1lo=lo('gtsm_r1'), parlo=gpar,
             retry=CONNECT_RETRY, pisp=net('gtsm_isp'), ppar=net('gtsm_par'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1492,7 +1513,7 @@ les paquets qui arrivent avec un TTL ≥ 254 : ceux de `gtsm_par` (255 − 1 sau
 Évaluation : `gtsm_isp_conf` (2), `gtsm_isp_up` (3 : établie grâce à GTSM, `{pisp}` reçu),
 `gtsm_par_conf` (2 : `hops 2`, plus d'`ebgp-multihop`), `gtsm_par_up` (3 : établie grâce à GTSM,
 `{ppar}` reçu).
-""").format(solution=_vtysh_text(ns.solution_gtsm()), pisp=net('gtsm_isp'), ppar=net('gtsm_par'))),
+"""), solution=_vtysh_text(ns.solution_gtsm()), pisp=net('gtsm_isp'), ppar=net('gtsm_par'))),
         )
         cheat_gtsm = {'minttl': '254', 'sent': '255', 'default': '1', 'oneside': 'active'}
         q3 = self.question_form(
@@ -1577,7 +1598,7 @@ la même communauté : une adresse du réseau de `bh_isp`, qui n'est pas à lui.
 """).format(asc=EXT_AS['bh_cust'], cust=net('bh_cust'), victim=victim, control=control, asi=EXT_AS['bh_isp'],
             bogus=bogus, discard=DISCARD_IFACE, dnet=DISCARD_NET, nexthop=DISCARD_NEXT_HOP,
             cust_ip=addr('bh_cust', 'bh_l2'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1592,7 +1613,7 @@ l'écrit explicitement).
 noyau vers `{discard}`), `bh_drop` (3 : depuis `bh_isp`, `{victim}` ne répond plus, `{control}`
 répond), `bh_scope` (3 : `{bogus}/32` refusé, `bh_r1` joint toujours `{bogus}`), `bh_not_exported`
 (2 : `bh_isp` ne reçoit pas `{victim}/32`).
-""").format(solution=_vtysh_text(ns.solution_bh()), victim=victim, nexthop=DISCARD_NEXT_HOP,
+"""), solution=_vtysh_text(ns.solution_bh()), victim=victim, nexthop=DISCARD_NEXT_HOP,
             discard=DISCARD_IFACE, control=control, bogus=bogus, cust=net('bh_cust'))),
         )
         cheat_bh = {'community': BLACKHOLE_COMMUNITY, 'rfc': '7999', 'added': 'noexport', 'scope': 'anyone'}
@@ -1680,7 +1701,7 @@ l'interruption du trafic vers `{svc}` (un ping toutes les {step} s, depuis `{src
 """).format(svc=host('bfd_svc'), as1=EXT_AS['bfd_isp1'], lp=VALID_LOCAL_PREF, as2=EXT_AS['bfd_isp2'],
             cut=CUT_SECONDS, step=PING_INTERVAL, src=host('bfd_own'), profile=BFD_PROFILE, interval=d.bfd_interval,
             mult=d.bfd_multiplier, max_outage=int(MAX_OUTAGE))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1693,7 +1714,7 @@ garde la session BGP en `Idle` : il attend que la session BFD soit établie. Ave
 
 Évaluation (bonus) : `bfd_conf` (1 : profil et session), `bfd_up` (2 : session BFD établie avec
 `bfd_isp1`), `bfd_failover` (3 : interruption de moins de {max_outage} s pendant la coupure).
-""").format(solution=_vtysh_text(ns.solution_bfd()), cut=CUT_SECONDS, detection=d.bfd_interval * d.bfd_multiplier,
+"""), solution=_vtysh_text(ns.solution_bfd()), cut=CUT_SECONDS, detection=d.bfd_interval * d.bfd_multiplier,
             mult=d.bfd_multiplier, interval=d.bfd_interval, retry=CONNECT_RETRY, max_outage=int(MAX_OUTAGE))),
         )
         bfd_n = neighbor(bfd_cfg, bfd_isp1)
@@ -1719,4 +1740,1197 @@ garde la session BGP en `Idle` : il attend que la session BFD soit établie. Ave
         )
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "BGP : sécuriser les sessions et les annonces (RPKI, maximum-prefix, GTSM, RTBH)": "BGP: securing sessions and announcements (RPKI, maximum-prefix, GTSM, RTBH)",
+    """
+**Sommaire**
+""": """
+**Contents**
+""",
+    "Menaces sur le routage inter-domaine": "Threats to inter-domain routing",
+    """
+BGP (RFC 4271) a été conçu à une époque où les opérateurs se faisaient confiance : un routeur
+**croit** ce que lui annoncent ses pairs. Rien dans le protocole ne vérifie qu'un AS a le droit
+d'annoncer un préfixe, ni que le chemin annoncé existe. Les incidents les plus courants :
+
+| incident | ce qui se passe | exemples |
+|----------|-----------------|----------|
+| **fuite de routes** (*route leak*, RFC 7908) | un AS réannonce des routes qu'il n'aurait pas dû propager (les routes d'un fournisseur à un autre fournisseur, une table complète vers ses fournisseurs) et attire un trafic qu'il ne peut pas acheminer | AS 7007 (1997), Verizon / Cloudflare (2019) |
+| **détournement** (*hijack*) | un AS annonce un préfixe qui ne lui appartient pas, par erreur ou pour capter le trafic | Pakistan Telecom / YouTube (2008) |
+| **détournement de sous-préfixe** | l'annonce d'un préfixe **plus spécifique** que celui du propriétaire : la plus longue correspondance l'emporte partout | Amazon Route 53 / MyEtherWallet (2018) |
+| **attaque de la session** | segments TCP forgés (RST, SYN) visant le port 179 d'un routeur pour couper ou saturer ses sessions | — |
+| **déni de service** | un afflux de trafic vers une adresse qui sature les liens de son réseau et de ses fournisseurs | — |
+
+Les protections de ce TP se complètent ; elles font partie des actions recommandées par
+[MANRS](https://www.manrs.org) (*Mutually Agreed Norms for Routing Security*) :
+
+- **filtrer** ce que l'on accepte : listes de préfixes construites à partir des bases de routage
+  (IRR), **validation de l'origine par RPKI** (section @@ref:rpki@@), limite du nombre de préfixes
+  (section @@ref:maxprefix@@) ;
+- **protéger les sessions** : GTSM (section @@ref:gtsm@@), authentification TCP, détection rapide des
+  pannes (BFD, section @@ref:bfd@@) ;
+- **coopérer** contre les attaques : le *blackholing* à distance (section @@ref:rtbh@@).
+""": """
+BGP (RFC 4271) was designed at a time when operators trusted each other: a router
+**believes** what its peers announce to it. Nothing in the protocol checks that an AS is entitled
+to announce a prefix, nor that the announced path exists. The most common incidents:
+
+| incident | what happens | examples |
+|----------|--------------|----------|
+| **route leak** (RFC 7908) | an AS re-announces routes it should not have propagated (the routes of one provider to another provider, a full table to its providers) and attracts traffic it cannot carry | AS 7007 (1997), Verizon / Cloudflare (2019) |
+| **hijack** | an AS announces a prefix that does not belong to it, by mistake or to capture the traffic | Pakistan Telecom / YouTube (2008) |
+| **sub-prefix hijack** | the announcement of a **more specific** prefix than the owner's: the longest match wins everywhere | Amazon Route 53 / MyEtherWallet (2018) |
+| **attack on the session** | forged TCP segments (RST, SYN) aimed at port 179 of a router to cut or overload its sessions | — |
+| **denial of service** | a flood of traffic towards an address that saturates the links of its network and of its providers | — |
+
+The protections of this lab complement each other; they are part of the actions recommended by
+[MANRS](https://www.manrs.org) (*Mutually Agreed Norms for Routing Security*):
+
+- **filter** what you accept: prefix lists built from the routing registries
+  (IRR), **route origin validation with RPKI** (section @@ref:rpki@@), a limit on the number of
+  prefixes (section @@ref:maxprefix@@);
+- **protect the sessions**: GTSM (section @@ref:gtsm@@), TCP authentication, fast failure
+  detection (BFD, section @@ref:bfd@@);
+- **cooperate** against attacks: remote *blackholing* (section @@ref:rtbh@@).
+""",
+    "RPKI et validation de l'origine": "RPKI and route origin validation",
+    """
+La **RPKI** (*Resource Public Key Infrastructure*, RFC 6480) est une infrastructure de certificats
+qui suit l'attribution des ressources Internet : les cinq **RIR** (RIPE NCC, ARIN, APNIC, LACNIC,
+AFRINIC) sont les autorités racines (*trust anchors*) et certifient les blocs d'adresses et les
+numéros d'AS qu'ils attribuent. Le titulaire d'un bloc signe des **ROA** (*Route Origin
+Authorization*, RFC 6482) :
+
+| champ d'une ROA | rôle |
+|-----------------|------|
+| préfixe | le bloc concerné, par exemple `198.51.100.0/22` |
+| `maxLength` | la longueur maximale des préfixes annonçables (`22` : seul le /22 ; `24` : le /22 et tous ses /23 et /24) |
+| AS d'origine | le seul AS autorisé à **originer** ces préfixes |
+
+### @@sec:validator@@ Du dépôt au routeur
+
+Les routeurs ne vérifient pas eux-mêmes les signatures : un **validateur** (*relying party* :
+rpki-client, Routinator, FORT…) télécharge les dépôts RPKI, vérifie toute la chaîne de certificats
+et en tire la liste des **VRP** (*Validated ROA Payloads* : préfixe, longueur maximale, AS). Un
+**cache** la sert aux routeurs par le protocole **RPKI-RTR** (RFC 8210) sur TCP : port **323**
+officiellement, souvent **3323** ou **8282** pour ne pas lancer le serveur en root. Le cache prévient
+les routeurs (*Serial Notify*) dès que la liste change.
+
+Dans ce TP, `rov_rpki` fait tourner **stayrtr** (un serveur RTR) qui sert directement le fichier
+`{roa_file}` : ce fichier tient lieu de la RPKI mondiale (les machines n'ont pas accès à l'Internet).
+Une ROA y est un objet `"prefix"` / `"maxLength"` / `"asn"` de la liste `"roas"` ; stayrtr relit le
+fichier toutes les {refresh} s et garde l'ancienne liste si le fichier n'est plus du JSON valide
+(`{log}` le signale).
+
+### @@sec:rov@@ La validation de l'origine (ROV)
+
+Pour chaque route reçue, le routeur compare le préfixe et l'**AS d'origine** (le dernier AS de
+l'AS_PATH) aux VRP (RFC 6811) :
+
+| état | condition |
+|------|-----------|
+| **valid** | une VRP couvre le préfixe, avec cet AS d'origine et une longueur maximale ≥ la longueur du préfixe |
+| **invalid** | une VRP au moins couvre le préfixe, mais aucune ne correspond (mauvais AS, ou préfixe trop long) |
+| **notfound** | aucune VRP ne couvre le préfixe (son titulaire n'a pas signé de ROA) |
+
+La politique recommandée (RFC 8893, MANRS) est de **rejeter les routes invalides** et de garder les
+autres : une grande partie de l'espace d'adressage n'a pas encore de ROA, rejeter les routes
+*notfound* couperait l'Internet. Certains opérateurs préfèrent en plus les routes valides.
+
+- Une ROA trop large (`maxLength` supérieur à ce qui est réellement annoncé) laisse la place à un
+  détournement de sous-préfixe avec l'origine légitime ; une ROA trop étroite rend **invalides** les
+  préfixes plus spécifiques que l'on annonce (ingénierie de trafic). La RFC 9319 recommande de ne
+  signer que les longueurs réellement annoncées.
+- La ROV ne vérifie **que l'origine** : un AS qui forge un chemin se terminant par l'AS légitime
+  (`… 64500 65020`) passe la validation. ASPA (vérification des relations entre AS) et BGPsec
+  (chemins signés) traitent ce point.
+
+### @@sec:rpki-frr@@ RPKI avec FRR
+
+`bgpd` doit être lancé avec le module RPKI (`-M rpki` dans `/etc/frr/daemons`, déjà fait sur les
+routeurs concernés). Le module récupère les VRP du cache ; une **route-map** décide de leur usage :
+
+```
+rpki
+ rpki cache tcp 192.0.2.10 3323 preference 1   ! le cache (plusieurs : la plus petite préférence d'abord)
+exit
+route-map ROV deny 10
+ match rpki invalid
+exit
+route-map ROV permit 20
+ match rpki valid
+ set local-preference 200
+exit
+route-map ROV permit 30
+exit
+router bgp 64512
+ address-family ipv4 unicast
+  neighbor 198.51.100.1 soft-reconfiguration inbound
+  neighbor 198.51.100.1 route-map ROV in
+```
+
+- `show rpki cache-connection`, `show rpki cache-server` : l'état de la connexion au cache ;
+  `show rpki prefix-table` : les VRP reçues ; `show rpki prefix P [AS]` : les VRP qui couvrent un
+  préfixe.
+- `show bgp ipv4 unicast` marque chaque route `V` (valid), `I` (invalid) ou `N` (notfound) ;
+  `show bgp ipv4 unicast P` affiche `rpki validation-state` ; `show bgp ipv4 unicast rpki invalid`
+  liste les routes invalides.
+- Sans connexion au cache, toutes les routes sont `notfound`. Après un échec de connexion, FRR ne
+  réessaie qu'au bout de 10 min (`retry_interval`) : `rpki reset` relance la connexion.
+- Quand une VRP change, FRR revalide les routes ; pour réappliquer la route-map d'entrée aux routes
+  déjà reçues il lui faut leur copie (`soft-reconfiguration inbound`). Une route **déjà rejetée**
+  par `match rpki invalid` ne revient pas d'elle-même quand sa ROA est corrigée : le routeur qui
+  l'a rejetée doit la redemander à son pair (`clear bgp A.B.C.D soft in`).
+""": """
+The **RPKI** (*Resource Public Key Infrastructure*, RFC 6480) is a certificate infrastructure
+that follows the allocation of Internet resources: the five **RIRs** (RIPE NCC, ARIN, APNIC, LACNIC,
+AFRINIC) are the root authorities (*trust anchors*) and certify the address blocks and the
+AS numbers they allocate. The holder of a block signs **ROAs** (*Route Origin
+Authorization*, RFC 6482):
+
+| field of a ROA | role |
+|----------------|------|
+| prefix | the block concerned, for example `198.51.100.0/22` |
+| `maxLength` | the maximum length of the prefixes that may be announced (`22`: the /22 only; `24`: the /22 and all its /23 and /24) |
+| origin AS | the only AS allowed to **originate** these prefixes |
+
+### @@sec:validator@@ From the repository to the router
+
+The routers do not check the signatures themselves: a **validator** (*relying party*:
+rpki-client, Routinator, FORT…) downloads the RPKI repositories, checks the whole certificate chain
+and derives from them the list of **VRPs** (*Validated ROA Payloads*: prefix, maximum length, AS). A
+**cache** serves it to the routers with the **RPKI-RTR** protocol (RFC 8210) over TCP: port **323**
+officially, often **3323** or **8282** so as not to run the server as root. The cache notifies the
+routers (*Serial Notify*) as soon as the list changes.
+
+In this lab, `rov_rpki` runs **stayrtr** (an RTR server), which serves the file `{roa_file}`
+directly: this file stands in for the worldwide RPKI (the machines have no access to the Internet).
+A ROA is a `"prefix"` / `"maxLength"` / `"asn"` object of the `"roas"` list there; stayrtr reads the
+file again every {refresh} s and keeps the previous list if the file is no longer valid JSON
+(`{log}` reports it).
+
+### @@sec:rov@@ Route origin validation (ROV)
+
+For each route received, the router compares the prefix and the **origin AS** (the last AS of the
+AS_PATH) with the VRPs (RFC 6811):
+
+| state | condition |
+|-------|-----------|
+| **valid** | a VRP covers the prefix, with this origin AS and a maximum length ≥ the length of the prefix |
+| **invalid** | at least one VRP covers the prefix, but none matches (wrong AS, or prefix too long) |
+| **notfound** | no VRP covers the prefix (its holder has not signed a ROA) |
+
+The recommended policy (RFC 8893, MANRS) is to **reject the invalid routes** and to keep the
+others: a large part of the address space has no ROA yet, so rejecting the *notfound* routes would
+cut off the Internet. Some operators also prefer the valid routes.
+
+- A ROA that is too broad (`maxLength` greater than what is really announced) leaves room for a
+  sub-prefix hijack with the legitimate origin; a ROA that is too narrow makes the more specific
+  prefixes one announces (traffic engineering) **invalid**. RFC 9319 recommends signing only the
+  lengths that are really announced.
+- ROV checks **the origin only**: an AS that forges a path ending with the legitimate AS
+  (`… 64500 65020`) passes the validation. ASPA (verification of the relationships between ASes)
+  and BGPsec (signed paths) address this point.
+
+### @@sec:rpki-frr@@ RPKI with FRR
+
+`bgpd` must be started with the RPKI module (`-M rpki` in `/etc/frr/daemons`, already done on the
+routers concerned). The module fetches the VRPs from the cache; a **route-map** decides how they
+are used:
+
+```
+rpki
+ rpki cache tcp 192.0.2.10 3323 preference 1   ! the cache (several: the lowest preference first)
+exit
+route-map ROV deny 10
+ match rpki invalid
+exit
+route-map ROV permit 20
+ match rpki valid
+ set local-preference 200
+exit
+route-map ROV permit 30
+exit
+router bgp 64512
+ address-family ipv4 unicast
+  neighbor 198.51.100.1 soft-reconfiguration inbound
+  neighbor 198.51.100.1 route-map ROV in
+```
+
+- `show rpki cache-connection`, `show rpki cache-server`: the state of the connection to the cache;
+  `show rpki prefix-table`: the VRPs received; `show rpki prefix P [AS]`: the VRPs covering a
+  prefix.
+- `show bgp ipv4 unicast` marks each route `V` (valid), `I` (invalid) or `N` (notfound);
+  `show bgp ipv4 unicast P` shows `rpki validation-state`; `show bgp ipv4 unicast rpki invalid`
+  lists the invalid routes.
+- Without a connection to the cache, every route is `notfound`. After a failed connection, FRR
+  retries only after 10 min (`retry_interval`): `rpki reset` restarts the connection.
+- When a VRP changes, FRR revalidates the routes; to apply the inbound route-map again to the routes
+  already received, it needs a copy of them (`soft-reconfiguration inbound`). A route **already
+  rejected** by `match rpki invalid` does not come back by itself when its ROA is fixed: the router
+  that rejected it must ask its peer for it again (`clear bgp A.B.C.D soft in`).
+""",
+    "Limiter le nombre de préfixes": "Limiting the number of prefixes",
+    """
+Le premier filtre d'une session avec un client est une **liste de préfixes** précise (ses blocs,
+tirés des bases de routage IRR avec un outil comme `bgpq4`). En complément, **`maximum-prefix`**
+fixe le nombre maximal de préfixes acceptés d'un pair : c'est le filet de sécurité contre une fuite
+massive (un client qui réannonce une table complète, un pair qui se trompe de filtre). Les valeurs
+publiées dans PeeringDB par les opérateurs servent souvent de référence.
+
+```
+router bgp 64512
+ address-family ipv4 unicast
+  neighbor 203.0.113.2 maximum-prefix 100              ! au-delà de 100 : la session est fermée
+  neighbor 203.0.113.2 maximum-prefix 100 80           ! alerte dans le journal à 80 % de la limite
+  neighbor 203.0.113.2 maximum-prefix 100 warning-only ! alerte seulement, rien n'est coupé
+  neighbor 203.0.113.2 maximum-prefix 100 restart 30   ! rétablissement automatique après 30 min
+```
+
+- La limite compte les préfixes **acceptés** (après la route-map d'entrée). Le seuil d'alerte vaut
+  75 % par défaut.
+- Quand la limite est dépassée, le routeur envoie un `NOTIFICATION` (*Cease / Maximum Number of
+  Prefixes Reached*) et ferme la session, qui reste fermée : `show bgp summary` affiche
+  **`Idle (PfxCt)`**, le journal (`/var/log/frr/frr.log`) un message `%MAXPFXEXCEED` avec le nombre de
+  préfixes reçus. Elle ne se rétablit qu'avec `clear bgp A.B.C.D` (une fois le pair corrigé), ou
+  automatiquement avec `restart`.
+- `neighbor X maximum-prefix-out N` limite dans l'autre sens ce que l'on annonce à un pair.
+""": """
+The first filter of a session with a customer is a precise **prefix list** (its blocks, taken from
+the IRR routing registries with a tool such as `bgpq4`). In addition, **`maximum-prefix`** sets the
+maximum number of prefixes accepted from a peer: it is the safety net against a massive leak (a
+customer re-announcing a full table, a peer applying the wrong filter). The values that operators
+publish in PeeringDB often serve as a reference.
+
+```
+router bgp 64512
+ address-family ipv4 unicast
+  neighbor 203.0.113.2 maximum-prefix 100              ! beyond 100: the session is closed
+  neighbor 203.0.113.2 maximum-prefix 100 80           ! warning in the log at 80% of the limit
+  neighbor 203.0.113.2 maximum-prefix 100 warning-only ! warning only, nothing is cut
+  neighbor 203.0.113.2 maximum-prefix 100 restart 30   ! automatic recovery after 30 min
+```
+
+- The limit counts the **accepted** prefixes (after the inbound route-map). The warning threshold
+  is 75% by default.
+- When the limit is exceeded, the router sends a `NOTIFICATION` (*Cease / Maximum Number of
+  Prefixes Reached*) and closes the session, which stays closed: `show bgp summary` shows
+  **`Idle (PfxCt)`**, the log (`/var/log/frr/frr.log`) a `%MAXPFXEXCEED` message with the number of
+  prefixes received. It comes back only with `clear bgp A.B.C.D` (once the peer is fixed), or
+  automatically with `restart`.
+- `neighbor X maximum-prefix-out N` limits, in the other direction, what is announced to a peer.
+""",
+    "GTSM : protéger les sessions": "GTSM: protecting the sessions",
+    """
+Une session BGP est une connexion TCP : un attaquant qui connaît les adresses des deux routeurs peut
+forger des segments (RST pour la couper, SYN en masse pour saturer le processeur du routeur) depuis
+n'importe où dans l'Internet. Le **GTSM** (*Generalized TTL Security Mechanism*, RFC 5082) s'appuie
+sur un fait simple : chaque routeur traversé décrémente le TTL, et personne ne peut envoyer un paquet
+avec un TTL supérieur à 255.
+
+- Les deux pairs émettent leurs paquets BGP avec un **TTL de 255** (au lieu de 1 en eBGP par
+  défaut) ;
+- chacun **rejette** les paquets reçus dont le TTL est inférieur à **256 − N**, N étant le nombre de
+  sauts configuré : un pair directement connecté (`hops 1`) doit arriver avec un TTL de 255, un pair
+  à deux sauts (`hops 2`) avec 254 au moins. Un paquet forgé à plusieurs sauts de là arrive avec un
+  TTL trop petit et le noyau le jette avant même TCP (option de socket `IP_MINTTL`).
+
+```
+router bgp 64512
+ neighbor 198.51.100.1 ttl-security hops 1          ! pair directement connecté
+ neighbor 192.0.2.7 ttl-security hops 2             ! pair à deux sauts (entre loopbacks)
+```
+
+- `ttl-security` et `ebgp-multihop` sont **incompatibles** (FRR refuse : *ebgp-multihop and
+  ttl-security cannot be configured together*) : `ttl-security hops N` remplace `ebgp-multihop`.
+- Les **deux côtés** doivent l'activer : le côté qui l'exige rejette les paquets émis avec un TTL de
+  1 (ou celui d'`ebgp-multihop`) par l'autre ; la session ne s'établit pas (`Active` ou `Idle`).
+- Un routeur qui a échoué réessaie d'ouvrir la session toutes les 120 s par défaut (`neighbor X timers
+  connect N`) ; `clear bgp A.B.C.D` relance une tentative aussitôt.
+- GTSM se combine avec l'authentification de la session : TCP MD5 (`neighbor X password`, RFC 2385)
+  ou, plus récent, TCP-AO (RFC 5925).
+""": """
+A BGP session is a TCP connection: an attacker who knows the addresses of the two routers can forge
+segments (RST to cut it, SYN floods to overload the router's processor) from anywhere on the
+Internet. **GTSM** (*Generalized TTL Security Mechanism*, RFC 5082) relies on a simple fact: every
+router crossed decrements the TTL, and nobody can send a packet with a TTL greater than 255.
+
+- Both peers send their BGP packets with a **TTL of 255** (instead of 1 by default in eBGP);
+- each one **rejects** the packets received with a TTL lower than **256 − N**, N being the
+  configured number of hops: a directly connected peer (`hops 1`) must arrive with a TTL of 255, a
+  peer two hops away (`hops 2`) with at least 254. A packet forged several hops away arrives with a
+  TTL that is too small, and the kernel drops it before it even reaches TCP (socket option
+  `IP_MINTTL`).
+
+```
+router bgp 64512
+ neighbor 198.51.100.1 ttl-security hops 1          ! directly connected peer
+ neighbor 192.0.2.7 ttl-security hops 2             ! peer two hops away (between loopbacks)
+```
+
+- `ttl-security` and `ebgp-multihop` are **incompatible** (FRR refuses: *ebgp-multihop and
+  ttl-security cannot be configured together*): `ttl-security hops N` replaces `ebgp-multihop`.
+- **Both sides** must enable it: the side that demands it rejects the packets sent by the other one
+  with a TTL of 1 (or that of `ebgp-multihop`); the session does not come up (`Active` or `Idle`).
+- A router that failed retries opening the session every 120 s by default (`neighbor X timers
+  connect N`); `clear bgp A.B.C.D` starts a new attempt at once.
+- GTSM combines with the authentication of the session: TCP MD5 (`neighbor X password`, RFC 2385)
+  or, more recent, TCP-AO (RFC 5925).
+""",
+    "RTBH : le blackholing déclenché à distance": "RTBH: remotely triggered blackholing",
+    """
+Face à une attaque par déni de service, un client voit ses liens saturés par un trafic qu'il ne
+peut pas filtrer lui-même : il est déjà arrivé. Le **RTBH** (*Remotely Triggered Black Hole*,
+RFC 5635) lui permet de demander à son fournisseur de **jeter, à l'entrée de son réseau, tout le
+trafic à destination de l'adresse attaquée** : le reste de ses services est sauvé, au prix de
+l'adresse attaquée elle-même.
+
+- Le client annonce la route de l'adresse attaquée (un /32) avec la communauté bien connue
+  **BLACKHOLE**, **65535:666** (RFC 7999 ; `blackhole` dans FRR).
+- Le fournisseur accepte ces /32 **seulement dans l'espace d'adresses du client** (sinon un client
+  pourrait faire disparaître l'adresse de n'importe qui) et seulement avec la communauté ; il change
+  leur prochain saut pour une adresse « poubelle » et ne les annonce pas plus loin (`no-export`).
+- Le noyau Linux jette ce qui est routé vers une interface factice (`dummy`) : une adresse du réseau
+  d'une telle interface sert de prochain saut poubelle (l'équivalent de `Null0` des équipements
+  dédiés). Avec FRR, le prochain saut doit être dans ce réseau connecté : une route BGP dont le
+  prochain saut est résolu par une route `blackhole` statique reste **inactive** (zebra ne
+  l'installe pas, le trafic suit alors la route du préfixe plus large).
+
+```
+bgp community-list standard BLACKHOLE seq 5 permit blackhole
+ip prefix-list CUST-HOSTS seq 5 permit 203.0.113.0/24 ge 32
+route-map FROM-CUST permit 5
+ match ip address prefix-list CUST-HOSTS
+ match community BLACKHOLE
+ set ip next-hop 192.0.2.2
+ set community no-export additive
+exit
+```
+
+- Deux clauses `match` dans une même séquence doivent être **toutes deux** vraies.
+- FRR ajoute de lui-même `no-export` à une route reçue avec la communauté BLACKHOLE (`show bgp
+  ipv4 unicast P` : *inform peer to blackhole prefix*), mais l'installe comme une route ordinaire : le
+  rejet du trafic est l'affaire de la politique du routeur.
+- Une modification d'une route-map déjà appliquée prend effet au bout de quelques secondes ;
+  `clear bgp A.B.C.D soft in` la réapplique aussitôt.
+- Variantes : RTBH sur la **source** (avec le contrôle uRPF), et **FlowSpec** (RFC 8955), qui
+  diffuse des règles de filtrage plus fines (protocole, ports) au lieu d'une route.
+""": """
+Faced with a denial-of-service attack, a customer sees its links saturated by traffic it cannot
+filter itself: the traffic has already arrived. **RTBH** (*Remotely Triggered Black Hole*,
+RFC 5635) lets it ask its provider to **drop, at the edge of the provider's network, all the traffic
+destined to the attacked address**: the rest of its services is saved, at the cost of the attacked
+address itself.
+
+- The customer announces the route of the attacked address (a /32) with the well-known community
+  **BLACKHOLE**, **65535:666** (RFC 7999; `blackhole` in FRR).
+- The provider accepts these /32s **only within the customer's address space** (otherwise a
+  customer could make anybody's address disappear) and only with the community; it changes their
+  next hop to a "discard" address and does not announce them any further (`no-export`).
+- The Linux kernel drops what is routed to a fake (`dummy`) interface: an address of the network of
+  such an interface serves as the discard next hop (the equivalent of `Null0` on dedicated
+  equipment). With FRR, the next hop must be in this connected network: a BGP route whose next hop
+  is resolved through a static `blackhole` route stays **inactive** (zebra does not install it, and
+  the traffic then follows the route of the wider prefix).
+
+```
+bgp community-list standard BLACKHOLE seq 5 permit blackhole
+ip prefix-list CUST-HOSTS seq 5 permit 203.0.113.0/24 ge 32
+route-map FROM-CUST permit 5
+ match ip address prefix-list CUST-HOSTS
+ match community BLACKHOLE
+ set ip next-hop 192.0.2.2
+ set community no-export additive
+exit
+```
+
+- Two `match` clauses in the same sequence must **both** be true.
+- FRR adds `no-export` on its own to a route received with the BLACKHOLE community (`show bgp
+  ipv4 unicast P`: *inform peer to blackhole prefix*), but installs it like an ordinary route:
+  dropping the traffic is up to the router's policy.
+- A change to a route-map already applied takes effect after a few seconds;
+  `clear bgp A.B.C.D soft in` applies it again at once.
+- Variants: RTBH on the **source** (with uRPF checking), and **FlowSpec** (RFC 8955), which
+  distributes finer filtering rules (protocol, ports) instead of a route.
+""",
+    "BFD : détecter vite une panne": "BFD: detecting a failure quickly",
+    """
+BGP ne s'aperçoit d'une **panne silencieuse** (le lien reste actif mais ne transmet plus rien : un
+commutateur intermédiaire en panne, un équipement de transmission) qu'à l'expiration du *hold time*,
+**180 s** par défaut : pendant tout ce temps, le trafic part dans le vide. **BFD** (*Bidirectional
+Forwarding Detection*, RFC 5880 et 5881) échange des paquets UDP très fréquents (port 3784) entre les
+deux routeurs et prévient BGP dès que `detect-multiplier` paquets consécutifs manquent : temps de
+détection = intervalle × multiplicateur (300 ms × 3 = 900 ms par défaut).
+
+```
+bfd
+ profile FAST
+  transmit-interval 100
+  receive-interval 100
+  detect-multiplier 3
+ exit
+exit
+router bgp 64512
+ neighbor 198.51.100.1 bfd profile FAST
+```
+
+`bfdd` doit être lancé (`bfdd=yes` dans `/etc/frr/daemons`). `show bfd peers` affiche les sessions
+BFD, leur état et les intervalles négociés ; `show bgp neighbors A.B.C.D` la session BFD du pair. Quand
+BFD tombe, BGP ferme la session et retire ses routes : le trafic bascule aussitôt sur un autre chemin.
+BFD doit être activé **des deux côtés** : tant que sa session BFD n'est pas établie, FRR garde la
+session BGP en `Idle`.
+""": """
+BGP notices a **silent failure** (the link stays up but no longer carries anything: a failed
+intermediate switch, a piece of transmission equipment) only when the *hold time* expires,
+**180 s** by default: all that time, the traffic goes into the void. **BFD** (*Bidirectional
+Forwarding Detection*, RFC 5880 and 5881) exchanges very frequent UDP packets (port 3784) between the
+two routers and notifies BGP as soon as `detect-multiplier` consecutive packets are missing:
+detection time = interval × multiplier (300 ms × 3 = 900 ms by default).
+
+```
+bfd
+ profile FAST
+  transmit-interval 100
+  receive-interval 100
+  detect-multiplier 3
+ exit
+exit
+router bgp 64512
+ neighbor 198.51.100.1 bfd profile FAST
+```
+
+`bfdd` must be running (`bfdd=yes` in `/etc/frr/daemons`). `show bfd peers` shows the BFD sessions,
+their state and the negotiated intervals; `show bgp neighbors A.B.C.D` the BFD session of the peer.
+When BFD goes down, BGP closes the session and withdraws its routes: the traffic switches over to
+another path at once. BFD must be enabled **on both sides**: as long as its BFD session is not
+established, FRR keeps the BGP session in `Idle`.
+""",
+    "FRR et vtysh": "FRR and vtysh",
+    """
+Les routeurs font tourner **FRRouting** ; on les configure avec `vtysh` (`configure terminal`,
+`write` pour enregistrer dans `/etc/frr/frr.conf`, `no` devant une ligne pour la supprimer).
+
+```
+show bgp ipv4 unicast summary              # sessions, état (Established, Active, Idle (PfxCt)…), préfixes reçus
+show bgp ipv4 unicast                      # table BGP, états RPKI (V/I/N), meilleur chemin (>)
+show bgp ipv4 unicast P                    # détail d'un préfixe : chemins, communautés, état RPKI
+show bgp neighbors A.B.C.D                 # détail d'une session : TTL, limites, BFD, dernière fermeture
+show bgp ipv4 unicast neighbors A.B.C.D advertised-routes
+show bgp ipv4 unicast neighbors A.B.C.D received-routes   # avec soft-reconfiguration inbound
+show rpki cache-connection / prefix-table / prefix P
+show bfd peers
+clear bgp A.B.C.D [soft in|soft out]       # couper / réappliquer les politiques
+show ip route                              # table de routage (B = BGP)
+```
+
+Documentation : [FRR — BGP](https://docs.frrouting.org/en/latest/bgp.html) (sections *RPKI*,
+*Maximum-prefix*, *Communities*, *BFD*).
+""": """
+The routers run **FRRouting**; they are configured with `vtysh` (`configure terminal`, `write` to
+save into `/etc/frr/frr.conf`, `no` in front of a line to remove it).
+
+```
+show bgp ipv4 unicast summary              # sessions, state (Established, Active, Idle (PfxCt)…), prefixes received
+show bgp ipv4 unicast                      # BGP table, RPKI states (V/I/N), best path (>)
+show bgp ipv4 unicast P                    # detail of a prefix: paths, communities, RPKI state
+show bgp neighbors A.B.C.D                 # detail of a session: TTL, limits, BFD, last closing
+show bgp ipv4 unicast neighbors A.B.C.D advertised-routes
+show bgp ipv4 unicast neighbors A.B.C.D received-routes   # with soft-reconfiguration inbound
+show rpki cache-connection / prefix-table / prefix P
+show bfd peers
+clear bgp A.B.C.D [soft in|soft out]       # cut / apply the policies again
+show ip route                              # routing table (B = BGP)
+```
+
+Documentation: [FRR — BGP](https://docs.frrouting.org/en/latest/bgp.html) (sections *RPKI*,
+*Maximum-prefix*, *Communities*, *BFD*).
+""",
+    "Diagnostic": "Troubleshooting",
+    """
+- `ip route` sur un routeur : les routes BGP portent `proto bgp` ; `ip route get A` donne la route
+  choisie pour une adresse ;
+- `tcpdump -nvi ethX tcp port 179` : les messages BGP et leur **TTL** ; `tcpdump -ni ethX udp port
+  3784` : BFD ;
+- `/var/log/frr/frr.log` : ouvertures et fermetures des sessions, alertes de `maximum-prefix`.
+
+| symptôme | causes à vérifier |
+|----------|-------------------|
+| `show rpki cache-connection` : pas de connexion | adresse ou port du cache, cache arrêté, échec ancien (`rpki reset`) |
+| route invalide encore présente | route-map pas appliquée à ce pair, `match rpki` absent, revalidation sans `soft-reconfiguration inbound` (`clear bgp X soft in`) |
+| route corrigée encore rejetée chez un pair | il doit la redemander (`clear bgp X soft in` de son côté) |
+| session `Idle (PfxCt)` | limite `maximum-prefix` dépassée : corriger le pair puis `clear bgp X` |
+| session `Active` ou `Idle` avec un pair qui exige GTSM | `ttl-security` absent ou mauvais nombre de sauts, `ebgp-multihop` resté configuré |
+| route BGP présente mais trafic non jeté | prochain saut non résolu par un réseau connecté, route-map pas réappliquée |
+""": """
+- `ip route` on a router: the BGP routes carry `proto bgp`; `ip route get A` gives the route chosen
+  for an address;
+- `tcpdump -nvi ethX tcp port 179`: the BGP messages and their **TTL**; `tcpdump -ni ethX udp port
+  3784`: BFD;
+- `/var/log/frr/frr.log`: sessions opening and closing, `maximum-prefix` warnings.
+
+| symptom | causes to check |
+|---------|-----------------|
+| `show rpki cache-connection`: no connection | address or port of the cache, cache stopped, old failure (`rpki reset`) |
+| invalid route still present | route-map not applied to this peer, `match rpki` missing, revalidation without `soft-reconfiguration inbound` (`clear bgp X soft in`) |
+| fixed route still rejected at a peer | the peer must ask for it again (`clear bgp X soft in` on its side) |
+| session `Idle (PfxCt)` | `maximum-prefix` limit exceeded: fix the peer, then `clear bgp X` |
+| session `Active` or `Idle` with a peer that demands GTSM | `ttl-security` missing or wrong number of hops, `ebgp-multihop` still configured |
+| BGP route present but traffic not dropped | next hop not resolved through a connected network, route-map not applied again |
+""",
+    "Partie 1 : solution (RPKI)": "Part 1: solution (RPKI)",
+    "Partie 2 : solution (maximum-prefix)": "Part 2: solution (maximum-prefix)",
+    "Partie 3 : solution (GTSM)": "Part 3: solution (GTSM)",
+    "Partie 4 : solution (RTBH)": "Part 4: solution (RTBH)",
+    "Bonus : solution (BFD)": "Bonus: solution (BFD)",
+    "1 — validation de l'origine (RPKI)": "1 — route origin validation (RPKI)",
+    "`rov_r1`, `rov_rpki` (le validateur) ; `rov_isp1`, `rov_isp2`, `rov_peer` sans terminal": "`rov_r1`, `rov_rpki` (the validator); `rov_isp1`, `rov_isp2`, `rov_peer` without a terminal",
+    "2 — limiter les préfixes reçus": "2 — limiting the prefixes received",
+    "`pfx_r1` ; `pfx_isp`, `pfx_c1`, `pfx_c2` sans terminal": "`pfx_r1`; `pfx_isp`, `pfx_c1`, `pfx_c2` without a terminal",
+    "`gtsm_r1` ; `gtsm_isp`, `gtsm_mid`, `gtsm_par` sans terminal": "`gtsm_r1`; `gtsm_isp`, `gtsm_mid`, `gtsm_par` without a terminal",
+    "`bh_r1` ; `bh_isp`, `bh_cust`, `bh_srv` sans terminal": "`bh_r1`; `bh_isp`, `bh_cust`, `bh_srv` without a terminal",
+    "`bfd_r1`, `bfd_isp1` ; `bfd_isp2`, le pont `bfd_sw` sans terminal": "`bfd_r1`, `bfd_isp1`; `bfd_isp2`, the bridge `bfd_sw` without a terminal",
+    "`bh_srv` (`{victim}` et `{control}`)": "`bh_srv` (`{victim}` and `{control}`)",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente les menaces sur BGP et les protections de ce TP
+(RPKI et validation de l'origine, `maximum-prefix`, GTSM, RTBH, BFD), leur configuration avec FRR
+et les commandes de diagnostic.
+
+**Le réseau.** Il est fait de **cinq sites indépendants**, un par partie. Chaque site a sa couleur
+sur le schéma :
+
+| partie | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- Vous êtes l'opérateur de l'**AS {our_as}** : ses routeurs sont les `*_r1` de chaque site. Les
+  autres routeurs appartiennent à d'autres opérateurs (vos fournisseurs, vos clients, un pair) : vous
+  n'avez pas de terminal sur eux.
+- Les routeurs font tourner **FRRouting** (FRR) avec `bgpd` : configurez-les avec `vtysh`. Toutes les
+  sessions BGP de vos routeurs existent déjà, avec leurs politiques (route-maps `ALL`, `OWN`…) ; chaque
+  partie leur ajoute une protection.
+- Toutes les adresses sont en place, y compris les interfaces de bouclage (`lo`). Les fichiers
+  `/etc/hosts` contiennent les noms : `rov_isp1-eth0` désigne l'adresse de l'interface `eth0` de
+  `rov_isp1`, `gtsm_par-lo` son adresse de bouclage.
+
+**Les AS des autres opérateurs.**
+
+| routeur | AS |
+|---------|----|
+{as_rows}
+
+**Plan d'adressage.** Les liens entre routeurs sont des /30. Les préfixes annoncés en BGP (les
+vôtres comme ceux des autres AS) sont pris dans `{pub}`.
+
+| réseau | préfixe | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Enregistrez la configuration de FRR (`write` dans `vtysh`).
+- Une route-map modifiée prend effet au bout de quelques secondes ; `clear bgp A.B.C.D soft in`
+  la réapplique aussitôt.
+
+**Évaluation.** Chaque évaluation lit vos réponses, l'état de BGP sur les routeurs (sessions, tables,
+RPKI, BFD, configuration), les tables de routage, et lance des `ping`. Elle coupe aussi pendant
+{cut} s le lien de `bfd_r1` vers `bfd_isp1` (bonus).
+""": """
+Read the **Informations** tab: it presents the threats to BGP and the protections of this lab
+(RPKI and route origin validation, `maximum-prefix`, GTSM, RTBH, BFD), their configuration with FRR
+and the troubleshooting commands.
+
+**The network.** It is made of **five independent sites**, one per part. Each site has its own
+colour on the diagram:
+
+| part | site | machines |
+|------|------|----------|
+{site_rows}
+
+- You are the operator of **AS {our_as}**: its routers are the `*_r1` of each site. The other
+  routers belong to other operators (your providers, your customers, a peer): you have no terminal
+  on them.
+- The routers run **FRRouting** (FRR) with `bgpd`: configure them with `vtysh`. All the BGP
+  sessions of your routers already exist, with their policies (route-maps `ALL`, `OWN`…); each part
+  adds a protection to them.
+- All the addresses are in place, loopback interfaces (`lo`) included. The `/etc/hosts` files
+  contain the names: `rov_isp1-eth0` stands for the address of the `eth0` interface of `rov_isp1`,
+  `gtsm_par-lo` for the loopback address of `gtsm_par`.
+
+**The ASes of the other operators.**
+
+| router | AS |
+|--------|----|
+{as_rows}
+
+**Addressing plan.** The links between routers are /30s. The prefixes announced in BGP (yours as
+well as those of the other ASes) are taken from `{pub}`.
+
+| network | prefix | interfaces |
+|---------|--------|------------|
+{addressing}
+
+**Instructions.**
+
+- The parts are **independent**: do them in any order you like. A completed part gives all its
+  points, whatever the state of the others.
+- Save the FRR configuration (`write` in `vtysh`).
+- A modified route-map takes effect after a few seconds; `clear bgp A.B.C.D soft in` applies it
+  again at once.
+
+**Evaluation.** Each evaluation reads your answers, the state of BGP on the routers (sessions,
+tables, RPKI, BFD, configuration) and the routing tables, and runs `ping`s. It also cuts the link
+from `bfd_r1` to `bfd_isp1` for {cut} s (bonus).
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_rov`, `solve_pfx`, `solve_gtsm`, `solve_bh` et `solve_bfd` (onglet
+*Appliquer une configuration*) appliquent la solution d'une seule partie et remplissent ses
+formulaires. L'état `final` les applique toutes et attend la convergence (environ 40 s) puis
+remplit tous les formulaires : une évaluation lancée dès son retour donne tous les points, bonus
+compris.
+
+Le validateur `rov_rpki` fait tourner `stayrtr` sur le fichier `{roa_file}` (relu toutes les
+{refresh} s, journal `{log}`). S'il a été arrêté :
+`cd /tmp && setsid -f stayrtr -bind :{port} -cache {roa_file} -checktime=false -refresh {refresh}
+-metrics.addr 127.0.0.1:9847 > {log} 2>&1`, puis `rpki reset` sur `rov_r1` et `rov_peer`.
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance. The
+states `solve_rov`, `solve_pfx`, `solve_gtsm`, `solve_bh` and `solve_bfd` (*Apply Configuration*
+tab) apply the solution of a single part and fill in its forms. The `final` state applies them all,
+waits for convergence (about 40 s), then fills in all the forms: an evaluation started as soon as
+it returns gives all the points, bonus included.
+
+The validator `rov_rpki` runs `stayrtr` on the file `{roa_file}` (read again every {refresh} s,
+log `{log}`). If it has been stopped:
+`cd /tmp && setsid -f stayrtr -bind :{port} -cache {roa_file} -checktime=false -refresh {refresh}
+-metrics.addr 127.0.0.1:9847 > {log} 2>&1`, then `rpki reset` on `rov_r1` and `rov_peer`.
+""",
+    "Partie 1 — validation de l'origine par RPKI (site rov)": "Part 1 — route origin validation with RPKI (site rov)",
+    "Validation de l'origine par RPKI": "Route origin validation with RPKI",
+    """
+`rov_r1` a deux fournisseurs, `rov_isp1` (AS {as1}) et `rov_isp2` (AS {as2}), et un pair,
+`rov_peer` (AS {asp}). Il annonce votre bloc `{own}` et, pour l'ingénierie de trafic, le /24 `{te}`.
+Le validateur `rov_rpki` (`{rpki}`, réseau d'administration `rov_mgmt`) sert en RTR, sur le port
+**{port}**, les ROA du fichier `{roa_file}` (section @@ref:validator@@) :
+
+| préfixe | maxLength | AS d'origine |
+|---------|-----------|--------------|
+{roa_rows}
+
+`rov_peer` est déjà connecté au validateur et **rejette les routes invalides**.
+
+1. **Observation.** Sur `rov_r1`, regardez les routes reçues (`show bgp ipv4 unicast`) : par où passe
+   le trafic vers `{h}` ? vers `{m24}` (`ip route get`) ? Qui annonce ces préfixes, avec quel AS
+   d'origine ? Que dit `show rpki cache-connection` ?
+2. **Connexion au cache.** Connectez `rov_r1` au validateur (section @@ref:rpki-frr@@) et vérifiez
+   qu'il a reçu les VRP (`show rpki prefix-table`). Quel est l'état de validation de chaque route ?
+3. **Politique.** Sur les sessions de **vos deux fournisseurs**, appliquez en entrée la politique
+   suivante : rejeter les routes **invalid**, donner aux routes **valid** une `local-preference` de
+   **{lp}**, garder les routes **notfound** telles quelles. Activez aussi `soft-reconfiguration
+   inbound` sur ces deux sessions. Vérifiez la table de `rov_r1` et `ip route get` pour `{h}` et
+   `{m24}`.
+4. **Votre ROA.** Votre `{te}` est rejeté par `rov_peer` : avec `show rpki prefix {te} {our_as}` sur
+   `rov_r1`, trouvez pourquoi. Corrigez la ROA de votre bloc dans `{roa_file}` sur `rov_rpki` (le
+   fichier est relu toutes les {refresh} s) pour que votre /22 **et** votre /24 soient valides.
+""": """
+`rov_r1` has two providers, `rov_isp1` (AS {as1}) and `rov_isp2` (AS {as2}), and a peer,
+`rov_peer` (AS {asp}). It announces your block `{own}` and, for traffic engineering, the /24 `{te}`.
+The validator `rov_rpki` (`{rpki}`, management network `rov_mgmt`) serves over RTR, on port
+**{port}**, the ROAs of the file `{roa_file}` (section @@ref:validator@@):
+
+| prefix | maxLength | origin AS |
+|--------|-----------|-----------|
+{roa_rows}
+
+`rov_peer` is already connected to the validator and **rejects the invalid routes**.
+
+1. **Observation.** On `rov_r1`, look at the routes received (`show bgp ipv4 unicast`): which way
+   does the traffic to `{h}` go? And to `{m24}` (`ip route get`)? Who announces these prefixes, with
+   which origin AS? What does `show rpki cache-connection` say?
+2. **Connection to the cache.** Connect `rov_r1` to the validator (section @@ref:rpki-frr@@) and
+   check that it has received the VRPs (`show rpki prefix-table`). What is the validation state of
+   each route?
+3. **Policy.** On the sessions of **your two providers**, apply the following inbound policy:
+   reject the **invalid** routes, give the **valid** routes a `local-preference` of **{lp}**, keep
+   the **notfound** routes as they are. Also enable `soft-reconfiguration inbound` on these two
+   sessions. Check the table of `rov_r1` and `ip route get` for `{h}` and `{m24}`.
+4. **Your ROA.** Your `{te}` is rejected by `rov_peer`: with `show rpki prefix {te} {our_as}` on
+   `rov_r1`, find out why. Fix the ROA of your block in `{roa_file}` on `rov_rpki` (the file is read
+   again every {refresh} s) so that your /22 **and** your /24 are valid.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Sur `rov_rpki`, la ROA de `{own}` passe à `"maxLength": 24` :
+
+```
+{fixed}
+```
+
+Au départ, `rov_isp1` annonce `{h}` avec l'origine {as1} (chemin plus court que celui de `rov_isp2`,
+qui ajoute deux fois son AS) : le trafic part chez lui, c'est un **détournement d'origine**
+(`invalid` : la ROA autorise l'AS {as2}). Il annonce aussi `{m24}` avec l'origine **{as2}** forgée
+(`{as1} {as2}`) : la plus longue correspondance l'emporte sur le `{m}` légitime de `rov_isp2`. L'origine
+est la bonne, mais la ROA de `{m}` limite la longueur à 22 : `invalid` aussi. Après la politique, `{h}`
+passe par `rov_isp2` (`{isp2}`), `{m24}` disparaît et le trafic suit `{m}`. La revalidation par
+`rov_peer` demande un `clear bgp * soft in` de son côté : l'évaluation le fait.
+
+Évaluation : `rov_cache_conf` (1), `rov_cache_up` (2), `rov_vrps` (1), `rov_hijack` (3 : plus de
+chemin de `rov_isp1` pour `{h}`, meilleur chemin par `rov_isp2`), `rov_subprefix` (3 : `{m24}` rejeté,
+`{m}` par `rov_isp2`), `rov_kernel` (2), `rov_notfound` (2 : `{n1}` toujours accepté), `rov_valid_pref`
+(2 : local-preference {lp} des routes valides), `rov_roa` (4 : `{te}` et `{own}` valides et acceptés
+par `rov_peer`).
+""": """
+**Solution.**
+
+{solution}
+
+On `rov_rpki`, the ROA of `{own}` becomes `"maxLength": 24`:
+
+```
+{fixed}
+```
+
+At the start, `rov_isp1` announces `{h}` with the origin {as1} (a shorter path than that of
+`rov_isp2`, which adds its AS twice): the traffic goes to it, this is an **origin hijack**
+(`invalid`: the ROA authorises AS {as2}). It also announces `{m24}` with the forged origin **{as2}**
+(`{as1} {as2}`): the longest match wins over the legitimate `{m}` of `rov_isp2`. The origin is the
+right one, but the ROA of `{m}` limits the length to 22: `invalid` too. After the policy, `{h}` goes
+through `rov_isp2` (`{isp2}`), `{m24}` disappears and the traffic follows `{m}`. The revalidation by
+`rov_peer` requires a `clear bgp * soft in` on its side: the evaluation does it.
+
+Evaluation: `rov_cache_conf` (1), `rov_cache_up` (2), `rov_vrps` (1), `rov_hijack` (3: no path
+from `rov_isp1` left for `{h}`, best path through `rov_isp2`), `rov_subprefix` (3: `{m24}`
+rejected, `{m}` through `rov_isp2`), `rov_kernel` (2), `rov_notfound` (2: `{n1}` still accepted),
+`rov_valid_pref` (2: local-preference {lp} on the valid routes), `rov_roa` (4: `{te}` and `{own}`
+valid and accepted by `rov_peer`).
+""",
+    "Observations sur le site rov": "Observations on site rov",
+    """
+- port TCP du protocole RPKI-RTR de `rov_rpki` : @@{{port:[0-9]+}}@@
+- seul AS autorisé à originer `{h}` : @@{{origin:[0-9]+}}@@
+- état de validation du chemin de `{h}` reçu de `rov_isp1` :
+  @@{{state:>valid>>>valid|invalid>>>invalid|notfound>>>notfound}}@@
+- `{m24}` annoncé par `rov_isp1` est invalide car :
+  @@{{why:>son AS d'origine n'est pas celui de la ROA>>>origin|il est plus long que le maxLength de la ROA>>>maxlength|aucune ROA ne le couvre>>>noroa|sa signature est expirée>>>expired}}@@
+- après la correction d'une ROA, un routeur qui avait rejeté la route la récupère :
+  @@{{refresh:>tout seul, dès la notification du cache>>>auto|avec clear bgp X soft in de son côté>>>softin|seulement après un redémarrage de bgpd>>>restart|jamais : il faut une nouvelle ROA>>>never}}@@
+""": """
+- TCP port of the RPKI-RTR protocol on `rov_rpki`: @@{{port:[0-9]+}}@@
+- only AS allowed to originate `{h}`: @@{{origin:[0-9]+}}@@
+- validation state of the path to `{h}` received from `rov_isp1`:
+  @@{{state:>valid>>>valid|invalid>>>invalid|notfound>>>notfound}}@@
+- `{m24}` announced by `rov_isp1` is invalid because:
+  @@{{why:>its origin AS is not the one of the ROA>>>origin|it is longer than the maxLength of the ROA>>>maxlength|no ROA covers it>>>noroa|its signature has expired>>>expired}}@@
+- after a ROA has been fixed, a router that had rejected the route gets it back:
+  @@{{refresh:>by itself, as soon as the cache notifies it>>>auto|with clear bgp X soft in on its side>>>softin|only after a restart of bgpd>>>restart|never: a new ROA is needed>>>never}}@@
+""",
+    """
+**Solution.** **{port}** ; **{as2}** ; **invalid** ; **plus long que le maxLength** (origine {as2}
+forgée, mais la ROA de `{m}` dit 22) ; **avec `clear bgp X soft in`** (une route rejetée n'est plus
+connue du routeur : il doit la redemander).
+
+Évaluation : `rov_q_port`, `rov_q_origin` (1 chacun) et, pour l'enseignant seulement (choix dans une
+liste), `rov_q_state`, `rov_q_why`, `rov_q_refresh` (1 chacun).
+""": """
+**Solution.** **{port}**; **{as2}**; **invalid**; **longer than the maxLength** (origin {as2}
+forged, but the ROA of `{m}` says 22); **with `clear bgp X soft in`** (a rejected route is no
+longer known to the router: it must ask for it again).
+
+Evaluation: `rov_q_port`, `rov_q_origin` (1 each) and, for the instructor only (choice from a
+list), `rov_q_state`, `rov_q_why`, `rov_q_refresh` (1 each).
+""",
+    "rov_r1 configuré avec le cache RPKI": "rov_r1 configured with the RPKI cache",
+    "rov_r1 connecté au cache RPKI": "rov_r1 connected to the RPKI cache",
+    "VRP reçues par rov_r1": "VRPs received by rov_r1",
+    "détournement d'origine rejeté": "origin hijack rejected",
+    "détournement de sous-préfixe rejeté": "sub-prefix hijack rejected",
+    "le trafic vers le préfixe détourné suit le chemin légitime": "traffic to the hijacked prefix follows the legitimate path",
+    "les routes notfound restent acceptées": "notfound routes still accepted",
+    "routes valides préférées": "valid routes preferred",
+    "ROA corrigée : votre /24 accepté par rov_peer": "ROA fixed: your /24 accepted by rov_peer",
+    "port RPKI-RTR": "RPKI-RTR port",
+    "AS d'origine autorisé": "authorised origin AS",
+    "état de validation d'un détournement": "validation state of a hijack",
+    "cause de l'invalidité d'un sous-préfixe": "why a sub-prefix is invalid",
+    "retour d'une route rejetée": "return of a rejected route",
+    "Partie 2 — limiter les préfixes reçus (site pfx)": "Part 2 — limiting the prefixes received (site pfx)",
+    "Limiter les préfixes reçus": "Limiting the prefixes received",
+    """
+`pfx_r1` a un fournisseur, `pfx_isp` (AS {asi}), et deux clients : `pfx_c1` (AS {as1}), qui annonce
+ses quatre /24 (`{c1a}` à `{c1d}`), et `pfx_c2` (AS {as2}), qui devrait n'annoncer que `{c2a}` et
+`{c2b}`. Les sessions des clients acceptent tout ce qu'ils annoncent (route-map `ALL`), et `pfx_r1`
+réannonce tout à son fournisseur.
+
+1. **Observation.** Combien de préfixes `pfx_r1` reçoit-il de chaque client (`show bgp ipv4 unicast
+   summary`) ? Que réannonce-t-il à `pfx_isp` (`show bgp ipv4 unicast neighbors {isp}
+   advertised-routes`) ? D'où viennent les routes de `pfx_c2` (`show bgp ipv4 unicast` : AS_PATH,
+   origine `?`) ?
+2. **Protection.** Le contrat de chaque client fixe une limite de **{limit}** préfixes : configurez-la
+   sur les deux sessions avec une **alerte à {threshold} %** de la limite (section @@ref:maxprefix@@).
+   Ni `warning-only` ni `restart` : une session qui dépasse la limite reste fermée.
+3. Vérifiez l'état des deux sessions, le message du journal (`/var/log/frr/frr.log`) et ce que reçoit
+   maintenant `pfx_isp`.
+""": """
+`pfx_r1` has one provider, `pfx_isp` (AS {asi}), and two customers: `pfx_c1` (AS {as1}), which
+announces its four /24s (`{c1a}` to `{c1d}`), and `pfx_c2` (AS {as2}), which should announce only
+`{c2a}` and `{c2b}`. The customers' sessions accept everything they announce (route-map `ALL`), and
+`pfx_r1` re-announces everything to its provider.
+
+1. **Observation.** How many prefixes does `pfx_r1` receive from each customer (`show bgp ipv4
+   unicast summary`)? What does it re-announce to `pfx_isp` (`show bgp ipv4 unicast neighbors {isp}
+   advertised-routes`)? Where do the routes of `pfx_c2` come from (`show bgp ipv4 unicast`:
+   AS_PATH, origin `?`)?
+2. **Protection.** The contract of each customer sets a limit of **{limit}** prefixes: configure it
+   on both sessions with a **warning at {threshold}%** of the limit (section @@ref:maxprefix@@).
+   Neither `warning-only` nor `restart`: a session that exceeds the limit stays closed.
+3. Check the state of both sessions, the message in the log (`/var/log/frr/frr.log`) and what
+   `pfx_isp` receives now.
+""",
+    """
+**Solution.**
+
+{solution}
+
+`pfx_c2` redistribue {count} routes statiques en plus de ses deux préfixes ({total} au total, origine
+`incomplete`) : une fuite. Avec la limite, sa session se ferme aussitôt (`Idle (PfxCt)`, journal
+`%MAXPFXEXCEED: No. of IPv4 Unicast prefix received from {c2}(pfx_c2) {total} exceed, limit {limit}`) et
+les routes disparaissent de `pfx_isp`. `pfx_c1` reste établi (4 préfixes, sous le seuil d'alerte ou
+au-dessus selon {threshold} % de {limit}).
+
+Évaluation : `pfx_conf_c1`, `pfx_conf_c2` (2 chacun : limite {limit}, seuil {threshold}, sans
+`warning-only` ni `restart`), `pfx_c2_down` (3), `pfx_c1_up` (2 : établi, 4 préfixes), `pfx_leak` (3 : plus
+aucune route de la fuite chez `pfx_isp`, les 4 de `pfx_c1` toujours là).
+""": """
+**Solution.**
+
+{solution}
+
+`pfx_c2` redistributes {count} static routes in addition to its two prefixes ({total} in all, origin
+`incomplete`): a leak. With the limit, its session closes at once (`Idle (PfxCt)`, log
+`%MAXPFXEXCEED: No. of IPv4 Unicast prefix received from {c2}(pfx_c2) {total} exceed, limit {limit}`) and
+the routes disappear from `pfx_isp`. `pfx_c1` stays established (4 prefixes, below the warning
+threshold or above it depending on {threshold}% of {limit}).
+
+Evaluation: `pfx_conf_c1`, `pfx_conf_c2` (2 each: limit {limit}, threshold {threshold}, neither
+`warning-only` nor `restart`), `pfx_c2_down` (3), `pfx_c1_up` (2: established, 4 prefixes),
+`pfx_leak` (3: no route of the leak left at `pfx_isp`, the 4 of `pfx_c1` still there).
+""",
+    "Observations sur le site pfx": "Observations on site pfx",
+    """
+- état affiché pour `pfx_c2` dans `show bgp ipv4 unicast summary` une fois la limite en place :
+  @@{state:.+}@@
+- nombre de préfixes que `pfx_c2` a envoyés (journal) : @@{count:[0-9]+}@@
+- une fois la fuite corrigée chez `pfx_c2`, la session se rétablit :
+  @@{restore:>toute seule au bout de 120 s>>>auto|avec clear bgp sur pfx_r1>>>clear|en retirant maximum-prefix seulement>>>remove|jamais>>>never}@@
+- avec `warning-only` à la place, la fuite :
+  @@{warning:>serait acceptée et réannoncée à pfx_isp>>>leak|serait refusée, la session restant ouverte>>>filtered|fermerait la session après 30 min>>>delayed}@@
+""": """
+- state shown for `pfx_c2` in `show bgp ipv4 unicast summary` once the limit is in place:
+  @@{state:.+}@@
+- number of prefixes that `pfx_c2` sent (log): @@{count:[0-9]+}@@
+- once the leak has been fixed at `pfx_c2`, the session comes back:
+  @@{restore:>by itself after 120 s>>>auto|with clear bgp on pfx_r1>>>clear|just by removing maximum-prefix>>>remove|never>>>never}@@
+- with `warning-only` instead, the leak:
+  @@{warning:>would be accepted and re-announced to pfx_isp>>>leak|would be refused, the session staying open>>>filtered|would close the session after 30 min>>>delayed}@@
+""",
+    """
+**Solution.** **`Idle (PfxCt)`** ; **{total}** ; **avec `clear bgp {c2}`** (la session reste fermée
+sans `restart`) ; avec `warning-only`, la fuite **serait acceptée et réannoncée** (une alerte au
+journal seulement).
+
+Évaluation : `pfx_q_state`, `pfx_q_count` (1 chacun) et, pour l'enseignant seulement, `pfx_q_restore`,
+`pfx_q_warning` (1 chacun).
+""": """
+**Solution.** **`Idle (PfxCt)`**; **{total}**; **with `clear bgp {c2}`** (the session stays closed
+without `restart`); with `warning-only`, the leak **would be accepted and re-announced** (only a
+warning in the log).
+
+Evaluation: `pfx_q_state`, `pfx_q_count` (1 each) and, for the instructor only, `pfx_q_restore`,
+`pfx_q_warning` (1 each).
+""",
+    "limite de préfixes de pfx_c1": "prefix limit of pfx_c1",
+    "limite de préfixes de pfx_c2": "prefix limit of pfx_c2",
+    "session de pfx_c2 fermée par la limite": "session of pfx_c2 closed by the limit",
+    "session de pfx_c1 établie sous la limite": "session of pfx_c1 established below the limit",
+    "la fuite n'atteint plus pfx_isp": "the leak no longer reaches pfx_isp",
+    "état d'une session fermée": "state of a closed session",
+    "taille de la fuite": "size of the leak",
+    "rétablissement de la session": "recovery of the session",
+    "effet de warning-only": "effect of warning-only",
+    "Partie 3 — GTSM (site gtsm)": "Part 3 — GTSM (site gtsm)",
+    "Protéger les sessions avec GTSM": "Protecting the sessions with GTSM",
+    """
+`gtsm_r1` a deux sessions eBGP, qui ne s'établissent pas (`Active` ou `Idle`) :
+
+- avec son fournisseur `gtsm_isp` (AS {asi}, `{isp}`), directement connecté ;
+- avec un partenaire, `gtsm_par` (AS {asp}), entre les adresses de bouclage (`{r1lo}` et `{parlo}`) à
+  travers le routeur `gtsm_mid` : `gtsm_r1` a pour cela `ebgp-multihop 2` et `update-source lo`.
+
+Les deux opérateurs **exigent GTSM** (section @@ref:gtsm@@), chacun avec le nombre de sauts qui le
+sépare de `gtsm_r1`. Ils retentent d'ouvrir la session toutes les {retry} s.
+
+1. **Observation.** Avec `tcpdump -nvi eth0 tcp port 179` puis sur `eth1`, regardez les paquets
+   échangés : quels TTL ? Que montrent `show bgp ipv4 unicast summary` et `show bgp neighbors` ?
+2. **Configuration.** Activez GTSM sur les deux sessions de `gtsm_r1`, avec le bon nombre de sauts.
+3. Vérifiez que les deux sessions s'établissent et que les préfixes `{pisp}` et `{ppar}` sont reçus ;
+   observez à nouveau les TTL. Une session peut mettre jusqu'à une minute à s'établir : le routeur
+   d'en face attend la fin de sa tentative précédente (`OpenSent`), restée sans réponse.
+""": """
+`gtsm_r1` has two eBGP sessions, which do not come up (`Active` or `Idle`):
+
+- with its provider `gtsm_isp` (AS {asi}, `{isp}`), directly connected;
+- with a partner, `gtsm_par` (AS {asp}), between the loopback addresses (`{r1lo}` and `{parlo}`)
+  through the router `gtsm_mid`: for this, `gtsm_r1` has `ebgp-multihop 2` and `update-source lo`.
+
+Both operators **demand GTSM** (section @@ref:gtsm@@), each with the number of hops that separates
+it from `gtsm_r1`. They retry opening the session every {retry} s.
+
+1. **Observation.** With `tcpdump -nvi eth0 tcp port 179`, then on `eth1`, look at the packets
+   exchanged: which TTLs? What do `show bgp ipv4 unicast summary` and `show bgp neighbors` show?
+2. **Configuration.** Enable GTSM on both sessions of `gtsm_r1`, with the right number of hops.
+3. Check that both sessions come up and that the prefixes `{pisp}` and `{ppar}` are received; look
+   at the TTLs again. A session may take up to a minute to come up: the router on the other side
+   waits for the end of its previous attempt (`OpenSent`), which got no answer.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Sans GTSM, `gtsm_r1` émet ses paquets eBGP avec un TTL de 1 (2 vers `gtsm_par` avec `ebgp-multihop 2`,
+qui arrivent avec 1) : `gtsm_isp` exige 255, `gtsm_par` 254 au moins, et les jettent. `ebgp-multihop`
+et `ttl-security` sont incompatibles : il faut retirer le premier. Avec `hops 2`, `gtsm_r1` accepte
+les paquets qui arrivent avec un TTL ≥ 254 : ceux de `gtsm_par` (255 − 1 saut).
+
+Évaluation : `gtsm_isp_conf` (2), `gtsm_isp_up` (3 : établie grâce à GTSM, `{pisp}` reçu),
+`gtsm_par_conf` (2 : `hops 2`, plus d'`ebgp-multihop`), `gtsm_par_up` (3 : établie grâce à GTSM,
+`{ppar}` reçu).
+""": """
+**Solution.**
+
+{solution}
+
+Without GTSM, `gtsm_r1` sends its eBGP packets with a TTL of 1 (2 towards `gtsm_par` with
+`ebgp-multihop 2`, which arrive with 1): `gtsm_isp` demands 255, `gtsm_par` at least 254, and they
+drop them. `ebgp-multihop` and `ttl-security` are incompatible: the former must be removed. With
+`hops 2`, `gtsm_r1` accepts the packets that arrive with a TTL ≥ 254: those of `gtsm_par`
+(255 − 1 hop).
+
+Evaluation: `gtsm_isp_conf` (2), `gtsm_isp_up` (3: established thanks to GTSM, `{pisp}` received),
+`gtsm_par_conf` (2: `hops 2`, no `ebgp-multihop` left), `gtsm_par_up` (3: established thanks to
+GTSM, `{ppar}` received).
+""",
+    "Observations sur le site gtsm": "Observations on site gtsm",
+    """
+- TTL minimal des paquets de `gtsm_par` qu'accepte `gtsm_r1` une fois GTSM en place : @@{minttl:[0-9]+}@@
+- TTL des paquets BGP émis par un routeur avec GTSM : @@{sent:[0-9]+}@@
+- TTL des paquets d'une session eBGP sans GTSM ni `ebgp-multihop` : @@{default:[0-9]+}@@
+- si un seul des deux pairs active GTSM, la session :
+  @@{oneside:>ne s'établit pas (les paquets de l'autre sont jetés)>>>active|s'établit sans protection>>>open|s'établit puis se ferme toutes les 180 s>>>flap}@@
+""": """
+- minimum TTL of the packets from `gtsm_par` that `gtsm_r1` accepts once GTSM is in place: @@{minttl:[0-9]+}@@
+- TTL of the BGP packets sent by a router with GTSM: @@{sent:[0-9]+}@@
+- TTL of the packets of an eBGP session without GTSM or `ebgp-multihop`: @@{default:[0-9]+}@@
+- if only one of the two peers enables GTSM, the session:
+  @@{oneside:>does not come up (the packets of the other one are dropped)>>>active|comes up without protection>>>open|comes up, then closes every 180 s>>>flap}@@
+""",
+    """
+**Solution.** **254** (256 − 2) ; **255** ; **1** ; elle **ne s'établit pas**.
+
+Évaluation : `gtsm_q_minttl`, `gtsm_q_sent`, `gtsm_q_default` (1 chacun) et, pour l'enseignant
+seulement, `gtsm_q_oneside` (1).
+""": """
+**Solution.** **254** (256 − 2); **255**; **1**; it **does not come up**.
+
+Evaluation: `gtsm_q_minttl`, `gtsm_q_sent`, `gtsm_q_default` (1 each) and, for the instructor
+only, `gtsm_q_oneside` (1).
+""",
+    "GTSM vers gtsm_isp": "GTSM towards gtsm_isp",
+    "session avec gtsm_isp établie": "session with gtsm_isp established",
+    "GTSM vers gtsm_par (deux sauts)": "GTSM towards gtsm_par (two hops)",
+    "session avec gtsm_par établie": "session with gtsm_par established",
+    "TTL de GTSM": "GTSM TTL",
+    "GTSM d'un seul côté": "GTSM on one side only",
+    "Partie 4 — RTBH (site bh)": "Part 4 — RTBH (site bh)",
+    "Blackholing déclenché par un client": "Blackholing triggered by a customer",
+    """
+`bh_r1` est le fournisseur de `bh_cust` (AS {asc}), dont le réseau `{cust}` héberge le serveur
+`bh_srv` (`{victim}` et `{control}`), et le client de `bh_isp` (AS {asi}). La session avec `bh_cust`
+n'accepte que son /24 (prefix-list `CUSTOMER`, route-map `FROM-CUSTOMER`).
+
+`{victim}` subit une attaque : `bh_cust` demande son **blackholing** en annonçant `{victim}/32` avec
+la communauté **BLACKHOLE** (section @@ref:rtbh@@). Il annonce aussi, par erreur, `{bogus}/32` avec
+la même communauté : une adresse du réseau de `bh_isp`, qui n'est pas à lui.
+
+`bh_r1` a une interface factice **`{discard}`** (`{dnet}`) : tout ce qui est routé vers
+`{nexthop}` y disparaît.
+
+1. **Observation.** Sur `bh_r1`, que reçoit-on de `bh_cust` (`show bgp ipv4 unicast neighbors {cust_ip}
+   received-routes` n'est pas disponible : regardez ce que `bh_cust` annonce avec les compteurs de
+   `show bgp ipv4 unicast summary` et `show bgp ipv4 unicast neighbors {cust_ip}`) ? `ping {victim}` et
+   `ping {control}` depuis `bh_r1` passent-ils ?
+2. **Configuration.** Sans toucher au reste de la politique, faites accepter par `bh_r1` les /32 que
+   `bh_cust` marque avec BLACKHOLE, **uniquement dans `{cust}`**, avec `{nexthop}` comme prochain saut
+   et `no-export`.
+3. Vérifiez la table BGP et `ip route` sur `bh_r1`, que `ping {victim}` échoue et `ping {control}`
+   passe toujours, que `{bogus}/32` a été refusé et que rien n'est annoncé à `bh_isp`.
+""": """
+`bh_r1` is the provider of `bh_cust` (AS {asc}), whose network `{cust}` hosts the server `bh_srv`
+(`{victim}` and `{control}`), and the customer of `bh_isp` (AS {asi}). The session with `bh_cust`
+accepts only its /24 (prefix-list `CUSTOMER`, route-map `FROM-CUSTOMER`).
+
+`{victim}` is under attack: `bh_cust` asks for its **blackholing** by announcing `{victim}/32` with
+the **BLACKHOLE** community (section @@ref:rtbh@@). By mistake, it also announces `{bogus}/32` with
+the same community: an address of the network of `bh_isp`, which is not its own.
+
+`bh_r1` has a fake interface **`{discard}`** (`{dnet}`): everything routed to `{nexthop}`
+disappears there.
+
+1. **Observation.** On `bh_r1`, what is received from `bh_cust` (`show bgp ipv4 unicast neighbors
+   {cust_ip} received-routes` is not available: look at what `bh_cust` announces with the counters
+   of `show bgp ipv4 unicast summary` and `show bgp ipv4 unicast neighbors {cust_ip}`)? Do
+   `ping {victim}` and `ping {control}` from `bh_r1` get through?
+2. **Configuration.** Without touching the rest of the policy, make `bh_r1` accept the /32s that
+   `bh_cust` tags with BLACKHOLE, **only within `{cust}`**, with `{nexthop}` as the next hop and
+   `no-export`.
+3. Check the BGP table and `ip route` on `bh_r1`, that `ping {victim}` fails and `ping {control}`
+   still gets through, that `{bogus}/32` has been refused and that nothing is announced to
+   `bh_isp`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+La séquence 5 passe avant la séquence 10 (le /24 du client) ; ses deux `match` doivent être vrais.
+`{victim}/32` est installé `via {nexthop} dev {discard}` : le trafic de l'attaque, qui arrive de
+`bh_isp`, est jeté par `bh_r1` ; `{control}` reste joignable (le /24). `{bogus}/32` n'est pas dans
+`{cust}` : refusé. FRR ajoute `no-export` de lui-même aux routes BLACKHOLE (le `set community`
+l'écrit explicitement).
+
+Évaluation : `bh_accept` (3 : `{victim}/32` accepté avec la communauté), `bh_discard` (3 : route
+noyau vers `{discard}`), `bh_drop` (3 : depuis `bh_isp`, `{victim}` ne répond plus, `{control}`
+répond), `bh_scope` (3 : `{bogus}/32` refusé, `bh_r1` joint toujours `{bogus}`), `bh_not_exported`
+(2 : `bh_isp` ne reçoit pas `{victim}/32`).
+""": """
+**Solution.**
+
+{solution}
+
+Sequence 5 comes before sequence 10 (the customer's /24); both its `match` clauses must be true.
+`{victim}/32` is installed `via {nexthop} dev {discard}`: the attack traffic, which arrives from
+`bh_isp`, is dropped by `bh_r1`; `{control}` stays reachable (the /24). `{bogus}/32` is not in
+`{cust}`: refused. FRR adds `no-export` on its own to BLACKHOLE routes (the `set community` writes
+it explicitly).
+
+Evaluation: `bh_accept` (3: `{victim}/32` accepted with the community), `bh_discard` (3: kernel
+route towards `{discard}`), `bh_drop` (3: from `bh_isp`, `{victim}` no longer answers, `{control}`
+answers), `bh_scope` (3: `{bogus}/32` refused, `bh_r1` still reaches `{bogus}`), `bh_not_exported`
+(2: `bh_isp` does not receive `{victim}/32`).
+""",
+    "Observations sur le site bh": "Observations on site bh",
+    """
+- valeur de la communauté BLACKHOLE (forme `AS:valeur`) : @@{community:[0-9:]+}@@
+- numéro de la RFC qui la définit : @@{rfc:[0-9]+}@@
+- communauté que FRR ajoute de lui-même à une route reçue avec BLACKHOLE :
+  @@{added:>no-export>>>noexport|no-advertise>>>noadvertise|local-AS>>>localas|graceful-shutdown>>>gshut}@@
+- `bh_r1` doit limiter ces /32 à l'espace du client, sinon :
+  @@{scope:>n'importe quel client pourrait faire jeter le trafic de n'importe qui>>>anyone|la table de routage déborderait>>>size|les sessions se fermeraient (maximum-prefix)>>>maxpfx}@@
+""": """
+- value of the BLACKHOLE community (`AS:value` form): @@{community:[0-9:]+}@@
+- number of the RFC that defines it: @@{rfc:[0-9]+}@@
+- community that FRR adds on its own to a route received with BLACKHOLE:
+  @@{added:>no-export>>>noexport|no-advertise>>>noadvertise|local-AS>>>localas|graceful-shutdown>>>gshut}@@
+- `bh_r1` must limit these /32s to the customer's space, otherwise:
+  @@{scope:>any customer could get anybody's traffic dropped>>>anyone|the routing table would overflow>>>size|the sessions would close (maximum-prefix)>>>maxpfx}@@
+""",
+    """
+**Solution.** **{community}** ; RFC **7999** ; **no-export** ; **n'importe quel client pourrait faire
+jeter le trafic de n'importe qui** (ici `{bogus}`).
+
+Évaluation : `bh_q_community`, `bh_q_rfc` (1 chacun) et, pour l'enseignant seulement, `bh_q_added`,
+`bh_q_scope` (1 chacun).
+""": """
+**Solution.** **{community}**; RFC **7999**; **no-export**; **any customer could get anybody's
+traffic dropped** (here `{bogus}`).
+
+Evaluation: `bh_q_community`, `bh_q_rfc` (1 each) and, for the instructor only, `bh_q_added`,
+`bh_q_scope` (1 each).
+""",
+    "/32 du client accepté avec BLACKHOLE": "customer's /32 accepted with BLACKHOLE",
+    "route vers l'interface de rejet": "route towards the discard interface",
+    "trafic vers l'adresse attaquée jeté, le reste passe": "traffic to the attacked address dropped, the rest gets through",
+    "blackholing limité à l'espace du client": "blackholing limited to the customer's space",
+    "/32 non annoncé au fournisseur": "/32 not announced to the provider",
+    "communauté BLACKHOLE": "BLACKHOLE community",
+    "communauté ajoutée par FRR": "community added by FRR",
+    "limite à l'espace du client": "limit to the customer's space",
+    "Bonus — BFD (site bfd)": "Bonus — BFD (site bfd)",
+    "Bonus : détecter une panne avec BFD": "Bonus: detecting a failure with BFD",
+    """
+`bfd_r1` joint le service `{svc}` (annoncé par ses deux fournisseurs) par `bfd_isp1` (AS {as1},
+préféré : `local-preference {lp}`) ou, en secours, par `bfd_isp2` (AS {as2}). Le lien vers
+`bfd_isp1` traverse le pont `bfd_sw` : quand il tombe en panne, les interfaces restent actives mais
+plus rien ne passe. Chaque évaluation **coupe `bfd_sw` pendant {cut} s** et mesure, depuis `bfd_r1`,
+l'interruption du trafic vers `{svc}` (un ping toutes les {step} s, depuis `{src}`).
+
+1. Lancez `ping -I {src} -i 0.2 {svc}` sur `bfd_r1`, puis une évaluation : combien de temps le trafic
+   est-il interrompu ? Que devient la session BGP avec `bfd_isp1` ? Pourquoi (section @@ref:bfd@@) ?
+2. L'opérateur de `bfd_isp1` vous ouvre son routeur : il y a défini un profil BFD **`{profile}`**
+   (intervalles de **{interval}** ms, multiplicateur **{mult}**). Créez le même profil sur `bfd_r1` et
+   activez BFD avec ce profil sur la session BGP entre `bfd_r1` et `bfd_isp1`, **des deux côtés**.
+   Vérifiez `show bfd peers` et `show bgp neighbors`.
+3. Relancez une évaluation : l'interruption doit durer moins de {max_outage} s.
+""": """
+`bfd_r1` reaches the service `{svc}` (announced by both its providers) through `bfd_isp1` (AS {as1},
+preferred: `local-preference {lp}`) or, as a backup, through `bfd_isp2` (AS {as2}). The link to
+`bfd_isp1` crosses the bridge `bfd_sw`: when it fails, the interfaces stay up but nothing gets
+through any more. Each evaluation **cuts `bfd_sw` for {cut} s** and measures, from `bfd_r1`, the
+interruption of the traffic to `{svc}` (one ping every {step} s, from `{src}`).
+
+1. Run `ping -I {src} -i 0.2 {svc}` on `bfd_r1`, then an evaluation: how long is the traffic
+   interrupted? What happens to the BGP session with `bfd_isp1`? Why (section @@ref:bfd@@)?
+2. The operator of `bfd_isp1` gives you access to its router: it has defined a BFD profile
+   **`{profile}`** there (intervals of **{interval}** ms, multiplier **{mult}**). Create the same
+   profile on `bfd_r1` and enable BFD with this profile on the BGP session between `bfd_r1` and
+   `bfd_isp1`, **on both sides**. Check `show bfd peers` and `show bgp neighbors`.
+3. Run an evaluation again: the interruption must last less than {max_outage} s.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Sans BFD, la coupure de {cut} s est plus courte que le *hold time* (180 s) : la session reste
+établie et le trafic part dans le vide pendant toute la coupure. Tant qu'un seul côté a BFD, FRR
+garde la session BGP en `Idle` : il attend que la session BFD soit établie. Avec BFD, la session tombe au bout de
+{detection} ms ({mult} × {interval}), les routes de `bfd_isp1` sont retirées et le trafic passe par
+`bfd_isp2`. Après la coupure, la session revient en quelques secondes (`timers connect {retry}`).
+
+Évaluation (bonus) : `bfd_conf` (1 : profil et session), `bfd_up` (2 : session BFD établie avec
+`bfd_isp1`), `bfd_failover` (3 : interruption de moins de {max_outage} s pendant la coupure).
+""": """
+**Solution.**
+
+{solution}
+
+Without BFD, the {cut} s cut is shorter than the *hold time* (180 s): the session stays established
+and the traffic goes into the void during the whole cut. As long as only one side has BFD, FRR keeps
+the BGP session in `Idle`: it waits for the BFD session to be established. With BFD, the session
+goes down after {detection} ms ({mult} × {interval}), the routes of `bfd_isp1` are withdrawn and the
+traffic goes through `bfd_isp2`. After the cut, the session comes back within a few seconds
+(`timers connect {retry}`).
+
+Evaluation (bonus): `bfd_conf` (1: profile and session), `bfd_up` (2: BFD session established with
+`bfd_isp1`), `bfd_failover` (3: interruption of less than {max_outage} s during the cut).
+""",
+    "profil BFD et session BGP": "BFD profile and BGP session",
+    "session BFD établie avec bfd_isp1": "BFD session established with bfd_isp1",
+    "bascule rapide pendant la coupure": "fast failover during the cut",
+}}

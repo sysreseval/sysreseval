@@ -1380,7 +1380,7 @@ class Grade(Grade0):
                  "friendbook.tp": tr("catégorie `social_networks`"),
                  "downloads.tp": tr("téléchargements"), "casino.tp": tr("catégorie `gambling` (HTTPS)"),
                  "bank.tp": tr("catégorie `bank` (HTTPS)"), "phish.tp": tr("catégorie `phishing`")}
-        sites_table = no_tr("\n| site | adresse | |\n|------|---------|---|\n")
+        sites_table = tr("\n| site | adresse | |\n|------|---------|---|\n")
         for site in SITES:
             sites_table = sites_table + no_tr(f"| `{site}` | `{site_ip(d, site)}` | ") + roles[site] + no_tr(" |\n")
         users_table = tr("""
@@ -2183,7 +2183,7 @@ puis `{guard_cmds}` et `squid -k reconfigure`.
 
 
 
-# English versions of the instructor texts (the course and the questions are in French only).
+# English translations of every tr() text (the course, the questions, the grade elements, the instructor texts)
 _TRANSLATIONS = {
     'en': {
         """
@@ -2793,5 +2793,1443 @@ then `{guard_cmds}` and `squid -k reconfigure`.
   `http://phish.tp/login` → 302 to `http://{intranet}/blocked?url=...` (3 points), `http://{news}/fake-login`
   too (1 point, if squidGuard runs); a `squidGuard` process of the user `proxy` runs (1 point).
 """,
+        "Squid : proxy web, authentification et filtrage": "Squid: web proxy, authentication and filtering",
+        """**Sommaire**
+
+""": """**Contents**
+
+""",
+        "Les proxys HTTP": "HTTP proxies",
+        """
+Un **proxy** (mandataire) HTTP relaie les requêtes de clients vers des serveurs. Le **proxy direct**
+(*forward proxy*, ce TP) est du côté des **clients** : les postes d'une entreprise sortent par lui vers
+Internet. Le **reverse proxy** est du côté des **serveurs** : il reçoit les requêtes destinées à un
+site et les répartit entre ses serveurs d'application.
+
+Un proxy direct sert à :
+
+- **contrôler la sortie** : les postes n'ont pas de route vers Internet, seul le proxy en a une. Un
+  pare-feu laisse sortir le proxy, et lui seul ;
+- **authentifier et tracer** : qui a demandé quoi, quand (journal), comme l'exige une charte
+  informatique ;
+- **filtrer** : catégories de sites (jeux, logiciels malveillants...), types de fichiers, règles
+  par utilisateur ou par groupe ;
+- **cacher** (mettre en cache) les objets demandés souvent et **limiter le débit**.
+
+Le proxy est **explicite** quand le client sait qu'il passe par lui (navigateur ou variable
+d'environnement configurés). Il est **transparent** (interception) quand le réseau détourne vers
+lui le trafic web sans que le client le sache.
+
+### @@sec:absolute@@ La requête vue par un proxy explicite
+
+Un client configuré pour un proxy ouvre une connexion TCP **vers le proxy** et lui envoie l'URL
+**complète** (forme absolue) :
+
+```
+GET http://www.news.tp/index.html HTTP/1.1
+Host: www.news.tp
+```
+
+C'est **le proxy qui résout le nom** `www.news.tp` et se connecte au serveur : le client n'a besoin
+ni de DNS externe, ni de route vers Internet.
+
+### @@sec:connect@@ HTTPS : la méthode CONNECT
+
+Pour une URL `https://`, le client demande un **tunnel** au proxy :
+
+```
+CONNECT secure.news.tp:443 HTTP/1.1
+Host: secure.news.tp:443
+```
+
+Le proxy ouvre une connexion TCP vers le serveur, répond `HTTP/1.1 200 Connection established` puis
+recopie les octets dans les deux sens : le chiffrement TLS se fait **de bout en bout** entre le client
+et le serveur. Le proxy ne voit que le nom et le port demandés par `CONNECT` (et le nom envoyé en
+clair dans l'extension SNI du *ClientHello* TLS), pas les URL ni les pages.
+
+### @@sec:auth407@@ Authentification auprès du proxy
+
+Un proxy qui exige une authentification répond **`407 Proxy Authentication Required`** avec un
+en-tête `Proxy-Authenticate: Basic realm="..."`. Le client renvoie sa requête avec
+`Proxy-Authorization: Basic <base64(login:mot de passe)>` : en clair sur le réseau local (le
+schéma `Basic` n'est qu'un codage). Le *realm* est le libellé que le navigateur affiche en demandant
+le mot de passe. À ne pas confondre avec `401` / `WWW-Authenticate` / `Authorization` d'un serveur.
+
+### @@sec:headers@@ Ce que le proxy ajoute
+
+Par défaut un proxy ajoute aux requêtes qu'il relaie `Via: 1.1 proxy.corp.tp (squid/6.13)` et
+`X-Forwarded-For: <adresse du client>`, ce qui renseigne le serveur sur le réseau interne de
+l'entreprise. À la réponse, Squid 6 ajoute `Cache-Status: proxy.corp.tp;hit` (RFC 9211 : l'objet
+vient de son cache) ou `;detail=mismatch` (il ne l'avait pas).
+
+Testez avec curl : `curl -x http://proxy.corp.tp:3128 -U alice:motdepasse http://www.news.tp/`
+(`-x` : le proxy, `-U` : l'authentification **auprès du proxy** ; `-u` serait celle du serveur).
+`curl -v` montre les en-têtes échangés, `curl -p` force un tunnel `CONNECT` même pour une URL `http://`.
+""": """
+An HTTP **proxy** relays the requests of clients to servers. The **forward proxy**
+(this lab) sits on the side of the **clients**: the hosts of a company go out to the Internet
+through it. The **reverse proxy** sits on the side of the **servers**: it receives the requests meant
+for a site and spreads them over its application servers.
+
+A forward proxy is used to:
+
+- **control the way out**: the hosts have no route to the Internet, only the proxy has one. A
+  firewall lets the proxy out, and the proxy alone;
+- **authenticate and keep track**: who asked for what, and when (log), as an IT charter
+  requires;
+- **filter**: categories of sites (games, malware...), file types, rules
+  per user or per group;
+- **cache** the objects requested often and **limit the bandwidth**.
+
+The proxy is **explicit** when the client knows it goes through it (browser or environment
+variable configured). It is **transparent** (interception) when the network diverts the web
+traffic to it without the client knowing.
+
+### @@sec:absolute@@ The request as an explicit proxy sees it
+
+A client configured for a proxy opens a TCP connection **to the proxy** and sends it the
+**complete** URL (absolute form):
+
+```
+GET http://www.news.tp/index.html HTTP/1.1
+Host: www.news.tp
+```
+
+It is **the proxy that resolves the name** `www.news.tp` and connects to the server: the client
+needs neither an external DNS nor a route to the Internet.
+
+### @@sec:connect@@ HTTPS: the CONNECT method
+
+For an `https://` URL, the client asks the proxy for a **tunnel**:
+
+```
+CONNECT secure.news.tp:443 HTTP/1.1
+Host: secure.news.tp:443
+```
+
+The proxy opens a TCP connection to the server, answers `HTTP/1.1 200 Connection established`, then
+copies the bytes both ways: the TLS encryption runs **end to end** between the client and the
+server. The proxy only sees the name and the port asked for by `CONNECT` (and the name sent in
+clear in the SNI extension of the TLS *ClientHello*), not the URLs or the pages.
+
+### @@sec:auth407@@ Authenticating to the proxy
+
+A proxy that requires authentication answers **`407 Proxy Authentication Required`** with a
+`Proxy-Authenticate: Basic realm="..."` header. The client sends its request again with
+`Proxy-Authorization: Basic <base64(login:password)>`: in clear on the local network (the
+`Basic` scheme is only an encoding). The *realm* is the label the browser displays when it asks
+for the password. Not to be confused with the `401` / `WWW-Authenticate` / `Authorization` of a
+server.
+
+### @@sec:headers@@ What the proxy adds
+
+By default a proxy adds `Via: 1.1 proxy.corp.tp (squid/6.13)` and
+`X-Forwarded-For: <client address>` to the requests it relays, which tells the server about the
+internal network of the company. To the response, Squid 6 adds `Cache-Status: proxy.corp.tp;hit`
+(RFC 9211: the object comes from its cache) or `;detail=mismatch` (it did not have it).
+
+Test with curl: `curl -x http://proxy.corp.tp:3128 -U alice:password http://www.news.tp/`
+(`-x`: the proxy, `-U`: the authentication **to the proxy**; `-u` would be the server's).
+`curl -v` shows the headers exchanged, `curl -p` forces a `CONNECT` tunnel even for an `http://` URL.
+""",
+        "Squid": "Squid",
+        """
+**Squid** est le proxy direct libre le plus répandu. Le paquet Debian `squid-openssl` fournit la
+version compilée avec OpenSSL, la seule qui sache inspecter HTTPS (@@ref:https@@).
+
+### @@sec:squid-config@@ squid.conf
+
+Le fichier `/etc/squid/squid.conf` (des milliers de lignes de commentaires : `grep -v '^#'
+/etc/squid/squid.conf | grep -v '^$'` montre la configuration effective) inclut les fichiers
+`/etc/squid/conf.d/*.conf`. Une directive par ligne, l'ordre compte pour les règles d'accès. Les
+plus courantes :
+
+```
+http_port 3128                          # port d'écoute (adresse:port possible)
+visible_hostname proxy.corp.tp          # nom affiché dans les pages d'erreur et les en-têtes
+acl lan src 192.168.10.0/24             # définition d'une ACL (une condition nommée)
+http_access allow lan                   # règle d'accès
+http_access deny all
+```
+
+### @@sec:http-access@@ Les règles http_access
+
+Chaque requête parcourt les lignes `http_access` **dans l'ordre** ; la **première** ligne dont toutes
+les ACL sont vraies décide (`allow` ou `deny`). Sur une même ligne les ACL sont combinées par un **ET** ;
+plusieurs lignes donnent un **OU**. `!acl` est la négation. Si aucune ligne ne correspond, Squid
+applique l'**inverse de la dernière** : terminez toujours par un `http_access deny all` explicite.
+
+```
+http_access deny !lan                   # personne d'autre que le LAN : pas de proxy ouvert
+http_access deny jeux                   # filtrage avant l'autorisation
+http_access allow lan
+http_access deny all
+```
+
+Un **proxy ouvert** (qui relaie pour n'importe qui) est vite découvert par des scanners et utilisé
+pour du spam ou des attaques au nom de l'entreprise.
+
+### @@sec:squid-cmds@@ Commandes et journaux
+
+- `squid -k parse` vérifie la configuration (erreurs et avertissements), sans rien changer ;
+- `systemctl restart squid` relance le service ; `squid -k reconfigure` relit la configuration
+  sans couper les connexions ; `systemctl status squid` et `journalctl -u squid` en cas d'échec ;
+- `/var/log/squid/cache.log` : messages du démon ; `/var/log/squid/access.log` : une ligne par
+  requête, au format natif :
+
+```
+1795632563.845  8 192.168.10.7 TCP_MISS/200 1048989 GET http://www.news.tp/a alice HIER_DIRECT/203.0.113.9 text/plain
+```
+
+  soit : date (secondes depuis 1970), durée (ms), client, **code Squid**/statut HTTP, octets envoyés
+  au client, méthode, URL (sans sa *query string* : `strip_query_terms`), utilisateur (`-` sans
+  authentification), d'où vient l'objet, type. Codes Squid fréquents : `TCP_MISS` (demandé au
+  serveur), `TCP_HIT` / `TCP_MEM_HIT` (servi par le cache disque / mémoire), `TCP_DENIED` (refusé :
+  `/403` par une règle, `/407` faute d'authentification), `TCP_TUNNEL` (un `CONNECT`),
+  `TCP_REDIRECT` (une redirection) ; `ORIGINAL_DST` signale une requête interceptée ;
+- `tail -f /var/log/squid/access.log` pendant vos tests est le meilleur outil de mise au point ;
+- `squidclient mgr:info` (ou `mgr:utilization`, `mgr:storedir`) interroge le **gestionnaire de
+  cache** de Squid depuis la machine elle-même (`http_access allow localhost manager`).
+""": """
+**Squid** is the most widespread free forward proxy. The Debian package `squid-openssl` provides
+the build compiled with OpenSSL, the only one able to inspect HTTPS (@@ref:https@@).
+
+### @@sec:squid-config@@ squid.conf
+
+The file `/etc/squid/squid.conf` (thousands of lines of comments: `grep -v '^#'
+/etc/squid/squid.conf | grep -v '^$'` shows the effective configuration) includes the files
+`/etc/squid/conf.d/*.conf`. One directive per line; the order matters for the access rules. The
+most common ones:
+
+```
+http_port 3128                          # listening port (address:port possible)
+visible_hostname proxy.corp.tp          # name shown in the error pages and the headers
+acl lan src 192.168.10.0/24             # definition of an ACL (a named condition)
+http_access allow lan                   # access rule
+http_access deny all
+```
+
+### @@sec:http-access@@ The http_access rules
+
+Each request goes through the `http_access` lines **in order**; the **first** line whose ACLs are
+all true decides (`allow` or `deny`). On one line the ACLs are combined with an **AND**; several
+lines give an **OR**. `!acl` is the negation. If no line matches, Squid applies the **opposite of
+the last one**: always end with an explicit `http_access deny all`.
+
+```
+http_access deny !lan                   # nobody but the LAN: no open proxy
+http_access deny jeux                   # filtering before the authorisation
+http_access allow lan
+http_access deny all
+```
+
+An **open proxy** (one that relays for anybody) is soon found by scanners and used for spam or
+attacks in the company's name.
+
+### @@sec:squid-cmds@@ Commands and logs
+
+- `squid -k parse` checks the configuration (errors and warnings), without changing anything;
+- `systemctl restart squid` restarts the service; `squid -k reconfigure` reads the configuration
+  again without cutting the connections; `systemctl status squid` and `journalctl -u squid` when it
+  fails;
+- `/var/log/squid/cache.log`: messages of the daemon; `/var/log/squid/access.log`: one line per
+  request, in the native format:
+
+```
+1795632563.845  8 192.168.10.7 TCP_MISS/200 1048989 GET http://www.news.tp/a alice HIER_DIRECT/203.0.113.9 text/plain
+```
+
+  that is: date (seconds since 1970), duration (ms), client, **Squid code**/HTTP status, bytes sent
+  to the client, method, URL (without its *query string*: `strip_query_terms`), user (`-` without
+  authentication), where the object comes from, type. Frequent Squid codes: `TCP_MISS` (asked of the
+  server), `TCP_HIT` / `TCP_MEM_HIT` (served by the disk / memory cache), `TCP_DENIED` (denied:
+  `/403` by a rule, `/407` for lack of authentication), `TCP_TUNNEL` (a `CONNECT`),
+  `TCP_REDIRECT` (a redirection); `ORIGINAL_DST` marks an intercepted request;
+- `tail -f /var/log/squid/access.log` during your tests is the best debugging tool;
+- `squidclient mgr:info` (or `mgr:utilization`, `mgr:storedir`) queries the **cache manager** of
+  Squid from the machine itself (`http_access allow localhost manager`).
+""",
+        "ACL et filtrage": "ACLs and filtering",
+        """
+### @@sec:acl-types@@ Les types d'ACL
+
+| type | correspond à | exemple |
+|------|--------------|---------|
+| `src` | adresse du client | `acl lan src 192.168.10.0/24` |
+| `dst` | adresse du serveur (après résolution) | `acl dmz dst 10.0.0.0/8` |
+| `dstdomain` | nom du serveur demandé | `acl jeux dstdomain .jeux.tp` |
+| `dstdom_regex` | nom du serveur, expression régulière | `acl pub dstdom_regex -i ^ads?\\.` |
+| `url_regex` | URL complète | `acl video url_regex -i \\.mp4$` |
+| `urlpath_regex` | chemin de l'URL (sans le nom) | `acl exe urlpath_regex -i \\.exe$` |
+| `port`, `method` | port et méthode demandés | `acl SSL_ports port 443` ; `CONNECT` est prédéfinie |
+| `time` | jours et heures | `acl midi time MTWHF 12:00-14:00` |
+| `proxy_auth` | utilisateur authentifié | `acl staff proxy_auth alice bob` ; `REQUIRED` = tout utilisateur |
+| `external` | réponse d'un programme externe | groupes LDAP (@@ref:ldap-groups@@) |
+| `myportname` | port du proxy qui a reçu la requête | `acl intercepte myportname 3129` |
+
+`-i` rend les expressions régulières insensibles à la casse. Les valeurs peuvent venir d'un
+**fichier**, un élément par ligne : `acl jeux dstdomain "/etc/squid/acl/jeux.domains"`.
+
+### @@sec:dstdomain@@ Le point de dstdomain
+
+`dstdomain jeux.tp` ne correspond **qu'au nom exact** `jeux.tp`. Avec un point initial,
+`dstdomain .jeux.tp` correspond à `jeux.tp` **et à tous ses sous-domaines** (`www.jeux.tp`,
+`a.b.jeux.tp`). Une liste de domaines sans points (format des listes noires, @@ref:ut1@@) se
+convertit en une commande : `sed 's/^/./' domains > /etc/squid/acl/jeux.domains`. Squid signale
+(avertissement) une entrée déjà couverte par une autre.
+
+### @@sec:deny-info@@ Page de blocage
+
+Un refus affiche la page d'erreur `ERR_ACCESS_DENIED` de Squid. `deny_info` associe une autre page à
+l'ACL qui **termine** la ligne `http_access deny` ayant refusé :
+
+```
+deny_info ERR_CORP_BLOCKED jeux malware
+```
+
+La page est un fichier HTML du répertoire des modèles, `/usr/share/squid/errors/templates/` (Squid y
+cherche les pages absentes des répertoires de langue). Des codes y sont remplacés : `%U` (l'URL
+demandée), `%h` (le nom du proxy), `%i` (l'adresse du client), `%a` (l'utilisateur), `%T` (la date).
+`deny_info` accepte aussi une URL (`deny_info http://intranet/bloque.html jeux` : redirection 302).
+
+### @@sec:ut1@@ Listes noires par catégories
+
+Des listes de domaines classés par catégories sont publiées et mises à jour, par exemple celles de
+l'université Toulouse 1 Capitole (« listes UT1 ») très utilisées dans l'enseignement : un répertoire
+par catégorie (`games`, `malware`, `social_networks`, `gambling`, `phishing`...), contenant un fichier
+`domains` (un domaine par ligne, **sans** point initial : le domaine et ses sous-domaines sont visés)
+et parfois `urls` (des débuts d'URL `nom/chemin`). Squid les utilise en ACL (après conversion,
+@@ref:dstdomain@@) ; squidGuard ou e2guardian les lisent directement (@@ref:squidguard@@).
+
+L'heure (`time`) se combine avec le reste : `http_access allow social staff midi`.
+""": """
+### @@sec:acl-types@@ ACL types
+
+| type | matches | example |
+|------|---------|---------|
+| `src` | client address | `acl lan src 192.168.10.0/24` |
+| `dst` | server address (after resolution) | `acl dmz dst 10.0.0.0/8` |
+| `dstdomain` | name of the requested server | `acl jeux dstdomain .jeux.tp` |
+| `dstdom_regex` | server name, regular expression | `acl pub dstdom_regex -i ^ads?\\.` |
+| `url_regex` | complete URL | `acl video url_regex -i \\.mp4$` |
+| `urlpath_regex` | path of the URL (without the name) | `acl exe urlpath_regex -i \\.exe$` |
+| `port`, `method` | requested port and method | `acl SSL_ports port 443`; `CONNECT` is predefined |
+| `time` | days and hours | `acl midi time MTWHF 12:00-14:00` |
+| `proxy_auth` | authenticated user | `acl staff proxy_auth alice bob`; `REQUIRED` = any user |
+| `external` | answer of an external program | LDAP groups (@@ref:ldap-groups@@) |
+| `myportname` | port of the proxy that received the request | `acl intercepte myportname 3129` |
+
+`-i` makes the regular expressions case-insensitive. The values can come from a **file**, one
+item per line: `acl jeux dstdomain "/etc/squid/acl/jeux.domains"`.
+
+### @@sec:dstdomain@@ The dot of dstdomain
+
+`dstdomain jeux.tp` matches **only the exact name** `jeux.tp`. With a leading dot,
+`dstdomain .jeux.tp` matches `jeux.tp` **and all its subdomains** (`www.jeux.tp`,
+`a.b.jeux.tp`). A list of domains without dots (the format of blacklists, @@ref:ut1@@) is
+converted with one command: `sed 's/^/./' domains > /etc/squid/acl/jeux.domains`. Squid reports
+(a warning) an entry already covered by another one.
+
+### @@sec:deny-info@@ Block page
+
+A denial displays Squid's error page `ERR_ACCESS_DENIED`. `deny_info` associates another page with
+the ACL that **ends** the `http_access deny` line that denied the request:
+
+```
+deny_info ERR_CORP_BLOCKED jeux malware
+```
+
+The page is an HTML file of the templates directory, `/usr/share/squid/errors/templates/` (Squid
+looks there for the pages missing from the language directories). Codes are replaced in it: `%U`
+(the requested URL), `%h` (the name of the proxy), `%i` (the client address), `%a` (the user), `%T`
+(the date). `deny_info` also accepts a URL (`deny_info http://intranet/bloque.html jeux`: a 302
+redirection).
+
+### @@sec:ut1@@ Blacklists by category
+
+Lists of domains sorted into categories are published and kept up to date, for instance those of
+the University Toulouse 1 Capitole ("UT1 lists"), widely used in education: one directory per
+category (`games`, `malware`, `social_networks`, `gambling`, `phishing`...), holding a file
+`domains` (one domain per line, **without** a leading dot: the domain and its subdomains are
+targeted) and sometimes `urls` (beginnings of URLs, `name/path`). Squid uses them as ACLs (after
+conversion, @@ref:dstdomain@@); squidGuard or e2guardian read them directly (@@ref:squidguard@@).
+
+The time (`time`) combines with the rest: `http_access allow social staff midi`.
+""",
+        "Authentification": "Authentication",
+        """
+### @@sec:auth-helpers@@ Les assistants (helpers)
+
+Squid ne vérifie pas lui-même les mots de passe : il délègue à un **assistant**, un programme qui
+lit sur son entrée une ligne `login mot_de_passe` et répond `OK` ou `ERR`. Squid en démarre
+plusieurs (`children`) et garde les réponses en cache (`credentialsttl`). Les assistants livrés sont
+dans `/usr/lib/squid/` : `basic_ncsa_auth` (fichier htpasswd), `basic_ldap_auth` (annuaire LDAP),
+`basic_pam_auth`, `negotiate_kerberos_auth` (authentification Kerberos transparente des postes d'un
+domaine Active Directory, schéma `Negotiate`)...
+
+```
+auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwd
+auth_param basic children 5
+auth_param basic realm Proxy de CORP
+auth_param basic credentialsttl 2 hours
+acl authentifies proxy_auth REQUIRED
+http_access deny !authentifies          # provoque la réponse 407
+```
+
+Testez un assistant à la main : `echo 'alice motdepasse' | /usr/lib/squid/basic_ncsa_auth
+/etc/squid/passwd` répond `OK` ou `ERR`.
+
+**L'authentification est impossible en interception** (@@ref:intercept@@) : le client, qui ne sait
+pas qu'il y a un proxy, n'accepte pas de réponse 407.
+
+### @@sec:ncsa@@ Fichier htpasswd
+
+`htpasswd -c /etc/squid/passwd alice` crée le fichier (`-c` : le remplace !) et demande le mot de
+passe ; `htpasswd -b fichier login motdepasse` le donne sur la ligne de commande (script). Le hachage
+par défaut (MD5 « apr1 ») est compris par `basic_ncsa_auth`. Le fichier doit être lisible par
+l'utilisateur `proxy` qui exécute Squid (`chown root:proxy`, `chmod 640`).
+
+### @@sec:ldap-auth@@ Annuaire LDAP
+
+`basic_ldap_auth` cherche l'entrée de l'utilisateur dans l'annuaire puis tente une connexion (*bind*)
+avec son DN et le mot de passe reçu :
+
+```
+auth_param basic program /usr/lib/squid/basic_ldap_auth -v 3 -h ldap.exemple.tp \\
+    -b ou=people,dc=exemple,dc=tp -f uid=%s -D cn=squid,dc=exemple,dc=tp -W /etc/squid/ldap.secret
+```
+
+`-b` : la base de recherche ; `-f` : le filtre (`%s` = le login) ; `-D` : le compte de service qui
+fait la recherche quand l'annuaire refuse les recherches anonymes ; `-W` : le fichier qui contient
+**son mot de passe** (`-w motdepasse` le laisserait lisible dans `squid.conf` et dans `ps`). Testez
+d'abord avec `ldapsearch -x -H ldap://ldap.exemple.tp -D cn=squid,dc=exemple,dc=tp -W -b
+ou=people,dc=exemple,dc=tp uid=alice`, puis l'assistant à la main comme ci-dessus.
+
+### @@sec:ldap-groups@@ Groupes LDAP
+
+L'assistant `ext_ldap_group_acl` répond à la question « l'utilisateur est-il dans tel groupe ? »,
+utilisé par une ACL de type `external` :
+
+```
+external_acl_type groupe_ldap ttl=60 %LOGIN /usr/lib/squid/ext_ldap_group_acl -v 3 \\
+    -h ldap.exemple.tp -b ou=groups,dc=exemple,dc=tp \\
+    -f "(&(objectClass=posixGroup)(cn=%g)(memberUid=%u))" -D ... -W ...
+acl personnel external groupe_ldap personnel
+```
+
+`%g` est le nom de groupe donné dans l'`acl`, `%u` le login ; `ttl` est la durée pendant laquelle
+Squid garde la réponse. Un groupe `posixGroup` liste ses membres par leur login (`memberUid`).
+""": """
+### @@sec:auth-helpers@@ Helpers
+
+Squid does not check the passwords itself: it delegates to a **helper**, a program that reads a
+line `login password` on its input and answers `OK` or `ERR`. Squid starts several of them
+(`children`) and caches the answers (`credentialsttl`). The helpers shipped are in
+`/usr/lib/squid/`: `basic_ncsa_auth` (htpasswd file), `basic_ldap_auth` (LDAP directory),
+`basic_pam_auth`, `negotiate_kerberos_auth` (transparent Kerberos authentication of the hosts of an
+Active Directory domain, `Negotiate` scheme)...
+
+```
+auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwd
+auth_param basic children 5
+auth_param basic realm Proxy de CORP
+auth_param basic credentialsttl 2 hours
+acl authentifies proxy_auth REQUIRED
+http_access deny !authentifies          # triggers the 407 response
+```
+
+Test a helper by hand: `echo 'alice password' | /usr/lib/squid/basic_ncsa_auth
+/etc/squid/passwd` answers `OK` or `ERR`.
+
+**Authentication is impossible with interception** (@@ref:intercept@@): the client, which does not
+know there is a proxy, does not accept a 407 response.
+
+### @@sec:ncsa@@ htpasswd file
+
+`htpasswd -c /etc/squid/passwd alice` creates the file (`-c`: replaces it!) and asks for the
+password; `htpasswd -b file login password` gives it on the command line (script). The default
+hash (MD5 "apr1") is understood by `basic_ncsa_auth`. The file must be readable by the user
+`proxy` that runs Squid (`chown root:proxy`, `chmod 640`).
+
+### @@sec:ldap-auth@@ LDAP directory
+
+`basic_ldap_auth` looks up the user's entry in the directory, then tries a connection (*bind*)
+with its DN and the password received:
+
+```
+auth_param basic program /usr/lib/squid/basic_ldap_auth -v 3 -h ldap.exemple.tp \\
+    -b ou=people,dc=exemple,dc=tp -f uid=%s -D cn=squid,dc=exemple,dc=tp -W /etc/squid/ldap.secret
+```
+
+`-b`: the search base; `-f`: the filter (`%s` = the login); `-D`: the service account that does
+the search when the directory refuses anonymous searches; `-W`: the file that holds **its
+password** (`-w password` would leave it readable in `squid.conf` and in `ps`). Test first with
+`ldapsearch -x -H ldap://ldap.exemple.tp -D cn=squid,dc=exemple,dc=tp -W -b
+ou=people,dc=exemple,dc=tp uid=alice`, then the helper by hand as above.
+
+### @@sec:ldap-groups@@ LDAP groups
+
+The helper `ext_ldap_group_acl` answers the question "is the user in this group?", for an ACL of
+type `external`:
+
+```
+external_acl_type groupe_ldap ttl=60 %LOGIN /usr/lib/squid/ext_ldap_group_acl -v 3 \\
+    -h ldap.exemple.tp -b ou=groups,dc=exemple,dc=tp \\
+    -f "(&(objectClass=posixGroup)(cn=%g)(memberUid=%u))" -D ... -W ...
+acl personnel external groupe_ldap personnel
+```
+
+`%g` is the group name given in the `acl`, `%u` the login; `ttl` is how long Squid keeps the
+answer. A `posixGroup` group lists its members by their login (`memberUid`).
+""",
+        "HTTPS : CONNECT et SslBump": "HTTPS: CONNECT and SslBump",
+        """
+Le filtrage par `dstdomain` s'applique aussi au nom d'un `CONNECT` : on bloque un site HTTPS entier
+sans rien déchiffrer. Deux limites : un client peut demander `CONNECT <adresse IP>:443` et envoyer
+le vrai nom dans le SNI, et le proxy ne voit aucune URL (impossible de bloquer un seul chemin ou un
+type de fichier en HTTPS).
+
+La configuration Debian refuse déjà `CONNECT` vers d'autres ports que 443
+(`http_access deny CONNECT !SSL_ports`) : sinon le proxy ouvrirait des tunnels vers n'importe quel
+service (SSH, SMTP...).
+
+### @@sec:sslbump-steps@@ SslBump : regarder, laisser passer, déchiffrer
+
+**SslBump** permet à Squid d'intervenir dans la négociation TLS d'un tunnel, en trois étapes :
+
+1. `SslBump1` : Squid connaît le `CONNECT` (ou l'adresse interceptée) ;
+2. `SslBump2` : Squid a lu le *ClientHello* du client, donc le **SNI** ;
+3. `SslBump3` : Squid a lu le certificat du serveur.
+
+À chaque étape, la première ligne `ssl_bump` dont les ACL sont vraies choisit l'action : `peek`
+(regarder et continuer sans rien modifier), `splice` (laisser passer le tunnel tel quel, sans
+déchiffrer), `bump` (déchiffrer : Squid joue le serveur auprès du client et le client auprès du
+serveur), `terminate` (couper la connexion). L'ACL `ssl::server_name` compare le nom du `CONNECT`
+puis le SNI (le point initial a le même sens que pour `dstdomain`) :
+
+```
+acl step1 at_step SslBump1
+acl casinos ssl::server_name .casino.tp
+ssl_bump peek step1               # lire le SNI avant de décider
+ssl_bump terminate casinos        # bloqué par son nom, même demandé par adresse IP
+ssl_bump splice all               # le reste passe sans être déchiffré
+```
+
+Le port doit être déclaré capable de SslBump, avec un certificat d'autorité (même pour `peek` et
+`splice` seuls) et le programme qui fabrique les certificats :
+
+```
+http_port 3128 ssl-bump tls-cert=/etc/squid/ssl/proxy-ca.pem generate-host-certificates=on dynamic_cert_mem_cache_size=4MB
+sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/lib/squid/ssl_db -M 4MB
+```
+
+Le répertoire des certificats fabriqués s'initialise une fois : `mkdir -p /var/lib/squid`, puis
+`/usr/lib/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 4MB` et `chown -R proxy:proxy
+/var/lib/squid/ssl_db`. Un client coupé par `terminate` voit le tunnel accepté (`200`) puis la
+connexion TLS échouer.
+
+### @@sec:sslbump-ca@@ L'autorité de certification du proxy
+
+Pour déchiffrer (`bump`), Squid présente au client un certificat **qu'il fabrique** pour le site
+demandé, signé par sa propre autorité de certification. Créez-la (certificat et clé, extension
+`CA:TRUE`) :
+
+```
+openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes -subj "/CN=Nom de l'AC" \\
+    -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \\
+    -keyout proxy-ca.key -out proxy-ca.crt
+cat proxy-ca.crt proxy-ca.key > proxy-ca.pem     # tls-cert= attend le certificat et la clé
+```
+
+La clé ne doit être lisible que par `proxy`. Les clients doivent **faire confiance** à ce certificat
+(sinon : erreur de certificat) : sous Debian, copie dans `/usr/local/share/ca-certificates/` (extension
+`.crt`) puis `update-ca-certificates` (curl, apt, wget) ; Firefox a son propre magasin
+(*Paramètres > Vie privée et sécurité > Certificats*). Squid vérifie lui-même le certificat du vrai
+serveur avec les autorités du système. Le journal montre alors les URL complètes en HTTPS
+(`GET https://secure.news.tp/page`) et le filtrage par URL s'y applique.
+
+### @@sec:sslbump-ethics@@ Ce qu'il ne faut pas déchiffrer
+
+Déchiffrer HTTPS donne au proxy les mots de passe, les messages et les données bancaires des
+utilisateurs. En France, l'employeur doit l'annoncer (charte informatique, information des salariés et
+de leurs représentants), en limiter l'usage à la sécurité et **exclure les sites sensibles** (banques,
+santé, messagerie personnelle) : ceux-là sont laissés en `splice`. Certaines applications refusent
+tout autre certificat que le leur (*certificate pinning*) : elles aussi doivent être exclues. Une
+clé d'AC volée permettrait d'usurper n'importe quel site auprès de tous les postes : elle se protège
+comme un secret majeur.
+""": """
+Filtering with `dstdomain` also applies to the name of a `CONNECT`: a whole HTTPS site is blocked
+without decrypting anything. Two limits: a client may ask for `CONNECT <IP address>:443` and send
+the real name in the SNI, and the proxy sees no URL (impossible to block a single path or a file
+type in HTTPS).
+
+The Debian configuration already denies `CONNECT` to ports other than 443
+(`http_access deny CONNECT !SSL_ports`): otherwise the proxy would open tunnels to any service
+(SSH, SMTP...).
+
+### @@sec:sslbump-steps@@ SslBump: look, let through, decrypt
+
+**SslBump** lets Squid step into the TLS negotiation of a tunnel, in three steps:
+
+1. `SslBump1`: Squid knows the `CONNECT` (or the intercepted address);
+2. `SslBump2`: Squid has read the client's *ClientHello*, hence the **SNI**;
+3. `SslBump3`: Squid has read the server's certificate.
+
+At each step, the first `ssl_bump` line whose ACLs are true chooses the action: `peek` (look and
+go on without changing anything), `splice` (let the tunnel through as it is, without decrypting),
+`bump` (decrypt: Squid plays the server to the client and the client to the server), `terminate`
+(cut the connection). The ACL `ssl::server_name` compares the name of the `CONNECT`, then the SNI
+(the leading dot means the same as for `dstdomain`):
+
+```
+acl step1 at_step SslBump1
+acl casinos ssl::server_name .casino.tp
+ssl_bump peek step1               # read the SNI before deciding
+ssl_bump terminate casinos        # blocked by its name, even when asked for by IP address
+ssl_bump splice all               # the rest goes through without being decrypted
+```
+
+The port must be declared SslBump-capable, with an authority certificate (even for `peek` and
+`splice` alone) and the program that makes the certificates:
+
+```
+http_port 3128 ssl-bump tls-cert=/etc/squid/ssl/proxy-ca.pem generate-host-certificates=on dynamic_cert_mem_cache_size=4MB
+sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/lib/squid/ssl_db -M 4MB
+```
+
+The directory of the generated certificates is initialised once: `mkdir -p /var/lib/squid`, then
+`/usr/lib/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 4MB` and `chown -R proxy:proxy
+/var/lib/squid/ssl_db`. A client cut by `terminate` sees the tunnel accepted (`200`), then the TLS
+connection fail.
+
+### @@sec:sslbump-ca@@ The certificate authority of the proxy
+
+To decrypt (`bump`), Squid presents to the client a certificate **it makes** for the requested
+site, signed by its own certificate authority. Create it (certificate and key, extension
+`CA:TRUE`):
+
+```
+openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes -subj "/CN=Name of the CA" \\
+    -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \\
+    -keyout proxy-ca.key -out proxy-ca.crt
+cat proxy-ca.crt proxy-ca.key > proxy-ca.pem     # tls-cert= expects the certificate and the key
+```
+
+The key must be readable by `proxy` only. The clients must **trust** this certificate (otherwise:
+certificate error): on Debian, copy it into `/usr/local/share/ca-certificates/` (extension
+`.crt`), then run `update-ca-certificates` (curl, apt, wget); Firefox has its own store
+(*Settings > Privacy & Security > Certificates*). Squid itself verifies the certificate of the
+real server with the system's authorities. The log then shows the complete URLs in HTTPS
+(`GET https://secure.news.tp/page`) and URL filtering applies to them.
+
+### @@sec:sslbump-ethics@@ What must not be decrypted
+
+Decrypting HTTPS gives the proxy the passwords, the messages and the banking data of the users.
+In France, the employer must announce it (IT charter, information of the employees and of their
+representatives), restrict its use to security and **exclude the sensitive sites** (banks, health,
+personal mail): those are left in `splice`. Some applications refuse any certificate but their own
+(*certificate pinning*): they must be excluded too. A stolen CA key would allow anyone to
+impersonate any site to every host: it is protected like a major secret.
+""",
+        "Le proxy transparent": "The transparent proxy",
+        """
+Les postes des invités ne sont configurés pour aucun proxy : leur passerelle (le proxy, qui ne route
+rien : `ip_forward` à 0) **redirige** le trafic web vers Squid. Avec nftables :
+
+```
+table ip interception {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        iifname "eth1" tcp dport 80 redirect to :3129
+        iifname "eth1" tcp dport 443 redirect to :3130
+    }
+}
+```
+
+`redirect` remplace la destination par la machine elle-même en gardant l'adresse d'origine dans la
+table de suivi des connexions, où Squid la retrouve. Les ports d'interception se déclarent à part :
+
+```
+http_port 3129 intercept
+https_port 3130 intercept ssl-bump tls-cert=... generate-host-certificates=on
+```
+
+Squid vérifie que le nom de l'en-tête `Host` correspond bien à l'adresse d'origine (contre
+l'empoisonnement de son cache) ; l'URL n'est jamais vue en HTTPS sans `bump`, et un `bump` exigerait
+que les invités fassent confiance à l'AC du proxy : leur trafic HTTPS est filtré par SNI et laissé
+en `splice`.
+
+Les règles nftables se rendent permanentes dans `/etc/nftables.conf`, chargé au démarrage par le
+service `nftables` (`systemctl enable nftables`). Attention : le fichier Debian commence par
+`flush ruleset`, qui efface **toutes** les règles de la machine ; une table qui se remplace seule
+s'écrit `table ip interception` + `delete table ip interception` + la table.
+""": """
+The guests' hosts are configured for no proxy: their gateway (the proxy, which routes nothing:
+`ip_forward` at 0) **redirects** the web traffic to Squid. With nftables:
+
+```
+table ip interception {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        iifname "eth1" tcp dport 80 redirect to :3129
+        iifname "eth1" tcp dport 443 redirect to :3130
+    }
+}
+```
+
+`redirect` replaces the destination with the machine itself, keeping the original address in the
+connection tracking table, where Squid finds it. The interception ports are declared separately:
+
+```
+http_port 3129 intercept
+https_port 3130 intercept ssl-bump tls-cert=... generate-host-certificates=on
+```
+
+Squid checks that the name of the `Host` header does match the original address (against the
+poisoning of its cache); the URL is never seen in HTTPS without `bump`, and a `bump` would require
+the guests to trust the CA of the proxy: their HTTPS traffic is filtered by SNI and left in
+`splice`.
+
+The nftables rules are made permanent in `/etc/nftables.conf`, loaded at boot by the service
+`nftables` (`systemctl enable nftables`). Beware: the Debian file starts with `flush ruleset`,
+which erases **all** the rules of the machine; a table that replaces only itself is written
+`table ip interception` + `delete table ip interception` + the table.
+""",
+        "Configurer les clients": "Configuring the clients",
+        """
+### @@sec:env-vars@@ Variables d'environnement
+
+La plupart des outils en ligne de commande (curl, wget, apt, pip, git...) lisent les variables :
+
+```
+export http_proxy="http://login:motdepasse@proxy.corp.tp:3128/"
+export https_proxy="$http_proxy"
+export no_proxy="localhost,127.0.0.1,.corp.tp"
+```
+
+`no_proxy` liste les destinations jointes **directement** ; `.corp.tp` vise le domaine et ses
+sous-domaines (les règles exactes varient d'un outil à l'autre). Les mettre dans
+`/etc/profile.d/proxy.sh` les donne à tous les shells de connexion (`bash -l`). Certains outils
+lisent les majuscules (`HTTP_PROXY`) : définissez les deux formes. Un mot de passe dans une variable
+est visible de tous les processus de l'utilisateur : réservez-le à un compte de service.
+
+### @@sec:apt@@ apt
+
+apt ne lit pas `http_proxy` quand il est lancé par un service : il a sa propre directive, dans un
+fichier de `/etc/apt/apt.conf.d/` :
+
+```
+Acquire::http::Proxy "http://login:motdepasse@proxy.corp.tp:3128/";
+Acquire::https::Proxy "http://login:motdepasse@proxy.corp.tp:3128/";
+```
+
+`apt-config dump | grep -i proxy` montre la valeur retenue.
+
+### @@sec:pac@@ Fichier PAC
+
+Un fichier **PAC** (*Proxy Auto-Configuration*) est un programme JavaScript que le navigateur
+télécharge et appelle pour **chaque** URL : la fonction `FindProxyForURL(url, host)` renvoie une
+chaîne : `"DIRECT"`, `"PROXY hote:port"`, ou plusieurs choix séparés par `;` essayés dans l'ordre
+(`"PROXY proxy.corp.tp:3128; DIRECT"`). Fonctions disponibles : `isPlainHostName(host)` (nom sans
+point), `dnsDomainIs(host, ".corp.tp")`, `shExpMatch(chaine, "*.corp.tp")` (motif shell),
+`isInNet(host, "192.168.10.0", "255.255.255.0")` (résout le nom !), `dnsResolve(host)`,
+`myIpAddress()`, `isResolvable(host)`, `localHostOrDomainIs(host, "www.corp.tp")` :
+
+```js
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || dnsDomainIs(host, ".exemple.tp"))
+        return "DIRECT";
+    return "PROXY proxy.exemple.tp:3128";
+}
+```
+
+Le fichier est servi en HTTP avec le type **`application/x-ns-proxy-autoconfig`**. Écrivez-le en
+JavaScript classique (`var`, `function`, pas de `let` ni de fonctions fléchées : certains moteurs PAC
+sont anciens). Firefox : *Paramètres > Paramètres réseau > Adresse de configuration automatique du
+proxy*.
+
+### @@sec:wpad@@ WPAD
+
+**WPAD** (*Web Proxy Auto-Discovery*) permet au navigateur de **trouver** le fichier PAC tout seul :
+il le demande à `http://wpad.<domaine>/wpad.dat` (le nom `wpad` est résolu par le DNS de
+l'entreprise), ou lit son URL dans l'option DHCP 252. Pratique, mais risqué : quiconque obtient le
+nom `wpad` d'un réseau (nom mal protégé, résolution locale LLMNR / NetBIOS) détourne tout le trafic
+web des postes. Le fichier est servi par un serveur web ordinaire, souvent sur le proxy lui-même.
+""": """
+### @@sec:env-vars@@ Environment variables
+
+Most command-line tools (curl, wget, apt, pip, git...) read the variables:
+
+```
+export http_proxy="http://login:password@proxy.corp.tp:3128/"
+export https_proxy="$http_proxy"
+export no_proxy="localhost,127.0.0.1,.corp.tp"
+```
+
+`no_proxy` lists the destinations reached **directly**; `.corp.tp` targets the domain and its
+subdomains (the exact rules vary from one tool to another). Putting them in
+`/etc/profile.d/proxy.sh` gives them to every login shell (`bash -l`). Some tools read the
+upper-case names (`HTTP_PROXY`): define both forms. A password in a variable is visible to every
+process of the user: keep that for a service account.
+
+### @@sec:apt@@ apt
+
+apt does not read `http_proxy` when it is started by a service: it has its own directive, in a
+file of `/etc/apt/apt.conf.d/`:
+
+```
+Acquire::http::Proxy "http://login:password@proxy.corp.tp:3128/";
+Acquire::https::Proxy "http://login:password@proxy.corp.tp:3128/";
+```
+
+`apt-config dump | grep -i proxy` shows the value retained.
+
+### @@sec:pac@@ PAC file
+
+A **PAC** file (*Proxy Auto-Configuration*) is a JavaScript program that the browser downloads
+and calls for **each** URL: the function `FindProxyForURL(url, host)` returns a string:
+`"DIRECT"`, `"PROXY host:port"`, or several choices separated by `;` tried in order
+(`"PROXY proxy.corp.tp:3128; DIRECT"`). Available functions: `isPlainHostName(host)` (a name
+without a dot), `dnsDomainIs(host, ".corp.tp")`, `shExpMatch(string, "*.corp.tp")` (shell
+pattern), `isInNet(host, "192.168.10.0", "255.255.255.0")` (resolves the name!),
+`dnsResolve(host)`, `myIpAddress()`, `isResolvable(host)`, `localHostOrDomainIs(host, "www.corp.tp")`:
+
+```js
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || dnsDomainIs(host, ".exemple.tp"))
+        return "DIRECT";
+    return "PROXY proxy.exemple.tp:3128";
+}
+```
+
+The file is served over HTTP with the type **`application/x-ns-proxy-autoconfig`**. Write it in
+classic JavaScript (`var`, `function`, no `let` and no arrow functions: some PAC engines are old).
+Firefox: *Settings > Network Settings > Automatic proxy configuration URL*.
+
+### @@sec:wpad@@ WPAD
+
+**WPAD** (*Web Proxy Auto-Discovery*) lets the browser **find** the PAC file by itself: it asks
+for it at `http://wpad.<domain>/wpad.dat` (the name `wpad` is resolved by the DNS of the company),
+or reads its URL in DHCP option 252. Handy, but risky: whoever obtains the name `wpad` of a
+network (a badly protected name, local resolution with LLMNR / NetBIOS) diverts all the web
+traffic of the hosts. The file is served by an ordinary web server, often on the proxy itself.
+""",
+        "Cache et confidentialité": "Cache and privacy",
+        """
+### @@sec:cache-squid@@ Le cache de Squid
+
+Squid garde en **mémoire** (`cache_mem`, par défaut 256 Mo) les objets de moins de
+`maximum_object_size_in_memory` (512 Ko). Les objets plus gros ne sont gardés que sur **disque** :
+
+```
+cache_dir ufs /var/spool/squid 500 16 256       # 500 Mo, 16 répertoires de 256 sous-répertoires
+maximum_object_size 50 MB                       # taille maximale d'un objet en cache (4 Mo par défaut)
+```
+
+Les répertoires se créent avec `squid -z` (le service Debian le fait à chaque démarrage). Un objet
+n'est mis en cache que si la réponse le permet (`Cache-Control: public, max-age=...`, pas de
+`private` ni de `no-store`) ; `refresh_pattern` donne une durée de fraîcheur aux réponses qui n'en
+indiquent pas. `Cache-Status` (@@ref:headers@@) et le journal (`TCP_HIT`, `TCP_MEM_HIT`) montrent les
+objets servis par le cache.
+
+### @@sec:privacy@@ Ce que le proxy révèle
+
+- `forwarded_for delete` : pas d'en-tête `X-Forwarded-For` (`off` envoie `unknown`) : les serveurs
+  ne voient plus les adresses internes ;
+- `via off` : pas d'en-tête `Via` (Squid prévient que HTTP l'exige ; l'usage est de le retirer d'un
+  proxy de sortie) ;
+- `httpd_suppress_version_string on` : les pages d'erreur et l'en-tête `Server` ne donnent plus le
+  numéro de version de Squid ;
+- `request_header_access User-Agent deny all` retirerait un en-tête de requête (à manier avec soin).
+""": """
+### @@sec:cache-squid@@ Squid's cache
+
+Squid keeps in **memory** (`cache_mem`, 256 MB by default) the objects smaller than
+`maximum_object_size_in_memory` (512 KB). Bigger objects are kept on **disk** only:
+
+```
+cache_dir ufs /var/spool/squid 500 16 256       # 500 MB, 16 directories of 256 subdirectories
+maximum_object_size 50 MB                       # maximum size of a cached object (4 MB by default)
+```
+
+The directories are created with `squid -z` (the Debian service does it at every start). An
+object is cached only if the response allows it (`Cache-Control: public, max-age=...`, neither
+`private` nor `no-store`); `refresh_pattern` gives a freshness lifetime to the responses that do
+not state one. `Cache-Status` (@@ref:headers@@) and the log (`TCP_HIT`, `TCP_MEM_HIT`) show the
+objects served by the cache.
+
+### @@sec:privacy@@ What the proxy reveals
+
+- `forwarded_for delete`: no `X-Forwarded-For` header (`off` sends `unknown`): the servers no
+  longer see the internal addresses;
+- `via off`: no `Via` header (Squid warns that HTTP requires it; the custom is to remove it from
+  an outgoing proxy);
+- `httpd_suppress_version_string on`: the error pages and the `Server` header no longer give the
+  version number of Squid;
+- `request_header_access User-Agent deny all` would remove a request header (to be handled with
+  care).
+""",
+        "Aller plus loin": "Going further",
+        """
+### @@sec:delay-pools@@ Limiter le débit : delay pools
+
+Une *delay pool* est un seau de jetons : `delay_parameters 1 100000/100000` remplit le seau de 100 000
+octets par seconde, jusqu'à 100 000 octets. Classe 1 : un seau pour tous les clients concernés ;
+classe 2 : un par adresse ; classe 4 : un par utilisateur.
+
+```
+delay_pools 1
+delay_class 1 1
+delay_parameters 1 100000/100000
+delay_access 1 allow eleves
+delay_access 1 deny all
+```
+
+Seuls les objets demandés au serveur sont ralentis : un objet servi par le cache arrive à pleine vitesse.
+
+### @@sec:squidguard@@ squidGuard
+
+**squidGuard** filtre par catégories des listes noires (@@ref:ut1@@) bien plus vite que des ACL Squid
+sur de grandes listes (bases Berkeley DB). Squid lui passe chaque URL (`url_rewrite_program`) ; il
+répond « inchangée » ou une URL de remplacement :
+
+```
+dbhome /var/lib/squidguard/db
+logdir /var/log/squidguard
+dest phishing {
+    domainlist phishing/domains
+    urllist    phishing/urls
+}
+acl {
+    default {
+        pass !phishing all
+        redirect 302:http://intranet.exemple.tp/bloque?url=%u
+    }
+}
+```
+
+`squidGuard -C all` compile les listes (fichiers `.db`), qui doivent appartenir à `proxy` ; dans
+`squid.conf` : `url_rewrite_program /usr/bin/squidGuard -c /etc/squidguard/squidGuard.conf`. Le
+préfixe `302:` fait répondre une **redirection** au navigateur (sans lui, Squid va chercher lui-même
+la page de remplacement). e2guardian (filtrage du contenu des pages), ufdbGuard, les antivirus
+branchés en **ICAP** ou eCAP (c-icap + ClamAV) et les hiérarchies de proxys (`cache_peer`,
+`never_direct`) complètent l'outillage.
+""": """
+### @@sec:delay-pools@@ Limiting the bandwidth: delay pools
+
+A *delay pool* is a token bucket: `delay_parameters 1 100000/100000` fills the bucket with 100,000
+bytes per second, up to 100,000 bytes. Class 1: one bucket for all the clients concerned; class 2:
+one per address; class 4: one per user.
+
+```
+delay_pools 1
+delay_class 1 1
+delay_parameters 1 100000/100000
+delay_access 1 allow eleves
+delay_access 1 deny all
+```
+
+Only the objects requested from the server are slowed down: an object served by the cache arrives
+at full speed.
+
+### @@sec:squidguard@@ squidGuard
+
+**squidGuard** filters by the categories of blacklists (@@ref:ut1@@) much faster than Squid ACLs
+on large lists (Berkeley DB databases). Squid passes it every URL (`url_rewrite_program`); it
+answers "unchanged" or a replacement URL:
+
+```
+dbhome /var/lib/squidguard/db
+logdir /var/log/squidguard
+dest phishing {
+    domainlist phishing/domains
+    urllist    phishing/urls
+}
+acl {
+    default {
+        pass !phishing all
+        redirect 302:http://intranet.exemple.tp/bloque?url=%u
+    }
+}
+```
+
+`squidGuard -C all` compiles the lists (`.db` files), which must belong to `proxy`; in
+`squid.conf`: `url_rewrite_program /usr/bin/squidGuard -c /etc/squidguard/squidGuard.conf`. The
+prefix `302:` makes Squid answer the browser with a **redirection** (without it, Squid fetches the
+replacement page itself). e2guardian (filtering of the content of the pages), ufdbGuard, the
+antivirus programs plugged in through **ICAP** or eCAP (c-icap + ClamAV) and the hierarchies of
+proxies (`cache_peer`, `never_direct`) complete the toolset.
+""",
+        "Solution de référence : Squid (authentification LDAP, filtrage, SslBump, interception, cache, delay pools, squidGuard), nftables et nginx (WPAD) sur proxy, proxy et AC configurés sur client.": "Reference solution: Squid (LDAP authentication, filtering, SslBump, interception, cache, delay pools, squidGuard), nftables and nginx (WPAD) on proxy, proxy and CA configured on client.",
+        """
+| machine | réseau | adresse | rôle |
+|---------|--------|---------|------|
+| `client` | `lan` ({lan}) | `{client}` | le poste de bob (curl, apt, Firefox) |
+| `proxy` | `lan` / `guests` / `wan` | `{proxy_lan}` / `{proxy_guest}` / `{proxy_wan}` | **le proxy à construire** : Squid, nginx |
+| `ldap` | `lan` | `{ldap}` | l'annuaire OpenLDAP de l'entreprise (fourni) |
+| `intranet` | `lan` | `{intranet}` | le serveur web interne |
+| `guest` | `guests` ({guest_net}) | `{guest}` | un poste invité, passerelle `proxy` |
+| `internet` | `wan` ({wan}) | `{internet}` | « Internet » : tous les sites ci-dessous (pas de terminal) |
+""": """
+| machine | network | address | role |
+|---------|---------|---------|------|
+| `client` | `lan` ({lan}) | `{client}` | bob's host (curl, apt, Firefox) |
+| `proxy` | `lan` / `guests` / `wan` | `{proxy_lan}` / `{proxy_guest}` / `{proxy_wan}` | **the proxy to build**: Squid, nginx |
+| `ldap` | `lan` | `{ldap}` | the company's OpenLDAP directory (provided) |
+| `intranet` | `lan` | `{intranet}` | the internal web server |
+| `guest` | `guests` ({guest_net}) | `{guest}` | a guest host, gateway `proxy` |
+| `internet` | `wan` ({wan}) | `{internet}` | "Internet": every site below (no terminal) |
+""",
+        "site d'actualités, autorisé": "news site, allowed",
+        "le même en HTTPS, autorisé": "the same over HTTPS, allowed",
+        "catégorie `games`": "category `games`",
+        "sous-domaine de `games.tp`": "subdomain of `games.tp`",
+        "sous-domaine de `malware.tp`": "subdomain of `malware.tp`",
+        "catégorie `malware`": "category `malware`",
+        "catégorie `social_networks`": "category `social_networks`",
+        "téléchargements": "downloads",
+        "catégorie `gambling` (HTTPS)": "category `gambling` (HTTPS)",
+        "catégorie `bank` (HTTPS)": "category `bank` (HTTPS)",
+        "catégorie `phishing`": "category `phishing`",
+        """
+| site | adresse | |
+|------|---------|---|
+""": """
+| site | address | |
+|------|---------|---|
+""",
+        """
+| utilisateur | mot de passe | fichier htpasswd (partie 2) | annuaire LDAP | groupe `{staff}` |
+|-------------|--------------|-----------------------------|---------------|------------------|
+| `alice` | `{alice}` | oui | oui | oui |
+| `bob` | `{bob}` | oui | oui | non |
+| `carol` | `{carol}` | non | oui | oui |
+| `dave` | `{dave}` | non | oui | non |
+""": """
+| user | password | htpasswd file (part 2) | LDAP directory | group `{staff}` |
+|------|----------|------------------------|----------------|-----------------|
+| `alice` | `{alice}` | yes | yes | yes |
+| `bob` | `{bob}` | yes | yes | no |
+| `carol` | `{carol}` | no | yes | yes |
+| `dave` | `{dave}` | no | yes | no |
+""",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente les proxys HTTP, Squid, ses ACL, l'authentification,
+HTTPS, l'interception, la configuration des clients et le cache.
+
+**La situation** : les postes de l'entreprise CORP (réseau `lan`) n'ont **aucune route** vers
+Internet ; ils sortent par le proxy `proxy`, que vous construisez avec **Squid**. Les invités (réseau
+`guests`) ont `proxy` comme passerelle, sans aucune configuration de proxy.
+""": """
+Read the **Informations** tab: it presents HTTP proxies, Squid, its ACLs, authentication, HTTPS,
+interception, the configuration of the clients and the cache.
+
+**The situation**: the hosts of the company CORP (network `lan`) have **no route** to the
+Internet; they go out through the proxy `proxy`, which you build with **Squid**. The guests
+(network `guests`) have `proxy` as their gateway, without any proxy configuration.
+""",
+        """
+Les sites de « l'Internet » de la maquette (tous servis par `internet`, en HTTP et en HTTPS ; leurs
+certificats sont signés par l'autorité `{public_ca}`, à laquelle `client`, `guest` et `proxy` font déjà
+confiance) :
+""": """
+The sites of the lab's "Internet" (all served by `internet`, over HTTP and HTTPS; their
+certificates are signed by the authority `{public_ca}`, which `client`, `guest` and `proxy`
+already trust):
+""",
+        """
+Les utilisateurs (le fichier htpasswd est à créer par vous ; l'annuaire `ldap` est déjà rempli) :
+""": """
+The users (you create the htpasswd file; the `ldap` directory is already filled):
+""",
+        """
+Valeurs imposées :
+
+- proxy explicite sur le port **{explicit}**, nommé `{proxy_name}` ; interception des invités sur les
+  ports **{icpt}** (HTTP) et **{icpt_tls}** (HTTPS) ;
+- *realm* de l'authentification : **`{realm}`** ;
+- la page de blocage contient la référence **`CORP-BLOCK-{code}`** et l'URL refusée ;
+- l'autorité de certification du proxy : certificat **`{ca_crt}`** ;
+- annuaire : `ldap://{ldap_name}`, utilisateurs sous `{people}`, groupes `posixGroup` sous `{groups}`,
+  compte de service `{service_dn}` (mot de passe `{service_pw}`) : l'annuaire refuse les recherches
+  anonymes ;
+- listes noires (format UT1) : `{blacklists}/<catégorie>/domains` (et `urls`) sur `proxy`.
+
+Les noms sont dans `/etc/hosts` (pas de DNS) : sur `client`, seulement ceux de `{corp}` (le proxy
+résout les autres). Squid, nginx et nftables sont installés sur `proxy`, aucun n'est démarré.
+
+Règles valables pour tout le TP :
+
+- chaque **partie est indépendante** : la terminer donne ses points quel que soit l'état des autres ;
+- l'évaluation est **comportementale** : une machine cachée du `lan` (`{probe}`) envoie ses requêtes
+  au proxy (avec le compte d'`alice` sauf mention contraire), `guest` et `client` aussi : **ne
+  modifiez pas `guest`** ;
+- une évaluation automatique a lieu toutes les trois minutes ; ses requêtes apparaissent dans le
+  journal de Squid (chemins `/check/...`).
+""": """
+Imposed values:
+
+- explicit proxy on port **{explicit}**, named `{proxy_name}`; interception of the guests on
+  ports **{icpt}** (HTTP) and **{icpt_tls}** (HTTPS);
+- *realm* of the authentication: **`{realm}`**;
+- the block page contains the reference **`CORP-BLOCK-{code}`** and the denied URL;
+- the certificate authority of the proxy: certificate **`{ca_crt}`**;
+- directory: `ldap://{ldap_name}`, users under `{people}`, `posixGroup` groups under `{groups}`,
+  service account `{service_dn}` (password `{service_pw}`): the directory refuses anonymous
+  searches;
+- blacklists (UT1 format): `{blacklists}/<category>/domains` (and `urls`) on `proxy`.
+
+The names are in `/etc/hosts` (no DNS): on `client`, only those of `{corp}` (the proxy resolves
+the others). Squid, nginx and nftables are installed on `proxy`, none of them is started.
+
+Rules for the whole lab:
+
+- each **part is independent**: completing it gives its points whatever the state of the others;
+- the evaluation is **behavioural**: a hidden machine of the `lan` (`{probe}`) sends its requests
+  to the proxy (with `alice`'s account unless stated otherwise), and so do `guest` and `client`:
+  **do not modify `guest`**;
+- an automatic evaluation takes place every three minutes; its requests show up in Squid's log
+  (paths `/check/...`).
+""",
+        "Partie 1 — Un proxy explicite pour le LAN": "Part 1 — An explicit proxy for the LAN",
+        "Mettre en service Squid": "Put Squid into service",
+        """
+Sur `proxy`, faites de Squid le proxy du réseau `lan` (sections @@ref:squid@@ et @@ref:http-access@@) :
+
+1. Squid écoute sur le port {port} et se présente sous le nom **`{name}`** (`visible_hostname`) ;
+2. les machines du réseau `lan` ({lan}) peuvent l'utiliser ; **personne d'autre** (pas de proxy
+   ouvert : une requête venant du réseau `wan` est refusée) ;
+3. démarrez-le et vérifiez depuis `client` : `curl -x http://{name}:{port} http://{news}/` affiche la
+   page du serveur ; suivez `/var/log/squid/access.log`.
+
+Sur `client`, essayez aussi `curl http://{news}/` sans proxy : pas de route vers Internet.
+""": """
+On `proxy`, make Squid the proxy of the network `lan` (sections @@ref:squid@@ and @@ref:http-access@@):
+
+1. Squid listens on port {port} and presents itself under the name **`{name}`** (`visible_hostname`);
+2. the machines of the network `lan` ({lan}) may use it; **nobody else** may (no open proxy: a
+   request coming from the network `wan` is denied);
+3. start it and check from `client`: `curl -x http://{name}:{port} http://{news}/` displays the
+   page of the server; follow `/var/log/squid/access.log`.
+
+On `client`, also try `curl http://{news}/` without a proxy: no route to the Internet.
+""",
+        "Le LAN passe par le proxy (port 3128)": "The LAN goes through the proxy (port 3128)",
+        "Pas de proxy ouvert : refusé depuis wan": "No open proxy: denied from wan",
+        "visible_hostname proxy.corp.tp": "visible_hostname proxy.corp.tp",
+        "Partie 2 — Authentification (fichier htpasswd)": "Part 2 — Authentication (htpasswd file)",
+        "Exiger un mot de passe": "Require a password",
+        """
+Seuls les utilisateurs authentifiés utilisent le proxy (section @@ref:auth@@) :
+
+1. créez le fichier `{passwd}` avec les comptes `alice` et `bob` (mots de passe de l'organisation du
+   TP), lisible par Squid ;
+2. authentification `basic` avec l'assistant `basic_ncsa_auth`, *realm* **`{realm}`** ;
+3. une requête sans identifiants, ou avec un mauvais mot de passe, reçoit `407` ; le journal
+   indique l'utilisateur de chaque requête.
+
+Testez : `curl -v -x http://{name}:{port} http://{news}/` (407), puis avec `-U alice:...`.
+""": """
+Only authenticated users may use the proxy (section @@ref:auth@@):
+
+1. create the file `{passwd}` with the accounts `alice` and `bob` (the passwords given in
+   *Organisation of the lab*), readable by Squid;
+2. `basic` authentication with the helper `basic_ncsa_auth`, *realm* **`{realm}`**;
+3. a request without credentials, or with a wrong password, receives `407`; the log shows the user
+   of each request.
+
+Test: `curl -v -x http://{name}:{port} http://{news}/` (407), then with `-U alice:...`.
+""",
+        "Sans identifiants : 407": "Without credentials: 407",
+        "Le realm imposé": "The imposed realm",
+        "alice et bob s'authentifient": "alice and bob authenticate",
+        "Mauvais mot de passe : 407": "Wrong password: 407",
+        "Le journal indique l'utilisateur": "The log shows the user",
+        "Partie 3 — Filtrage par domaine et par URL": "Part 3 — Filtering by domain and by URL",
+        "Appliquer la charte informatique": "Apply the IT charter",
+        """
+La charte de CORP interdit à **tous** (section @@ref:acl@@) :
+
+1. les sites des catégories `games` et `malware` des listes noires de `{blacklists}` (format UT1,
+   section @@ref:ut1@@), **sous-domaines compris** : `www.games.tp` et `dl.malware.tp` sont bloqués
+   (section @@ref:dstdomain@@) ;
+2. le téléchargement de programmes Windows : toute URL dont le chemin se termine par `.exe` ou `.msi`,
+   quelle que soit la casse (un PDF du même site reste accessible) ;
+3. un refus affiche une **page de blocage** à vous (section @@ref:deny-info@@) qui contient la
+   référence `CORP-BLOCK-{code}` et l'URL demandée.
+
+Les règles de cette partie s'appliquent avant toute autorisation.
+""": """
+CORP's charter forbids **everybody** (section @@ref:acl@@):
+
+1. the sites of the categories `games` and `malware` of the blacklists of `{blacklists}` (UT1
+   format, section @@ref:ut1@@), **subdomains included**: `www.games.tp` and `dl.malware.tp` are
+   blocked (section @@ref:dstdomain@@);
+2. downloading Windows programs: any URL whose path ends with `.exe` or `.msi`, whatever the case
+   (a PDF of the same site remains reachable);
+3. a denial displays a **block page** of your own (section @@ref:deny-info@@) that contains the
+   reference `CORP-BLOCK-{code}` and the requested URL.
+
+The rules of this part apply before any authorisation.
+""",
+        "Catégorie games refusée": "Category games denied",
+        "Sous-domaine www.games.tp refusé": "Subdomain www.games.tp denied",
+        "Catégorie malware refusée (sous-domaines compris)": "Category malware denied (subdomains included)",
+        "Fichiers .exe refusés, PDF servi": ".exe files denied, PDF served",
+        "Page de blocage avec la référence et l'URL": "Block page with the reference and the URL",
+        "Partie 4 — Règles par utilisateur": "Part 4 — Per-user rules",
+        "Les réseaux sociaux pour le personnel": "Social networks for the staff",
+        """
+Les sites de la catégorie `social_networks` (`social.tp`, `friendbook.tp`...) sont réservés au
+personnel de communication : **`alice`** a accès à toute la catégorie, `bob` à aucun de ses sites
+(section @@ref:acl-types@@).
+""": """
+The sites of the category `social_networks` (`social.tp`, `friendbook.tp`...) are reserved for the
+communication staff: **`alice`** has access to the whole category, `bob` to none of its sites
+(section @@ref:acl-types@@).
+""",
+        "alice accède à social.tp": "alice reaches social.tp",
+        "bob est refusé sur les réseaux sociaux": "bob is denied on the social networks",
+        "alice accède à toute la catégorie (friendbook.tp)": "alice reaches the whole category (friendbook.tp)",
+        "Partie 5 — Authentification et groupes LDAP": "Part 5 — LDAP authentication and groups",
+        "S'appuyer sur l'annuaire": "Rely on the directory",
+        """
+Les comptes du proxy viennent désormais de l'annuaire `ldap` (sections @@ref:ldap-auth@@ et
+@@ref:ldap-groups@@) :
+
+1. tout utilisateur de l'annuaire (`{people}`) s'authentifie avec son mot de passe LDAP : `carol` et
+   `dave` comme `alice` et `bob` (qui y ont les mêmes mots de passe) ;
+2. le personnel autorisé sur les réseaux sociaux est le groupe **`{staff}`** de l'annuaire (`alice`
+   et `carol`), et plus une liste de noms dans `squid.conf` ;
+3. Squid cherche les utilisateurs avec le compte de service `{service}` ; son mot de passe est dans
+   un fichier lisible par Squid seulement, **pas** dans `squid.conf`.
+
+Commencez par `ldapsearch` depuis `proxy`, puis testez les assistants à la main.
+""": """
+The accounts of the proxy now come from the directory `ldap` (sections @@ref:ldap-auth@@ and
+@@ref:ldap-groups@@):
+
+1. every user of the directory (`{people}`) authenticates with their LDAP password: `carol` and
+   `dave` as well as `alice` and `bob` (who have the same passwords there);
+2. the staff allowed on the social networks is the group **`{staff}`** of the directory (`alice`
+   and `carol`), no longer a list of names in `squid.conf`;
+3. Squid looks up the users with the service account `{service}`; its password is in a file
+   readable by Squid only, **not** in `squid.conf`.
+
+Start with `ldapsearch` from `proxy`, then test the helpers by hand.
+""",
+        "carol (LDAP seulement) s'authentifie": "carol (LDAP only) authenticates",
+        "dave (LDAP seulement) s'authentifie": "dave (LDAP only) authenticates",
+        "carol (groupe webstaff) accède à social.tp": "carol (group webstaff) reaches social.tp",
+        "dave (hors du groupe) est refusé sur social.tp": "dave (not in the group) is denied on social.tp",
+        "Mot de passe du compte de service hors de squid.conf": "Password of the service account kept out of squid.conf",
+        "Partie 6 — HTTPS : tunnels et filtrage par nom": "Part 6 — HTTPS: tunnels and filtering by name",
+        "Filtrer HTTPS sans déchiffrer": "Filter HTTPS without decrypting",
+        """
+Les sites HTTPS passent par des tunnels `CONNECT` (sections @@ref:connect@@ et @@ref:sslbump-steps@@) :
+
+1. `https://{secure}/` fonctionne à travers le proxy ; aucun tunnel vers un autre port que 443 ;
+2. les sites de la catégorie `gambling` sont bloqués **par leur nom**, y compris quand un client
+   ouvre le tunnel vers l'**adresse IP** du site en envoyant son nom dans le SNI :
+   `curl -x ... --connect-to casino.tp:443:{casino_ip}:443 https://casino.tp/` doit échouer ;
+   pour l'instant le trafic HTTPS n'est **pas déchiffré** (`splice`).
+
+Pour SslBump, le port {port} doit être déclaré `ssl-bump` avec un certificat d'autorité : créez dès
+maintenant l'AC du proxy (section @@ref:sslbump-ca@@), certificat **`{ca}`**.
+""": """
+HTTPS sites go through `CONNECT` tunnels (sections @@ref:connect@@ and @@ref:sslbump-steps@@):
+
+1. `https://{secure}/` works through the proxy; no tunnel to a port other than 443;
+2. the sites of the category `gambling` are blocked **by their name**, including when a client
+   opens the tunnel to the **IP address** of the site and sends its name in the SNI:
+   `curl -x ... --connect-to casino.tp:443:{casino_ip}:443 https://casino.tp/` must fail;
+   for now the HTTPS traffic is **not decrypted** (`splice`).
+
+For SslBump, port {port} must be declared `ssl-bump` with an authority certificate: create the
+proxy's CA right now (section @@ref:sslbump-ca@@), certificate **`{ca}`**.
+""",
+        "HTTPS à travers le proxy": "HTTPS through the proxy",
+        "casino.tp bloqué": "casino.tp blocked",
+        "casino.tp bloqué par son SNI quand le tunnel vise son adresse": "casino.tp blocked by its SNI when the tunnel targets its address",
+        "Pas de tunnel vers un autre port que 443": "No tunnel to a port other than 443",
+        "Partie 7 — Déchiffrer HTTPS (SslBump)": "Part 7 — Decrypting HTTPS (SslBump)",
+        "Inspecter le trafic HTTPS": "Inspect the HTTPS traffic",
+        """
+La direction veut appliquer la charte aux URL HTTPS (sections @@ref:sslbump-ca@@ et
+@@ref:sslbump-ethics@@) :
+
+1. le proxy **déchiffre** le trafic HTTPS du port {port} avec l'AC `{ca}` (`bump`) : le journal
+   montre alors les URL complètes ;
+2. la rubrique **`/betting/`** de `{secure}` (des paris en ligne) est interdite, le reste du site
+   autorisé : un filtrage par chemin, impossible sans déchiffrer ;
+3. les sites de la catégorie `bank` ne sont **jamais** déchiffrés ; `casino.tp` reste bloqué ;
+4. `client` fait confiance à l'AC du proxy : `curl -x http://{name}:{port} -U ... https://{secure}/`
+   y fonctionne **sans** `-k`.
+""": """
+The management wants to apply the charter to HTTPS URLs (sections @@ref:sslbump-ca@@ and
+@@ref:sslbump-ethics@@):
+
+1. the proxy **decrypts** the HTTPS traffic of port {port} with the CA `{ca}` (`bump`): the log
+   then shows the complete URLs;
+2. the section **`/betting/`** of `{secure}` (online betting) is forbidden, the rest of the site
+   allowed: a filtering by path, impossible without decrypting;
+3. the sites of the category `bank` are **never** decrypted; `casino.tp` stays blocked;
+4. `client` trusts the CA of the proxy: `curl -x http://{name}:{port} -U ... https://{secure}/`
+   works there **without** `-k`.
+""",
+        "Certificats fabriqués par l'AC du proxy": "Certificates made by the proxy's CA",
+        "client fait confiance à l'AC du proxy": "client trusts the proxy's CA",
+        "Filtrage par chemin en HTTPS (/betting/ refusé)": "Filtering by path in HTTPS (/betting/ denied)",
+        "URL HTTPS complètes dans le journal": "Complete HTTPS URLs in the log",
+        "bank.tp n'est pas déchiffré": "bank.tp is not decrypted",
+        "Partie 8 — Proxy transparent pour les invités": "Part 8 — Transparent proxy for the guests",
+        "Intercepter le trafic des invités": "Intercept the guests' traffic",
+        """
+Le poste `guest` n'a aucun proxy configuré ; sa passerelle est `proxy`, qui ne route rien
+(`ip_forward` à 0). Faites passer son trafic web par Squid **sans toucher à `guest`** (section
+@@ref:intercept@@) :
+
+1. nftables redirige vers Squid les connexions arrivant du réseau `guests` sur les ports 80 (vers
+   {icpt}) et 443 (vers {icpt_tls}), de façon permanente ;
+2. les invités ne s'authentifient pas, et n'atteignent **pas le réseau interne** par le proxy :
+   `http://{intranet}/` leur est refusé ;
+3. leur HTTPS n'est **pas déchiffré** (ils ne connaissent pas l'AC du proxy) mais `casino.tp` leur est
+   bloqué par son nom.
+
+Testez depuis `guest` : `curl -v http://{news}/` et `curl -v https://{secure}/`.
+""": """
+The host `guest` has no proxy configured; its gateway is `proxy`, which routes nothing
+(`ip_forward` at 0). Make its web traffic go through Squid **without touching `guest`** (section
+@@ref:intercept@@):
+
+1. nftables redirects to Squid the connections arriving from the network `guests` on ports 80 (to
+   {icpt}) and 443 (to {icpt_tls}), permanently;
+2. the guests do not authenticate, and do **not reach the internal network** through the proxy:
+   `http://{intranet}/` is denied to them;
+3. their HTTPS is **not decrypted** (they do not know the CA of the proxy) but `casino.tp` is
+   blocked for them by its name.
+
+Test from `guest`: `curl -v http://{news}/` and `curl -v https://{secure}/`.
+""",
+        "Le HTTP des invités passe par Squid": "The guests' HTTP goes through Squid",
+        "Les invités n'atteignent pas le réseau interne": "The guests do not reach the internal network",
+        "Le HTTPS des invités est intercepté sans être déchiffré": "The guests' HTTPS is intercepted without being decrypted",
+        "casino.tp bloqué pour les invités": "casino.tp blocked for the guests",
+        "Le journal montre les requêtes des invités": "The log shows the guests' requests",
+        "Partie 9 — Configurer les clients : variables, apt, PAC": "Part 9 — Configuring the clients: variables, apt, PAC",
+        "Le poste de bob et la découverte automatique": "bob's host and automatic discovery",
+        """
+Sur `client`, le poste de `bob` (section @@ref:clients@@) :
+
+1. dans **`{profile}`**, les variables d'environnement du proxy (compte de `bob`) : un shell de
+   connexion (`bash -l`) passe par le proxy, **sauf** pour les noms du domaine `{corp}` (joints
+   directement : `curl http://{intranet}/` montre `CLIENT_IP=` l'adresse de `client`) ;
+2. apt passe par le proxy (`Acquire::http::Proxy`).
+
+Sur `proxy`, la découverte automatique (sections @@ref:pac@@ et @@ref:wpad@@) :
+
+3. nginx sert **`http://{wpad}/wpad.dat`**, de type `application/x-ns-proxy-autoconfig` ;
+4. ce fichier PAC renvoie `DIRECT` pour les noms sans point, le domaine `{corp}` et les adresses du
+   réseau `lan` ({lan}), `PROXY {name}:{port}` pour tout le reste. Écrivez-le en JavaScript classique
+   (l'évaluation l'exécute avec `duk`, sans `let` ; les fonctions de date renvoient `true`).
+
+Essayez le fichier PAC dans Firefox sur `client`.
+""": """
+On `client`, the host of `bob` (section @@ref:clients@@):
+
+1. in **`{profile}`**, the environment variables of the proxy (`bob`'s account): a login shell
+   (`bash -l`) goes through the proxy, **except** for the names of the domain `{corp}` (reached
+   directly: `curl http://{intranet}/` shows the address of `client` as `CLIENT_IP=`);
+2. apt goes through the proxy (`Acquire::http::Proxy`).
+
+On `proxy`, the automatic discovery (sections @@ref:pac@@ and @@ref:wpad@@):
+
+3. nginx serves **`http://{wpad}/wpad.dat`**, of type `application/x-ns-proxy-autoconfig`;
+4. this PAC file returns `DIRECT` for the names without a dot, the domain `{corp}` and the
+   addresses of the network `lan` ({lan}), `PROXY {name}:{port}` for everything else. Write it in
+   classic JavaScript (the evaluation runs it with `duk`, without `let`; the date functions return
+   `true`).
+
+Try the PAC file in Firefox on `client`.
+""",
+        "Variables d'environnement : le shell passe par le proxy": "Environment variables: the shell goes through the proxy",
+        "no_proxy : l'intranet est joint directement": "no_proxy: the intranet is reached directly",
+        "apt passe par le proxy": "apt goes through the proxy",
+        "wpad.dat servi avec le type PAC": "wpad.dat served with the PAC type",
+        "PAC : PROXY pour les sites extérieurs": "PAC: PROXY for the outside sites",
+        "PAC : DIRECT pour l'interne": "PAC: DIRECT for the internal names",
+        "Partie 10 — Cache et confidentialité": "Part 10 — Cache and privacy",
+        "Un cache disque, des en-têtes discrets": "A disk cache, discreet headers",
+        """
+Sur `proxy` (sections @@ref:cache-squid@@ et @@ref:privacy@@) :
+
+1. un cache **disque** de 500 Mo dans `/var/spool/squid`, pour des objets jusqu'à 50 Mo : un fichier
+   de 1 Mo (`http://{news}/files/<nom>?size=1048576`, qui se laisse cacher dix minutes) demandé deux
+   fois est servi par le cache la seconde fois ;
+2. les serveurs ne reçoivent plus l'adresse des postes (`X-Forwarded-For`) ni l'en-tête `Via` ;
+3. les pages d'erreur du proxy ne donnent plus la version de Squid.
+
+La page d'`internet` affiche les en-têtes qu'elle a reçus (`HEADER_...`).
+""": """
+On `proxy` (sections @@ref:cache-squid@@ and @@ref:privacy@@):
+
+1. a **disk** cache of 500 MB in `/var/spool/squid`, for objects up to 50 MB: a file of 1 MB
+   (`http://{news}/files/<name>?size=1048576`, which may be cached for ten minutes) requested
+   twice is served by the cache the second time;
+2. the servers no longer receive the address of the hosts (`X-Forwarded-For`) nor the `Via` header;
+3. the error pages of the proxy no longer give the version of Squid.
+
+The page of `internet` displays the headers it received (`HEADER_...`).
+""",
+        "Un objet de 1 Mo servi par le cache": "A 1 MB object served by the cache",
+        "Le même objet (X-Request-Id)": "The same object (X-Request-Id)",
+        "Pas d'adresse interne dans X-Forwarded-For": "No internal address in X-Forwarded-For",
+        "Pas d'en-tête Via": "No Via header",
+        "Version de Squid cachée": "Squid version hidden",
+        "Partie 11 — Lire le journal": "Part 11 — Reading the log",
+        "Le journal d'hier": "Yesterday's log",
+        """
+Le fichier `{log}` de `proxy` est le journal d'accès de Squid d'hier (format natif, section
+@@ref:squid-cmds@@). Répondez avec des commandes (`awk`, `sort`, `uniq -c`...) :
+
+- nombre de requêtes refusées par une règle (`TCP_DENIED/403`) : @@{{denied:[0-9]*}}@@
+- utilisateur qui a fait le plus de requêtes : @@{{top_user:[a-z]*}}@@
+- nom de site le plus demandé (les `CONNECT` comptent, sans le port) : @@{{top_domain:[a-z0-9.-]*}}@@
+- nombre total d'octets envoyés par le proxy à l'utilisateur `{user}` : @@{{bytes:[0-9]*}}@@
+""": """
+The file `{log}` of `proxy` is yesterday's Squid access log (native format, section
+@@ref:squid-cmds@@). Answer with commands (`awk`, `sort`, `uniq -c`...):
+
+- number of requests denied by a rule (`TCP_DENIED/403`): @@{{denied:[0-9]*}}@@
+- user who made the most requests: @@{{top_user:[a-z]*}}@@
+- most requested site name (the `CONNECT` requests count, without the port): @@{{top_domain:[a-z0-9.-]*}}@@
+- total number of bytes sent by the proxy to the user `{user}`: @@{{bytes:[0-9]*}}@@
+""",
+        "Refus, utilisateur le plus actif, site le plus demandé, octets d'un utilisateur": "Denials, most active user, most requested site, bytes of a user",
+        "Bonus — Débit limité et squidGuard": "Bonus — Limited bandwidth and squidGuard",
+        "Deux outils de plus": "Two more tools",
+        """
+Deux exercices facultatifs sur `proxy`, sans rien retirer de ce qui précède :
+
+1. **delay pools** (section @@ref:delay-pools@@) : les téléchargements de `bob` sont limités à
+   **{rate} octets par seconde**, ceux des autres ne le sont pas ;
+2. **squidGuard** (section @@ref:squidguard@@) : les sites de la catégorie `phishing` (domaines **et**
+   URL de la liste `{blacklists}/phishing/`) sont **redirigés** (réponse 302) vers
+   `http://{intranet}/blocked?url=<URL demandée>`.
+""": """
+Two optional exercises on `proxy`, without removing anything of the above:
+
+1. **delay pools** (section @@ref:delay-pools@@): the downloads of `bob` are limited to
+   **{rate} bytes per second**, those of the others are not;
+2. **squidGuard** (section @@ref:squidguard@@): the sites of the category `phishing` (domains
+   **and** URLs of the list `{blacklists}/phishing/`) are **redirected** (302 response) to
+   `http://{intranet}/blocked?url=<requested URL>`.
+""",
+        "Les téléchargements de bob sont ralentis": "bob's downloads are slowed down",
+        "Ceux d'alice ne le sont pas": "alice's are not",
+        "phish.tp redirigé vers la page de l'intranet": "phish.tp redirected to the intranet page",
+        "Une URL de la liste redirigée": "A URL of the list redirected",
+        "squidGuard tourne comme assistant de Squid": "squidGuard runs as a Squid helper",
     },
 }

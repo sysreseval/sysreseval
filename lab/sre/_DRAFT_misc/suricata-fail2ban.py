@@ -995,36 +995,44 @@ Prudence : bannir sur alerte donne à l'attaquant un moyen de faire bannir qui i
             install_login_probe(self, m)
         self.cmd('probe', f"mkdir -p {SSH_UNDER_COUNTER.rsplit('/', 1)[0]}")
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 seule : la sonde Suricata configurée et lancée."))
+    @sre_state(user_allowed=False, description=tr("Partie 1 seule : la sonde Suricata configurée et lancée.",
+                                                  en="Part 1 only: the Suricata sensor configured and started."))
     def part1_sensor(self):
         self._solve_sensor()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 seule : les quatre signatures de local.rules."))
+    @sre_state(user_allowed=False, description=tr("Partie 2 seule : les quatre signatures de local.rules.",
+                                                  en="Part 2 only: the four signatures of local.rules."))
     def part2_signatures(self):
         self._solve_signatures()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 seule : la suppression ciblée de la règle 1000100."))
+    @sre_state(user_allowed=False, description=tr("Partie 3 seule : la suppression ciblée de la règle 1000100.",
+                                                  en="Part 3 only: the targeted suppression of rule 1000100."))
     def part3_tuning(self):
         self._solve_tuning()
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 seule : Suricata en coupure sur ips."))
+    @sre_state(user_allowed=False, description=tr("Partie 4 seule : Suricata en coupure sur ips.",
+                                                  en="Part 4 only: Suricata inline on ips."))
     def part4_ips(self):
         self._solve_ips()
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 seule : la prison sshd de bastion."))
+    @sre_state(user_allowed=False, description=tr("Partie 5 seule : la prison sshd de bastion.",
+                                                  en="Part 5 only: the sshd jail of bastion."))
     def part5_ssh(self):
         self._solve_ssh()
 
-    @sre_state(user_allowed=False, description=tr("Partie 6 seule : le filtre et la prison intranet."))
+    @sre_state(user_allowed=False, description=tr("Partie 6 seule : le filtre et la prison intranet.",
+                                                  en="Part 6 only: the intranet filter and jail."))
     def part6_intranet(self):
         self._solve_intranet()
 
-    @sre_state(user_allowed=False, description=tr("Bonus seul : fail2ban sur gw, alimenté par Suricata."))
+    @sre_state(user_allowed=False, description=tr("Bonus seul : fail2ban sur gw, alimenté par Suricata.",
+                                                  en="Bonus only: fail2ban on gw, fed by Suricata."))
     def bonus_gw(self):
         self._solve_bonus()
 
     @sre_state(user_allowed=False,
-               description=tr("Solution de référence complète (toutes les parties et le bonus, formulaires remplis)."))
+               description=tr("Solution de référence complète (toutes les parties et le bonus, formulaires remplis).",
+                              en="Complete reference solution (every part and the bonus, forms filled in)."))
     def final(self):
         """Reference solution, applicable more than once: every grade element reaches its maximum."""
         self._solve_signatures()
@@ -2051,5 +2059,1340 @@ pas à `f2b-chain` (crochet `input`) de la prison `sshd` que Debian active aussi
             """
 **Solution.** The filter `/etc/fail2ban/filter.d/suricata-alert.conf`:
 """,
+        "Suricata et fail2ban : détection et prévention d'intrusion": "Suricata and fail2ban: intrusion detection and prevention",
+        """**Sommaire**
+
+""": """**Contents**
+
+""",
+        "Détecter et prévenir les intrusions": "Detecting and preventing intrusions",
+        """
+
+Un **système de détection d'intrusion** (*IDS*, *Intrusion Detection System*) observe le trafic ou
+l'activité d'une machine et **signale** ce qui ressemble à une attaque ; un **système de prévention
+d'intrusion** (*IPS*) va plus loin et **bloque** ce qu'il reconnaît. On distingue :
+
+- les sondes **réseau** (*NIDS* / *NIPS*), qui analysent les paquets (Suricata, Snort, Zeek) ;
+- les sondes **hôte** (*HIDS* / *HIPS*), qui surveillent une machine : ses journaux, ses fichiers, ses
+  processus (Wazuh, AIDE, auditd... et **fail2ban**, qui lit des journaux et bannit des adresses).
+
+Deux méthodes de détection :
+
+- par **signatures** : on décrit ce qu'une attaque connue a de caractéristique (un contenu, une
+  séquence, un comptage) ; précis, mais aveugle à ce qu'on n'a pas décrit ;
+- par **anomalies** : on apprend ce qui est normal et on signale les écarts ; voit l'inédit, mais au
+  prix de nombreuses fausses alertes.
+
+Le vocabulaire de l'évaluation d'une détection : un **faux positif** est une alerte sur un trafic
+légitime, un **faux négatif** une attaque passée inaperçue. Réduire l'un fait souvent croître
+l'autre : régler une sonde est un compromis permanent.
+
+Limites à garder en tête : une sonde réseau ne lit pas le contenu **chiffré** (HTTPS, SSH : elle n'en
+voit que les métadonnées, par exemple le nom de serveur TLS) ; un attaquant cherche à **échapper** aux
+signatures (encodages, fragmentation : d'où la **normalisation**, section @@ref:normalization@@) ; une
+alerte n'est utile que si quelqu'un la lit. IDS, IPS et fail2ban sont des couches de la **défense en
+profondeur**, pas des remplaçants des correctifs ni du filtrage.
+""": """
+
+An **intrusion detection system** (*IDS*) observes the traffic or the activity of a machine and
+**reports** what looks like an attack; an **intrusion prevention system** (*IPS*) goes further and
+**blocks** what it recognises. One distinguishes:
+
+- **network** sensors (*NIDS* / *NIPS*), which analyse the packets (Suricata, Snort, Zeek);
+- **host** sensors (*HIDS* / *HIPS*), which watch over one machine: its logs, its files, its
+  processes (Wazuh, AIDE, auditd... and **fail2ban**, which reads logs and bans addresses).
+
+Two detection methods:
+
+- by **signatures**: one describes what characterises a known attack (a content, a sequence, a
+  count); precise, but blind to what has not been described;
+- by **anomalies**: one learns what is normal and reports the deviations; sees what is new, but at
+  the cost of many false alerts.
+
+The vocabulary for assessing a detection: a **false positive** is an alert on legitimate traffic, a
+**false negative** an attack that went unnoticed. Reducing one often increases the other: tuning a
+sensor is a permanent compromise.
+
+Limits to keep in mind: a network sensor does not read **encrypted** content (HTTPS, SSH: it only
+sees their metadata, for instance the TLS server name); an attacker tries to **evade** the signatures
+(encodings, fragmentation: hence **normalisation**, section @@ref:normalization@@); an alert is only
+useful if someone reads it. IDS, IPS and fail2ban are layers of **defence in depth**, not
+substitutes for patches or for filtering.
+""",
+        "Où placer une sonde": "Where to place a sensor",
+        """
+
+Une sonde **passive** (IDS) doit recevoir une **copie** du trafic sans être sur son chemin :
+
+- un **port miroir** (*SPAN*) d'un commutateur recopie vers la sonde le trafic d'autres ports ;
+- un **TAP** est un boîtier inséré sur un câble qui en recopie les deux sens ;
+- un **concentrateur** (*hub*) répète chaque trame sur tous ses ports : c'est le cas du réseau `dmz` de
+  la maquette, où la sonde voit donc tout ce qui entre et sort de la DMZ.
+
+L'interface de capture d'une sonde n'a **pas d'adresse IP** : elle n'émet rien, ne répond à rien et
+ne peut pas être attaquée par le réseau qu'elle observe. On l'administre par une **autre** interface,
+sur un réseau de gestion. Une panne de la sonde ne coupe rien.
+
+Une sonde **en coupure** (*inline*, IPS) est sur le chemin : le trafic la **traverse** (routeur ou
+pont), ce qui lui permet de jeter un paquet, mais une panne ou une fausse alerte coupe du trafic
+légitime (section @@ref:ips@@).
+
+Dans tous les cas, la sonde doit savoir ce qu'elle protège : c'est la variable **`HOME_NET`** (les
+réseaux internes) ; `EXTERNAL_NET` vaut par défaut `!$HOME_NET` (tout le reste). Les règles s'écrivent
+avec ces variables (`$EXTERNAL_NET any -> $HOME_NET 22`) : une `HOME_NET` fausse rend des règles
+muettes ou bavardes.
+""": """
+
+A **passive** sensor (IDS) must receive a **copy** of the traffic without being on its path:
+
+- a **mirror port** (*SPAN*) of a switch copies the traffic of other ports to the sensor;
+- a **TAP** is a box inserted on a cable that copies both of its directions;
+- a **hub** repeats every frame on all its ports: this is the case of the `dmz` network of the lab
+  network, where the sensor therefore sees everything that enters and leaves the DMZ.
+
+The capture interface of a sensor has **no IP address**: it sends nothing, answers nothing and
+cannot be attacked from the network it observes. It is managed through **another** interface, on a
+management network. A failure of the sensor cuts nothing.
+
+An **inline** sensor (IPS) is on the path: the traffic goes **through** it (router or bridge),
+which lets it drop a packet, but a failure or a false alert cuts legitimate traffic (section
+@@ref:ips@@).
+
+In every case, the sensor must know what it protects: this is the **`HOME_NET`** variable (the
+internal networks); `EXTERNAL_NET` is `!$HOME_NET` by default (everything else). Rules are written
+with these variables (`$EXTERNAL_NET any -> $HOME_NET 22`): a wrong `HOME_NET` makes rules silent or
+noisy.
+""",
+        "Suricata": "Suricata",
+        """
+
+**Suricata** est un IDS/IPS réseau libre (OISF). Pour chaque paquet :
+
+1. **capture** : sur une interface (`af-packet` sous Linux), depuis une file NFQUEUE de netfilter (mode
+   IPS) ou depuis un fichier de capture (`-r capture.pcap`, mode hors ligne) ;
+2. **décodage** des en-têtes (Ethernet, IP, TCP/UDP...), suivi des **flux** et **réassemblage** des
+   flux TCP (une signature voit un contenu même découpé en plusieurs segments) ;
+3. **analyse applicative** : Suricata reconnaît HTTP, DNS, TLS, SSH, SMB... **par leur contenu**, quel
+   que soit le port, et découpe chaque protocole en champs (URI, en-têtes, nom demandé...) ;
+4. **détection** : les signatures chargées sont évaluées ;
+5. **sorties** : les alertes et les événements (requêtes HTTP, DNS, flux...) sont écrits dans les
+   journaux.
+
+Fichiers (paquet Debian) :
+
+| fichier | rôle |
+|---------|------|
+| `/etc/suricata/suricata.yaml` | la configuration |
+| `/etc/suricata/rules/*.rules` | des règles fournies par le paquet (anomalies de protocole) et les vôtres |
+| `/var/lib/suricata/rules/suricata.rules` | le jeu de règles téléchargé par `suricata-update` (ET Open...) |
+| `/etc/suricata/threshold.config` | les seuils et suppressions d'alertes (section @@ref:tuning@@) |
+| `/var/log/suricata/` | `eve.json` (tout, en JSON), `fast.log` (alertes, une ligne chacune), `suricata.log` (démarrage, erreurs), `stats.log` |
+""": """
+
+**Suricata** is a free network IDS/IPS (OISF). For each packet:
+
+1. **capture**: on an interface (`af-packet` on Linux), from a netfilter NFQUEUE queue (IPS mode)
+   or from a capture file (`-r capture.pcap`, offline mode);
+2. **decoding** of the headers (Ethernet, IP, TCP/UDP...), **flow** tracking and **reassembly** of
+   TCP streams (a signature sees a content even when it is split over several segments);
+3. **application-layer analysis**: Suricata recognises HTTP, DNS, TLS, SSH, SMB... **by their
+   content**, whatever the port, and splits each protocol into fields (URI, headers, queried name...);
+4. **detection**: the loaded signatures are evaluated;
+5. **outputs**: the alerts and the events (HTTP requests, DNS, flows...) are written to the logs.
+
+Files (Debian package):
+
+| file | role |
+|---------|------|
+| `/etc/suricata/suricata.yaml` | the configuration |
+| `/etc/suricata/rules/*.rules` | rules shipped with the package (protocol anomalies) and yours |
+| `/var/lib/suricata/rules/suricata.rules` | the rule set downloaded by `suricata-update` (ET Open...) |
+| `/etc/suricata/threshold.config` | the thresholds and suppressions of alerts (section @@ref:tuning@@) |
+| `/var/log/suricata/` | `eve.json` (everything, in JSON), `fast.log` (alerts, one line each), `suricata.log` (start-up, errors), `stats.log` |
+""",
+        "Configurer et lancer Suricata": "Configuring and starting Suricata",
+        """
+
+`suricata.yaml` est un fichier **YAML** : la structure est donnée par l'**indentation** (des espaces,
+jamais de tabulation). Les clés utiles du TP :
+
+```
+vars:
+  address-groups:
+    HOME_NET: "[10.1.1.0/24,10.2.2.0/24]"     # les réseaux protégés
+    EXTERNAL_NET: "!$HOME_NET"
+
+af-packet:
+  - interface: eth1          # l'interface de capture
+    threads: 1               # un seul fil de capture suffit ici
+
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+  - suricata.rules                     # relatif à default-rule-path
+  - /etc/suricata/rules/mes.rules      # chemin absolu
+
+outputs:
+  - eve-log:
+      enabled: yes
+      filename: eve.json
+```
+
+Vérifier avant de lancer :
+
+```
+suricata -T -c /etc/suricata/suricata.yaml -v        # teste la configuration et les règles
+suricata --dump-config | grep -E 'HOME_NET|af-packet.0|rule-files'   # ce que Suricata a compris
+```
+
+Le service Debian lance `suricata -D --af-packet -c /etc/suricata/suricata.yaml` :
+
+```
+systemctl enable --now suricata      # démarrer (et au démarrage de la machine)
+systemctl restart suricata           # après une modification de suricata.yaml
+systemctl reload suricata            # recharger les règles seulement (sans couper la capture)
+tail /var/log/suricata/suricata.log  # erreurs de configuration ou de règles
+```
+
+Une règle invalide n'empêche pas le démarrage : elle est **ignorée** avec une erreur dans
+`suricata.log` (`-T` la signale aussi).
+""": """
+
+`suricata.yaml` is a **YAML** file: the structure is given by the **indentation** (spaces, never
+tabs). The keys useful in this lab:
+
+```
+vars:
+  address-groups:
+    HOME_NET: "[10.1.1.0/24,10.2.2.0/24]"     # the protected networks
+    EXTERNAL_NET: "!$HOME_NET"
+
+af-packet:
+  - interface: eth1          # the capture interface
+    threads: 1               # a single capture thread is enough here
+
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+  - suricata.rules                     # relative to default-rule-path
+  - /etc/suricata/rules/mes.rules      # absolute path
+
+outputs:
+  - eve-log:
+      enabled: yes
+      filename: eve.json
+```
+
+Check before starting:
+
+```
+suricata -T -c /etc/suricata/suricata.yaml -v        # tests the configuration and the rules
+suricata --dump-config | grep -E 'HOME_NET|af-packet.0|rule-files'   # what Suricata understood
+```
+
+The Debian service runs `suricata -D --af-packet -c /etc/suricata/suricata.yaml`:
+
+```
+systemctl enable --now suricata      # start (and when the machine boots)
+systemctl restart suricata           # after a change to suricata.yaml
+systemctl reload suricata            # reload the rules only (without stopping the capture)
+tail /var/log/suricata/suricata.log  # configuration or rule errors
+```
+
+An invalid rule does not prevent the start: it is **skipped** with an error in
+`suricata.log` (`-T` reports it too).
+""",
+        "Lire les alertes": "Reading the alerts",
+        """
+
+`fast.log` donne une ligne par alerte : date, `[gid:sid:rev]`, message, classification, protocole,
+source et destination. `eve.json` contient un objet JSON par ligne et par événement ; le champ
+`event_type` dit lequel (`alert`, `http`, `dns`, `flow`, `stats`...). On le lit avec **`jq`** :
+
+```
+tail -f /var/log/suricata/fast.log
+jq -c 'select(.event_type=="alert") | [.timestamp, .src_ip, .dest_ip, .alert.signature_id, .alert.signature]' /var/log/suricata/eve.json
+tail -f /var/log/suricata/eve.json | jq -c 'select(.event_type=="alert")'
+jq -c 'select(.event_type=="http") | [.src_ip, .http.http_user_agent, .http.url]' /var/log/suricata/eve.json
+```
+
+Dans une alerte, `alert.action` vaut `allowed` (simple alerte) ou `blocked` (paquet jeté en mode IPS).
+""": """
+
+`fast.log` gives one line per alert: date, `[gid:sid:rev]`, message, classification, protocol,
+source and destination. `eve.json` holds one JSON object per line and per event; the
+`event_type` field says which (`alert`, `http`, `dns`, `flow`, `stats`...). It is read with **`jq`**:
+
+```
+tail -f /var/log/suricata/fast.log
+jq -c 'select(.event_type=="alert") | [.timestamp, .src_ip, .dest_ip, .alert.signature_id, .alert.signature]' /var/log/suricata/eve.json
+tail -f /var/log/suricata/eve.json | jq -c 'select(.event_type=="alert")'
+jq -c 'select(.event_type=="http") | [.src_ip, .http.http_user_agent, .http.url]' /var/log/suricata/eve.json
+```
+
+In an alert, `alert.action` is `allowed` (a mere alert) or `blocked` (packet dropped in IPS mode).
+""",
+        "Écrire des signatures": "Writing signatures",
+        """
+
+### @@sec@@ Anatomie d'une règle
+
+```
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"Outil d'attaque"; flow:established,to_server; http.user_agent; content:"nikto"; nocase; classtype:web-application-attack; sid:1000050; rev:1;)
+```
+
+- l'**action** : `alert` (signaler), `drop` (jeter, en mode IPS), `reject` (jeter et répondre par un
+  RST ou une erreur ICMP), `pass` (ne plus inspecter) ;
+- le **protocole** : `tcp`, `udp`, `icmp`, `ip`, ou un protocole applicatif (`http`, `dns`, `tls`,
+  `ssh`...) : la règle ne porte alors que sur les flux reconnus comme tels ;
+- **source port `->` destination port** (`<>` : les deux sens), avec des adresses, des réseaux, des
+  listes `[a,b]`, des négations `!` et les variables ;
+- les **options**, entre parenthèses, séparées par des `;`.
+
+Options générales : `msg` (le texte de l'alerte), `sid` (identifiant **unique** : à partir de
+1000000 pour les règles locales), `rev` (version de la règle), `classtype` (catégorie, définie dans
+`classification.config`), `reference`. `flow:established,to_server` limite la règle aux paquets d'une
+connexion établie allant vers le serveur (ni la poignée de main, ni les réponses).
+
+### @@sec@@ Le contenu
+
+`content:"texte";` cherche une suite d'octets (`|0d 0a|` en hexadécimal). Modificateurs, placés
+**après** le `content` qu'ils modifient : `nocase` (casse indifférente), `startswith` / `endswith`
+(au début / à la fin du tampon), `depth`, `offset`, `distance`, `within` (positions absolues ou
+relatives au `content` précédent). Plusieurs `content` doivent tous être trouvés. `pcre:"/.../i"`
+donne une expression régulière (plus coûteuse : toujours avec un `content` qui la précède).
+
+### @@sec@@ Les tampons des protocoles
+
+Un `content` seul cherche dans tout le flux. Un **tampon** (*sticky buffer*), écrit **avant** les
+`content`, restreint la recherche à un champ analysé :
+
+| tampon | contenu |
+|--------|---------|
+| `http.uri` | l'URI **normalisée** (décodée, chemin résolu) |
+| `http.uri.raw` | l'URI telle qu'envoyée |
+| `http.user_agent`, `http.host`, `http.method`, `http.request_body` | les champs de la requête |
+| `http.header` | tous les en-têtes |
+| `dns.query` | le nom demandé dans une requête DNS |
+| `tls.sni` | le nom de serveur demandé dans la poignée de main TLS |
+| `ssh.software` | le logiciel annoncé par un client ou un serveur SSH |
+
+Exemple : `alert dns any any -> any any (msg:"Domaine suspect"; dns.query; content:"exemple.net"; nocase; endswith; sid:1000051; rev:1;)`.
+Les noms DNS ne distinguent pas la casse : un attaquant peut écrire `ExEmPlE.NeT`.
+
+### @@sec:normalization@@ Normalisation et évasion
+
+Un serveur web accepte la même ressource sous bien des formes : `/a/../etc/passwd`, `%2Fetc%2Fpasswd`
+(le `/` encodé), majuscules dans les noms d'hôte... Une signature sur les octets bruts (`content`
+seul, ou `http.uri.raw`) se contourne en changeant l'écriture. **`http.uri`** donne l'URI
+**normalisée** (décodage `%xx`, chemin résolu) : c'est elle qu'il faut inspecter pour reconnaître une
+ressource, quelle que soit sa forme d'envoi.
+
+### @@sec@@ Compter : seuils et filtres
+
+Certaines attaques ne se voient qu'au nombre (balayage, essai de mots de passe) :
+
+- `threshold: type threshold, track by_src, count 10, seconds 60;` : une alerte toutes les 10
+  correspondances d'une même source en 60 s ;
+- `threshold: type limit, ...` : au plus `count` alertes par période ; `type both` : une alerte par
+  période une fois le seuil atteint ;
+- `detection_filter: track by_src, count 10, seconds 60;` : alerter à **chaque** correspondance
+  **au-delà** de la 10ᵉ dans la fenêtre.
+
+`track by_src` compte par adresse source (`by_dst` : par destination). Pour compter des **tentatives
+de connexion** TCP, on compte les paquets `flags:S` (SYN seul) vers le port du service.
+
+### @@sec@@ Tester hors ligne
+
+Suricata rejoue une capture : c'est la façon sûre de mettre une règle au point.
+
+```
+mkdir -p /tmp/test
+suricata -r capture.pcap -S /etc/suricata/rules/local.rules -l /tmp/test -k none
+jq -c 'select(.event_type=="alert") | [.alert.signature_id, .src_ip, .dest_ip]' /tmp/test/eve.json
+```
+
+`-S` charge **ce seul** fichier de règles (à la place de `rule-files`), `-l` choisit le répertoire
+des journaux, `-k none` ne vérifie pas les sommes de contrôle. La configuration (`HOME_NET`...) reste
+celle de `suricata.yaml`. On fabrique une capture avec `tcpdump -i eth1 -w capture.pcap`.
+""": """
+
+### @@sec@@ Anatomy of a rule
+
+```
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"Attack tool"; flow:established,to_server; http.user_agent; content:"nikto"; nocase; classtype:web-application-attack; sid:1000050; rev:1;)
+```
+
+- the **action**: `alert` (report), `drop` (drop, in IPS mode), `reject` (drop and answer with a
+  RST or an ICMP error), `pass` (stop inspecting);
+- the **protocol**: `tcp`, `udp`, `icmp`, `ip`, or an application protocol (`http`, `dns`, `tls`,
+  `ssh`...): the rule then only applies to the flows recognised as such;
+- **source port `->` destination port** (`<>`: both directions), with addresses, networks,
+  lists `[a,b]`, negations `!` and the variables;
+- the **options**, in parentheses, separated by `;`.
+
+General options: `msg` (the text of the alert), `sid` (**unique** identifier: from
+1000000 for local rules), `rev` (revision of the rule), `classtype` (category, defined in
+`classification.config`), `reference`. `flow:established,to_server` restricts the rule to the packets
+of an established connection going to the server (neither the handshake nor the replies).
+
+### @@sec@@ The content
+
+`content:"text";` looks for a sequence of bytes (`|0d 0a|` in hexadecimal). Modifiers, placed
+**after** the `content` they modify: `nocase` (case-insensitive), `startswith` / `endswith`
+(at the start / at the end of the buffer), `depth`, `offset`, `distance`, `within` (absolute positions
+or relative to the previous `content`). Several `content` must all be found. `pcre:"/.../i"`
+gives a regular expression (more costly: always with a `content` before it).
+
+### @@sec@@ The protocol buffers
+
+A `content` alone searches the whole flow. A **buffer** (*sticky buffer*), written **before** the
+`content`, restricts the search to a parsed field:
+
+| buffer | content |
+|--------|---------|
+| `http.uri` | the **normalised** URI (decoded, path resolved) |
+| `http.uri.raw` | the URI as sent |
+| `http.user_agent`, `http.host`, `http.method`, `http.request_body` | the fields of the request |
+| `http.header` | all the headers |
+| `dns.query` | the name queried in a DNS request |
+| `tls.sni` | the server name requested in the TLS handshake |
+| `ssh.software` | the software announced by an SSH client or server |
+
+Example: `alert dns any any -> any any (msg:"Suspicious domain"; dns.query; content:"exemple.net"; nocase; endswith; sid:1000051; rev:1;)`.
+DNS names are case-insensitive: an attacker can write `ExEmPlE.NeT`.
+
+### @@sec:normalization@@ Normalisation and evasion
+
+A web server accepts the same resource in many forms: `/a/../etc/passwd`, `%2Fetc%2Fpasswd`
+(the `/` encoded), upper case in host names... A signature on the raw bytes (a `content`
+alone, or `http.uri.raw`) is bypassed by changing the spelling. **`http.uri`** gives the
+**normalised** URI (`%xx` decoding, path resolved): that is the one to inspect to recognise a
+resource, whatever form it is sent in.
+
+### @@sec@@ Counting: thresholds and filters
+
+Some attacks only show through numbers (scanning, password guessing):
+
+- `threshold: type threshold, track by_src, count 10, seconds 60;`: one alert every 10
+  matches of the same source in 60 s;
+- `threshold: type limit, ...`: at most `count` alerts per period; `type both`: one alert per
+  period once the threshold is reached;
+- `detection_filter: track by_src, count 10, seconds 60;`: alert on **every** match
+  **beyond** the 10th in the window.
+
+`track by_src` counts per source address (`by_dst`: per destination). To count TCP **connection
+attempts**, one counts the `flags:S` packets (SYN alone) towards the port of the service.
+
+### @@sec@@ Testing offline
+
+Suricata replays a capture: this is the safe way to get a rule right.
+
+```
+mkdir -p /tmp/test
+suricata -r capture.pcap -S /etc/suricata/rules/local.rules -l /tmp/test -k none
+jq -c 'select(.event_type=="alert") | [.alert.signature_id, .src_ip, .dest_ip]' /tmp/test/eve.json
+```
+
+`-S` loads **this single** rule file (instead of `rule-files`), `-l` chooses the log
+directory, `-k none` does not verify the checksums. The configuration (`HOME_NET`...) remains
+that of `suricata.yaml`. A capture is made with `tcpdump -i eth1 -w capture.pcap`.
+""",
+        "Réduire les faux positifs": "Reducing false positives",
+        """
+
+Une règle qui alerte sans cesse sur du trafic connu et légitime noie les vraies alertes. Plutôt que de
+la supprimer (on perdrait aussi ce qu'elle détecte ailleurs : un faux négatif), on la **règle** :
+
+- **`suppress`** dans `/etc/suricata/threshold.config` : supprime les alertes d'une règle pour une
+  source ou une destination précise :
+
+        suppress gen_id 1, sig_id 2010935, track by_src, ip 10.1.2.3
+        suppress gen_id 1, sig_id 2010935, track by_dst, ip [10.1.2.0/24,10.1.3.4]
+
+  (sans `track`/`ip`, la règle est supprimée partout) ;
+- **`threshold` / `event_filter`** dans le même fichier : limite le nombre d'alertes d'une règle
+  (`threshold gen_id 1, sig_id N, type limit, track by_src, count 1, seconds 3600`) ;
+- une règle **`pass`** plus précise (Suricata évalue `pass` avant `alert`) ;
+- désactiver une règle d'un jeu téléchargé : `/etc/suricata/disable.conf` de `suricata-update`.
+
+`gen_id` vaut 1 pour les règles textuelles. Le fichier est relu au redémarrage de Suricata
+(`systemctl restart suricata`). En production, on part d'un jeu de règles public (**ET Open**,
+installé et mis à jour par `suricata-update`) et l'essentiel du travail est ce réglage ; la maquette
+n'a pas d'accès à Internet, on n'y utilise que des règles écrites à la main.
+""": """
+
+A rule that keeps alerting on known, legitimate traffic drowns the real alerts. Rather than
+deleting it (one would also lose what it detects elsewhere: a false negative), it is **tuned**:
+
+- **`suppress`** in `/etc/suricata/threshold.config`: suppresses the alerts of a rule for a
+  specific source or destination:
+
+        suppress gen_id 1, sig_id 2010935, track by_src, ip 10.1.2.3
+        suppress gen_id 1, sig_id 2010935, track by_dst, ip [10.1.2.0/24,10.1.3.4]
+
+  (without `track`/`ip`, the rule is suppressed everywhere);
+- **`threshold` / `event_filter`** in the same file: limits the number of alerts of a rule
+  (`threshold gen_id 1, sig_id N, type limit, track by_src, count 1, seconds 3600`);
+- a more precise **`pass`** rule (Suricata evaluates `pass` before `alert`);
+- disabling a rule of a downloaded set: `/etc/suricata/disable.conf` of `suricata-update`.
+
+`gen_id` is 1 for text rules. The file is read again when Suricata restarts
+(`systemctl restart suricata`). In production, one starts from a public rule set (**ET Open**,
+installed and updated by `suricata-update`) and most of the work is this tuning; the lab network
+has no Internet access, so only hand-written rules are used there.
+""",
+        "Le mode IPS : Suricata en coupure": "IPS mode: Suricata inline",
+        """
+
+Sous Linux, la façon la plus simple de mettre Suricata **en coupure** sur un routeur est la file
+**NFQUEUE** de netfilter : une règle nftables envoie les paquets à une file numérotée, Suricata les y
+lit et rend pour chacun un **verdict** (accepter ou jeter).
+
+```
+nft add table inet ips
+nft 'add chain inet ips forward { type filter hook forward priority 0; policy accept; }'
+nft add rule inet ips forward queue flags bypass to 0
+```
+
+`queue ... to 0` envoie les paquets traversant le routeur à la file 0 ; l'option **`bypass`** les
+laisse passer **sans inspection** quand aucun programme n'écoute la file (Suricata arrêté) :
+c'est le choix **fail-open** (la disponibilité d'abord). Sans `bypass` (**fail-closed**), un Suricata
+arrêté coupe tout le trafic. On met en file les **deux sens** des connexions : Suricata a besoin de
+suivre tout le flux.
+
+Suricata lit la file avec `-q 0` au lieu de `--af-packet`. Avec systemd, on remplace la commande du
+service par un fichier de surcharge (*drop-in*), sans toucher au fichier du paquet :
+
+```
+mkdir -p /etc/systemd/system/suricata.service.d
+cat > /etc/systemd/system/suricata.service.d/ips.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/suricata -D -q 0 -c /etc/suricata/suricata.yaml --pidfile /run/suricata.pid
+EOF
+systemctl daemon-reload && systemctl restart suricata
+```
+
+(la ligne `ExecStart=` vide efface la commande d'origine). En mode IPS, une règle **`drop`** jette le
+paquet **et** le reste du flux, et écrit une alerte dont `alert.action` vaut `blocked` ; `reject`
+envoie en plus un RST à l'émetteur. Une règle `alert` ne bloque rien, comme en IDS. Le prix : chaque
+paquet attend son verdict (latence), et une fausse alerte devient une **coupure** de service. Une
+autre façon de faire est le mode `af-packet` en `copy-mode: ips`, où Suricata relie deux interfaces
+comme un pont.
+""": """
+
+On Linux, the simplest way to put Suricata **inline** on a router is netfilter's **NFQUEUE**
+queue: an nftables rule sends the packets to a numbered queue, Suricata reads them there and returns
+a **verdict** for each one (accept or drop).
+
+```
+nft add table inet ips
+nft 'add chain inet ips forward { type filter hook forward priority 0; policy accept; }'
+nft add rule inet ips forward queue flags bypass to 0
+```
+
+`queue ... to 0` sends the packets crossing the router to queue 0; the **`bypass`** option lets
+them through **uninspected** when no program listens to the queue (Suricata stopped): this is
+the **fail-open** choice (availability first). Without `bypass` (**fail-closed**), a stopped
+Suricata cuts all the traffic. **Both directions** of the connections are queued: Suricata needs to
+follow the whole flow.
+
+Suricata reads the queue with `-q 0` instead of `--af-packet`. With systemd, the command of the
+service is replaced by an override file (*drop-in*), without touching the file of the package:
+
+```
+mkdir -p /etc/systemd/system/suricata.service.d
+cat > /etc/systemd/system/suricata.service.d/ips.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/suricata -D -q 0 -c /etc/suricata/suricata.yaml --pidfile /run/suricata.pid
+EOF
+systemctl daemon-reload && systemctl restart suricata
+```
+
+(the empty `ExecStart=` line clears the original command). In IPS mode, a **`drop`** rule drops the
+packet **and** the rest of the flow, and writes an alert whose `alert.action` is `blocked`; `reject`
+also sends a RST to the sender. An `alert` rule blocks nothing, as in IDS mode. The price: every
+packet waits for its verdict (latency), and a false alert becomes a service **outage**. Another
+way to do it is the `af-packet` mode with `copy-mode: ips`, where Suricata links two interfaces
+like a bridge.
+""",
+        "fail2ban": "fail2ban",
+        """
+
+**fail2ban** lit des **journaux**, y repère les échecs (mots de passe faux, requêtes refusées...)
+par des expressions régulières, compte les échecs de chaque adresse et **bannit** celles qui en font
+trop, en général par une règle de pare-feu, pour une durée donnée. C'est une parade simple contre la
+**recherche de mots de passe** par essais successifs.
+
+Le vocabulaire :
+
+- un **filtre** (`/etc/fail2ban/filter.d/*.conf`) : les expressions `failregex` qui reconnaissent un
+  échec et en extraient l'adresse ;
+- une **action** (`/etc/fail2ban/action.d/*.conf`) : ce qui bannit et débannit (nftables, iptables,
+  courriel...) ;
+- une **prison** (*jail*) : un filtre + une source de journaux + des actions + des seuils.
+
+On ne modifie pas `jail.conf` (remplacé à chaque mise à jour) : on écrit des fichiers **`.local`**
+dans `/etc/fail2ban/jail.d/` (ou `jail.local`) qui en surchargent les valeurs. Debian fournit
+`jail.d/defaults-debian.conf` : `banaction = nftables` et la prison `[sshd]` activée, qui lit le
+**journal systemd** (`backend = systemd`). Une prison type :
+
+```
+[sshd]
+enabled  = true
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+ignoreip = 127.0.0.1/8 ::1 192.168.10.0/24
+```
+
+Lecture : banni pendant `bantime` après `maxretry` échecs dans une fenêtre glissante de `findtime` ;
+les adresses et réseaux de `ignoreip` ne sont jamais bannis.
+
+Les autres paramètres d'une prison : `port` (les ports bloqués : `ssh`, `http,https`, `22,8022`...),
+`filter`, `logpath` (le fichier lu), `backend` (`auto`, `pyinotify`, `polling` pour un fichier ;
+`systemd` pour le journal, avec `journalmatch`), `banaction` (`nftables` : les ports de la prison ;
+`nftables[type=allports]` : tous les ports).
+
+L'action `nftables` crée une table **`inet f2b-table`**, un ensemble **`addr-set-<prison>`** par prison
+et une chaîne `f2b-chain` (crochet `input`) qui rejette les adresses de ces ensembles :
+`nft list table inet f2b-table`.
+
+```
+systemctl enable --now fail2ban ; systemctl restart fail2ban   # après une modification
+fail2ban-client status                 # les prisons actives
+fail2ban-client status sshd            # échecs et adresses bannies d'une prison
+fail2ban-client get sshd maxretry      # une valeur (findtime, bantime, ignoreip...)
+fail2ban-client set sshd unbanip 203.0.113.5      # débannir (unban --all : tout)
+fail2ban-client set sshd banip 203.0.113.5        # bannir à la main
+tail -f /var/log/fail2ban.log          # Found (échec vu), Ban, Unban
+```
+
+Les bannissements sont gardés dans une base (`/var/lib/fail2ban/fail2ban.sqlite3`) et rétablis au
+redémarrage.
+""": """
+
+**fail2ban** reads **logs**, spots the failures in them (wrong passwords, refused requests...)
+with regular expressions, counts the failures of each address and **bans** those that make too
+many, usually with a firewall rule, for a given time. It is a simple countermeasure against
+**password guessing** by successive attempts.
+
+The vocabulary:
+
+- a **filter** (`/etc/fail2ban/filter.d/*.conf`): the `failregex` expressions that recognise a
+  failure and extract the address from it;
+- an **action** (`/etc/fail2ban/action.d/*.conf`): what bans and unbans (nftables, iptables,
+  e-mail...);
+- a **jail**: a filter + a log source + actions + thresholds.
+
+`jail.conf` is not modified (it is replaced at every update): one writes **`.local`** files
+in `/etc/fail2ban/jail.d/` (or `jail.local`) that override its values. Debian ships
+`jail.d/defaults-debian.conf`: `banaction = nftables` and the `[sshd]` jail enabled, which reads the
+**systemd journal** (`backend = systemd`). A typical jail:
+
+```
+[sshd]
+enabled  = true
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+ignoreip = 127.0.0.1/8 ::1 192.168.10.0/24
+```
+
+Reading: banned for `bantime` after `maxretry` failures within a sliding window of `findtime`;
+the addresses and networks of `ignoreip` are never banned.
+
+The other parameters of a jail: `port` (the blocked ports: `ssh`, `http,https`, `22,8022`...),
+`filter`, `logpath` (the file read), `backend` (`auto`, `pyinotify`, `polling` for a file;
+`systemd` for the journal, with `journalmatch`), `banaction` (`nftables`: the ports of the jail;
+`nftables[type=allports]`: all ports).
+
+The `nftables` action creates a table **`inet f2b-table`**, a set **`addr-set-<jail>`** per jail
+and a chain `f2b-chain` (`input` hook) that rejects the addresses of these sets:
+`nft list table inet f2b-table`.
+
+```
+systemctl enable --now fail2ban ; systemctl restart fail2ban   # after a change
+fail2ban-client status                 # the active jails
+fail2ban-client status sshd            # failures and banned addresses of a jail
+fail2ban-client get sshd maxretry      # one value (findtime, bantime, ignoreip...)
+fail2ban-client set sshd unbanip 203.0.113.5      # unban (unban --all: everything)
+fail2ban-client set sshd banip 203.0.113.5        # ban by hand
+tail -f /var/log/fail2ban.log          # Found (failure seen), Ban, Unban
+```
+
+The bans are kept in a database (`/var/lib/fail2ban/fail2ban.sqlite3`) and restored on
+restart.
+""",
+        "Écrire un filtre fail2ban": "Writing a fail2ban filter",
+        """
+
+Un filtre est un fichier `/etc/fail2ban/filter.d/<nom>.conf` :
+
+```
+[Definition]
+failregex = ^\\s*FAILED login user=.* from=<HOST>\\s*$
+ignoreregex =
+```
+
+- `failregex` : une ou plusieurs expressions (une par ligne, les suivantes indentées) ; **`<HOST>`**
+  marque l'adresse à bannir ;
+- `ignoreregex` : les lignes à ne jamais compter ;
+- la **date** de chaque ligne est trouvée automatiquement (formats courants ; sinon `datepattern`) et
+  **retirée** de la ligne avant l'application de `failregex` : la suite commence par le blanc qui
+  suivait la date, d'où le `^\\s*`.
+
+On met un filtre au point avec **`fail2ban-regex`**, sur le vrai journal :
+
+```
+fail2ban-regex /var/log/app.log '^\\s*FAILED login user=.* from=<HOST>\\s*$'     # une expression
+fail2ban-regex -v /var/log/app.log /etc/fail2ban/filter.d/app.conf          # le filtre, -v : les adresses trouvées
+```
+
+**Attention à l'injection dans les journaux.** Une partie d'une ligne de journal vient souvent du
+client : un nom d'utilisateur, une URL, un en-tête. Si l'attaquant tape comme nom
+`x from=10.0.0.1`, la ligne devient `FAILED login user=x from=10.0.0.1 from=203.0.113.9`. Un filtre
+`from=<HOST>` sans ancrage, ou avec un `.*?` paresseux, prend la **première** adresse : fail2ban
+bannit alors une machine innocente choisie par l'attaquant (un administrateur, la passerelle...).
+Les règles :
+
+- ancrer l'expression des deux côtés (`^...$`) et placer `<HOST>` là où **seule l'application**
+  écrit (ici la fin de la ligne) ; un `.*` gourmand avant `<HOST>` prend la dernière occurrence ;
+- ne compter **que** les lignes d'échec (pas les connexions réussies !) ;
+- tester avec `fail2ban-regex` des lignes piégées.
+
+Pour une prison qui lit un **fichier**, le `backend` est `auto` (ou `pyinotify`, `polling`), pas
+`systemd`.
+""": """
+
+A filter is a file `/etc/fail2ban/filter.d/<name>.conf`:
+
+```
+[Definition]
+failregex = ^\\s*FAILED login user=.* from=<HOST>\\s*$
+ignoreregex =
+```
+
+- `failregex`: one or more expressions (one per line, the following ones indented); **`<HOST>`**
+  marks the address to ban;
+- `ignoreregex`: the lines never to count;
+- the **date** of each line is found automatically (common formats; otherwise `datepattern`) and
+  **removed** from the line before `failregex` is applied: the rest begins with the blank that
+  followed the date, hence the `^\\s*`.
+
+A filter is debugged with **`fail2ban-regex`**, on the real log:
+
+```
+fail2ban-regex /var/log/app.log '^\\s*FAILED login user=.* from=<HOST>\\s*$'     # one expression
+fail2ban-regex -v /var/log/app.log /etc/fail2ban/filter.d/app.conf          # the filter, -v: the addresses found
+```
+
+**Beware of log injection.** Part of a log line often comes from the client: a user name, a URL,
+a header. If the attacker types `x from=10.0.0.1` as the name, the line becomes
+`FAILED login user=x from=10.0.0.1 from=203.0.113.9`. A filter `from=<HOST>` without anchoring, or
+with a lazy `.*?`, takes the **first** address: fail2ban then bans an innocent machine chosen by the
+attacker (an administrator, the gateway...). The rules:
+
+- anchor the expression on both sides (`^...$`) and put `<HOST>` where **only the application**
+  writes (here the end of the line); a greedy `.*` before `<HOST>` takes the last occurrence;
+- count **only** the failure lines (not the successful logins!);
+- test booby-trapped lines with `fail2ban-regex`.
+
+For a jail that reads a **file**, the `backend` is `auto` (or `pyinotify`, `polling`), not
+`systemd`.
+""",
+        "Bannir sur un routeur à partir des alertes de Suricata": "Banning on a router from Suricata's alerts",
+        """
+
+fail2ban lit n'importe quel journal, y compris le `eve.json` de Suricata : une prison peut bannir
+les sources des alertes. Une ligne d'alerte ressemble à :
+
+```
+{"timestamp":"2026-11-23T14:37:48.619138+0000","flow_id":125180257,"in_iface":"eth0","event_type":"alert","src_ip":"203.0.113.9","dest_ip":"10.1.1.10",...,"alert":{"action":"allowed","gid":1,"signature_id":1000200,...}}
+```
+
+La date ISO est reconnue par fail2ban ; le filtre cherche `"event_type":"alert","src_ip":"<HOST>"`
+(et éventuellement la signature voulue).
+
+Sur un **routeur**, le trafic à bloquer le **traverse** : il passe par le crochet `forward`, pas par
+`input`. L'action `nftables` prend le crochet en paramètre, et une chaîne d'un autre nom évite de
+mélanger avec les prisons de la machine elle-même :
+
+```
+banaction = nftables[type=allports, chain_hook=forward]
+chain     = f2b-forward
+```
+
+`type=allports` bloque tous les ports du protocole de la prison (`protocol`, `tcp` par défaut :
+`meta l4proto { tcp }` dans la règle nftables) ; `protocol = tcp,udp` en ajoute un autre.
+
+Prudence : bannir sur alerte donne à l'attaquant un moyen de faire bannir qui il veut s'il peut
+**usurper** des adresses source (facile en UDP ou en ICMP). On protège les adresses vitales par
+`ignoreip`, on limite `bantime` et on ne bannit que sur des signatures sûres.
+""": """
+
+fail2ban reads any log, including Suricata's `eve.json`: a jail can ban the sources of the
+alerts. An alert line looks like:
+
+```
+{"timestamp":"2026-11-23T14:37:48.619138+0000","flow_id":125180257,"in_iface":"eth0","event_type":"alert","src_ip":"203.0.113.9","dest_ip":"10.1.1.10",...,"alert":{"action":"allowed","gid":1,"signature_id":1000200,...}}
+```
+
+The ISO date is recognised by fail2ban; the filter looks for `"event_type":"alert","src_ip":"<HOST>"`
+(and possibly the wanted signature).
+
+On a **router**, the traffic to block goes **through** it: it passes through the `forward` hook, not
+through `input`. The `nftables` action takes the hook as a parameter, and a chain with another name
+avoids mixing with the jails of the machine itself:
+
+```
+banaction = nftables[type=allports, chain_hook=forward]
+chain     = f2b-forward
+```
+
+`type=allports` blocks every port of the jail's protocol (`protocol`, `tcp` by default:
+`meta l4proto { tcp }` in the nftables rule); `protocol = tcp,udp` adds another one.
+
+Caution: banning on alerts gives the attacker a way to get anyone banned if they can
+**spoof** source addresses (easy with UDP or ICMP). Vital addresses are protected with
+`ignoreip`, `bantime` is kept short and one bans only on reliable signatures.
+""",
+        "Limites et complémentarité": "Limits and complementarity",
+        """
+
+- fail2ban ne voit que ce qui est **journalisé**, et après coup : une attaque **distribuée** (une
+  tentative par adresse) passe sous le seuil ; des clients derrière une même adresse (NAT) sont
+  bannis ensemble ; en IPv6, une machine dispose de milliards d'adresses (on bannit un préfixe).
+- Une sonde réseau voit tout le segment, mais pas le contenu chiffré ni ce qui se passe sur les
+  machines ; ses alertes demandent un **réglage** continu.
+- Les deux se complètent : la sonde décrit le réseau, les journaux décrivent les services, et on les
+  rassemble dans un outil de corrélation (*SIEM*).
+""": """
+
+- fail2ban only sees what is **logged**, and after the fact: a **distributed** attack (one
+  attempt per address) stays below the threshold; clients behind the same address (NAT) are
+  banned together; in IPv6, a machine has billions of addresses (one bans a prefix).
+- A network sensor sees the whole segment, but neither encrypted content nor what happens on the
+  machines; its alerts require continuous **tuning**.
+- The two complement each other: the sensor describes the network, the logs describe the services,
+  and they are gathered in a correlation tool (*SIEM*).
+""",
+        "Mémo des commandes": "Command cheat sheet",
+        """
+
+| but | commande |
+|-----|----------|
+| tester la configuration et les règles | `suricata -T -c /etc/suricata/suricata.yaml -v` |
+| configuration comprise par Suricata | `suricata --dump-config \\| grep HOME_NET` |
+| (re)démarrer, recharger les règles | `systemctl restart suricata`, `systemctl reload suricata` |
+| alertes | `tail -f /var/log/suricata/fast.log`, `jq -c 'select(.event_type=="alert")' /var/log/suricata/eve.json` |
+| rejouer une capture | `suricata -r f.pcap -S local.rules -l /tmp/test -k none` |
+| capturer | `tcpdump -i eth1 -w f.pcap` |
+| file NFQUEUE | `nft add rule inet ips forward queue flags bypass to 0` |
+| état de fail2ban | `fail2ban-client status [prison]`, `fail2ban-client get prison maxretry` |
+| débannir | `fail2ban-client set prison unbanip ADRESSE`, `fail2ban-client unban --all` |
+| tester un filtre | `fail2ban-regex -v journal filtre.conf` |
+| bannissements dans nftables | `nft list table inet f2b-table` |
+| journal de fail2ban | `tail -f /var/log/fail2ban.log` |
+""": """
+
+| goal | command |
+|-----|----------|
+| test the configuration and the rules | `suricata -T -c /etc/suricata/suricata.yaml -v` |
+| configuration as understood by Suricata | `suricata --dump-config \\| grep HOME_NET` |
+| (re)start, reload the rules | `systemctl restart suricata`, `systemctl reload suricata` |
+| alerts | `tail -f /var/log/suricata/fast.log`, `jq -c 'select(.event_type=="alert")' /var/log/suricata/eve.json` |
+| replay a capture | `suricata -r f.pcap -S local.rules -l /tmp/test -k none` |
+| capture | `tcpdump -i eth1 -w f.pcap` |
+| NFQUEUE queue | `nft add rule inet ips forward queue flags bypass to 0` |
+| fail2ban status | `fail2ban-client status [jail]`, `fail2ban-client get jail maxretry` |
+| unban | `fail2ban-client set jail unbanip ADDRESS`, `fail2ban-client unban --all` |
+| test a filter | `fail2ban-regex -v log filter.conf` |
+| bans in nftables | `nft list table inet f2b-table` |
+| fail2ban log | `tail -f /var/log/fail2ban.log` |
+""",
+        "Partie 1 seule : la sonde Suricata configurée et lancée.": "Part 1 only: the Suricata sensor configured and started.",
+        "Partie 2 seule : les quatre signatures de local.rules.": "Part 2 only: the four signatures of local.rules.",
+        "Partie 3 seule : la suppression ciblée de la règle 1000100.": "Part 3 only: the targeted suppression of rule 1000100.",
+        "Partie 4 seule : Suricata en coupure sur ips.": "Part 4 only: Suricata inline on ips.",
+        "Partie 5 seule : la prison sshd de bastion.": "Part 5 only: the sshd jail of bastion.",
+        "Partie 6 seule : le filtre et la prison intranet.": "Part 6 only: the intranet filter and jail.",
+        "Bonus seul : fail2ban sur gw, alimenté par Suricata.": "Bonus only: fail2ban on gw, fed by Suricata.",
+        "Solution de référence complète (toutes les parties et le bonus, formulaires remplis).": "Complete reference solution (every part and the bonus, forms filled in).",
+        """
+| réseau | préfixe | machines |
+|--------|---------|----------|
+| `wan` (« Internet ») | `{wan}` | `gw` eth0 (`{gw_wan}`), `ips` eth0 (`{ips_wan}`), `attacker` (`{attacker}`, votre machine d'attaque) |
+| `dmz` (un **concentrateur**) | `{dmz}` | `gw` eth1 (`{gw_dmz}`), `bastion` (`{bastion}`, serveur SSH), `intranet` (`{intranet}`, application web), `ids` eth1 (**sans adresse**) |
+| `lan` (interne) | `{lan}` | `gw` eth2 (`{gw_lan}`), `admin` (`{admin}`, poste des administrateurs), `ids` eth0 (`{ids}`, gestion de la sonde) |
+| `apps` | `{apps}` | `ips` eth1 (`{ips_apps}`), `app` (`{app}`, serveur HTTP) |
+""": """
+| network | prefix | machines |
+|--------|---------|----------|
+| `wan` ("Internet") | `{wan}` | `gw` eth0 (`{gw_wan}`), `ips` eth0 (`{ips_wan}`), `attacker` (`{attacker}`, your attack machine) |
+| `dmz` (a **hub**) | `{dmz}` | `gw` eth1 (`{gw_dmz}`), `bastion` (`{bastion}`, SSH server), `intranet` (`{intranet}`, web application), `ids` eth1 (**no address**) |
+| `lan` (internal) | `{lan}` | `gw` eth2 (`{gw_lan}`), `admin` (`{admin}`, the administrators' workstation), `ids` eth0 (`{ids}`, sensor management) |
+| `apps` | `{apps}` | `ips` eth1 (`{ips_apps}`), `app` (`{app}`, HTTP server) |
+""",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente la détection d'intrusion, Suricata (configuration,
+signatures, réglage, mode IPS) et fail2ban (prisons, filtres).
+
+**La maquette** (onglet *Schéma*) : un routeur `gw` relie « Internet » (`wan`, où se trouve votre
+machine `attacker`) à une DMZ et à un réseau interne ; un second routeur `ips` protège un réseau
+d'applications. La DMZ est un **concentrateur** (*hub*) : la sonde `ids` y voit tout le trafic.
+""": """
+Read the **Informations** tab: it presents intrusion detection, Suricata (configuration,
+signatures, tuning, IPS mode) and fail2ban (jails, filters).
+
+**The lab network** (*Schema* tab): a router `gw` links "the Internet" (`wan`, where your
+machine `attacker` is) to a DMZ and to an internal network; a second router `ips` protects an
+application network. The DMZ is a **hub**: the sensor `ids` sees all the traffic there.
+""",
+        """
+Déjà en place (ne pas modifier) : les adresses et les routes, les noms dans `/etc/hosts` (`bastion`,
+`intranet`, `app`...), le serveur SSH de `bastion` (comptes `student` / `student`), l'application de
+`intranet` (compte de test `demo` / `{demo}`), le serveur HTTP de `app`, la supervision de `admin` qui
+interroge `http://intranet/health` avec `curl` chaque minute, et, sur `gw`, une sonde Suricata de
+référence (utile au bonus seulement). Suricata et fail2ban sont installés, arrêtés, sur `ids`, `ips`,
+`bastion`, `intranet` et `gw`.
+
+Règles valables pour tout le TP :
+
+- chaque **partie est indépendante** : la terminer donne ses points quel que soit l'état des autres.
+  Ce qui est noté est l'état final des machines : laissez vos configurations en place ;
+- l'évaluation est surtout **comportementale** : une machine cachée de `wan` utilise les adresses
+  `{probe_first}` à `{probe_last}` pour envoyer un ping marqué, des requêtes vers `app`, des mots de
+  passe faux vers `bastion` et `intranet`, un balayage à travers `gw`. Vous verrez donc ces adresses
+  dans les alertes et les bannissements : c'est normal, l'évaluation retire ses bannissements à la
+  fin. Elle rejoue aussi des captures hors ligne sur `ids` avec vos fichiers de règles ;
+- une évaluation automatique a lieu toutes les cinq minutes ;
+- si vous bannissez par erreur votre propre machine : `fail2ban-client unban --all` sur la machine
+  qui bannit.
+""": """
+Already in place (do not modify): the addresses and the routes, the names in `/etc/hosts` (`bastion`,
+`intranet`, `app`...), the SSH server of `bastion` (account `student` / `student`), the application of
+`intranet` (test account `demo` / `{demo}`), the HTTP server of `app`, the monitoring of `admin`, which
+polls `http://intranet/health` with `curl` every minute, and, on `gw`, a reference Suricata sensor
+(useful for the bonus only). Suricata and fail2ban are installed, stopped, on `ids`, `ips`,
+`bastion`, `intranet` and `gw`.
+
+Rules for the whole lab:
+
+- each **part is independent**: completing it gives its points whatever the state of the others.
+  What is graded is the final state of the machines: leave your configurations in place;
+- the evaluation is mostly **behavioural**: a hidden machine on `wan` uses the addresses
+  `{probe_first}` to `{probe_last}` to send a marked ping, requests to `app`, wrong passwords to
+  `bastion` and `intranet`, a scan through `gw`. You will therefore see these addresses in the
+  alerts and the bans: this is normal, the evaluation removes its bans at the end. It also replays
+  captures offline on `ids` with your rule files;
+- an automatic evaluation takes place every five minutes;
+- if you ban your own machine by mistake: `fail2ban-client unban --all` on the machine that
+  bans.
+""",
+        "Partie 1 — La sonde de détection (IDS)": "Part 1 — The detection sensor (IDS)",
+        "Mettre la sonde en service": "Putting the sensor into service",
+        """
+Sur `ids`, l'interface `eth1` (sans adresse) est branchée sur le concentrateur de la DMZ et
+l'interface `eth0` sur le réseau interne (gestion). Dans `/etc/suricata/suricata.yaml`
+(sections @@ref:placement@@ et @@ref:config@@) :
+
+1. `HOME_NET` : exactement les deux réseaux internes, la DMZ `{dmz}` et le réseau `lan` `{lan}` ;
+2. la capture `af-packet` sur **`eth1`** ;
+3. dans `rule-files`, ajoutez `{given}` (fourni : ne le modifiez pas) et `{local}` (vos règles de
+   la partie 2 ; créez le fichier, même vide).
+
+Vérifiez avec `suricata -T`, puis démarrez le service (`systemctl enable --now suricata`). Depuis
+`attacker`, envoyez un ping « marqué », que reconnaît la règle {sid} de `{given}` :
+
+```
+ping -c 3 -p {mark_hex} bastion
+```
+
+et retrouvez l'alerte dans `/var/log/suricata/fast.log` et dans `eve.json` (section @@ref:eve@@).
+L'évaluation lit la configuration (`suricata --dump-config`) et envoie elle-même un ping marqué.
+""": """
+On `ids`, the interface `eth1` (no address) is plugged into the hub of the DMZ and the interface
+`eth0` into the internal network (management). In `/etc/suricata/suricata.yaml`
+(sections @@ref:placement@@ and @@ref:config@@):
+
+1. `HOME_NET`: exactly the two internal networks, the DMZ `{dmz}` and the `lan` network `{lan}`;
+2. the `af-packet` capture on **`eth1`**;
+3. in `rule-files`, add `{given}` (provided: do not modify it) and `{local}` (your rules of
+   part 2; create the file, even empty).
+
+Check with `suricata -T`, then start the service (`systemctl enable --now suricata`). From
+`attacker`, send a "marked" ping, which rule {sid} of `{given}` recognises:
+
+```
+ping -c 3 -p {mark_hex} bastion
+```
+
+and find the alert in `/var/log/suricata/fast.log` and in `eve.json` (section @@ref:eve@@).
+The evaluation reads the configuration (`suricata --dump-config`) and sends a marked ping itself.
+""",
+        "Suricata tourne sur ids et capture sur eth1": "Suricata runs on ids and captures on eth1",
+        "HOME_NET contient exactement la DMZ et le réseau lan": "HOME_NET holds exactly the DMZ and the lan network",
+        "rule-files charge sre.rules et local.rules": "rule-files loads sre.rules and local.rules",
+        "le ping marqué de l'évaluation produit l'alerte 1000001 dans eve.json": "the marked ping of the evaluation produces alert 1000001 in eve.json",
+        "Une sonde passive": "A passive sensor",
+        """
+- pourquoi `ids` voit-elle le trafic entre `gw` et `bastion`, qui ne lui est pas adressé ? @@{why_sees:>la DMZ est un concentrateur : chaque trame est répétée sur tous les ports (en réalité : un port miroir ou un TAP)>>>hub|ids est la passerelle de bastion>>>gateway|Suricata déchiffre le trafic>>>decrypt}@@
+- pourquoi l'interface de capture `eth1` n'a-t-elle pas d'adresse IP ? @@{no_ip:>la sonde n'émet rien sur ce réseau : invisible, elle ne peut pas y être attaquée>>>invisible|Suricata refuse une interface adressée>>>refused|pour économiser des adresses>>>save}@@
+- la sonde `ids` peut-elle empêcher une attaque d'atteindre `bastion` ? @@{blocks:>non : elle ne reçoit qu'une copie du trafic, elle signale seulement>>>no|oui, avec une règle drop>>>drop|oui, si HOME_NET est juste>>>home}@@
+""": """
+- why does `ids` see the traffic between `gw` and `bastion`, which is not addressed to it? @@{why_sees:>the DMZ is a hub: every frame is repeated on all ports (in reality: a mirror port or a TAP)>>>hub|ids is the gateway of bastion>>>gateway|Suricata decrypts the traffic>>>decrypt}@@
+- why does the capture interface `eth1` have no IP address? @@{no_ip:>the sensor sends nothing on this network: invisible, it cannot be attacked there>>>invisible|Suricata refuses an interface with an address>>>refused|to save addresses>>>save}@@
+- can the sensor `ids` prevent an attack from reaching `bastion`? @@{blocks:>no: it only receives a copy of the traffic, it only reports>>>no|yes, with a drop rule>>>drop|yes, if HOME_NET is right>>>home}@@
+""",
+        "concentrateur / port miroir ; capture sans adresse ; une sonde passive ne bloque pas": "hub / mirror port; capture without an address; a passive sensor does not block",
+        "Partie 2 — Écrire des signatures": "Part 2 — Writing signatures",
+        "Quatre signatures": "Four signatures",
+        """
+Écrivez dans `{local}` sur `ids` les quatre règles suivantes (section @@ref:rules@@), avec
+**exactement** ces `sid` :
+
+1. **sid {s_ua}** — une requête HTTP vers `$HOME_NET` dont le **User-Agent** contient `sqlmap`,
+   quelle que soit la casse (`sqlmap/1.8`, `SQLMap`...). Le mot `sqlmap` ailleurs (dans l'URI d'une
+   recherche, par exemple) ne doit **pas** déclencher la règle.
+2. **sid {s_pw}** — une requête HTTP vers `$HOME_NET` dont l'**URI** désigne `/etc/passwd`, y compris
+   sous une forme encodée (`..%2F..%2Fetc%2Fpasswd`, section @@ref:normalization@@). Pas d'alerte si
+   `/etc/passwd` n'apparaît que dans un autre champ (un en-tête), ni pour une page comme
+   `/docs/passwd-policy.html`.
+3. **sid {s_c2}** — une requête **DNS** (de n'importe quelle machine vers n'importe quel serveur)
+   pour le domaine de commande et de contrôle `{c2}` ou l'un de ses sous-domaines, quelle que soit la
+   casse. Un nom qui contient `{c2}` sans s'y terminer (`{c2}.cdn-mirror.net`) n'est pas ce domaine.
+4. **sid {s_ssh}** — une recherche de mots de passe SSH : **plus de 5** tentatives de connexion
+   (paquets SYN vers le port 22 d'une machine de `$HOME_NET`) depuis une même source **en moins de
+   60 s**. Ni 3 tentatives, ni 8 tentatives étalées sur trois minutes, ni des tentatives vers un autre
+   port ne doivent alerter.
+
+Mettez vos règles au point **hors ligne** sur la capture `{training}` (elle contient ces quatre
+attaques, les cas voisins à ne pas signaler et du trafic ordinaire) :
+
+```
+mkdir -p /tmp/test
+suricata -r {training} -S {local} -l /tmp/test -k none
+jq -c 'select(.event_type=="alert") | [.alert.signature_id, .src_ip, .dest_ip]' /tmp/test/eve.json
+```
+
+Vous pouvez aussi les voir en direct si la sonde de la partie 1 tourne (`systemctl reload suricata`
+après une modification) : `curl -A sqlmap http://intranet/` depuis `attacker`, des `ssh` répétés vers
+`bastion`... L'évaluation rejoue **hors ligne** une autre capture des mêmes cas (d'autres adresses et
+d'autres valeurs) avec votre fichier et `HOME_NET = {home}` : elle ne dépend pas de la partie 1.
+""": """
+Write in `{local}` on `ids` the following four rules (section @@ref:rules@@), with
+**exactly** these `sid`:
+
+1. **sid {s_ua}** — an HTTP request to `$HOME_NET` whose **User-Agent** contains `sqlmap`,
+   whatever the case (`sqlmap/1.8`, `SQLMap`...). The word `sqlmap` elsewhere (in the URI of a
+   search, for example) must **not** trigger the rule.
+2. **sid {s_pw}** — an HTTP request to `$HOME_NET` whose **URI** designates `/etc/passwd`, including
+   in an encoded form (`..%2F..%2Fetc%2Fpasswd`, section @@ref:normalization@@). No alert if
+   `/etc/passwd` only appears in another field (a header), nor for a page such as
+   `/docs/passwd-policy.html`.
+3. **sid {s_c2}** — a **DNS** query (from any machine to any server) for the command-and-control
+   domain `{c2}` or one of its subdomains, whatever the case. A name that contains `{c2}` without
+   ending with it (`{c2}.cdn-mirror.net`) is not that domain.
+4. **sid {s_ssh}** — SSH password guessing: **more than 5** connection attempts (SYN packets to
+   port 22 of a machine of `$HOME_NET`) from the same source **in less than 60 s**. Neither 3
+   attempts, nor 8 attempts spread over three minutes, nor attempts to another port must alert.
+
+Debug your rules **offline** on the capture `{training}` (it contains these four attacks, the
+neighbouring cases not to report and ordinary traffic):
+
+```
+mkdir -p /tmp/test
+suricata -r {training} -S {local} -l /tmp/test -k none
+jq -c 'select(.event_type=="alert") | [.alert.signature_id, .src_ip, .dest_ip]' /tmp/test/eve.json
+```
+
+You can also see them live if the sensor of part 1 is running (`systemctl reload suricata`
+after a change): `curl -A sqlmap http://intranet/` from `attacker`, repeated `ssh` to
+`bastion`... The evaluation replays **offline** another capture of the same cases (other addresses
+and other values) with your file and `HOME_NET = {home}`: it does not depend on part 1.
+""",
+        "1000010 : User-Agent sqlmap (2), toute casse (2), pas sur le mot dans l'URI (2)": "1000010: sqlmap User-Agent (2), any case (2), not on the word in the URI (2)",
+        "1000011 : /etc/passwd dans l'URI (2), forme encodée (2), ni en-tête ni page voisine (2)": "1000011: /etc/passwd in the URI (2), encoded form (2), neither a header nor a neighbouring page (2)",
+        "1000012 : sous-domaine du C2 en casse mélangée (2), le domaine lui-même (2), ni autre nom ni nom le contenant (2)": "1000012: subdomain of the C2 in mixed case (2), the domain itself (2), neither another name nor a name containing it (2)",
+        "1000013 : 8 SYN vers 22 en 4 s (3) ; ni 3 SYN, ni 8 SYN en 3 min, ni un autre port (3)": "1000013: 8 SYN to 22 in 4 s (3); neither 3 SYN, nor 8 SYN in 3 min, nor another port (3)",
+        "Comprendre les signatures": "Understanding the signatures",
+        """
+- pourquoi chercher `/etc/passwd` dans `http.uri` plutôt qu'avec un `content` seul ? @@{uri:>http.uri ne regarde que l'URI, et normalisée : encodages et ../ ne contournent plus la règle>>>normalized|un content seul est interdit dans une règle http>>>forbidden|http.uri est plus rapide mais équivalent>>>same}@@
+- que fait `flow:established,to_server` ? @@{flow:>limite la règle aux paquets d'une connexion établie qui vont vers le serveur>>>established_to_server|établit la connexion avant d'inspecter>>>opens|n'inspecte que les réponses du serveur>>>replies}@@
+""": """
+- why look for `/etc/passwd` in `http.uri` rather than with a `content` alone? @@{uri:>http.uri only looks at the URI, and normalised: encodings and ../ no longer bypass the rule>>>normalized|a content alone is forbidden in an http rule>>>forbidden|http.uri is faster but equivalent>>>same}@@
+- what does `flow:established,to_server` do? @@{flow:>restricts the rule to the packets of an established connection going to the server>>>established_to_server|establishes the connection before inspecting>>>opens|inspects only the replies of the server>>>replies}@@
+""",
+        "http.uri normalisée ; flow:established,to_server": "normalised http.uri; flow:established,to_server",
+        "Partie 3 — Réduire les faux positifs": "Part 3 — Reducing false positives",
+        "Faire taire une alerte connue": "Silencing a known alert",
+        """
+La règle {sid} de `{given}` signale tout client HTTP `curl` vers `$HOME_NET` : un outil souvent
+utilisé par les scripts d'attaque. Mais la supervision de `admin` (`{admin}`) interroge `intranet`
+avec `curl` chaque minute : si la sonde tourne, une alerte par minute, toujours la même.
+
+Dans `{threshold}` sur `ids`, supprimez les alertes de la règle {sid} **pour la seule source
+`admin`** (section @@ref:tuning@@) : la règle doit continuer d'alerter pour toute autre source. Ne
+modifiez pas `{given}`. Redémarrez Suricata (le fichier est lu au démarrage) et vérifiez dans
+`fast.log` que les alertes de `admin` cessent.
+
+L'évaluation rejoue hors ligne des requêtes `curl` de `admin`, d'une autre machine de `lan` et d'une
+machine de `wan` avec une copie de la règle {sid} et votre `{threshold}`.
+""": """
+Rule {sid} of `{given}` reports any `curl` HTTP client towards `$HOME_NET`: a tool often used by
+attack scripts. But the monitoring of `admin` (`{admin}`) polls `intranet` with `curl` every
+minute: if the sensor is running, one alert per minute, always the same.
+
+In `{threshold}` on `ids`, suppress the alerts of rule {sid} **for the source `admin`
+only** (section @@ref:tuning@@): the rule must keep alerting for any other source. Do not
+modify `{given}`. Restart Suricata (the file is read at start-up) and check in
+`fast.log` that the alerts of `admin` stop.
+
+The evaluation replays offline `curl` requests from `admin`, from another machine of `lan` and from
+a machine of `wan` with a copy of rule {sid} and your `{threshold}`.
+""",
+        "plus d'alerte 1000100 pour admin, toujours pour les autres sources (2 points si la règle est muette pour tous)": "no more 1000100 alert for admin, still for the other sources (2 points if the rule is silent for everyone)",
+        "Faux positifs et faux négatifs": "False positives and false negatives",
+        """
+- les alertes de la règle {sid} provoquées par la supervision de `admin` sont des : @@{{fp:>faux positifs : des alertes sur un trafic légitime>>>legit_alert|faux négatifs : des attaques non signalées>>>missed|vrais positifs>>>true}}@@
+- pourquoi ne pas simplement supprimer la règle {sid} ? @@{{why_not_delete:>on ne verrait plus un curl lancé par un attaquant : un faux négatif>>>false_negative|Suricata ne démarre pas sans elle>>>required|elle est fournie, donc protégée>>>protected}}@@
+""": """
+- the alerts of rule {sid} caused by the monitoring of `admin` are: @@{{fp:>false positives: alerts on legitimate traffic>>>legit_alert|false negatives: attacks not reported>>>missed|true positives>>>true}}@@
+- why not simply delete rule {sid}? @@{{why_not_delete:>a curl run by an attacker would no longer be seen: a false negative>>>false_negative|Suricata does not start without it>>>required|it is provided, hence protected>>>protected}}@@
+""",
+        "faux positif ; supprimer la règle créerait des faux négatifs": "false positive; deleting the rule would create false negatives",
+        "Partie 4 — Suricata en coupure (IPS)": "Part 4 — Suricata inline (IPS)",
+        "Bloquer les injections SQL vers app": "Blocking SQL injections to app",
+        """
+Le routeur `ips` est sur le chemin de tout le trafic vers le réseau `apps` (`{apps}`), où `app`
+(`{app}`) sert des pages HTTP. Sur `ips` (section @@ref:ips@@) :
+
+1. faites passer **tout le trafic routé** (les deux sens) par la file NFQUEUE **0**, en **fail-open**
+   (`bypass`) : une table nftables à vous, une chaîne sur le crochet `forward` ;
+2. dans `/etc/suricata/suricata.yaml` : `HOME_NET` = `[{apps}]`, et ajoutez `{local}` à `rule-files` ;
+3. lancez Suricata en mode NFQUEUE (`-q 0`) par une surcharge du service systemd ;
+4. dans `{local}` de `ips`, une règle **sid {sid}** qui **jette** toute requête HTTP vers `$HOME_NET`
+   dont l'URI normalisée contient `union select` (un espace entre les deux mots : l'injection SQL
+   `UNION SELECT`), quelle que soit la casse.
+
+Les requêtes ordinaires doivent passer, y compris une URI qui contient les deux mots séparément
+(`/products?category=union-jack&sort=select-price`). Testez depuis `attacker` :
+
+```
+curl -m 5 'http://app/products?id=1'
+curl -m 5 'http://app/products?id=1%20UNION%20SELECT%20login,password%20FROM%20users'
+```
+
+La première répond, la seconde reste sans réponse ; l'alerte apparaît dans `eve.json` de `ips` avec
+`"action":"blocked"`. L'évaluation envoie des requêtes semblables.
+""": """
+The router `ips` is on the path of all the traffic to the `apps` network (`{apps}`), where `app`
+(`{app}`) serves HTTP pages. On `ips` (section @@ref:ips@@):
+
+1. send **all the routed traffic** (both directions) through NFQUEUE queue **0**, **fail-open**
+   (`bypass`): an nftables table of your own, a chain on the `forward` hook;
+2. in `/etc/suricata/suricata.yaml`: `HOME_NET` = `[{apps}]`, and add `{local}` to `rule-files`;
+3. run Suricata in NFQUEUE mode (`-q 0`) through an override of the systemd service;
+4. in `{local}` of `ips`, a rule **sid {sid}** that **drops** any HTTP request to `$HOME_NET`
+   whose normalised URI contains `union select` (a space between the two words: the SQL injection
+   `UNION SELECT`), whatever the case.
+
+Ordinary requests must pass, including a URI that contains the two words separately
+(`/products?category=union-jack&sort=select-price`). Test from `attacker`:
+
+```
+curl -m 5 'http://app/products?id=1'
+curl -m 5 'http://app/products?id=1%20UNION%20SELECT%20login,password%20FROM%20users'
+```
+
+The first one answers, the second one gets no answer; the alert appears in `eve.json` of `ips` with
+`"action":"blocked"`. The evaluation sends similar requests.
+""",
+        "une règle forward envoie le trafic à une file NFQUEUE avec bypass (2 sans bypass)": "a forward rule sends the traffic to an NFQUEUE queue with bypass (2 without bypass)",
+        "Suricata tourne sur ips en mode NFQUEUE (-q)": "Suricata runs on ips in NFQUEUE mode (-q)",
+        "les deux requêtes UNION SELECT sont bloquées (une requête ordinaire passe)": "both UNION SELECT requests are blocked (an ordinary request passes)",
+        "une URI contenant union et select séparément passe": "a URI containing union and select separately passes",
+        "eve.json de ips contient l'alerte 1000020 avec l'action blocked": "eve.json of ips holds alert 1000020 with the action blocked",
+        "Les choix d'un IPS": "The choices of an IPS",
+        """
+- avec `queue flags bypass`, que devient le trafic si Suricata s'arrête ? @@{bypass:>il passe sans inspection (fail-open)>>>fail_open|il est entièrement bloqué (fail-closed)>>>fail_closed|il est mis en attente jusqu'au redémarrage>>>held}@@
+- quelle différence entre une règle `drop` et une règle `reject` ? @@{drop_reject:>reject jette aussi le paquet, mais répond à l'émetteur (RST ou erreur ICMP)>>>rst|drop ne fait qu'alerter>>>alert|aucune>>>none}@@
+- quel est le risque propre à un IPS, comparé à un IDS ? @@{risk:>une fausse alerte devient une coupure de trafic légitime (et la sonde ajoute de la latence)>>>outage|il ne voit pas le trafic chiffré>>>tls|il ne fonctionne pas en IPv6>>>ipv6}@@
+""": """
+- with `queue flags bypass`, what happens to the traffic if Suricata stops? @@{bypass:>it passes uninspected (fail-open)>>>fail_open|it is entirely blocked (fail-closed)>>>fail_closed|it is held until the restart>>>held}@@
+- what is the difference between a `drop` rule and a `reject` rule? @@{drop_reject:>reject also drops the packet, but answers the sender (RST or ICMP error)>>>rst|drop only alerts>>>alert|none>>>none}@@
+- what is the risk specific to an IPS, compared with an IDS? @@{risk:>a false alert becomes an outage of legitimate traffic (and the sensor adds latency)>>>outage|it does not see encrypted traffic>>>tls|it does not work with IPv6>>>ipv6}@@
+""",
+        "bypass = fail-open ; reject répond ; un faux positif coupe le service": "bypass = fail-open; reject answers; a false positive cuts the service",
+        "Partie 5 — fail2ban contre la recherche de mots de passe SSH": "Part 5 — fail2ban against SSH password guessing",
+        "La prison sshd de bastion": "The sshd jail of bastion",
+        """
+Sur `bastion`, le serveur SSH tourne (service `ssh`). Configurez la prison **`sshd`** de fail2ban
+dans un fichier `/etc/fail2ban/jail.d/sshd.local` (section @@ref:fail2ban@@) :
+
+- bannir après **3** échecs en **10 minutes**, pendant **1 heure** ;
+- ne **jamais** bannir le réseau interne `lan` (`{lan}`, celui des administrateurs), ni la boucle
+  locale.
+
+Activez et démarrez fail2ban. Depuis `attacker`, tapez plusieurs mauvais mots de passe
+(`ssh student@bastion`) : après le troisième échec, la connexion est refusée. Observez
+`fail2ban-client status sshd`, `/var/log/fail2ban.log` et `nft list ruleset`, puis débannissez
+`attacker`.
+
+L'évaluation fait 4 échecs depuis une adresse de `wan` (elle doit être bannie), 2 échecs depuis une
+autre (elle ne doit pas l'être) et 4 échecs depuis `admin` (qui doit rester autorisé).
+""": """
+On `bastion`, the SSH server is running (service `ssh`). Configure fail2ban's **`sshd`** jail
+in a file `/etc/fail2ban/jail.d/sshd.local` (section @@ref:fail2ban@@):
+
+- ban after **3** failures in **10 minutes**, for **1 hour**;
+- **never** ban the internal network `lan` (`{lan}`, the administrators' network), nor the
+  loopback.
+
+Enable and start fail2ban. From `attacker`, type several wrong passwords
+(`ssh student@bastion`): after the third failure, the connection is refused. Look at
+`fail2ban-client status sshd`, `/var/log/fail2ban.log` and `nft list ruleset`, then unban
+`attacker`.
+
+The evaluation makes 4 failures from one address of `wan` (it must be banned), 2 failures from
+another one (it must not be) and 4 failures from `admin` (which must stay allowed).
+""",
+        "fail2ban tourne sur bastion avec la prison sshd": "fail2ban runs on bastion with the sshd jail",
+        "maxretry = 3, findtime = 10 min, bantime = 1 h": "maxretry = 3, findtime = 10 min, bantime = 1 h",
+        "après 4 échecs, l'adresse de l'évaluation est bannie et ne joint plus le port 22": "after 4 failures, the address of the evaluation is banned and no longer reaches port 22",
+        "2 échecs ne suffisent pas à être banni": "2 failures are not enough to be banned",
+        "admin (réseau lan) n'est jamais banni": "admin (lan network) is never banned",
+        "Ce que fait fail2ban": "What fail2ban does",
+        """
+- le nom de la table nftables où fail2ban range ses bannissements (`nft list tables`) : @@{table:[a-zA-Z0-9_-]+}@@
+- la commande qui débannit `203.0.113.5` de la prison `sshd` : @@{unban:>fail2ban-client set sshd unbanip 203.0.113.5>>>unbanip|nft flush ruleset>>>flush|systemctl stop fail2ban>>>stop}@@
+- pourquoi mettre le réseau des administrateurs dans `ignoreip` ? @@{why_ignore:>pour qu'une faute de frappe ou une attaque usurpant leur adresse ne les enferme pas dehors>>>lockout|pour accélérer leurs connexions>>>speed|parce que fail2ban ne voit pas le réseau interne>>>blind}@@
+""": """
+- the name of the nftables table where fail2ban keeps its bans (`nft list tables`): @@{table:[a-zA-Z0-9_-]+}@@
+- the command that unbans `203.0.113.5` from the `sshd` jail: @@{unban:>fail2ban-client set sshd unbanip 203.0.113.5>>>unbanip|nft flush ruleset>>>flush|systemctl stop fail2ban>>>stop}@@
+- why put the administrators' network in `ignoreip`? @@{why_ignore:>so that a typo or an attack spoofing their address does not lock them out>>>lockout|to speed up their connections>>>speed|because fail2ban does not see the internal network>>>blind}@@
+""",
+        "la table nftables de fail2ban : f2b-table": "the nftables table of fail2ban: f2b-table",
+        "unbanip ; ignoreip contre l'enfermement des administrateurs": "unbanip; ignoreip against locking the administrators out",
+        "Partie 6 — Un filtre fail2ban sur mesure": "Part 6 — A custom fail2ban filter",
+        "Le journal de l'intranet": "The intranet log",
+        """
+L'application de `intranet` écrit chaque tentative de connexion dans `{log}` :
+
+```
+2026-11-23 15:30:12 FAILED login user=alice from=203.0.113.9
+2026-11-23 15:30:14 OK login user=bob from=10.1.1.25
+2026-11-23 15:31:00 INFO health check from=10.1.1.10
+```
+
+Le fichier contient déjà la journée d'hier. Analysez-la (`grep`, `awk`, `sort | uniq -c`, ou
+`fail2ban-regex -v` une fois votre filtre écrit) :
+
+- l'adresse qui a fait le plus d'échecs de connexion hier : @@{{top_ip:[0-9.]+}}@@
+- son nombre d'échecs : @@{{top_count:[0-9]+}}@@
+""": """
+The application of `intranet` writes every login attempt to `{log}`:
+
+```
+2026-11-23 15:30:12 FAILED login user=alice from=203.0.113.9
+2026-11-23 15:30:14 OK login user=bob from=10.1.1.25
+2026-11-23 15:31:00 INFO health check from=10.1.1.10
+```
+
+The file already holds yesterday's entries. Analyse it (`grep`, `awk`, `sort | uniq -c`, or
+`fail2ban-regex -v` once your filter is written):
+
+- the address that made the most login failures yesterday: @@{{top_ip:[0-9.]+}}@@
+- its number of failures: @@{{top_count:[0-9]+}}@@
+""",
+        "l'attaquant le plus actif de l'historique et son nombre d'échecs": "the most active attacker in the history and its number of failures",
+        "Le filtre et la prison intranet": "The intranet filter and jail",
+        """
+Sur `intranet` (section @@ref:filter@@) :
+
+1. écrivez le filtre `/etc/fail2ban/filter.d/intranet.conf` qui reconnaît les **échecs** de connexion
+   de l'application ; mettez-le au point avec `fail2ban-regex` sur `{log}` ;
+2. créez la prison **`intranet`** (`/etc/fail2ban/jail.d/intranet.local`) : ce filtre, ce journal,
+   le port `http`, bannir après **3** échecs en **10 minutes** pendant **1 heure** ;
+3. activez et (re)démarrez fail2ban.
+
+Exigences :
+
+- une connexion **réussie** ne compte jamais ;
+- le nom d'utilisateur est **tapé par le client** : un attaquant qui se donne pour nom
+  `x from=<une autre adresse>` doit être banni **lui**, et l'autre adresse jamais.
+
+Testez depuis `attacker` :
+
+```
+for i in 1 2 3 4; do curl -s -o /dev/null -w '%{{http_code}}\\n' --data-urlencode 'user=alice' --data-urlencode 'password=faux' http://intranet/login; done
+```
+""": """
+On `intranet` (section @@ref:filter@@):
+
+1. write the filter `/etc/fail2ban/filter.d/intranet.conf` that recognises the login **failures**
+   of the application; debug it with `fail2ban-regex` on `{log}`;
+2. create the **`intranet`** jail (`/etc/fail2ban/jail.d/intranet.local`): this filter, this log,
+   the port `http`, ban after **3** failures in **10 minutes** for **1 hour**;
+3. enable and (re)start fail2ban.
+
+Requirements:
+
+- a **successful** login never counts;
+- the user name is **typed by the client**: an attacker who gives
+  `x from=<another address>` as their name must be banned **themselves**, and the other address never.
+
+Test from `attacker`:
+
+```
+for i in 1 2 3 4; do curl -s -o /dev/null -w '%{{http_code}}\\n' --data-urlencode 'user=alice' --data-urlencode 'password=faux' http://intranet/login; done
+```
+""",
+        "fail2ban tourne sur intranet avec la prison intranet": "fail2ban runs on intranet with the intranet jail",
+        "après 4 échecs, l'adresse de l'évaluation est bannie du port 80": "after 4 failures, the address of the evaluation is banned from port 80",
+        "4 connexions réussies ne font pas bannir": "4 successful logins do not get an address banned",
+        "le nom injecté « x from=... » fait bannir l'attaquant, jamais l'adresse injectée": "the injected name \"x from=...\" gets the attacker banned, never the injected address",
+        "Pièges des filtres": "Filter pitfalls",
+        """
+- pourquoi `failregex = from=<HOST>` est-il un mauvais filtre ici ? @@{bare:>il compte aussi les connexions réussies et prend la première adresse de la ligne, celle qu'un attaquant peut injecter>>>injection|il est trop lent>>>slow|fail2ban exige le mot FAILED>>>keyword}@@
+- quel `backend` pour la prison `intranet` ? @@{backend:>auto (ou pyinotify, polling) : la prison lit un fichier>>>file|systemd, comme la prison sshd>>>systemd|aucun : fail2ban devine>>>none}@@
+""": """
+- why is `failregex = from=<HOST>` a bad filter here? @@{bare:>it also counts the successful logins and takes the first address of the line, the one an attacker can inject>>>injection|it is too slow>>>slow|fail2ban requires the word FAILED>>>keyword}@@
+- which `backend` for the `intranet` jail? @@{backend:>auto (or pyinotify, polling): the jail reads a file>>>file|systemd, like the sshd jail>>>systemd|none: fail2ban guesses>>>none}@@
+""",
+        "filtre non ancré = injection ; backend d'un fichier": "unanchored filter = injection; backend for a file",
+        "Bonus — Bannir sur alerte Suricata": "Bonus — Banning on Suricata alerts",
+        "fail2ban alimenté par Suricata sur gw": "fail2ban fed by Suricata on gw",
+        """
+Sur `gw`, une sonde Suricata de référence (fournie, ne pas la modifier : `{yaml}`, `{rules}`) écoute
+`eth0` et écrit dans `{eve}` **uniquement ses alertes**, en particulier la règle {sid} : un balayage
+de ports (20 SYN en 10 s depuis une même source). Sur `gw` (section @@ref:router-ban@@) :
+
+1. un filtre fail2ban `suricata-alert` qui reconnaît les alertes de `eve.json` et en extrait la
+   source ;
+2. une prison `suricata` : ce journal, bannir dès **1** alerte, pendant **10 minutes**, sur **tous les
+   ports TCP** et dans le crochet **`forward`** (le trafic traverse `gw`) ;
+3. fail2ban activé et démarré.
+
+Test depuis `attacker` : `nmap -Pn -p 1-100 bastion` ; `attacker` ne doit alors plus ouvrir aucune
+connexion TCP derrière `gw` (`nc -zv bastion 22`). Débannissez-le ensuite sur `gw`.
+""": """
+On `gw`, a reference Suricata sensor (provided, do not modify it: `{yaml}`, `{rules}`) listens on
+`eth0` and writes **only its alerts** to `{eve}`, in particular rule {sid}: a port scan
+(20 SYN in 10 s from the same source). On `gw` (section @@ref:router-ban@@):
+
+1. a fail2ban filter `suricata-alert` that recognises the alerts of `eve.json` and extracts their
+   source;
+2. a jail `suricata`: this log, ban from **1** alert on, for **10 minutes**, on **all TCP
+   ports** and in the **`forward`** hook (the traffic goes through `gw`);
+3. fail2ban enabled and started.
+
+Test from `attacker`: `nmap -Pn -p 1-100 bastion`; `attacker` must then no longer open any
+TCP connection behind `gw` (`nc -zv bastion 22`). Unban it afterwards on `gw`.
+""",
+        "après son balayage, l'adresse de l'évaluation n'ouvre plus de connexion TCP à travers gw (les autres si)": "after its scan, the address of the evaluation no longer opens TCP connections through gw (the others do)",
+        "une prison de gw a banni l'adresse du balayage": "a jail of gw banned the address of the scan",
     },
 }

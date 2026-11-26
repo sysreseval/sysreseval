@@ -31,6 +31,7 @@ from ipaddress import IPv4Address, IPv4Interface, IPv4Network
 from typing import Dict, List, Optional
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks
@@ -1094,42 +1095,49 @@ Documentation : [FRR — OSPFv2](https://docs.frrouting.org/en/latest/ospfd.html
             self.file(m, "/etc/frr/frr.conf", self._frr_conf(m), permissions=0o640, owner="frr:frr", step=2)
             self.cmd(m, "systemctl start frr", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (statiques, connectés, noyau)"))
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (statiques, connectés, noyau)",
+                                                  en="Part 1: solution (static, connected, kernel)"))
     def solve_stat(self):
         self._apply(self.solution_stat())
         self._wait(('stat',))
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (RIP et OSPF, un point)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (RIP et OSPF, un point)",
+                                                  en="Part 2: solution (RIP and OSPF, one point)"))
     def solve_mut(self):
         self._apply(self.solution_mut())
         self._wait(('mut',))
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (deux points, étiquettes)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (deux points, étiquettes)",
+                                                  en="Part 3: solution (two points, tags)"))
     def solve_dual(self):
         self._apply(self.solution_dual())
         self._wait(('dual',))
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (OSPF et BGP)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (OSPF et BGP)",
+                                                  en="Part 4: solution (OSPF and BGP)"))
     def solve_edge(self):
         self._apply(self.solution_edge())
         self._wait(('edge',))
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (dépannage)"))
+    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (dépannage)",
+                                                  en="Part 5: solution (troubleshooting)"))
     def solve_fix(self):
         self._apply(self.solution_fix())
         self._wait(('fix',))
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (résumé sur l'ASBR)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (résumé sur l'ASBR)",
+                                                  en="Bonus: solution (summary on the ASBR)"))
     def solve_sum(self):
         self._apply(self.solution_sum())
         self._wait(('sum',))
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (NSSA)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (NSSA)", en="Bonus: solution (NSSA)"))
     def solve_nssa(self):
         self._apply(self.solution_nssa())
         self._wait(('nssa',))
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (agrégation BGP)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (agrégation BGP)",
+                                                  en="Bonus: solution (BGP aggregation)"))
     def solve_agg(self):
         self._apply(self.solution_agg())
         self._wait(('agg',))
@@ -1164,8 +1172,9 @@ def _int(s):
         return None
 
 
-def _solution_text(solution: Dict[str, list]) -> str:
-    """The reference solution of a part, machine by machine: shell commands, vtysh sessions."""
+def _solution_text(solution: Dict[str, list]) -> Dict[str, str]:
+    """The reference solution of a part, machine by machine: shell commands, vtysh sessions; one text
+    per language (the French one has a space before the colon)."""
     blocks = []
     for m, items in solution.items():
         parts = []
@@ -1177,8 +1186,25 @@ def _solution_text(solution: Dict[str, list]) -> str:
             elif kind == 'vtysh':
                 body = ["configure terminal"] + [" " + x for x in _block_lines(payload)] + ["end", "write"]
                 parts.append("```\n" + "\n".join(body) + "\n```")
-        blocks.append(f"`{m}` :\n\n" + "\n\n".join(parts))
-    return "\n\n".join(blocks)
+        blocks.append((m, "\n\n".join(parts)))
+    return {lang: "\n\n".join(f"`{m}`{colon}\n\n{body}" for m, body in blocks)
+            for lang, colon in (('fr', " :"), ('en', ":"))}
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value (a tr() text, the result of
+    _solution_text) gives one value per language."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
+
+
+def _join(separator: str, items):
+    """``separator.join(items)`` for plain strings and tr() texts (``str.join`` refuses translated texts)."""
+    text = ""
+    for k, item in enumerate(items):
+        text = (text + separator if k else text) + item
+    return text
 
 
 class Grade(Grade0):
@@ -1269,21 +1295,24 @@ class Grade(Grade0):
 
         # ---------------- texts shared by the questions ---------------------------
         sites = [
-            ('stat', "1 — routes statiques, connectées et du noyau dans OSPF",
-             "`stat_asbr` (à configurer), `stat_ospf1`, `stat_gw`, `stat_h1`, `stat_h2`"),
-            ('mut', "2 — RIP et OSPF, un point de redistribution",
-             "`mut_b` (à configurer), `mut_rip1`, `mut_ospf1`, `mut_h1`, `mut_h2`"),
-            ('dual', "3 — RIP et OSPF, deux points de redistribution",
-             "`dual_b1`, `dual_b2` (à configurer), `dual_rip1` à `dual_rip3`, `dual_ospf1`, `dual_h1`, `dual_h2`"),
-            ('edge', "4 — OSPF et BGP",
-             "`edge_b` (à configurer), `edge_ospf1`, `edge_h1`, `edge_inet` ; `edge_isp` sans terminal"),
-            ('fix', "5 — dépannage", "`fix_b` (à corriger), `fix_rip1`, `fix_ospf1`, `fix_gw`, `fix_h1`, `fix_h2`"),
-            ('sum', "bonus — résumé sur un ASBR", "`sum_asbr` (à configurer), `sum_ospf1`, `sum_gw`"),
-            ('nssa', "bonus — aire NSSA",
-             "`nssa_abr`, `nssa_asbr` (à configurer), `nssa_core`, `nssa_gw`"),
-            ('agg', "bonus — agrégation BGP", "`agg_b` (à configurer), `agg_ospf1` ; `agg_isp` sans terminal"),
+            ('stat', tr("1 — routes statiques, connectées et du noyau dans OSPF"),
+             tr("`stat_asbr` (à configurer), `stat_ospf1`, `stat_gw`, `stat_h1`, `stat_h2`")),
+            ('mut', tr("2 — RIP et OSPF, un point de redistribution"),
+             tr("`mut_b` (à configurer), `mut_rip1`, `mut_ospf1`, `mut_h1`, `mut_h2`")),
+            ('dual', tr("3 — RIP et OSPF, deux points de redistribution"),
+             tr("`dual_b1`, `dual_b2` (à configurer), `dual_rip1` à `dual_rip3`, `dual_ospf1`, `dual_h1`, "
+                "`dual_h2`")),
+            ('edge', tr("4 — OSPF et BGP"),
+             tr("`edge_b` (à configurer), `edge_ospf1`, `edge_h1`, `edge_inet` ; `edge_isp` sans terminal")),
+            ('fix', tr("5 — dépannage"),
+             tr("`fix_b` (à corriger), `fix_rip1`, `fix_ospf1`, `fix_gw`, `fix_h1`, `fix_h2`")),
+            ('sum', tr("bonus — résumé sur un ASBR"), tr("`sum_asbr` (à configurer), `sum_ospf1`, `sum_gw`")),
+            ('nssa', tr("bonus — aire NSSA"),
+             tr("`nssa_abr`, `nssa_asbr` (à configurer), `nssa_core`, `nssa_gw`")),
+            ('agg', tr("bonus — agrégation BGP"),
+             tr("`agg_b` (à configurer), `agg_ospf1` ; `agg_isp` sans terminal")),
         ]
-        site_rows = "\n".join(f"| {part} | `{site}_*` | {machines} |" for site, part, machines in sites)
+        site_rows = _join("\n", ("| " + part + f" | `{site}_*` | " + machines + " |" for site, part, machines in sites))
         members: Dict[str, List[str]] = {n: [] for n in list(LINKS) + LANS}
         for m, nets in ROUTER_IFACES.items():
             for i, n in enumerate(nets):
@@ -1292,28 +1321,33 @@ class Grade(Grade0):
             members[n].append(f"`{h}` (`{host_ip(h)}`)")
         rows = [f"| `{n}` | `{net(n)}` | {', '.join(members[n])} |" for n in list(LINKS) + LANS]
         rows += [
-            f"| `stat_far1` à `stat_far3` | `{net('stat_far1')}`, `{net('stat_far2')}`, `{net('stat_far3')}` "
-            f"| `lo` de `stat_gw` (`.1`) |",
-            f"| `internet` | `{d.ips.stat_inet.ip}` | `lo` de `stat_gw` |",
-            f"| `fix_srv` | `{net('fix_srv')}` | `lo` de `fix_gw` (`.1`) |",
-            f"| `sum_block` | `{net('sum_block')}` ({SUM_COUNT} /24) | `lo` de `sum_gw` (`.1` de chaque /24) |",
-            f"| `nssa_ext1`, `nssa_ext2` | `{net('nssa_ext1')}`, `{net('nssa_ext2')}` | `lo` de `nssa_gw` (`.1`) |",
-            f"| `nssa_coreext` | `{net('nssa_coreext')}` | route statique (`blackhole`) de `nssa_core` |",
-            f"| `edge_partner` | `{net('edge_partner')}` | `lo` de `edge_isp` (`.1`, nom `partner`) |",
-            f"| `edge_inet1`, `edge_inet2` | `{net('edge_inet1')}`, `{net('edge_inet2')}` | `lo` de `edge_isp` |",
-            f"| `agg_company` | `{net('agg_company')}` ({AGG_COUNT} /24) | interfaces `dum0` à `dum{AGG_COUNT - 1}` "
-            f"de `agg_ospf1` |",
-            f"| `dual_tagr`, `dual_tago` | `{net('dual_tagr')}`, `{net('dual_tago')}` | routes de test "
-            f"(`blackhole`) de `dual_ospf1` et `dual_rip2` |",
+            tr("| `stat_far1` à `stat_far3` | `{far1}`, `{far2}`, `{far3}` | `lo` de `stat_gw` (`.1`) |").format(
+                far1=net('stat_far1'), far2=net('stat_far2'), far3=net('stat_far3')),
+            tr("| `internet` | `{inet}` | `lo` de `stat_gw` |").format(inet=d.ips.stat_inet.ip),
+            tr("| `fix_srv` | `{srv}` | `lo` de `fix_gw` (`.1`) |").format(srv=net('fix_srv')),
+            tr("| `sum_block` | `{block}` ({count} /24) | `lo` de `sum_gw` (`.1` de chaque /24) |").format(
+                block=net('sum_block'), count=SUM_COUNT),
+            tr("| `nssa_ext1`, `nssa_ext2` | `{e1}`, `{e2}` | `lo` de `nssa_gw` (`.1`) |").format(
+                e1=net('nssa_ext1'), e2=net('nssa_ext2')),
+            tr("| `nssa_coreext` | `{coreext}` | route statique (`blackhole`) de `nssa_core` |").format(
+                coreext=net('nssa_coreext')),
+            tr("| `edge_partner` | `{partner}` | `lo` de `edge_isp` (`.1`, nom `partner`) |").format(
+                partner=net('edge_partner')),
+            tr("| `edge_inet1`, `edge_inet2` | `{i1}`, `{i2}` | `lo` de `edge_isp` |").format(
+                i1=net('edge_inet1'), i2=net('edge_inet2')),
+            tr("| `agg_company` | `{company}` ({count} /24) | interfaces `dum0` à `dum{last}` de "
+               "`agg_ospf1` |").format(company=net('agg_company'), count=AGG_COUNT, last=AGG_COUNT - 1),
+            tr("| `dual_tagr`, `dual_tago` | `{tagr}`, `{tago}` | routes de test (`blackhole`) de `dual_ospf1` et "
+               "`dual_rip2` |").format(tagr=net('dual_tagr'), tago=net('dual_tago')),
         ]
-        addressing = "\n".join(rows)
+        addressing = _join("\n", rows)
         rid_rows = ", ".join(f"`{m}` `{rid(m)}`" for m in ROUTER_IFACES if m in OSPF_NETS or m in BGP_ROUTERS)
 
         # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
             hash="7da6edddb1ea6810",
-            description=tr("""
+            description=_by_language(tr("""
 Lisez l'onglet **Informations** : il présente la redistribution (sources, distance administrative,
 métriques, route-maps et étiquettes, route par défaut, plusieurs points de redistribution, BGP,
 résumés, aires NSSA) et les commandes de FRR utiles.
@@ -1359,7 +1393,7 @@ sur le schéma.
 **Évaluation.** Chaque évaluation lit vos réponses, les bases OSPF (LSA externes, routes), les tables
 de RIP et de BGP et les tables de routage des routeurs de référence, et lance des `ping` entre les
 hôtes. Après une modification, laissez à RIP le temps d'une mise à jour ({upd} s) avant d'évaluer.
-""").format(site_rows=site_rows, addressing=addressing, rid_rows=rid_rows, asn=d.asn, isp_as=ISP_AS,
+"""), site_rows=site_rows, addressing=addressing, rid_rows=rid_rows, asn=d.asn, isp_as=ISP_AS,
             upd=RIP_TIMERS[0], tmo=RIP_TIMERS[1], gc=RIP_TIMERS[2], sum_count=SUM_COUNT)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
@@ -1419,7 +1453,7 @@ depuis `stat_h2` : `ping` vers `stat_h1`, vers `{far1_host}` et vers `internet`.
 """).format(far1=net('stat_far1'), far2=net('stat_far2'), far3=net('stat_far3'), inet=d.ips.stat_inet.ip,
             gw=addr('stat_gw', 'stat_lgw'), lan=d.lan_metric, far=d.far_metric,
             far1_host=first_host(net('stat_far1')))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1436,7 +1470,7 @@ la route du noyau reste choisie. On la supprime (`ip route del`), ou bien on ajo
 compté si `stat_lan` l'est), `stat_far` (4 : `stat_far1`, `stat_far2` en type 1, métrique {far}),
 `stat_kernel` (3 : `stat_far3` de même), `stat_default` (3 : route par défaut de `stat_ospf1` par
 `stat_asbr`), `stat_ping` (3 : `stat_h2` joint `stat_h1`, `stat_far1`, `internet`).
-""").format(solution=_solution_text(ns.solution_stat()), far3=net('stat_far3'), far=d.far_metric,
+"""), solution=_solution_text(ns.solution_stat()), far3=net('stat_far3'), far=d.far_metric,
             lan=d.lan_metric)),
         )
         cheat_stat = {'cost_far': str(d.far_metric + DEFAULT_COST), 'dist_ospf': str(OSPF_DISTANCE),
@@ -1523,7 +1557,7 @@ depuis l'autre (sections @@ref:principle@@, @@ref:metrics@@ et @@ref:sources@@) 
 Vérifiez les tables de `mut_rip1` (`show ip rip`, `ip route`) et de `mut_ospf1` (`show ip ospf
 route`), puis les `ping` entre `mut_h1` et `mut_h2`.
 """).format(metric=d.mut_metric, seed=d.mut_seed)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1537,7 +1571,7 @@ une route apprise par RIP ; de même `mut_lbo` n'est pas une route OSPF de `mut_
 `mut_ospf_link` (2 : route OSPF de `mut_ospf1` vers `mut_lrb`), `mut_rip_lan` (4 : métrique {seen}
 de `mut_lan2` sur `mut_rip1`), `mut_rip_link` (2 : route RIP de `mut_rip1` vers `mut_lbo`),
 `mut_ping` (2 : `ping` dans les deux sens).
-""").format(solution=_solution_text(ns.solution_mut()), seed=d.mut_seed, seen=d.mut_seed + 1,
+"""), solution=_solution_text(ns.solution_mut()), seed=d.mut_seed, seen=d.mut_seed + 1,
             metric=d.mut_metric, cost=d.mut_metric + DEFAULT_COST, dc=DEFAULT_COST)),
         )
         cheat_mut = {'rip_metric': str(d.mut_seed + 1), 'ospf_cost': str(d.mut_metric + DEFAULT_COST),
@@ -1634,7 +1668,7 @@ Le domaine RIP (`dual_rip1` — `dual_rip2` — `dual_rip3`, et derrière `dual_
      défaut.
 """).format(lan3=lan3, lano=lano, tagr=net('dual_tagr'), tago=net('dual_tago'), trip=d.tag_rip,
             tospf=d.tag_ospf, h1=host_ip('dual_h1'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.** Au départ, `dual_b2` connaît `{lan3}` par RIP (distance {drip}) et par OSPF, en
 route externe venue de `dual_b1` (distance {dospf}) : il choisit OSPF et passe par `dual_ospf1`
 (`{nh}`), puis `dual_b1`. Avec la redistribution naïve sur `dual_b2`, cette route OSPF (et non RIP)
@@ -1662,7 +1696,7 @@ démarrage, avant qu'OSPF converge, `dual_b2` n'a que sa route RIP), `dual_no_re
 route vers `dual_tagr` ; compté si `dual_tag_ospf` l'est), `dual_no_return_ospf` (2 : aucun LSA de
 `dual_b1` ou `dual_b2` pour `dual_tago` ; compté si `dual_tag_rip` l'est), `dual_ping` (2 : `ping`
 entre `dual_h1` et `dual_h2`, compté si `dual_redundant` l'est : il marche déjà au départ).
-""").format(lan3=lan3, lano=lano, drip=RIP_DISTANCE, dospf=OSPF_DISTANCE, dext=DUAL_EXTERNAL_DISTANCE,
+"""), lan3=lan3, lano=lano, drip=RIP_DISTANCE, dospf=OSPF_DISTANCE, dext=DUAL_EXTERNAL_DISTANCE,
             nh=addr('dual_ospf1', 'dual_lb2o'), solution=_solution_text({'dual_b1': ns.solution_dual()['dual_b1']}),
             trip=d.tag_rip, tospf=d.tag_ospf)),
         )
@@ -1762,7 +1796,7 @@ advertised-routes`) et sur `edge_ospf1` (`show ip ospf route`), puis `ping` de `
 """).format(asn=d.asn, lan1=net('edge_lan1'), lan2=net('edge_lan2'), company=net('edge_company'), isp_as=ISP_AS,
             partner=net('edge_partner'), partner_host=first_host(net('edge_partner')), metric=d.edge_metric,
             peer=addr('edge_isp', 'edge_lisp'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1778,7 +1812,7 @@ deux réseaux reçus de l'AS {asn}), `edge_export_only` (2 : rien d'autre de l'A
 route par défaut de `edge_ospf1` par `edge_b`), `edge_partner` (3 : LSA du préfixe partenaire,
 type 1, métrique {metric}), `edge_partner_only` (2 : aucun autre préfixe de l'opérateur dans OSPF ;
 compté si `edge_partner` l'est), `edge_ping` (2 : `edge_h1` joint `edge_inet` et `partner`).
-""").format(solution=_solution_text(ns.solution_edge()), lan1=net('edge_lan1'), lan2=net('edge_lan2'),
+"""), solution=_solution_text(ns.solution_edge()), lan1=net('edge_lan1'), lan2=net('edge_lan2'),
             med=2 * DEFAULT_COST, dc=DEFAULT_COST, asn=d.asn, metric=d.edge_metric)),
         )
         cheat_edge = {'origin': '?', 'med': str(2 * DEFAULT_COST), 'table': 'size', 'network': 'origin'}
@@ -1866,7 +1900,7 @@ réécrivant (configuration : `show running-config` ; symptômes : `show ip rip`
 ospf route` sur `fix_ospf1`, `show ip route` sur `fix_b`, `show route-map`, `show ip prefix-list` ;
 section @@ref:diagnostic@@).
 """).format(srv=net('fix_srv'), block=net('fix_rip_block'), gw=addr('fix_gw', 'fix_lgw'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.** Les quatre pannes et leur correction :
 
 1. `redistribute ospf metric {bad}` sous `router rip` : `fix_rip1` reçoit les routes OSPF à 16,
@@ -1884,7 +1918,7 @@ section @@ref:diagnostic@@).
 `fix_filter` (3 : LSA de `fix_lan1` par `fix_b` vu de `fix_ospf1`), `fix_static` (3 : LSA de
 `fix_srv`), `fix_connected` (3 : route OSPF de `fix_ospf1` vers `fix_lrb`), `fix_ping` (2 : `fix_h2`
 joint `fix_h1` et `{r1}`).
-""").format(bad=FIX_BAD_SEED, block=net('fix_rip_block'), srv=net('fix_srv'), wrong=ns.fix_wrong_nexthop(),
+"""), bad=FIX_BAD_SEED, block=net('fix_rip_block'), srv=net('fix_srv'), wrong=ns.fix_wrong_nexthop(),
             gw=addr('fix_gw', 'fix_lgw'), r1=addr('fix_rip1', 'fix_lrb'), solution=_solution_text(ns.solution_fix()))),
         )
         cheat_fix = {'metric_before': '16', 'seed': 'infinity', 'plist': 'exact', 'static': 'inactive'}
@@ -1950,7 +1984,7 @@ joint `fix_h1` et `{r1}`).
 Sur `sum_asbr`, faites qu'OSPF n'annonce plus qu'**un seul préfixe**, `{block}`, marqué de
 l'étiquette **{tag}** (section @@ref:summary@@). Vérifiez sur `sum_ospf1`.
 """).format(count=SUM_COUNT, first=sum_nets[0], last=sum_nets[-1], block=net('sum_block'), tag=d.tag_sum)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -1958,7 +1992,7 @@ l'étiquette **{tag}** (section @@ref:summary@@). Vérifiez sur `sum_ospf1`.
 Évaluation (bonus) : `sum_summary` (3 : LSA de `{block}` par `sum_asbr`, étiquette {tag}),
 `sum_specifics` (2 : plus aucun LSA des /24), `sum_ping` (1 : `sum_ospf1` joint `{host}`) ; les deux
 comptés si `sum_summary` l'est.
-""").format(solution=_solution_text(ns.solution_sum()), block=net('sum_block'), tag=d.tag_sum,
+"""), solution=_solution_text(ns.solution_sum()), block=net('sum_block'), tag=d.tag_sum,
             host=first_host(sum_nets[0]))),
         )
         sum_entry = lsa(sum_lsas, net('sum_block'), 'sum_asbr')
@@ -1989,7 +2023,7 @@ aire **stub** : elle ne reçoit pas la route externe `nssa_coreext` (`{coreext}`
 atteignent `nssa_core`, l'aire {area} refusant toujours les routes externes du reste du domaine
 (section @@ref:nssa@@).
 """).format(area=NSSA_AREA, coreext=net('nssa_coreext'), e1=net('nssa_ext1'), e2=net('nssa_ext2'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.** Sur `nssa_abr` et `nssa_asbr` :
 
 {solution}
@@ -2003,7 +2037,7 @@ Address* : `nssa_core` les voit venir de `nssa_abr`, pas de `nssa_asbr`.
 `nssa_translated` (2 :
 LSA de type 5 des deux réseaux annoncés par `nssa_abr`, vus de `nssa_core`), `nssa_blocked` (1 :
 `nssa_asbr` n'a pas de route vers `nssa_coreext` ; compté si `nssa_area` l'est).
-""").format(solution=_solution_text({'nssa_abr': ns.solution_nssa()['nssa_abr']}), rid=rid('nssa_abr'))),
+"""), solution=_solution_text({'nssa_abr': ns.solution_nssa()['nssa_abr']}), rid=rid('nssa_abr'))),
         )
         nssa_area = (all((nssa_info[m].get('areas', {}).get(area) or {}).get('type') == 'nssa'
                          for m in ('nssa_abr', 'nssa_asbr'))
@@ -2034,7 +2068,7 @@ LSA de type 5 des deux réseaux annoncés par `nssa_abr`, vus de `nssa_core`), `
 portés par `agg_ospf1` (bloc `{block}`) : l'opérateur reçoit {count} préfixes. Sur `agg_b`, faites
 qu'il ne reçoive plus que le préfixe agrégé `{block}` (section @@ref:summary@@).
 """).format(count=AGG_COUNT, block=net('agg_company'))
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.**
 
 {solution}
@@ -2043,7 +2077,7 @@ Les {count} /24 restent dans la table BGP de `agg_b`, marqués `s` (*suppressed*
 
 Évaluation (bonus) : `agg_aggregate` (4 : `agg_isp` reçoit `{block}` de l'AS {asn}), `agg_specifics`
 (2 : il ne reçoit plus aucun des /24 ; compté si `agg_aggregate` l'est).
-""").format(solution=_solution_text(ns.solution_agg()), count=AGG_COUNT, block=net('agg_company'), asn=d.asn)),
+"""), solution=_solution_text(ns.solution_agg()), count=AGG_COUNT, block=net('agg_company'), asn=d.asn)),
         )
         agg_ok = bool(company_paths(agg_bgp, net('agg_company')))
         agg_left = [x for x in agg_nets if str(x) in agg_bgp]
@@ -2053,4 +2087,1537 @@ Les {count} /24 restent dans la table BGP de `agg_b`, marqués `s` (*suppressed*
                                grade=2 * int(agg_ok and not agg_left), description=tr("plus aucun /24 envoyé"))
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "Redistribution : échanger des routes entre RIP, OSPF, BGP et routes statiques": "Route redistribution: exchanging routes between RIP, OSPF, BGP and static routes",
+    """
+**Sommaire**
+""": """
+**Contents**
+""",
+    "Pourquoi redistribuer": "Why redistribute",
+    """
+Un **domaine de routage** est un ensemble de routeurs qui échangent leurs routes avec un même
+protocole : un domaine OSPF, un domaine RIP, une session BGP avec un opérateur. Un réseau réel en
+contient souvent plusieurs :
+
+- un ancien site encore en RIP raccordé à un cœur OSPF, le temps d'une migration ou après la fusion
+  de deux entreprises ;
+- des réseaux qui ne parlent aucun protocole de routage : les réseaux directement connectés à un
+  routeur (serveurs, administration), les routes statiques vers un partenaire ou un équipement
+  simple ;
+- la frontière avec un opérateur, en BGP.
+
+Chaque protocole ne connaît que ses propres routes. La **redistribution** fait entrer dans un
+**protocole de destination** les routes d'une **source** : un autre protocole, les réseaux
+connectés, les routes statiques, les routes du noyau. Le routeur qui la réalise, à cheval sur les
+deux, est un **point de redistribution** ; en OSPF on l'appelle **ASBR** (*AS Boundary Router*).
+Elle se configure **dans le protocole de destination** :
+
+```
+router ospf
+ redistribute rip            ! les routes RIP deviennent des routes externes d'OSPF
+router rip
+ redistribute ospf           ! et les routes OSPF des routes RIP : redistribution mutuelle
+```
+
+Une redistribution ne va que dans **un sens** : `redistribute rip` sous `router ospf` fait
+connaître les réseaux du domaine RIP au domaine OSPF, pas l'inverse. Pour que les machines des deux
+domaines se joignent il faut les deux sens (**redistribution mutuelle**) : sans le retour, les
+paquets partent mais les réponses ne reviennent pas.
+
+Dans FRR, chaque démon (`ripd`, `ospfd`, `bgpd`, `staticd`) propose ses meilleures routes à
+**zebra**, qui tient la table de routage du routeur (la **RIB**), choisit une route par préfixe
+parmi celles qu'on lui propose et l'installe dans le noyau. Une redistribution est un abonnement :
+`redistribute rip` dans `ospfd` demande à zebra les routes **choisies** dont la source est RIP. Une
+route RIP qui a perdu face à une route d'une autre source (section @@ref:rib@@) n'est donc **pas**
+redistribuée.
+""": """
+A **routing domain** is a set of routers that exchange their routes with the same protocol: an OSPF
+domain, a RIP domain, a BGP session with an operator. A real network often contains several of
+them:
+
+- an old site still running RIP connected to an OSPF core, for the duration of a migration or after
+  the merger of two companies;
+- networks that speak no routing protocol at all: the networks directly connected to a router
+  (servers, administration), the static routes to a partner or to a simple device;
+- the border with an operator, in BGP.
+
+Each protocol only knows its own routes. **Redistribution** brings the routes of a **source** into
+a **destination protocol**: another protocol, the connected networks, the static routes, the kernel
+routes. The router that does it, straddling both, is a **redistribution point**; in OSPF it is
+called an **ASBR** (*AS Boundary Router*). It is configured **in the destination protocol**:
+
+```
+router ospf
+ redistribute rip            ! the RIP routes become OSPF external routes
+router rip
+ redistribute ospf           ! and the OSPF routes become RIP routes: mutual redistribution
+```
+
+A redistribution only goes **one way**: `redistribute rip` under `router ospf` makes the networks
+of the RIP domain known to the OSPF domain, not the reverse. For the machines of the two domains to
+reach each other, both directions are needed (**mutual redistribution**): without the way back, the
+packets go out but the replies do not come back.
+
+In FRR, each daemon (`ripd`, `ospfd`, `bgpd`, `staticd`) offers its best routes to **zebra**, which
+holds the routing table of the router (the **RIB**), chooses one route per prefix among those
+offered and installs it in the kernel. A redistribution is a subscription: `redistribute rip` in
+`ospfd` asks zebra for the **chosen** routes whose source is RIP. A RIP route that lost against a
+route from another source (section @@ref:rib@@) is therefore **not** redistributed.
+""",
+    "La distance administrative": "The administrative distance",
+    """
+Quand plusieurs sources proposent le même préfixe, zebra ne compare pas leurs métriques (un nombre
+de sauts RIP et un coût OSPF ne se comparent pas) mais leur **distance administrative**, la
+confiance accordée à la source : la plus petite gagne ; à distance égale, la métrique départage.
+
+| source | code dans `show ip route` | distance (FRR) |
+|--------|---------------------------|----------------|
+| réseau connecté | `C` | 0 |
+| route du noyau (`ip route add`) | `K` | 0 |
+| route statique de FRR | `S` | 1 |
+| eBGP | `B` | 20 |
+| OSPF | `O` | 110 |
+| IS-IS | `I` | 115 |
+| RIP | `R` | 120 |
+| iBGP | `B` | 200 |
+
+`show ip route` affiche `[distance/métrique]` : `O>* 192.0.2.0/24 [110/20] via …` ; `>` marque la
+route choisie, `*` une route installée dans le noyau. `show ip route 192.0.2.0/24` détaille toutes
+les routes connues pour ce préfixe, choisies ou non.
+
+Les distances se règlent dans chaque protocole :
+
+```
+router ospf
+ distance ospf external 250    ! les routes externes (E1, E2) ; aussi intra-area, inter-area
+router rip
+ distance 100                  ! toutes les routes RIP
+router bgp 64500
+ address-family ipv4 unicast
+  distance bgp 20 200 200      ! eBGP, iBGP, routes locales
+```
+
+FRR n'applique une nouvelle distance qu'aux routes qu'il installe **ensuite** : les routes déjà dans
+la RIB gardent l'ancienne. Pour OSPF, `clear ip ospf process` (en mode privilégié, sur le routeur
+modifié) recalcule et réinstalle toutes ses routes.
+""": """
+When several sources offer the same prefix, zebra does not compare their metrics (a RIP hop count
+and an OSPF cost cannot be compared) but their **administrative distance**, the trust given to the
+source: the smallest one wins; at equal distance, the metric decides.
+
+| source | code in `show ip route` | distance (FRR) |
+|--------|-------------------------|----------------|
+| connected network | `C` | 0 |
+| kernel route (`ip route add`) | `K` | 0 |
+| FRR static route | `S` | 1 |
+| eBGP | `B` | 20 |
+| OSPF | `O` | 110 |
+| IS-IS | `I` | 115 |
+| RIP | `R` | 120 |
+| iBGP | `B` | 200 |
+
+`show ip route` displays `[distance/metric]`: `O>* 192.0.2.0/24 [110/20] via …`; `>` marks the
+chosen route, `*` a route installed in the kernel. `show ip route 192.0.2.0/24` details all the
+routes known for this prefix, chosen or not.
+
+The distances are set in each protocol:
+
+```
+router ospf
+ distance ospf external 250    ! the external routes (E1, E2); also intra-area, inter-area
+router rip
+ distance 100                  ! all the RIP routes
+router bgp 64500
+ address-family ipv4 unicast
+  distance bgp 20 200 200      ! eBGP, iBGP, local routes
+```
+
+FRR applies a new distance only to the routes it installs **afterwards**: the routes already in the
+RIB keep the old one. For OSPF, `clear ip ospf process` (in privileged mode, on the modified router)
+recomputes and reinstalls all its routes.
+""",
+    "Les métriques": "Metrics",
+    """
+Chaque protocole a sa métrique : un nombre de sauts de 1 à 15 en RIP (16 = inaccessible), un coût
+cumulé en OSPF, l'attribut MED en BGP. Une route redistribuée reçoit donc une **métrique
+d'amorçage** (*seed metric*) dans le protocole de destination, choisie par le point de
+redistribution ; elle évolue ensuite normalement (RIP ajoute 1 à chaque routeur ; OSPF ajoute ou
+non le coût interne).
+
+| destination | métrique par défaut (FRR) | réglages |
+|-------------|---------------------------|----------|
+| RIP | 1 | `redistribute ospf metric 8`, `default-metric 8`, `set metric` |
+| OSPF | 20, externe de type 2 | `redistribute rip metric-type 1 metric 1000`, `default-metric`, `set metric`, `set metric-type` |
+| BGP | MED = métrique de la route dans la RIB, origine *incomplete* | `set metric` |
+
+- **RIP** : un routeur ajoute 1 à la métrique qu'il reçoit. Une métrique d'amorçage trop grande
+  rend les routes inaccessibles : annoncée à 15, une route arrive à 16 chez le voisin. Une métrique
+  trop petite fait croire qu'un réseau est tout proche, ce qui peut attirer le trafic dans un
+  détour par l'autre domaine (section @@ref:multipoint@@).
+- **OSPF** : une route externe de **type 2** (E2, le défaut) garde sa métrique externe dans tout le
+  domaine ; entre deux routes E2 de même métrique, le coût jusqu'à l'ASBR départage. Une route de
+  **type 1** (E1) reçoit en plus le coût du chemin jusqu'à l'ASBR, comme une route interne ; elle
+  est toujours préférée à une route E2. `show ip ospf route` affiche `N E2 192.0.2.0/24 [10/20]`
+  (coût jusqu'à l'ASBR / métrique externe) et `N E1 192.0.2.0/24 [30]` (la somme).
+- **BGP** : section @@ref:bgp@@.
+""": """
+Each protocol has its own metric: a hop count from 1 to 15 in RIP (16 = unreachable), a cumulative
+cost in OSPF, the MED attribute in BGP. A redistributed route therefore receives a **seed metric**
+in the destination protocol, chosen by the redistribution point; it then evolves normally (RIP adds
+1 at each router; OSPF adds the internal cost or not).
+
+| destination | default metric (FRR) | settings |
+|-------------|----------------------|----------|
+| RIP | 1 | `redistribute ospf metric 8`, `default-metric 8`, `set metric` |
+| OSPF | 20, external type 2 | `redistribute rip metric-type 1 metric 1000`, `default-metric`, `set metric`, `set metric-type` |
+| BGP | MED = metric of the route in the RIB, origin *incomplete* | `set metric` |
+
+- **RIP**: a router adds 1 to the metric it receives. A seed metric that is too large makes the
+  routes unreachable: advertised at 15, a route arrives at 16 at the neighbour. A metric that is too
+  small makes a network look very close, which can draw the traffic into a detour through the other
+  domain (section @@ref:multipoint@@).
+- **OSPF**: an external route of **type 2** (E2, the default) keeps its external metric throughout
+  the domain; between two E2 routes with the same metric, the cost to the ASBR decides. A route of
+  **type 1** (E1) also receives the cost of the path to the ASBR, like an internal route; it is
+  always preferred to an E2 route. `show ip ospf route` displays `N E2 192.0.2.0/24 [10/20]` (cost
+  to the ASBR / external metric) and `N E1 192.0.2.0/24 [30]` (the sum).
+- **BGP**: section @@ref:bgp@@.
+""",
+    "Filtrer et marquer : listes de préfixes et route-maps": "Filtering and tagging: prefix lists and route-maps",
+    """
+Redistribuer « tout » est rarement ce qu'on veut. On choisit les routes avec une **route-map**,
+attachée à la redistribution : `redistribute connected route-map NOM`.
+
+**Liste de préfixes** (*prefix-list*) : des règles numérotées, examinées dans l'ordre ; la
+première qui correspond décide ; un préfixe qu'aucune règle n'accepte est refusé (*deny* implicite
+à la fin).
+
+```
+ip prefix-list LANS seq 10 permit 10.1.0.0/16 le 24   ! les préfixes de 10.1.0.0/16, du /16 au /24
+ip prefix-list LANS seq 20 permit 192.0.2.0/24        ! exactement 192.0.2.0/24
+```
+
+Sans `ge` ni `le`, une règle ne correspond **qu'au préfixe exact** : `permit 10.1.0.0/16` ne laisse
+pas passer `10.1.5.0/24`. `le N` (*less or equal*) accepte aussi les préfixes plus longs jusqu'à
+/N, `ge N` impose une longueur minimale.
+
+**Route-map** : des entrées `permit` ou `deny` numérotées, examinées dans l'ordre. Une entrée
+contient des conditions `match` (toutes doivent être vraies ; sans condition, l'entrée correspond
+toujours) et, pour `permit`, des actions `set`. La première entrée qui correspond décide : la route
+est acceptée (et modifiée) ou refusée. Une route qui ne correspond à aucune entrée est **refusée**.
+
+```
+route-map RIP-TO-OSPF deny 10
+ match tag 7                            ! refuse les routes marquées 7
+exit
+route-map RIP-TO-OSPF permit 20
+ match ip address prefix-list LANS      ! accepte les préfixes de LANS...
+ set metric 1000                        ! ...avec la métrique 1000
+ set metric-type type-1                 ! en externe de type 1 (OSPF)
+ set tag 1                              ! et les marque 1
+exit
+router ospf
+ redistribute rip route-map RIP-TO-OSPF
+```
+
+| condition ou action | effet |
+|---------------------|-------|
+| `match ip address prefix-list L` | le préfixe est accepté par la liste L |
+| `match interface ethX` | la route sort par ethX (le réseau connecté de ethX) |
+| `match tag N` | la route porte l'étiquette N |
+| `set metric N` | la métrique d'amorçage (prime sur `redistribute … metric`) |
+| `set metric-type type-1` ou `type-2` | le type de la route externe OSPF |
+| `set tag N` | pose l'étiquette N |
+
+Une **étiquette** (*tag*) est un nombre attaché à une route, transporté par le protocole sans être
+interprété : 32 bits dans un LSA externe d'OSPF, 16 bits dans une route RIPv2. Une route statique
+peut en porter une (`ip route 192.0.2.0/24 10.0.0.1 tag 2`). Zebra garde l'étiquette d'une route
+quand il la passe d'un démon à l'autre : on s'en sert pour reconnaître d'où vient une route au
+moment de la redistribuer.
+
+`show route-map` affiche les route-maps et le nombre de fois où elles ont été appliquées
+(*Invoked*), `show ip prefix-list` les listes de préfixes et leurs compteurs.
+""": """
+Redistributing "everything" is rarely what you want. The routes are chosen with a **route-map**,
+attached to the redistribution: `redistribute connected route-map NAME`.
+
+**Prefix list** (*prefix-list*): numbered rules, examined in order; the first one that matches
+decides; a prefix that no rule accepts is refused (implicit *deny* at the end).
+
+```
+ip prefix-list LANS seq 10 permit 10.1.0.0/16 le 24   ! the prefixes of 10.1.0.0/16, from /16 to /24
+ip prefix-list LANS seq 20 permit 192.0.2.0/24        ! exactly 192.0.2.0/24
+```
+
+Without `ge` or `le`, a rule matches **only the exact prefix**: `permit 10.1.0.0/16` does not let
+`10.1.5.0/24` through. `le N` (*less or equal*) also accepts the longer prefixes up to /N, `ge N`
+imposes a minimum length.
+
+**Route-map**: numbered `permit` or `deny` entries, examined in order. An entry contains `match`
+conditions (all of them must be true; without a condition, the entry always matches) and, for
+`permit`, `set` actions. The first entry that matches decides: the route is accepted (and modified)
+or refused. A route that matches no entry is **refused**.
+
+```
+route-map RIP-TO-OSPF deny 10
+ match tag 7                            ! refuses the routes tagged 7
+exit
+route-map RIP-TO-OSPF permit 20
+ match ip address prefix-list LANS      ! accepts the prefixes of LANS...
+ set metric 1000                        ! ...with the metric 1000
+ set metric-type type-1                 ! as external type 1 (OSPF)
+ set tag 1                              ! and tags them 1
+exit
+router ospf
+ redistribute rip route-map RIP-TO-OSPF
+```
+
+| condition or action | effect |
+|---------------------|--------|
+| `match ip address prefix-list L` | the prefix is accepted by the list L |
+| `match interface ethX` | the route goes out through ethX (the connected network of ethX) |
+| `match tag N` | the route carries the tag N |
+| `set metric N` | the seed metric (takes precedence over `redistribute … metric`) |
+| `set metric-type type-1` or `type-2` | the type of the OSPF external route |
+| `set tag N` | sets the tag N |
+
+A **tag** is a number attached to a route, carried by the protocol without being interpreted: 32
+bits in an OSPF external LSA, 16 bits in a RIPv2 route. A static route can carry one (`ip route
+192.0.2.0/24 10.0.0.1 tag 2`). Zebra keeps the tag of a route when it hands it from one daemon to
+another: it is used to recognise where a route comes from at the moment it is redistributed.
+
+`show route-map` displays the route-maps and the number of times they have been applied
+(*Invoked*), `show ip prefix-list` the prefix lists and their counters.
+""",
+    "Réseaux connectés, routes statiques et routes du noyau": "Connected networks, static routes and kernel routes",
+    """
+- `redistribute connected` : les réseaux des interfaces du routeur (code `C`), **tous** : ceux des
+  interfaces déjà couvertes par le protocole (une route externe de plus, inutile) comme ceux qui
+  doivent rester privés. On le filtre presque toujours avec une route-map.
+- `redistribute static` : les routes statiques **de FRR** (`ip route …` dans vtysh, gérées par
+  `staticd`, code `S`). Une route statique dont le prochain saut n'est joignable par aucune route
+  est **inactive** : `show ip route` ne la marque pas comme choisie, elle n'est ni installée ni
+  redistribuée.
+- `redistribute kernel` : les routes posées directement dans le noyau, par `ip route add` ou par un
+  autre logiciel (code `K`). FRR leur donne la distance 0 : une route du noyau l'emporte sur une
+  route statique de FRR vers le même préfixe, qui n'est alors ni choisie ni redistribuée. Mieux vaut
+  supprimer la route du noyau (`ip route del`) et la déclarer dans FRR, où elle est enregistrée
+  avec le reste de la configuration.
+
+Un point de redistribution a ses propres réseaux connectés dans chacun des domaines. Ce sont des
+routes `C` de sa RIB, pas des routes RIP ni OSPF : `redistribute rip` ne les emporte pas, même si
+RIP est activé sur ces interfaces. Pour que l'autre domaine les connaisse, il faut en plus
+`redistribute connected`, filtré sur ces réseaux.
+""": """
+- `redistribute connected`: the networks of the router's interfaces (code `C`), **all** of them:
+  those of the interfaces already covered by the protocol (one more external route, useless) as
+  well as those that must stay private. It is almost always filtered with a route-map.
+- `redistribute static`: the static routes **of FRR** (`ip route …` in vtysh, managed by
+  `staticd`, code `S`). A static route whose next hop is reachable by no route is **inactive**:
+  `show ip route` does not mark it as chosen, it is neither installed nor redistributed.
+- `redistribute kernel`: the routes set directly in the kernel, by `ip route add` or by another
+  piece of software (code `K`). FRR gives them distance 0: a kernel route wins over an FRR static
+  route to the same prefix, which is then neither chosen nor redistributed. It is better to delete
+  the kernel route (`ip route del`) and declare it in FRR, where it is saved with the rest of the
+  configuration.
+
+A redistribution point has its own connected networks in each of the domains. They are `C` routes
+of its RIB, not RIP or OSPF routes: `redistribute rip` does not carry them, even if RIP is enabled
+on these interfaces. For the other domain to know them, `redistribute connected` is needed as well,
+filtered on these networks.
+""",
+    "La route par défaut": "The default route",
+    """
+La route par défaut est traitée à part : `redistribute static` ne l'emporte pas, même quand c'est
+une route statique de FRR. En OSPF :
+
+```
+router ospf
+ default-information originate                     ! si le routeur a lui-même une route par défaut
+ default-information originate always              ! même sans (gare au trou noir)
+ default-information originate metric 5000 metric-type 1
+```
+
+Le routeur annonce alors un LSA externe pour `0.0.0.0/0` (type 2, métrique 10 par défaut). Sans
+`always`, il ne l'annonce que tant qu'il a une route par défaut active, quelle qu'en soit l'origine
+(statique, BGP…) : l'annonce disparaît avec l'accès à l'extérieur, et le trafic part vers un autre
+point de sortie s'il y en a un. En RIP : `default-information originate` sous `router rip`.
+""": """
+The default route is handled separately: `redistribute static` does not carry it, even when it is
+an FRR static route. In OSPF:
+
+```
+router ospf
+ default-information originate                     ! if the router itself has a default route
+ default-information originate always              ! even without one (beware of the black hole)
+ default-information originate metric 5000 metric-type 1
+```
+
+The router then advertises an external LSA for `0.0.0.0/0` (type 2, metric 10 by default). Without
+`always`, it advertises it only as long as it has an active default route, whatever its origin
+(static, BGP…): the advertisement disappears with the access to the outside, and the traffic goes
+to another exit point if there is one. In RIP: `default-information originate` under `router rip`.
+""",
+    "Redistribuer en plusieurs points": "Redistributing at several points",
+    """
+Un seul point de redistribution est un point de panne unique : on en met souvent deux. La
+redistribution mutuelle en plusieurs points crée alors des problèmes qui n'existent pas avec un
+seul.
+
+```
+                +----- B1 -----+
+   réseau N --- R              O --- réseaux OSPF
+                +----- B2 -----+
+      domaine RIP          domaine OSPF
+```
+
+1. **Chemins sous-optimaux.** B1 redistribue dans OSPF le réseau N, qu'il connaît par RIP. B2
+   connaît N par RIP (distance 120) **et** par OSPF, comme route externe venue de B1 (distance 110) :
+   il choisit OSPF et envoie le trafic vers N à travers le domaine OSPF jusqu'à B1, alors que R est
+   son voisin direct. Et comme la route choisie par B2 n'est plus une route RIP, B2 ne redistribue
+   pas N : la redondance attendue n'existe pas.
+2. **Boucles par retour des routes** (*route feedback*). Si B2 redistribue aussi OSPF dans RIP, il
+   annonce N dans le domaine RIP avec **sa** métrique d'amorçage, qui ne dit rien de la distance
+   réelle. Si elle est plus petite que la métrique RIP de N, les routeurs RIP proches de B2
+   préfèrent ce chemin : les paquets vers N vont de R à B2, traversent OSPF jusqu'à B1, qui les
+   rend à R… une **boucle**, entretenue par les redistributions elles-mêmes.
+3. **Oscillations.** Quand les deux points redistribuent la même route au même moment, chacun peut
+   préférer celle de l'autre, retirer la sienne, puis la reprendre : la route clignote.
+
+Les remèdes, souvent combinés :
+
+- **marquer et refuser le retour** : toute route qui entre dans OSPF depuis RIP reçoit une
+  étiquette (`set tag 1`), et la redistribution d'OSPF dans RIP refuse les routes qui la portent
+  (une entrée `deny` avec `match tag 1`) ; de même dans l'autre sens avec une autre étiquette. Une
+  route ne repasse jamais la frontière en sens inverse, quel que soit le point de redistribution ;
+- **ajuster les distances**, pour que chaque point de redistribution préfère la source d'origine
+  d'une route : par exemple une distance des routes externes d'OSPF supérieure à celle de RIP, pour
+  qu'une route RIP l'emporte sur la même route revenue par OSPF ;
+- **filtrer par préfixes**, quand les plans d'adressage des domaines sont bien séparés.
+""": """
+A single redistribution point is a single point of failure: there are often two. Mutual
+redistribution at several points then creates problems that do not exist with a single one.
+
+```
+                +----- B1 -----+
+   network N -- R              O --- OSPF networks
+                +----- B2 -----+
+      RIP domain           OSPF domain
+```
+
+1. **Suboptimal paths.** B1 redistributes into OSPF the network N, which it knows through RIP. B2
+   knows N through RIP (distance 120) **and** through OSPF, as an external route coming from B1
+   (distance 110): it chooses OSPF and sends the traffic for N across the OSPF domain to B1,
+   although R is its direct neighbour. And since the route chosen by B2 is no longer a RIP route, B2
+   does not redistribute N: the expected redundancy does not exist.
+2. **Loops caused by routes coming back** (*route feedback*). If B2 also redistributes OSPF into
+   RIP, it advertises N in the RIP domain with **its** seed metric, which says nothing about the real
+   distance. If it is smaller than the RIP metric of N, the RIP routers close to B2 prefer this path:
+   the packets for N go from R to B2, cross OSPF to B1, which hands them back to R… a **loop**,
+   sustained by the redistributions themselves.
+3. **Oscillations.** When both points redistribute the same route at the same time, each of them
+   may prefer the other's route, withdraw its own, then take it back: the route flaps.
+
+The remedies, often combined:
+
+- **tag and refuse the way back**: every route that enters OSPF from RIP receives a tag (`set tag
+  1`), and the redistribution of OSPF into RIP refuses the routes that carry it (a `deny` entry with
+  `match tag 1`); likewise in the other direction with another tag. A route never crosses the
+  border back in the opposite direction, whatever the redistribution point;
+- **adjust the distances**, so that each redistribution point prefers the original source of a
+  route: for example a distance of the OSPF external routes higher than that of RIP, so that a RIP
+  route wins over the same route come back through OSPF;
+- **filter by prefixes**, when the addressing plans of the domains are well separated.
+""",
+    "IGP et BGP": "IGP and BGP",
+    """
+- **De l'IGP vers BGP.** On annonce ses réseaux à un opérateur avec `network` (le préfixe doit être
+  dans la RIB ; origine *IGP*, code `i`) ou en redistribuant l'IGP (`redistribute ospf` sous
+  `address-family ipv4 unicast` ; origine *incomplete*, code `?`, et MED = métrique de la route dans
+  l'IGP). Le filtre est indispensable : sans lui partent aussi les réseaux d'interconnexion privés et
+  tout ce que l'IGP a appris. Dans le choix du meilleur chemin BGP, l'origine `i` est préférée à `?`
+  (après la longueur du chemin d'AS).
+- **De BGP vers l'IGP.** **Jamais la table complète** : près d'un million de préfixes IPv4 sur
+  Internet, que chaque routeur OSPF devrait stocker et recalculer à chaque changement. On donne aux
+  routeurs internes une **route par défaut** (`default-information originate`, qui suit la présence
+  de la route par défaut apprise de l'opérateur) et, au besoin, quelques préfixes choisis
+  (`redistribute bgp route-map …` avec une liste de préfixes).
+- La RFC 8212 impose une politique explicite sur chaque session eBGP (`bgp ebgp-requires-policy`,
+  actif par défaut dans FRR) : sans route-map en entrée et en sortie, rien n'est échangé.
+""": """
+- **From the IGP into BGP.** You announce your networks to an operator with `network` (the prefix
+  must be in the RIB; origin *IGP*, code `i`) or by redistributing the IGP (`redistribute ospf`
+  under `address-family ipv4 unicast`; origin *incomplete*, code `?`, and MED = metric of the route
+  in the IGP). The filter is essential: without it, the private interconnection networks and
+  everything the IGP has learned go out too. In the BGP best path selection, origin `i` is
+  preferred to `?` (after the AS path length).
+- **From BGP into the IGP.** **Never the full table**: nearly a million IPv4 prefixes on the
+  Internet, which every OSPF router would have to store and recompute at each change. The internal
+  routers are given a **default route** (`default-information originate`, which follows the
+  presence of the default route learned from the operator) and, if needed, a few chosen prefixes
+  (`redistribute bgp route-map …` with a prefix list).
+- RFC 8212 requires an explicit policy on every eBGP session (`bgp ebgp-requires-policy`, enabled
+  by default in FRR): without an inbound and an outbound route-map, nothing is exchanged.
+""",
+    "Résumer à la redistribution": "Summarising at the redistribution",
+    """
+Redistribuer beaucoup de petits réseaux grossit les tables de tout le domaine. S'ils sont
+contigus, on les résume au point de redistribution :
+
+- **OSPF** : `summary-address 10.1.0.0/21` (sous `router ospf`, sur l'ASBR) remplace tous les LSA
+  externes contenus dans le préfixe par un seul ; `summary-address 10.1.0.0/21 tag 2` marque le
+  résumé, `summary-address 10.1.0.0/21 no-advertise` supprime toute annonce. Le résumé remplace les
+  routes au bout de quelques secondes (`aggregation timer`, 5 s par défaut). À ne pas confondre avec
+  `area N range`, qui résume sur un ABR les routes **inter-aires** et n'agit pas sur les routes
+  externes.
+- **BGP** : `aggregate-address 10.1.0.0/21` (sous `address-family ipv4 unicast`) annonce le préfixe
+  agrégé dès qu'au moins une route plus précise est dans la table BGP ; avec `summary-only`, les
+  routes plus précises ne sont plus annoncées (elles restent dans la table, marquées `s`).
+""": """
+Redistributing many small networks enlarges the tables of the whole domain. If they are
+contiguous, they are summarised at the redistribution point:
+
+- **OSPF**: `summary-address 10.1.0.0/21` (under `router ospf`, on the ASBR) replaces all the
+  external LSAs contained in the prefix by a single one; `summary-address 10.1.0.0/21 tag 2` tags
+  the summary, `summary-address 10.1.0.0/21 no-advertise` suppresses any advertisement. The summary
+  replaces the routes after a few seconds (`aggregation timer`, 5 s by default). Not to be confused
+  with `area N range`, which summarises the **inter-area** routes on an ABR and does not act on the
+  external routes.
+- **BGP**: `aggregate-address 10.1.0.0/21` (under `address-family ipv4 unicast`) announces the
+  aggregate prefix as soon as at least one more specific route is in the BGP table; with
+  `summary-only`, the more specific routes are no longer announced (they stay in the table, marked
+  `s`).
+""",
+    "Les aires NSSA": "NSSA areas",
+    """
+Une aire **stub** n'accepte aucun LSA externe (type 5) : elle ne peut donc pas contenir d'ASBR ; un
+routeur d'une aire stub qui redistribue n'annonce rien. L'aire **NSSA** (*Not-So-Stubby Area*, RFC
+3101) lève cette limite tout en refusant toujours les routes externes du reste du domaine :
+
+- l'ASBR d'une NSSA décrit ses routes externes dans des **LSA de type 7**, qui ne circulent que
+  dans l'aire (`show ip ospf database nssa-external`) ; on parle de routes N1 et N2, l'équivalent
+  de E1 et E2, mais FRR les affiche `N E1` et `N E2` dans `show ip ospf route` ;
+- l'ABR **traduit** chaque LSA de type 7 en LSA de type 5 pour le reste du domaine : les autres
+  aires voient une route externe ordinaire, **annoncée par l'ABR** (*Advertising Router*) ;
+- les LSA de type 5 des autres aires n'entrent pas dans la NSSA ; l'ABR peut y injecter une route
+  par défaut (`area N nssa default-information-originate`) ; `area N nssa no-summary` refuse en
+  plus les routes inter-aires.
+
+Comme `stub`, le type `nssa` est un champ des Hello : **tous** les routeurs de l'aire doivent le
+déclarer (`area N nssa` sous `router ospf`), sinon l'adjacence ne se forme pas. Une aire est stub
+ou NSSA, pas les deux : on retire l'un (`no area N stub`) avant de déclarer l'autre.
+""": """
+A **stub** area accepts no external LSA (type 5): it therefore cannot contain an ASBR; a router of
+a stub area that redistributes advertises nothing. The **NSSA** area (*Not-So-Stubby Area*, RFC
+3101) lifts this limit while still refusing the external routes of the rest of the domain:
+
+- the ASBR of an NSSA describes its external routes in **type 7 LSAs**, which only travel within
+  the area (`show ip ospf database nssa-external`); one speaks of N1 and N2 routes, the equivalent
+  of E1 and E2, but FRR displays them as `N E1` and `N E2` in `show ip ospf route`;
+- the ABR **translates** each type 7 LSA into a type 5 LSA for the rest of the domain: the other
+  areas see an ordinary external route, **advertised by the ABR** (*Advertising Router*);
+- the type 5 LSAs of the other areas do not enter the NSSA; the ABR can inject a default route
+  into it (`area N nssa default-information-originate`); `area N nssa no-summary` also refuses the
+  inter-area routes.
+
+Like `stub`, the `nssa` type is a field of the Hellos: **all** the routers of the area must declare
+it (`area N nssa` under `router ospf`), otherwise the adjacency does not form. An area is stub or
+NSSA, not both: remove one (`no area N stub`) before declaring the other.
+""",
+    "FRR et vtysh": "FRR and vtysh",
+    """
+**FRRouting** (FRR) est fait de `zebra` (la RIB et l'interface avec le noyau), `staticd` et un
+démon par protocole (`ripd`, `ospfd`, `bgpd`). On les configure avec `vtysh` :
+
+```
+vtysh                                  # le shell de configuration
+configure terminal
+ ip prefix-list LANS seq 10 permit 10.1.0.0/16 le 24
+ route-map RIP-TO-OSPF permit 10
+  match ip address prefix-list LANS
+  exit
+ router ospf
+  redistribute rip route-map RIP-TO-OSPF
+  exit
+ end
+write                                  # sauvegarde dans /etc/frr/frr.conf
+```
+
+Une ligne s'annule en la préfixant par `no` (`no redistribute rip`). Pour changer les options d'une
+redistribution, on retape la commande complète. Une commande isolée depuis le shell :
+`vtysh -c "show ip route"`.
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `show ip route [P]` | la RIB : source, `[distance/métrique]`, route choisie `>` |
+| `show ip ospf database external [P]` | les LSA de type 5 : *Advertising Router*, *Metric Type*, *Metric*, *External Route Tag* |
+| `show ip ospf database nssa-external` | les LSA de type 7 |
+| `show ip ospf route` | les routes calculées par OSPF (`N`, `N IA`, `N E1`, `N E2`) |
+| `show ip ospf` | router-id, rôle d'ABR ou d'ASBR, type des aires |
+| `show ip rip` | la table de RIP : métrique, source, étiquette (*Tag*) ; `R(r)` = redistribuée |
+| `show ip rip status` | temporisateurs, interfaces, ligne `Redistributing:` |
+| `show bgp ipv4 unicast [P]` | la table BGP : MED (*Metric*), origine (`i`, `?`), `s` = supprimée |
+| `show route-map`, `show ip prefix-list` | les filtres et leurs compteurs |
+| `traceroute -n IP` | le chemin réellement suivi : dans une boucle, les mêmes routeurs reviennent |
+
+Documentation : [FRR — OSPFv2](https://docs.frrouting.org/en/latest/ospfd.html),
+[RIP](https://docs.frrouting.org/en/latest/ripd.html), [BGP](https://docs.frrouting.org/en/latest/bgp.html),
+[route-maps](https://docs.frrouting.org/en/latest/routemap.html).
+""": """
+**FRRouting** (FRR) is made of `zebra` (the RIB and the interface with the kernel), `staticd` and
+one daemon per protocol (`ripd`, `ospfd`, `bgpd`). They are configured with `vtysh`:
+
+```
+vtysh                                  # the configuration shell
+configure terminal
+ ip prefix-list LANS seq 10 permit 10.1.0.0/16 le 24
+ route-map RIP-TO-OSPF permit 10
+  match ip address prefix-list LANS
+  exit
+ router ospf
+  redistribute rip route-map RIP-TO-OSPF
+  exit
+ end
+write                                  # saves to /etc/frr/frr.conf
+```
+
+A line is cancelled by prefixing it with `no` (`no redistribute rip`). To change the options of a
+redistribution, type the complete command again. A single command from the shell:
+`vtysh -c "show ip route"`.
+
+| command | what it shows |
+|---------|---------------|
+| `show ip route [P]` | the RIB: source, `[distance/metric]`, chosen route `>` |
+| `show ip ospf database external [P]` | the type 5 LSAs: *Advertising Router*, *Metric Type*, *Metric*, *External Route Tag* |
+| `show ip ospf database nssa-external` | the type 7 LSAs |
+| `show ip ospf route` | the routes computed by OSPF (`N`, `N IA`, `N E1`, `N E2`) |
+| `show ip ospf` | router-id, ABR or ASBR role, type of the areas |
+| `show ip rip` | the RIP table: metric, source, tag (*Tag*); `R(r)` = redistributed |
+| `show ip rip status` | timers, interfaces, `Redistributing:` line |
+| `show bgp ipv4 unicast [P]` | the BGP table: MED (*Metric*), origin (`i`, `?`), `s` = suppressed |
+| `show route-map`, `show ip prefix-list` | the filters and their counters |
+| `traceroute -n IP` | the path actually followed: in a loop, the same routers come back |
+
+Documentation: [FRR — OSPFv2](https://docs.frrouting.org/en/latest/ospfd.html),
+[RIP](https://docs.frrouting.org/en/latest/ripd.html), [BGP](https://docs.frrouting.org/en/latest/bgp.html),
+[route-maps](https://docs.frrouting.org/en/latest/routemap.html).
+""",
+    "Diagnostic": "Troubleshooting",
+    """
+| symptôme | causes à vérifier |
+|----------|-------------------|
+| la route n'arrive pas dans l'autre domaine | redistribution absente ou configurée dans le mauvais protocole ; route-map qui refuse tout (liste de préfixes sans `le`, route-map inexistante ou réduite à un `deny`) ; route non choisie dans la RIB du point de redistribution (source de distance plus faible, route du noyau, statique inactive) |
+| la route arrive dans RIP avec la métrique 16 | métrique d'amorçage de 15 ou plus |
+| un réseau d'interconnexion manque | réseau connecté du point de redistribution : `redistribute connected` |
+| la route par défaut n'est pas annoncée | `redistribute static` ne la porte pas : `default-information originate` ; pas de route par défaut active sur le routeur |
+| les paquets tournent (`traceroute` répète les mêmes routeurs) | redistribution mutuelle en plusieurs points sans étiquettes ni distances adaptées |
+| détour par l'autre domaine alors qu'un voisin direct a la route | distance : la route externe d'OSPF (110) bat la route RIP (120) |
+| une distance modifiée reste sans effet | elle ne vaut que pour les routes installées ensuite : `clear ip ospf process` |
+| des réseaux privés partent chez l'opérateur | redistribution dans BGP sans filtre |
+| une route externe n'entre pas dans une aire | aire stub ou NSSA (normal) ; ASBR dans une aire stub : passer l'aire en NSSA |
+""": """
+| symptom | causes to check |
+|---------|-----------------|
+| the route does not reach the other domain | redistribution missing or configured in the wrong protocol; route-map that refuses everything (prefix list without `le`, route-map that does not exist or is reduced to a `deny`); route not chosen in the RIB of the redistribution point (source with a lower distance, kernel route, inactive static route) |
+| the route arrives in RIP with metric 16 | seed metric of 15 or more |
+| an interconnection network is missing | connected network of the redistribution point: `redistribute connected` |
+| the default route is not advertised | `redistribute static` does not carry it: `default-information originate`; no active default route on the router |
+| the packets go round in circles (`traceroute` repeats the same routers) | mutual redistribution at several points without suitable tags or distances |
+| detour through the other domain although a direct neighbour has the route | distance: the OSPF external route (110) beats the RIP route (120) |
+| a modified distance has no effect | it only applies to the routes installed afterwards: `clear ip ospf process` |
+| private networks go out to the operator | redistribution into BGP without a filter |
+| an external route does not enter an area | stub or NSSA area (normal); ASBR in a stub area: turn the area into an NSSA |
+""",
+    "Partie 1 : solution (statiques, connectés, noyau)": "Part 1: solution (static, connected, kernel)",
+    "Partie 2 : solution (RIP et OSPF, un point)": "Part 2: solution (RIP and OSPF, one point)",
+    "Partie 3 : solution (deux points, étiquettes)": "Part 3: solution (two points, tags)",
+    "Partie 4 : solution (OSPF et BGP)": "Part 4: solution (OSPF and BGP)",
+    "Partie 5 : solution (dépannage)": "Part 5: solution (troubleshooting)",
+    "Bonus : solution (résumé sur l'ASBR)": "Bonus: solution (summary on the ASBR)",
+    "Bonus : solution (NSSA)": "Bonus: solution (NSSA)",
+    "Bonus : solution (agrégation BGP)": "Bonus: solution (BGP aggregation)",
+    "1 — routes statiques, connectées et du noyau dans OSPF": "1 — static, connected and kernel routes into OSPF",
+    "`stat_asbr` (à configurer), `stat_ospf1`, `stat_gw`, `stat_h1`, `stat_h2`": "`stat_asbr` (to configure), `stat_ospf1`, `stat_gw`, `stat_h1`, `stat_h2`",
+    "2 — RIP et OSPF, un point de redistribution": "2 — RIP and OSPF, one redistribution point",
+    "`mut_b` (à configurer), `mut_rip1`, `mut_ospf1`, `mut_h1`, `mut_h2`": "`mut_b` (to configure), `mut_rip1`, `mut_ospf1`, `mut_h1`, `mut_h2`",
+    "3 — RIP et OSPF, deux points de redistribution": "3 — RIP and OSPF, two redistribution points",
+    "`dual_b1`, `dual_b2` (à configurer), `dual_rip1` à `dual_rip3`, `dual_ospf1`, `dual_h1`, `dual_h2`": "`dual_b1`, `dual_b2` (to configure), `dual_rip1` to `dual_rip3`, `dual_ospf1`, `dual_h1`, `dual_h2`",
+    "4 — OSPF et BGP": "4 — OSPF and BGP",
+    "`edge_b` (à configurer), `edge_ospf1`, `edge_h1`, `edge_inet` ; `edge_isp` sans terminal": "`edge_b` (to configure), `edge_ospf1`, `edge_h1`, `edge_inet`; `edge_isp` without a terminal",
+    "5 — dépannage": "5 — troubleshooting",
+    "`fix_b` (à corriger), `fix_rip1`, `fix_ospf1`, `fix_gw`, `fix_h1`, `fix_h2`": "`fix_b` (to repair), `fix_rip1`, `fix_ospf1`, `fix_gw`, `fix_h1`, `fix_h2`",
+    "bonus — résumé sur un ASBR": "bonus — summary on an ASBR",
+    "`sum_asbr` (à configurer), `sum_ospf1`, `sum_gw`": "`sum_asbr` (to configure), `sum_ospf1`, `sum_gw`",
+    "bonus — aire NSSA": "bonus — NSSA area",
+    "`nssa_abr`, `nssa_asbr` (à configurer), `nssa_core`, `nssa_gw`": "`nssa_abr`, `nssa_asbr` (to configure), `nssa_core`, `nssa_gw`",
+    "bonus — agrégation BGP": "bonus — BGP aggregation",
+    "`agg_b` (à configurer), `agg_ospf1` ; `agg_isp` sans terminal": "`agg_b` (to configure), `agg_ospf1`; `agg_isp` without a terminal",
+    "| `stat_far1` à `stat_far3` | `{far1}`, `{far2}`, `{far3}` | `lo` de `stat_gw` (`.1`) |": "| `stat_far1` to `stat_far3` | `{far1}`, `{far2}`, `{far3}` | `lo` of `stat_gw` (`.1`) |",
+    "| `internet` | `{inet}` | `lo` de `stat_gw` |": "| `internet` | `{inet}` | `lo` of `stat_gw` |",
+    "| `fix_srv` | `{srv}` | `lo` de `fix_gw` (`.1`) |": "| `fix_srv` | `{srv}` | `lo` of `fix_gw` (`.1`) |",
+    "| `sum_block` | `{block}` ({count} /24) | `lo` de `sum_gw` (`.1` de chaque /24) |": "| `sum_block` | `{block}` ({count} /24) | `lo` of `sum_gw` (`.1` of each /24) |",
+    "| `nssa_ext1`, `nssa_ext2` | `{e1}`, `{e2}` | `lo` de `nssa_gw` (`.1`) |": "| `nssa_ext1`, `nssa_ext2` | `{e1}`, `{e2}` | `lo` of `nssa_gw` (`.1`) |",
+    "| `nssa_coreext` | `{coreext}` | route statique (`blackhole`) de `nssa_core` |": "| `nssa_coreext` | `{coreext}` | static route (`blackhole`) of `nssa_core` |",
+    "| `edge_partner` | `{partner}` | `lo` de `edge_isp` (`.1`, nom `partner`) |": "| `edge_partner` | `{partner}` | `lo` of `edge_isp` (`.1`, name `partner`) |",
+    "| `edge_inet1`, `edge_inet2` | `{i1}`, `{i2}` | `lo` de `edge_isp` |": "| `edge_inet1`, `edge_inet2` | `{i1}`, `{i2}` | `lo` of `edge_isp` |",
+    "| `agg_company` | `{company}` ({count} /24) | interfaces `dum0` à `dum{last}` de `agg_ospf1` |": "| `agg_company` | `{company}` ({count} /24) | interfaces `dum0` to `dum{last}` of `agg_ospf1` |",
+    "| `dual_tagr`, `dual_tago` | `{tagr}`, `{tago}` | routes de test (`blackhole`) de `dual_ospf1` et `dual_rip2` |": "| `dual_tagr`, `dual_tago` | `{tagr}`, `{tago}` | test routes (`blackhole`) of `dual_ospf1` and `dual_rip2` |",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente la redistribution (sources, distance administrative,
+métriques, route-maps et étiquettes, route par défaut, plusieurs points de redistribution, BGP,
+résumés, aires NSSA) et les commandes de FRR utiles.
+
+**Le réseau.** Il est fait de **huit sites indépendants**, un par partie, chacun avec sa couleur
+sur le schéma.
+
+| partie | site | machines |
+|--------|------|----------|
+{site_rows}
+
+- Les routeurs font tourner **FRRouting** (FRR) : configurez-les avec `vtysh` (section
+  @@ref:frr@@). Dans chaque site, les protocoles de routage eux-mêmes sont **déjà configurés et
+  fonctionnent** (adjacences OSPF établies, RIP actif) : vous n'avez à écrire que la redistribution,
+  ses filtres et ses réglages.
+- OSPF : une seule aire, l'aire 0 (sauf le site `nssa`) ; les liens entre routeurs sont déclarés
+  point à point (`ip ospf network point-to-point`), d'où un coût de 10 par lien et pas d'élection de
+  DR. Les réseaux d'hôtes sont passifs.
+- RIP : version 2, temporisateurs raccourcis pour le TP (`timers basic {upd} {tmo} {gc}` : une
+  mise à jour toutes les {upd} s au lieu de 30).
+- Chaque routeur a un router-id fixé dans sa configuration : {rid_rows}.
+- Les hôtes et les passerelles (`*_gw`) ont une route par défaut vers leur routeur ; les réseaux
+  `stat_far*`, `fix_srv`, `nssa_ext*` et les {sum_count} /24 de `sum_block` sont portés par
+  l'interface `lo` des passerelles.
+- Les fichiers `/etc/hosts` contiennent les noms : `mut_b-eth1` désigne l'adresse de l'interface
+  `eth1` de `mut_b`.
+- AS de l'entreprise (sites `edge` et `agg`) : **{asn}** ; opérateur : AS {isp_as}.
+
+**Plan d'adressage.** Les liens entre deux machines sont des /30, les autres réseaux des /24.
+
+| réseau | préfixe | interfaces |
+|--------|---------|------------|
+{addressing}
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres.
+- Ne modifiez que les routeurs indiqués « à configurer » : les autres sont les références par
+  lesquelles l'évaluation regarde le résultat.
+- Enregistrez la configuration de FRR (`write` dans `vtysh`).
+
+**Évaluation.** Chaque évaluation lit vos réponses, les bases OSPF (LSA externes, routes), les tables
+de RIP et de BGP et les tables de routage des routeurs de référence, et lance des `ping` entre les
+hôtes. Après une modification, laissez à RIP le temps d'une mise à jour ({upd} s) avant d'évaluer.
+""": """
+Read the **Informations** tab: it presents redistribution (sources, administrative distance,
+metrics, route-maps and tags, default route, several redistribution points, BGP, summaries, NSSA
+areas) and the useful FRR commands.
+
+**The network.** It is made of **eight independent sites**, one per part, each with its own colour
+on the diagram.
+
+| part | site | machines |
+|------|------|----------|
+{site_rows}
+
+- The routers run **FRRouting** (FRR): configure them with `vtysh` (section @@ref:frr@@). In each
+  site, the routing protocols themselves are **already configured and working** (OSPF adjacencies
+  established, RIP running): you only have to write the redistribution, its filters and its
+  settings.
+- OSPF: a single area, area 0 (except in the `nssa` site); the links between routers are declared
+  point-to-point (`ip ospf network point-to-point`), hence a cost of 10 per link and no DR
+  election. The host networks are passive.
+- RIP: version 2, timers shortened for the lab (`timers basic {upd} {tmo} {gc}`: an update every
+  {upd} s instead of 30).
+- Each router has a router-id set in its configuration: {rid_rows}.
+- The hosts and the gateways (`*_gw`) have a default route to their router; the networks
+  `stat_far*`, `fix_srv`, `nssa_ext*` and the {sum_count} /24 networks of `sum_block` are carried by
+  the `lo` interface of the gateways.
+- The `/etc/hosts` files contain the names: `mut_b-eth1` stands for the address of the `eth1`
+  interface of `mut_b`.
+- AS of the company (sites `edge` and `agg`): **{asn}**; operator: AS {isp_as}.
+
+**Addressing plan.** The links between two machines are /30s, the other networks /24s.
+
+| network | prefix | interfaces |
+|---------|--------|------------|
+{addressing}
+
+**Instructions.**
+
+- The parts are **independent**: do them in any order you like. A completed part gives all its
+  points, whatever the state of the others.
+- Only modify the routers marked "to configure": the others are the references through which the
+  evaluation looks at the result.
+- Save the FRR configuration (`write` in `vtysh`).
+
+**Evaluation.** Each evaluation reads your answers, the OSPF databases (external LSAs, routes), the
+RIP and BGP tables and the routing tables of the reference routers, and runs `ping`s between the
+hosts. After a change, give RIP the time of one update ({upd} s) before evaluating.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. Les états `solve_stat`, `solve_mut`, `solve_dual`, `solve_edge`, `solve_fix`, `solve_sum`,
+`solve_nssa` et `solve_agg` (onglet *Appliquer une configuration*) appliquent la solution d'une
+seule partie, attendent que les routes attendues soient en place (au plus {wait} s) et remplissent
+ses formulaires. L'état `final` les applique toutes : une évaluation lancée dès son retour donne
+tous les points, bonus compris.
+
+Valeurs de cette instance : métriques {lan} (`stat_lan`, E2), {far} (`stat_far*`, E1), {mut} (RIP
+vers OSPF sur `mut_b`, E1), amorçage RIP {seed} (`mut_b`), {edge} (préfixe partenaire, E1) ;
+étiquettes {trip} (RIP vers OSPF) et {tospf} (OSPF vers RIP) sur le site `dual`, {tsum} pour le
+résumé du site `sum`.
+
+Les pannes du site `fix` (sur `fix_b`) : `redistribute ospf metric {bad}` sous `router rip` ;
+`RIP-NETS` = `{block}` sans `le` ; route statique vers `{srv}` par `{wrong}` (au lieu de `{gw}`) ;
+pas de `redistribute connected` sous `router ospf`. Sur le site `dual`, `dual_b1` redistribue dès
+le départ dans les deux sens sans route-map.
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance. The
+states `solve_stat`, `solve_mut`, `solve_dual`, `solve_edge`, `solve_fix`, `solve_sum`,
+`solve_nssa` and `solve_agg` (*Apply Configuration* tab) apply the solution of a single part, wait
+until the expected routes are in place (at most {wait} s) and fill in its forms. The `final` state
+applies them all: an evaluation started as soon as it returns gives all the points, bonus included.
+
+Values of this instance: metrics {lan} (`stat_lan`, E2), {far} (`stat_far*`, E1), {mut} (RIP into
+OSPF on `mut_b`, E1), RIP seed {seed} (`mut_b`), {edge} (partner prefix, E1); tags {trip} (RIP into
+OSPF) and {tospf} (OSPF into RIP) in the `dual` site, {tsum} for the summary of the `sum` site.
+
+The faults of the `fix` site (on `fix_b`): `redistribute ospf metric {bad}` under `router rip`;
+`RIP-NETS` = `{block}` without `le`; static route to `{srv}` via `{wrong}` (instead of `{gw}`); no
+`redistribute connected` under `router ospf`. In the `dual` site, `dual_b1` redistributes in both
+directions from the start, without a route-map.
+""",
+    "Partie 1 — routes statiques, connectées et du noyau dans OSPF (site stat)": "Part 1 — static, connected and kernel routes into OSPF (site stat)",
+    "Annoncer dans OSPF des réseaux qui n'y sont pas": "Advertising networks that are not in OSPF",
+    """
+`stat_asbr` et `stat_ospf1` forment un domaine OSPF ; seul le lien `stat_l12` y est déclaré du côté
+de `stat_asbr`. `stat_asbr` a en plus trois réseaux qui ne sont pas dans OSPF : `stat_lan` (eth0,
+les serveurs, dont `stat_h1`), `stat_mgmt` (eth1, l'administration) et `stat_lgw` (eth3, le lien
+vers la passerelle `stat_gw`). Derrière `stat_gw` se trouvent les réseaux d'un partenaire,
+`stat_far1` `{far1}`, `stat_far2` `{far2}` et `stat_far3` `{far3}`, ainsi que l'accès à Internet
+(l'adresse `internet`, `{inet}`). Un collègue a déjà ajouté une route vers `{far3}` avec
+`ip route add`.
+
+Sur `stat_asbr` uniquement :
+
+1. créez dans FRR des routes statiques vers `stat_far1` et `stat_far2` et une route par défaut, par
+   `stat_gw` (`{gw}`) ;
+2. faites annoncer dans OSPF (sections @@ref:sources@@, @@ref:policy@@ et @@ref:default@@) :
+   - `stat_lan` en route externe de **type 2**, métrique **{lan}** ;
+   - `stat_far1`, `stat_far2` **et** `stat_far3` en routes externes de **type 1**, métrique
+     **{far}** ;
+   - la route par défaut ;
+   - **et rien d'autre** : ni `stat_mgmt`, ni `stat_lgw`, ni `stat_l12`.
+
+Vérifiez sur `stat_ospf1` (`show ip ospf database external`, `show ip ospf route`, `ip route`), puis
+depuis `stat_h2` : `ping` vers `stat_h1`, vers `{far1_host}` et vers `internet`. Pourquoi
+`stat_far3` n'apparaît-il pas d'abord ?
+""": """
+`stat_asbr` and `stat_ospf1` form an OSPF domain; only the link `stat_l12` is declared in it on the
+`stat_asbr` side. `stat_asbr` also has three networks that are not in OSPF: `stat_lan` (eth0, the
+servers, including `stat_h1`), `stat_mgmt` (eth1, the administration) and `stat_lgw` (eth3, the
+link to the gateway `stat_gw`). Behind `stat_gw` are the networks of a partner, `stat_far1`
+`{far1}`, `stat_far2` `{far2}` and `stat_far3` `{far3}`, as well as the access to the Internet (the
+address `internet`, `{inet}`). A colleague has already added a route to `{far3}` with
+`ip route add`.
+
+On `stat_asbr` only:
+
+1. create in FRR static routes to `stat_far1` and `stat_far2` and a default route, via `stat_gw`
+   (`{gw}`);
+2. have OSPF advertise (sections @@ref:sources@@, @@ref:policy@@ and @@ref:default@@):
+   - `stat_lan` as an external route of **type 2**, metric **{lan}**;
+   - `stat_far1`, `stat_far2` **and** `stat_far3` as external routes of **type 1**, metric
+     **{far}**;
+   - the default route;
+   - **and nothing else**: neither `stat_mgmt`, nor `stat_lgw`, nor `stat_l12`.
+
+Check on `stat_ospf1` (`show ip ospf database external`, `show ip ospf route`, `ip route`), then
+from `stat_h2`: `ping` to `stat_h1`, to `{far1_host}` and to `internet`. Why does `stat_far3` not
+appear at first?
+""",
+    """
+**Solution.**
+
+{solution}
+
+La route vers `{far3}` ajoutée par `ip route add` est une route **du noyau** (`K` dans `show ip
+route`), pas une route statique de FRR : `redistribute static` ne la voit pas. Une route statique
+de FRR vers le même préfixe ne suffit pas tant que la route du noyau existe : distance 0 contre 1,
+la route du noyau reste choisie. On la supprime (`ip route del`), ou bien on ajoute
+`redistribute kernel metric-type 1 metric {far}`. La route par défaut n'est jamais emportée par
+`redistribute static` : `default-information originate` (type 2, métrique 10).
+
+Évaluation (LSA externes vus par `stat_ospf1`) : `stat_lan` (3 : type 2, métrique {lan}),
+`stat_filter` (2 : aucun LSA externe de `stat_asbr` pour `stat_mgmt`, `stat_lgw`, `stat_l12`,
+compté si `stat_lan` l'est), `stat_far` (4 : `stat_far1`, `stat_far2` en type 1, métrique {far}),
+`stat_kernel` (3 : `stat_far3` de même), `stat_default` (3 : route par défaut de `stat_ospf1` par
+`stat_asbr`), `stat_ping` (3 : `stat_h2` joint `stat_h1`, `stat_far1`, `internet`).
+""": """
+**Solution.**
+
+{solution}
+
+The route to `{far3}` added by `ip route add` is a **kernel** route (`K` in `show ip route`), not
+an FRR static route: `redistribute static` does not see it. An FRR static route to the same prefix
+is not enough as long as the kernel route exists: distance 0 against 1, the kernel route stays
+chosen. Delete it (`ip route del`), or else add `redistribute kernel metric-type 1 metric {far}`.
+The default route is never carried by `redistribute static`: `default-information originate` (type
+2, metric 10).
+
+Evaluation (external LSAs seen by `stat_ospf1`): `stat_lan` (3: type 2, metric {lan}),
+`stat_filter` (2: no external LSA of `stat_asbr` for `stat_mgmt`, `stat_lgw`, `stat_l12`, counted
+if `stat_lan` is), `stat_far` (4: `stat_far1`, `stat_far2` as type 1, metric {far}),
+`stat_kernel` (3: `stat_far3` likewise), `stat_default` (3: default route of `stat_ospf1` via
+`stat_asbr`), `stat_ping` (3: `stat_h2` reaches `stat_h1`, `stat_far1`, `internet`).
+""",
+    "Observations sur le site stat": "Observations in the stat site",
+    """
+- coût de la route de `stat_ospf1` vers `stat_far1` dans `show ip ospf route` : @@{cost_far:[0-9]+}@@
+- distance administrative de cette route dans `show ip route` : @@{dist_ospf:[0-9]+}@@
+- distance administrative d'une route ajoutée par `ip route add` (FRR) : @@{dist_kernel:[0-9]+}@@
+- `redistribute static` n'annonçait pas `stat_far3` parce que :
+  @@{kernel:>c'est une route du noyau, pas une route statique de FRR>>>kernel|stat_gw ne répond pas sur cette adresse>>>gw|redistribute static n'emporte que deux routes>>>count|il manque une commande network pour ce préfixe>>>network}@@
+- la route par défaut n'est pas annoncée par `redistribute static` parce que :
+  @@{default:>la route par défaut ne suit jamais redistribute : il faut default-information originate>>>dio|il faut redistribute kernel>>>kernel|stat_ospf1 la filtre>>>filtered|OSPF ne sait pas transporter de route par défaut>>>never}@@
+""": """
+- cost of the route of `stat_ospf1` to `stat_far1` in `show ip ospf route`: @@{cost_far:[0-9]+}@@
+- administrative distance of this route in `show ip route`: @@{dist_ospf:[0-9]+}@@
+- administrative distance of a route added by `ip route add` (FRR): @@{dist_kernel:[0-9]+}@@
+- `redistribute static` did not advertise `stat_far3` because:
+  @@{kernel:>it is a kernel route, not an FRR static route>>>kernel|stat_gw does not answer on this address>>>gw|redistribute static only carries two routes>>>count|a network command is missing for this prefix>>>network}@@
+- the default route is not advertised by `redistribute static` because:
+  @@{default:>the default route never follows redistribute: default-information originate is needed>>>dio|redistribute kernel is needed>>>kernel|stat_ospf1 filters it>>>filtered|OSPF cannot carry a default route>>>never}@@
+""",
+    """
+**Solution.** Coût **{cost}** (route E1 : {far} + {dc} pour le lien) ; distance **{dospf}** ;
+distance **{dkern}** ; **une route du noyau** ; **default-information originate**.
+
+Évaluation : `stat_q_cost`, `stat_q_dist` (1 chacun ; les deux distances pour le second) et, pour
+l'enseignant seulement (choix dans une liste), `stat_q_kernel`, `stat_q_default` (1 chacun).
+""": """
+**Solution.** Cost **{cost}** (E1 route: {far} + {dc} for the link); distance **{dospf}**;
+distance **{dkern}**; **a kernel route**; **default-information originate**.
+
+Evaluation: `stat_q_cost`, `stat_q_dist` (1 each; both distances for the second one) and, for the
+instructor only (choice from a list), `stat_q_kernel`, `stat_q_default` (1 each).
+""",
+    "stat_lan annoncé en externe de type 2 avec sa métrique": "stat_lan advertised as external type 2 with its metric",
+    "aucun autre réseau connecté de stat_asbr annoncé": "no other connected network of stat_asbr advertised",
+    "stat_far1 et stat_far2 en externes de type 1 avec leur métrique": "stat_far1 and stat_far2 as external type 1 with their metric",
+    "stat_far3, ajouté par ip route add, annoncé de même": "stat_far3, added by ip route add, advertised likewise",
+    "route par défaut annoncée par stat_asbr": "default route advertised by stat_asbr",
+    "stat_h2 joint stat_h1, stat_far1 et internet": "stat_h2 reaches stat_h1, stat_far1 and internet",
+    "coût de la route E1": "cost of the E1 route",
+    "distances d'une route OSPF et d'une route du noyau": "distances of an OSPF route and of a kernel route",
+    "pourquoi stat_far3 manquait": "why stat_far3 was missing",
+    "annonce de la route par défaut": "advertisement of the default route",
+    "Partie 2 — RIP et OSPF, un point de redistribution (site mut)": "Part 2 — RIP and OSPF, one redistribution point (site mut)",
+    "Redistribution mutuelle entre RIP et OSPF": "Mutual redistribution between RIP and OSPF",
+    """
+`mut_rip1` fait partie d'un ancien domaine RIP (son réseau `mut_lan1`, avec `mut_h1`) ; `mut_ospf1`
+du domaine OSPF (`mut_lan2`, avec `mut_h2`). `mut_b` est à la frontière : RIP sur `eth0` (lien
+`mut_lrb`), OSPF sur `eth1` (lien `mut_lbo`). Les deux protocoles fonctionnent, mais aucune route ne
+passe d'un domaine à l'autre.
+
+Sur `mut_b` uniquement, faites que **toutes les adresses** de chaque domaine soient joignables
+depuis l'autre (sections @@ref:principle@@, @@ref:metrics@@ et @@ref:sources@@) :
+
+- les routes RIP entrent dans OSPF en externes de **type 1**, métrique **{metric}** ;
+- les routes OSPF entrent dans RIP avec la métrique d'amorçage **{seed}** ;
+- le lien `mut_lrb` doit être connu dans OSPF et le lien `mut_lbo` dans RIP, avec les mêmes
+  métriques, sans rien annoncer d'autre de `mut_b`.
+
+Vérifiez les tables de `mut_rip1` (`show ip rip`, `ip route`) et de `mut_ospf1` (`show ip ospf
+route`), puis les `ping` entre `mut_h1` et `mut_h2`.
+""": """
+`mut_rip1` belongs to an old RIP domain (its network `mut_lan1`, with `mut_h1`); `mut_ospf1` to
+the OSPF domain (`mut_lan2`, with `mut_h2`). `mut_b` is at the border: RIP on `eth0` (link
+`mut_lrb`), OSPF on `eth1` (link `mut_lbo`). Both protocols work, but no route goes from one
+domain to the other.
+
+On `mut_b` only, make **all the addresses** of each domain reachable from the other (sections
+@@ref:principle@@, @@ref:metrics@@ and @@ref:sources@@):
+
+- the RIP routes enter OSPF as external routes of **type 1**, metric **{metric}**;
+- the OSPF routes enter RIP with the seed metric **{seed}**;
+- the link `mut_lrb` must be known in OSPF and the link `mut_lbo` in RIP, with the same metrics,
+  without advertising anything else of `mut_b`.
+
+Check the tables of `mut_rip1` (`show ip rip`, `ip route`) and of `mut_ospf1` (`show ip ospf
+route`), then the `ping`s between `mut_h1` and `mut_h2`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+`redistribute rip` n'emporte pas `mut_lrb` : c'est un réseau connecté de `mut_b` (route `C`), pas
+une route apprise par RIP ; de même `mut_lbo` n'est pas une route OSPF de `mut_b`. D'où les deux
+`redistribute connected`, filtrés par une liste de préfixes chacun. `mut_rip1` voit `mut_lan2` à
+{seen} ({seed} + 1) ; `mut_ospf1` voit `mut_lan1` en E1 à {cost} ({metric} + {dc}).
+
+Évaluation : `mut_ospf_lan` (4 : LSA de `mut_lan1` par `mut_b`, type 1, métrique {metric}),
+`mut_ospf_link` (2 : route OSPF de `mut_ospf1` vers `mut_lrb`), `mut_rip_lan` (4 : métrique {seen}
+de `mut_lan2` sur `mut_rip1`), `mut_rip_link` (2 : route RIP de `mut_rip1` vers `mut_lbo`),
+`mut_ping` (2 : `ping` dans les deux sens).
+""": """
+**Solution.**
+
+{solution}
+
+`redistribute rip` does not carry `mut_lrb`: it is a connected network of `mut_b` (`C` route), not
+a route learned through RIP; likewise `mut_lbo` is not an OSPF route of `mut_b`. Hence the two
+`redistribute connected`, each filtered by a prefix list. `mut_rip1` sees `mut_lan2` at {seen}
+({seed} + 1); `mut_ospf1` sees `mut_lan1` as E1 at {cost} ({metric} + {dc}).
+
+Evaluation: `mut_ospf_lan` (4: LSA of `mut_lan1` by `mut_b`, type 1, metric {metric}),
+`mut_ospf_link` (2: OSPF route of `mut_ospf1` to `mut_lrb`), `mut_rip_lan` (4: metric {seen} of
+`mut_lan2` on `mut_rip1`), `mut_rip_link` (2: RIP route of `mut_rip1` to `mut_lbo`), `mut_ping`
+(2: `ping` in both directions).
+""",
+    "Observations sur le site mut": "Observations in the mut site",
+    """
+- métrique de `mut_lan2` dans `show ip rip` de `mut_rip1` : @@{rip_metric:[0-9]+}@@
+- coût de la route de `mut_ospf1` vers `mut_lan1` dans `show ip ospf route` : @@{ospf_cost:[0-9]+}@@
+- métrique d'amorçage par défaut de FRR pour une route redistribuée dans RIP : @@{seed_rip:[0-9]+}@@
+  et dans OSPF : @@{seed_ospf:[0-9]+}@@
+- `redistribute rip` n'annonce pas `mut_lrb` dans OSPF parce que :
+  @@{connected:>c'est un réseau connecté de mut_b, pas une route apprise par RIP>>>connected|RIP n'annonce jamais les /30>>>mask|l'horizon partagé (split horizon) le bloque>>>split|OSPF refuse les routes de métrique 1>>>metric}@@
+""": """
+- metric of `mut_lan2` in `show ip rip` of `mut_rip1`: @@{rip_metric:[0-9]+}@@
+- cost of the route of `mut_ospf1` to `mut_lan1` in `show ip ospf route`: @@{ospf_cost:[0-9]+}@@
+- FRR's default seed metric for a route redistributed into RIP: @@{seed_rip:[0-9]+}@@
+  and into OSPF: @@{seed_ospf:[0-9]+}@@
+- `redistribute rip` does not advertise `mut_lrb` into OSPF because:
+  @@{connected:>it is a connected network of mut_b, not a route learned through RIP>>>connected|RIP never advertises /30 networks>>>mask|split horizon blocks it>>>split|OSPF refuses routes with metric 1>>>metric}@@
+""",
+    """
+**Solution.** **{seen}** ; **{cost}** ; **{srip}** et **{sospf}** ; **un réseau connecté de mut_b**.
+
+Évaluation : `mut_q_rip`, `mut_q_cost`, `mut_q_seed` (1 chacun ; les deux valeurs pour le dernier)
+et, pour l'enseignant seulement (choix dans une liste), `mut_q_connected` (1).
+""": """
+**Solution.** **{seen}**; **{cost}**; **{srip}** and **{sospf}**; **a connected network of mut_b**.
+
+Evaluation: `mut_q_rip`, `mut_q_cost`, `mut_q_seed` (1 each; both values for the last one) and,
+for the instructor only (choice from a list), `mut_q_connected` (1).
+""",
+    "mut_lan1 dans OSPF en externe de type 1 avec sa métrique": "mut_lan1 in OSPF as external type 1 with its metric",
+    "mut_lrb connu dans OSPF": "mut_lrb known in OSPF",
+    "mut_lan2 dans RIP avec la métrique d'amorçage demandée": "mut_lan2 in RIP with the requested seed metric",
+    "mut_lbo connu dans RIP": "mut_lbo known in RIP",
+    "mut_h1 et mut_h2 se joignent": "mut_h1 and mut_h2 reach each other",
+    "métrique RIP de mut_lan2": "RIP metric of mut_lan2",
+    "coût OSPF de mut_lan1": "OSPF cost of mut_lan1",
+    "métriques d'amorçage par défaut": "default seed metrics",
+    "pourquoi mut_lrb manque": "why mut_lrb is missing",
+    "Partie 3 — RIP et OSPF, deux points de redistribution (site dual)": "Part 3 — RIP and OSPF, two redistribution points (site dual)",
+    "Deux points de redistribution : boucles, détours et étiquettes": "Two redistribution points: loops, detours and tags",
+    """
+Le domaine RIP (`dual_rip1` — `dual_rip2` — `dual_rip3`, et derrière `dual_rip3` le réseau
+`dual_lan3` `{lan3}` avec `dual_h1`) est raccordé au domaine OSPF (`dual_ospf1`, le réseau `dual_lano`
+`{lano}` avec `dual_h2`) par **deux** points de redistribution, `dual_b1` et `dual_b2`, voisins RIP de
+`dual_rip1` et voisins OSPF de `dual_ospf1`.
+
+- `dual_b1` redistribue déjà dans les deux sens, sans aucun filtre (`redistribute rip` sous
+  `router ospf`, `redistribute ospf` sous `router rip`) ;
+- `dual_b2` fait tourner RIP et OSPF mais ne redistribue rien ;
+- deux routes de test simulent des routes qui ont **déjà franchi la frontière** par un autre
+  chemin : `dual_tagr` (`{tagr}`), une route du domaine OSPF qui porte l'étiquette **{trip}** comme si
+  elle venait de RIP, et `dual_tago` (`{tago}`), une route du domaine RIP qui porte l'étiquette
+  **{tospf}** comme si elle venait d'OSPF.
+
+1. Regardez la route de `dual_b2` vers `dual_lan3` (`show ip route {lan3}`) : par où passe-t-elle,
+   et pourquoi (section @@ref:rib@@) ?
+2. Pour la redondance, ajoutez sur `dual_b2` la même redistribution que sur `dual_b1`. Lancez
+   `traceroute -n {h1}` depuis `dual_h2`, regardez la route de `dual_rip1` vers `dual_lan3` : que
+   se passe-t-il (section @@ref:multipoint@@) ?
+3. Corrigez sur `dual_b1` **et** `dual_b2` :
+   - toute route qui passe de RIP à OSPF reçoit l'étiquette **{trip}**, toute route qui passe
+     d'OSPF à RIP l'étiquette **{tospf}** ;
+   - une route marquée {tospf} ne passe jamais de RIP à OSPF, une route marquée {trip} jamais
+     d'OSPF à RIP ;
+   - `dual_b1` et `dual_b2` joignent les réseaux du domaine RIP **par RIP**, directement par
+     `dual_rip1` (vérifiez avec `show ip route` que votre réglage s'applique bien aux routes déjà
+     en place : section @@ref:rib@@) ;
+   - les deux points redistribuent les réseaux RIP dans OSPF (redondance) ; gardez les métriques par
+     défaut.
+""": """
+The RIP domain (`dual_rip1` — `dual_rip2` — `dual_rip3`, and behind `dual_rip3` the network
+`dual_lan3` `{lan3}` with `dual_h1`) is connected to the OSPF domain (`dual_ospf1`, the network
+`dual_lano` `{lano}` with `dual_h2`) by **two** redistribution points, `dual_b1` and `dual_b2`, RIP
+neighbours of `dual_rip1` and OSPF neighbours of `dual_ospf1`.
+
+- `dual_b1` already redistributes in both directions, without any filter (`redistribute rip` under
+  `router ospf`, `redistribute ospf` under `router rip`);
+- `dual_b2` runs RIP and OSPF but redistributes nothing;
+- two test routes simulate routes that have **already crossed the border** by another path:
+  `dual_tagr` (`{tagr}`), a route of the OSPF domain that carries the tag **{trip}** as if it came
+  from RIP, and `dual_tago` (`{tago}`), a route of the RIP domain that carries the tag **{tospf}**
+  as if it came from OSPF.
+
+1. Look at the route of `dual_b2` to `dual_lan3` (`show ip route {lan3}`): which way does it go,
+   and why (section @@ref:rib@@)?
+2. For redundancy, add on `dual_b2` the same redistribution as on `dual_b1`. Run
+   `traceroute -n {h1}` from `dual_h2` and look at the route of `dual_rip1` to `dual_lan3`: what
+   happens (section @@ref:multipoint@@)?
+3. Fix on `dual_b1` **and** `dual_b2`:
+   - every route that goes from RIP to OSPF receives the tag **{trip}**, every route that goes
+     from OSPF to RIP the tag **{tospf}**;
+   - a route tagged {tospf} never goes from RIP to OSPF, a route tagged {trip} never from OSPF to
+     RIP;
+   - `dual_b1` and `dual_b2` reach the networks of the RIP domain **through RIP**, directly via
+     `dual_rip1` (check with `show ip route` that your setting really applies to the routes
+     already in place: section @@ref:rib@@);
+   - both points redistribute the RIP networks into OSPF (redundancy); keep the default metrics.
+""",
+    """
+**Solution.** Au départ, `dual_b2` connaît `{lan3}` par RIP (distance {drip}) et par OSPF, en
+route externe venue de `dual_b1` (distance {dospf}) : il choisit OSPF et passe par `dual_ospf1`
+(`{nh}`), puis `dual_b1`. Avec la redistribution naïve sur `dual_b2`, cette route OSPF (et non RIP)
+part dans RIP avec la métrique d'amorçage 1 : `dual_rip1` la reçoit à 2, mieux que les 3 du vrai
+chemin par `dual_rip2`. `dual_rip1` envoie alors les paquets vers `{lan3}` à `dual_b2`, qui les
+envoie par OSPF à `dual_b1`, qui les rend à `dual_rip1` : boucle (`traceroute` répète
+`dual_rip1`, `dual_b2`, `dual_ospf1`, `dual_b1`) jusqu'à l'expiration du TTL.
+
+Sur `dual_b1` et `dual_b2` :
+
+{solution}
+
+Les étiquettes empêchent une route de repasser la frontière en sens inverse (les routes de test le
+vérifient) ; la distance {dext} des routes externes d'OSPF, au-dessus de RIP ({drip}), fait choisir à
+chaque point la route RIP vers les réseaux RIP, une fois les routes réinstallées par `clear ip ospf
+process` (sans lui, `dual_b2` garde sa route OSPF de distance {dospf}). Autre solution acceptée : abaisser sous {dospf} la
+distance des seules routes RIP natives (`distance 100 0.0.0.0/0 LISTE` sous `router rip`, avec une
+`access-list`).
+
+Évaluation : `dual_redundant` (4 : `dual_ospf1` voit des LSA de `{lan3}` venant de `dual_b1` **et**
+de `dual_b2`), `dual_tag_rip` (3 : ces deux LSA portent l'étiquette {trip}), `dual_tag_ospf` (3 :
+la route RIP de `dual_rip1` vers `{lano}` porte l'étiquette {tospf}), `dual_paths` (4 : `dual_b1` et
+`dual_b2` routent `{lan3}` par RIP via `dual_rip1` ; compté si `dual_redundant` l'est : juste après le
+démarrage, avant qu'OSPF converge, `dual_b2` n'a que sa route RIP), `dual_no_return_rip` (2 : `dual_rip1` n'a pas de
+route vers `dual_tagr` ; compté si `dual_tag_ospf` l'est), `dual_no_return_ospf` (2 : aucun LSA de
+`dual_b1` ou `dual_b2` pour `dual_tago` ; compté si `dual_tag_rip` l'est), `dual_ping` (2 : `ping`
+entre `dual_h1` et `dual_h2`, compté si `dual_redundant` l'est : il marche déjà au départ).
+""": """
+**Solution.** At the start, `dual_b2` knows `{lan3}` through RIP (distance {drip}) and through
+OSPF, as an external route coming from `dual_b1` (distance {dospf}): it chooses OSPF and goes via
+`dual_ospf1` (`{nh}`), then `dual_b1`. With the naive redistribution on `dual_b2`, this OSPF (not
+RIP) route goes into RIP with the seed metric 1: `dual_rip1` receives it at 2, better than the 3
+of the real path via `dual_rip2`. `dual_rip1` then sends the packets for `{lan3}` to `dual_b2`,
+which sends them through OSPF to `dual_b1`, which hands them back to `dual_rip1`: a loop
+(`traceroute` repeats `dual_rip1`, `dual_b2`, `dual_ospf1`, `dual_b1`) until the TTL expires.
+
+On `dual_b1` and `dual_b2`:
+
+{solution}
+
+The tags prevent a route from crossing the border back in the opposite direction (the test routes
+check it); the distance {dext} of the OSPF external routes, above RIP ({drip}), makes each point
+choose the RIP route to the RIP networks, once the routes have been reinstalled by `clear ip ospf
+process` (without it, `dual_b2` keeps its OSPF route with distance {dospf}). Another accepted
+solution: lowering below {dospf} the distance of the native RIP routes only (`distance 100
+0.0.0.0/0 LIST` under `router rip`, with an `access-list`).
+
+Evaluation: `dual_redundant` (4: `dual_ospf1` sees LSAs of `{lan3}` coming from `dual_b1` **and**
+from `dual_b2`), `dual_tag_rip` (3: these two LSAs carry the tag {trip}), `dual_tag_ospf` (3: the
+RIP route of `dual_rip1` to `{lano}` carries the tag {tospf}), `dual_paths` (4: `dual_b1` and
+`dual_b2` route `{lan3}` through RIP via `dual_rip1`; counted if `dual_redundant` is: just after
+the start, before OSPF converges, `dual_b2` only has its RIP route), `dual_no_return_rip` (2:
+`dual_rip1` has no route to `dual_tagr`; counted if `dual_tag_ospf` is), `dual_no_return_ospf` (2:
+no LSA of `dual_b1` or `dual_b2` for `dual_tago`; counted if `dual_tag_rip` is), `dual_ping` (2:
+`ping` between `dual_h1` and `dual_h2`, counted if `dual_redundant` is: it already works at the
+start).
+""",
+    "Observations sur le site dual": "Observations in the dual site",
+    """
+- avant toute modification, prochain saut de la route de `dual_b2` vers `dual_lan3` : @@{nexthop:[0-9.]+}@@
+- distance administrative de cette route : @@{dist_chosen:[0-9]+}@@ et de la route RIP écartée :
+  @@{dist_rip:[0-9]+}@@
+- avec la même redistribution, sans filtre, sur `dual_b1` et `dual_b2`, un `ping` de `dual_h2` vers
+  `dual_h1` :
+  @@{loop:>tourne en boucle entre dual_rip1, dual_b2, dual_ospf1 et dual_b1>>>loop|fonctionne, par le chemin le plus court>>>ok|échoue sur dual_rip3, qui n'a pas de route de retour>>>noroute|est refusé par dual_b2>>>filter}@@
+- les étiquettes servent à :
+  @@{tags:>empêcher une route redistribuée de revenir dans son domaine d'origine par l'autre point>>>return|choisir la métrique d'amorçage>>>metric|accélérer la convergence de RIP>>>speed|authentifier les annonces>>>auth}@@
+""": """
+- before any change, next hop of the route of `dual_b2` to `dual_lan3`: @@{nexthop:[0-9.]+}@@
+- administrative distance of this route: @@{dist_chosen:[0-9]+}@@ and of the discarded RIP route:
+  @@{dist_rip:[0-9]+}@@
+- with the same redistribution, without a filter, on `dual_b1` and `dual_b2`, a `ping` from
+  `dual_h2` to `dual_h1`:
+  @@{loop:>loops between dual_rip1, dual_b2, dual_ospf1 and dual_b1>>>loop|works, by the shortest path>>>ok|fails on dual_rip3, which has no route back>>>noroute|is refused by dual_b2>>>filter}@@
+- the tags are used to:
+  @@{tags:>prevent a redistributed route from coming back into its original domain through the other point>>>return|choose the seed metric>>>metric|speed up the convergence of RIP>>>speed|authenticate the advertisements>>>auth}@@
+""",
+    """
+**Solution.** **{nh}** (`dual_ospf1`) ; **{dospf}** et **{drip}** ; **une boucle** ; **empêcher le
+retour d'une route dans son domaine d'origine**.
+
+Évaluation : `dual_q_nexthop`, `dual_q_distances` (1 chacun ; les deux valeurs pour le second) et,
+pour l'enseignant seulement (choix dans une liste), `dual_q_loop`, `dual_q_tags` (1 chacun).
+""": """
+**Solution.** **{nh}** (`dual_ospf1`); **{dospf}** and **{drip}**; **a loop**; **preventing a
+route from coming back into its original domain**.
+
+Evaluation: `dual_q_nexthop`, `dual_q_distances` (1 each; both values for the second one) and, for
+the instructor only (choice from a list), `dual_q_loop`, `dual_q_tags` (1 each).
+""",
+    "les réseaux RIP redistribués par les deux points": "the RIP networks redistributed by both points",
+    "étiquette des routes passées de RIP à OSPF": "tag of the routes passed from RIP to OSPF",
+    "étiquette des routes passées d'OSPF à RIP": "tag of the routes passed from OSPF to RIP",
+    "les deux points joignent dual_lan3 par RIP": "both points reach dual_lan3 through RIP",
+    "une route marquée comme venue de RIP ne retourne pas dans RIP": "a route tagged as coming from RIP does not go back into RIP",
+    "une route marquée comme venue d'OSPF ne retourne pas dans OSPF": "a route tagged as coming from OSPF does not go back into OSPF",
+    "dual_h1 et dual_h2 se joignent": "dual_h1 and dual_h2 reach each other",
+    "prochain saut de dual_b2 au départ": "next hop of dual_b2 at the start",
+    "distances des deux routes": "distances of the two routes",
+    "effet de la redistribution naïve": "effect of the naive redistribution",
+    "rôle des étiquettes": "role of the tags",
+    "Partie 4 — OSPF et BGP (site edge)": "Part 4 — OSPF and BGP (site edge)",
+    "Entre OSPF et BGP": "Between OSPF and BGP",
+    """
+L'entreprise (AS {asn}) a un domaine OSPF : `edge_ospf1` porte ses réseaux publics `edge_lan1`
+`{lan1}` (avec `edge_h1`) et `edge_lan2` `{lan2}`, tous deux dans le bloc `{company}`. `edge_b` la relie
+en eBGP à son opérateur `edge_isp` (AS {isp_as}), par le lien `edge_lisp`. La session est établie ; les
+route-maps `ISP-IN` et `TO-ISP` de `edge_b`, exigées par la RFC 8212, laissent tout passer : le
+filtrage vous revient. L'opérateur envoie une route par défaut, le préfixe d'un partenaire
+`{partner}` (adresse `partner`, `{partner_host}`) et d'autres préfixes d'Internet.
+
+Sur `edge_b` uniquement (section @@ref:bgp@@) :
+
+1. annoncez à l'opérateur les réseaux de l'entreprise **en redistribuant OSPF dans BGP**, filtré :
+   les préfixes du bloc `{company}` et rien d'autre (ni `edge_l12`, ni `edge_lisp`) ;
+2. donnez à OSPF la route par défaut apprise de l'opérateur ;
+3. redistribuez dans OSPF **le seul préfixe du partenaire**, en externe de type 1 de métrique
+   **{metric}** ; aucune autre route BGP.
+
+Vérifiez sur `edge_b` (`show bgp ipv4 unicast`, `show bgp ipv4 unicast neighbors {peer}
+advertised-routes`) et sur `edge_ospf1` (`show ip ospf route`), puis `ping` de `edge_h1` vers
+`edge_inet` et vers `partner`.
+""": """
+The company (AS {asn}) has an OSPF domain: `edge_ospf1` carries its public networks `edge_lan1`
+`{lan1}` (with `edge_h1`) and `edge_lan2` `{lan2}`, both in the block `{company}`. `edge_b` connects
+it in eBGP to its operator `edge_isp` (AS {isp_as}), through the link `edge_lisp`. The session is
+established; the route-maps `ISP-IN` and `TO-ISP` of `edge_b`, required by RFC 8212, let everything
+through: the filtering is up to you. The operator sends a default route, the prefix of a partner
+`{partner}` (address `partner`, `{partner_host}`) and other Internet prefixes.
+
+On `edge_b` only (section @@ref:bgp@@):
+
+1. announce the networks of the company to the operator **by redistributing OSPF into BGP**,
+   filtered: the prefixes of the block `{company}` and nothing else (neither `edge_l12` nor
+   `edge_lisp`);
+2. give OSPF the default route learned from the operator;
+3. redistribute into OSPF **only the prefix of the partner**, as an external route of type 1 with
+   metric **{metric}**; no other BGP route.
+
+Check on `edge_b` (`show bgp ipv4 unicast`, `show bgp ipv4 unicast neighbors {peer}
+advertised-routes`) and on `edge_ospf1` (`show ip ospf route`), then `ping` from `edge_h1` to
+`edge_inet` and to `partner`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+L'opérateur reçoit `{lan1}` et `{lan2}` avec l'origine *incomplete* (`?`, redistribution) et le MED
+{med} : la métrique OSPF des deux réseaux sur `edge_b` (lien `edge_l12` {dc} + réseau passif {dc}).
+`default-information originate` (sans `always`) suit la route par défaut reçue de l'opérateur.
+`redistribute bgp` sans filtre ferait entrer dans OSPF tous les préfixes de l'opérateur.
+
+Évaluation (table BGP de `edge_isp`, LSA externes vus par `edge_ospf1`) : `edge_export` (4 : les
+deux réseaux reçus de l'AS {asn}), `edge_export_only` (2 : rien d'autre de l'AS {asn} ; compté si
+`edge_export` l'est), `edge_origin_med` (2 : origine *incomplete*, MED {med}), `edge_default` (3 :
+route par défaut de `edge_ospf1` par `edge_b`), `edge_partner` (3 : LSA du préfixe partenaire,
+type 1, métrique {metric}), `edge_partner_only` (2 : aucun autre préfixe de l'opérateur dans OSPF ;
+compté si `edge_partner` l'est), `edge_ping` (2 : `edge_h1` joint `edge_inet` et `partner`).
+""": """
+**Solution.**
+
+{solution}
+
+The operator receives `{lan1}` and `{lan2}` with the origin *incomplete* (`?`, redistribution) and
+the MED {med}: the OSPF metric of the two networks on `edge_b` (link `edge_l12` {dc} + passive
+network {dc}). `default-information originate` (without `always`) follows the default route
+received from the operator. `redistribute bgp` without a filter would bring all the operator's
+prefixes into OSPF.
+
+Evaluation (BGP table of `edge_isp`, external LSAs seen by `edge_ospf1`): `edge_export` (4: the two
+networks received from AS {asn}), `edge_export_only` (2: nothing else from AS {asn}; counted if
+`edge_export` is), `edge_origin_med` (2: origin *incomplete*, MED {med}), `edge_default` (3:
+default route of `edge_ospf1` via `edge_b`), `edge_partner` (3: LSA of the partner prefix, type 1,
+metric {metric}), `edge_partner_only` (2: no other prefix of the operator in OSPF; counted if
+`edge_partner` is), `edge_ping` (2: `edge_h1` reaches `edge_inet` and `partner`).
+""",
+    "Observations sur le site edge": "Observations in the edge site",
+    """
+- code d'origine BGP (`i`, `e` ou `?`) des réseaux de l'entreprise reçus par l'opérateur : @@{origin:[a-zA-Z?]+}@@
+- MED de `edge_lan1` (colonne *Metric* de `show bgp ipv4 unicast` sur `edge_b`) : @@{med:[0-9]+}@@
+- on ne redistribue jamais toute la table BGP d'Internet dans OSPF parce que :
+  @@{table:>des centaines de milliers de routes satureraient la base et les calculs de chaque routeur OSPF>>>size|BGP l'interdit techniquement>>>forbidden|OSPF n'accepte que 100 routes externes>>>limit|les routes BGP n'ont pas de métrique>>>metric}@@
+- `network` et `redistribute` dans BGP diffèrent par :
+  @@{network:>l'origine (i pour network, ? pour redistribute) et ce qui est annoncé (un préfixe choisi ou toute une source)>>>origin|rien, ce sont deux syntaxes de la même commande>>>same|network ne fonctionne qu'en iBGP>>>ibgp|redistribute n'est possible que depuis OSPF>>>ospf}@@
+""": """
+- BGP origin code (`i`, `e` or `?`) of the company's networks received by the operator: @@{origin:[a-zA-Z?]+}@@
+- MED of `edge_lan1` (*Metric* column of `show bgp ipv4 unicast` on `edge_b`): @@{med:[0-9]+}@@
+- the whole BGP table of the Internet is never redistributed into OSPF because:
+  @@{table:>hundreds of thousands of routes would overload the database and the computations of every OSPF router>>>size|BGP technically forbids it>>>forbidden|OSPF only accepts 100 external routes>>>limit|BGP routes have no metric>>>metric}@@
+- `network` and `redistribute` in BGP differ in:
+  @@{network:>the origin (i for network, ? for redistribute) and what is announced (a chosen prefix or a whole source)>>>origin|nothing, they are two syntaxes of the same command>>>same|network only works in iBGP>>>ibgp|redistribute is only possible from OSPF>>>ospf}@@
+""",
+    """
+**Solution.** **?** (*incomplete*) ; **{med}** ; **la taille de la table** ; **l'origine et ce qui
+est annoncé**.
+
+Évaluation : `edge_q_origin`, `edge_q_med` (1 chacun) et, pour l'enseignant seulement (choix dans
+une liste), `edge_q_table`, `edge_q_network` (1 chacun).
+""": """
+**Solution.** **?** (*incomplete*); **{med}**; **the size of the table**; **the origin and what is
+announced**.
+
+Evaluation: `edge_q_origin`, `edge_q_med` (1 each) and, for the instructor only (choice from a
+list), `edge_q_table`, `edge_q_network` (1 each).
+""",
+    "les réseaux de l'entreprise reçus par l'opérateur": "the company's networks received by the operator",
+    "rien d'autre envoyé à l'opérateur": "nothing else sent to the operator",
+    "origine incomplete et MED": "origin incomplete and MED",
+    "route par défaut dans OSPF": "default route in OSPF",
+    "préfixe partenaire en externe de type 1 avec sa métrique": "partner prefix as external type 1 with its metric",
+    "aucune autre route BGP dans OSPF": "no other BGP route in OSPF",
+    "edge_h1 joint edge_inet et partner": "edge_h1 reaches edge_inet and partner",
+    "origine des routes redistribuées": "origin of the redistributed routes",
+    "MED": "MED",
+    "pourquoi pas toute la table BGP": "why not the whole BGP table",
+    "network et redistribute": "network and redistribute",
+    "Partie 5 — dépannage (site fix)": "Part 5 — troubleshooting (site fix)",
+    "Dépannage d'une redistribution": "Troubleshooting a redistribution",
+    """
+Le site `fix` ressemble au site `mut` : `fix_rip1` dans le domaine RIP (`fix_lan1` avec `fix_h1`),
+`fix_b` à la frontière, `fix_ospf1` dans le domaine OSPF (`fix_lan2` avec `fix_h2`), et des serveurs,
+`fix_srv` `{srv}`, derrière la passerelle `fix_gw` de `fix_b`. Un administrateur a configuré la
+redistribution de `fix_b`, mais presque rien ne marche. Ce qui est attendu :
+
+- les réseaux du domaine RIP (le bloc `{block}`) sont annoncés dans OSPF, ceux d'OSPF dans RIP ;
+- les serveurs `fix_srv` sont annoncés dans OSPF, par une route statique de FRR vers `fix_gw`
+  (`{gw}`) ;
+- le poste de supervision `fix_h2` joint `fix_h1` et **toutes les adresses** de `fix_rip1`.
+
+Trouvez et corrigez les **quatre pannes** de `fix_b`, en corrigeant sa configuration plutôt qu'en la
+réécrivant (configuration : `show running-config` ; symptômes : `show ip rip` sur `fix_rip1`, `show ip
+ospf route` sur `fix_ospf1`, `show ip route` sur `fix_b`, `show route-map`, `show ip prefix-list` ;
+section @@ref:diagnostic@@).
+""": """
+The `fix` site looks like the `mut` site: `fix_rip1` in the RIP domain (`fix_lan1` with `fix_h1`),
+`fix_b` at the border, `fix_ospf1` in the OSPF domain (`fix_lan2` with `fix_h2`), and servers,
+`fix_srv` `{srv}`, behind the gateway `fix_gw` of `fix_b`. An administrator has configured the
+redistribution of `fix_b`, but almost nothing works. What is expected:
+
+- the networks of the RIP domain (the block `{block}`) are advertised into OSPF, those of OSPF into
+  RIP;
+- the servers `fix_srv` are advertised into OSPF, through an FRR static route to `fix_gw`
+  (`{gw}`);
+- the monitoring host `fix_h2` reaches `fix_h1` and **all the addresses** of `fix_rip1`.
+
+Find and fix the **four faults** of `fix_b`, by correcting its configuration rather than rewriting
+it (configuration: `show running-config`; symptoms: `show ip rip` on `fix_rip1`, `show ip ospf
+route` on `fix_ospf1`, `show ip route` on `fix_b`, `show route-map`, `show ip prefix-list`;
+section @@ref:diagnostic@@).
+""",
+    """
+**Solution.** Les quatre pannes et leur correction :
+
+1. `redistribute ospf metric {bad}` sous `router rip` : `fix_rip1` reçoit les routes OSPF à 16,
+   inaccessibles ;
+2. `ip prefix-list RIP-NETS seq 10 permit {block}` sans `le` : la liste ne laisse passer que le
+   préfixe `{block}` lui-même, la route-map `RIP-TO-OSPF` refuse tous les réseaux RIP ;
+3. `ip route {srv} {wrong}` : prochain saut injoignable (le bon est `{gw}`), la route est inactive
+   et n'est pas redistribuée ;
+4. pas de `redistribute connected` : le lien `fix_lrb` (l'adresse `{r1}` de `fix_rip1`) est un
+   réseau connecté de `fix_b`, inconnu d'OSPF.
+
+{solution}
+
+Évaluation : `fix_seed` (3 : route de `fix_rip1` vers `fix_lan2`, métrique inférieure à 16),
+`fix_filter` (3 : LSA de `fix_lan1` par `fix_b` vu de `fix_ospf1`), `fix_static` (3 : LSA de
+`fix_srv`), `fix_connected` (3 : route OSPF de `fix_ospf1` vers `fix_lrb`), `fix_ping` (2 : `fix_h2`
+joint `fix_h1` et `{r1}`).
+""": """
+**Solution.** The four faults and their fix:
+
+1. `redistribute ospf metric {bad}` under `router rip`: `fix_rip1` receives the OSPF routes at 16,
+   unreachable;
+2. `ip prefix-list RIP-NETS seq 10 permit {block}` without `le`: the list only lets through the
+   prefix `{block}` itself, the route-map `RIP-TO-OSPF` refuses all the RIP networks;
+3. `ip route {srv} {wrong}`: unreachable next hop (the right one is `{gw}`), the route is inactive
+   and is not redistributed;
+4. no `redistribute connected`: the link `fix_lrb` (the address `{r1}` of `fix_rip1`) is a
+   connected network of `fix_b`, unknown to OSPF.
+
+{solution}
+
+Evaluation: `fix_seed` (3: route of `fix_rip1` to `fix_lan2`, metric below 16), `fix_filter` (3:
+LSA of `fix_lan1` by `fix_b` seen from `fix_ospf1`), `fix_static` (3: LSA of `fix_srv`),
+`fix_connected` (3: OSPF route of `fix_ospf1` to `fix_lrb`), `fix_ping` (2: `fix_h2` reaches
+`fix_h1` and `{r1}`).
+""",
+    "Les symptômes du site fix": "The symptoms of the fix site",
+    """
+- avant correction, métrique de `fix_lan2` dans `show ip rip` de `fix_rip1` : @@{metric_before:[0-9]+}@@
+- la première panne de RIP vient de ce que :
+  @@{seed:>annoncée avec la métrique 15, une route arrive à 16 chez le voisin : inaccessible>>>infinity|RIP refuse les routes redistribuées depuis OSPF>>>refused|la version 1 de RIP ne transporte pas les masques>>>version|l'horizon partagé (split horizon) bloque la route>>>split}@@
+- la liste de préfixes `RIP-NETS` refusait tout parce que :
+  @@{plist:>sans le, une règle ne laisse passer que le préfixe exact, ici le /22 lui-même>>>exact|une liste de préfixes ne peut pas servir dans une route-map>>>usage|le numéro de séquence 10 est réservé>>>seq|il manque une règle deny à la fin>>>deny}@@
+- la route statique vers `fix_srv` n'était pas redistribuée parce que :
+  @@{static:>son prochain saut n'est joignable par aucune route : elle est inactive>>>inactive|une route statique ne se redistribue pas dans OSPF>>>never|fix_gw ne répond pas au ping>>>ping|il faudrait redistribute kernel>>>kernel}@@
+""": """
+- before the fix, metric of `fix_lan2` in `show ip rip` of `fix_rip1`: @@{metric_before:[0-9]+}@@
+- the first RIP fault is caused by the fact that:
+  @@{seed:>advertised with metric 15, a route arrives at 16 at the neighbour: unreachable>>>infinity|RIP refuses the routes redistributed from OSPF>>>refused|RIP version 1 does not carry the masks>>>version|split horizon blocks the route>>>split}@@
+- the prefix list `RIP-NETS` refused everything because:
+  @@{plist:>without le, a rule only lets the exact prefix through, here the /22 itself>>>exact|a prefix list cannot be used in a route-map>>>usage|sequence number 10 is reserved>>>seq|a deny rule is missing at the end>>>deny}@@
+- the static route to `fix_srv` was not redistributed because:
+  @@{static:>its next hop is reachable by no route: it is inactive>>>inactive|a static route cannot be redistributed into OSPF>>>never|fix_gw does not answer the ping>>>ping|redistribute kernel would be needed>>>kernel}@@
+""",
+    """
+**Solution.** **16** ; **la métrique 15** ; **le préfixe exact** ; **une route statique inactive**.
+
+Évaluation : `fix_q_metric` (1) et, pour l'enseignant seulement (choix dans une liste), `fix_q_seed`,
+`fix_q_filter`, `fix_q_static` (1 chacun).
+""": """
+**Solution.** **16**; **metric 15**; **the exact prefix**; **an inactive static route**.
+
+Evaluation: `fix_q_metric` (1) and, for the instructor only (choice from a list), `fix_q_seed`,
+`fix_q_filter`, `fix_q_static` (1 each).
+""",
+    "fix_lan2 accessible dans RIP": "fix_lan2 reachable in RIP",
+    "les réseaux RIP annoncés dans OSPF": "the RIP networks advertised into OSPF",
+    "fix_srv annoncé dans OSPF": "fix_srv advertised into OSPF",
+    "fix_lrb connu dans OSPF": "fix_lrb known in OSPF",
+    "fix_h2 joint fix_h1 et fix_rip1": "fix_h2 reaches fix_h1 and fix_rip1",
+    "métrique avant correction": "metric before the fix",
+    "panne de la métrique": "fault of the metric",
+    "panne de la liste": "fault of the prefix list",
+    "panne de la route statique": "fault of the static route",
+    "Bonus — résumé sur un ASBR (site sum)": "Bonus — summary on an ASBR (site sum)",
+    "Bonus : résumer les routes externes": "Bonus: summarising the external routes",
+    """
+`sum_asbr` est l'ASBR d'un domaine OSPF : il redistribue des routes statiques vers {count} réseaux
+/24 contigus derrière `sum_gw`, de `{first}` à `{last}`, et `sum_ospf1` reçoit {count} LSA externes.
+Sur `sum_asbr`, faites qu'OSPF n'annonce plus qu'**un seul préfixe**, `{block}`, marqué de
+l'étiquette **{tag}** (section @@ref:summary@@). Vérifiez sur `sum_ospf1`.
+""": """
+`sum_asbr` is the ASBR of an OSPF domain: it redistributes static routes to {count} contiguous /24
+networks behind `sum_gw`, from `{first}` to `{last}`, and `sum_ospf1` receives {count} external
+LSAs. On `sum_asbr`, make OSPF advertise **a single prefix** only, `{block}`, marked with the tag
+**{tag}** (section @@ref:summary@@). Check on `sum_ospf1`.
+""",
+    """
+**Solution.**
+
+{solution}
+
+Évaluation (bonus) : `sum_summary` (3 : LSA de `{block}` par `sum_asbr`, étiquette {tag}),
+`sum_specifics` (2 : plus aucun LSA des /24), `sum_ping` (1 : `sum_ospf1` joint `{host}`) ; les deux
+comptés si `sum_summary` l'est.
+""": """
+**Solution.**
+
+{solution}
+
+Evaluation (bonus): `sum_summary` (3: LSA of `{block}` by `sum_asbr`, tag {tag}), `sum_specifics`
+(2: no LSA of the /24 networks any more), `sum_ping` (1: `sum_ospf1` reaches `{host}`); the last
+two counted if `sum_summary` is.
+""",
+    "le résumé, avec son étiquette": "the summary, with its tag",
+    "plus aucun /24 annoncé": "no /24 advertised any more",
+    "sum_ospf1 joint un des réseaux résumés": "sum_ospf1 reaches one of the summarised networks",
+    "Bonus — aire NSSA (site nssa)": "Bonus — NSSA area (site nssa)",
+    "Bonus : un ASBR dans une aire qui refuse les routes externes": "Bonus: an ASBR in an area that refuses external routes",
+    """
+L'aire {area} de ce domaine (`nssa_abr`, ABR entre l'aire 0 et l'aire {area}, et `nssa_asbr`) est une
+aire **stub** : elle ne reçoit pas la route externe `nssa_coreext` (`{coreext}`) que redistribue
+`nssa_core`, et c'est voulu. Mais `nssa_asbr` doit faire connaître au reste du domaine les réseaux
+`nssa_ext1` `{e1}` et `nssa_ext2` `{e2}`, derrière `nssa_gw` : il a les routes statiques et
+`redistribute static`, sans effet. Sur `nssa_abr` et `nssa_asbr`, faites que ces deux réseaux
+atteignent `nssa_core`, l'aire {area} refusant toujours les routes externes du reste du domaine
+(section @@ref:nssa@@).
+""": """
+Area {area} of this domain (`nssa_abr`, ABR between area 0 and area {area}, and `nssa_asbr`) is a
+**stub** area: it does not receive the external route `nssa_coreext` (`{coreext}`) that
+`nssa_core` redistributes, and that is intended. But `nssa_asbr` must make the networks
+`nssa_ext1` `{e1}` and `nssa_ext2` `{e2}`, behind `nssa_gw`, known to the rest of the domain: it
+has the static routes and `redistribute static`, to no effect. On `nssa_abr` and `nssa_asbr`, make
+these two networks reach `nssa_core`, area {area} still refusing the external routes of the rest
+of the domain (section @@ref:nssa@@).
+""",
+    """
+**Solution.** Sur `nssa_abr` et `nssa_asbr` :
+
+{solution}
+
+`nssa_abr` reçoit de `nssa_asbr` deux LSA de type 7 (`show ip ospf database nssa-external`) et les
+traduit en LSA de type 5, annoncés en son nom (`{rid}`), l'adresse de `nssa_asbr` en *Forward
+Address* : `nssa_core` les voit venir de `nssa_abr`, pas de `nssa_asbr`.
+
+Évaluation (bonus) : `nssa_area` (1 : l'aire est NSSA sur les deux routeurs, adjacence `Full`),
+`nssa_type7` (2 : LSA de type 7 de `nssa_asbr` pour les deux réseaux dans la base de `nssa_abr`),
+`nssa_translated` (2 :
+LSA de type 5 des deux réseaux annoncés par `nssa_abr`, vus de `nssa_core`), `nssa_blocked` (1 :
+`nssa_asbr` n'a pas de route vers `nssa_coreext` ; compté si `nssa_area` l'est).
+""": """
+**Solution.** On `nssa_abr` and `nssa_asbr`:
+
+{solution}
+
+`nssa_abr` receives from `nssa_asbr` two type 7 LSAs (`show ip ospf database nssa-external`) and
+translates them into type 5 LSAs, advertised in its own name (`{rid}`), with the address of
+`nssa_asbr` as *Forward Address*: `nssa_core` sees them coming from `nssa_abr`, not from
+`nssa_asbr`.
+
+Evaluation (bonus): `nssa_area` (1: the area is NSSA on both routers, adjacency `Full`),
+`nssa_type7` (2: type 7 LSAs of `nssa_asbr` for both networks in the database of `nssa_abr`),
+`nssa_translated` (2: type 5 LSAs of both networks advertised by `nssa_abr`, seen from
+`nssa_core`), `nssa_blocked` (1: `nssa_asbr` has no route to `nssa_coreext`; counted if
+`nssa_area` is).
+""",
+    "aire NSSA sur les deux routeurs": "NSSA area on both routers",
+    "routes de type 7 sur l'ABR": "type 7 routes on the ABR",
+    "traduction en type 5 par l'ABR": "translation into type 5 by the ABR",
+    "les routes externes du domaine restent hors de l'aire": "the external routes of the domain stay out of the area",
+    "Bonus — agrégation BGP (site agg)": "Bonus — BGP aggregation (site agg)",
+    "Bonus : agréger les routes redistribuées dans BGP": "Bonus: aggregating the routes redistributed into BGP",
+    """
+`agg_b` redistribue déjà dans BGP, vers l'opérateur `agg_isp`, les {count} réseaux /24 de l'entreprise
+portés par `agg_ospf1` (bloc `{block}`) : l'opérateur reçoit {count} préfixes. Sur `agg_b`, faites
+qu'il ne reçoive plus que le préfixe agrégé `{block}` (section @@ref:summary@@).
+""": """
+`agg_b` already redistributes into BGP, towards the operator `agg_isp`, the {count} /24 networks of
+the company carried by `agg_ospf1` (block `{block}`): the operator receives {count} prefixes. On
+`agg_b`, make it receive only the aggregate prefix `{block}` (section @@ref:summary@@).
+""",
+    """
+**Solution.**
+
+{solution}
+
+Les {count} /24 restent dans la table BGP de `agg_b`, marqués `s` (*suppressed*).
+
+Évaluation (bonus) : `agg_aggregate` (4 : `agg_isp` reçoit `{block}` de l'AS {asn}), `agg_specifics`
+(2 : il ne reçoit plus aucun des /24 ; compté si `agg_aggregate` l'est).
+""": """
+**Solution.**
+
+{solution}
+
+The {count} /24 networks stay in the BGP table of `agg_b`, marked `s` (*suppressed*).
+
+Evaluation (bonus): `agg_aggregate` (4: `agg_isp` receives `{block}` from AS {asn}),
+`agg_specifics` (2: it no longer receives any of the /24 networks; counted if `agg_aggregate` is).
+""",
+    "le préfixe agrégé reçu par l'opérateur": "the aggregate prefix received by the operator",
+    "plus aucun /24 envoyé": "no /24 sent any more",
+}}

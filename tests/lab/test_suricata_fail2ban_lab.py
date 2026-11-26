@@ -8,6 +8,7 @@ each applied alone.  The commands of the grader depend on the lab data only, so 
 an evaluation must register exactly its archived commands and give its archived grades.  After a
 deliberate change of the grader's commands, capture them again (``sre cat --json`` of the evaluations).
 """
+import ast
 import copy
 import importlib.util
 import json
@@ -362,6 +363,18 @@ class TestLab:
 # ---------------------------------------------------------------------------
 
 
+def _instructor_literals():
+    """The literals of the tr() calls inside instructor() calls of the lab file."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 def _texts(lab, data, tmp_pub_dir):
     name = _running_name()
     marker = Path(params.instructor_mode_marker_filename(name))
@@ -388,12 +401,20 @@ class TestTexts:
                       'sid 1000010', 'sqlmap'):
             assert value not in text, value
 
-    def test_instructor_translations(self, lab):
-        tree = check_sre_translations.ast.parse(_LAB_PATH.read_text())
-        tr_strings = check_sre_translations.get_tr_strings(tree)
+    def test_translations(self, lab):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py), the 25 instructor texts among them."""
+        tr_strings = check_sre_translations.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
         english = lab._TRANSLATIONS['en']
-        assert set(english) <= set(tr_strings) and None not in english.values() and len(english) == 25
-        assert all(english[k] != k for k in english)
+        assert set(english) == set(tr_strings) and all(english.values())
+        # the same in both languages: two names and a line of settings
+        assert {k for k in english if english[k] == k} == {
+            "Suricata", "fail2ban", "maxretry = 3, findtime = 10 min, bantime = 1 h"}
+        instructor = set(_instructor_literals())
+        assert len(instructor) == 25 and instructor <= set(english)
+        assert lab.title.resolve('en') == "Suricata and fail2ban: intrusion detection and prevention"
+        assert lab.NetScheme.part4_ips._sre_state_description.resolve('en') == "Part 4 only: Suricata inline on ips."
 
     def test_fragments_in_both_languages(self, lab, data, tmp_pub_dir):
         _, _, grade = _texts(lab, data, tmp_pub_dir)
@@ -430,5 +451,8 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('suricata_fail2ban_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - 25
         grade = _replay(module, _evaluation('final'), answers='final')
         assert _totals(grade) == (124, 124, 6)

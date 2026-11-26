@@ -1326,33 +1326,41 @@ table inet honeypot {{
         # the grader's tool
         install_login_probe(self, 'probe')
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 seule : la sonde Zeek configurée et lancée."))
+    @sre_state(user_allowed=False, description=tr("Partie 1 seule : la sonde Zeek configurée et lancée.",
+                                                  en="Part 1 alone: the Zeek sensor configured and running."))
     def part1_sensor(self):
         self._solve_sensor()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 seule : les deux scripts de détection."))
+    @sre_state(user_allowed=False, description=tr("Partie 2 seule : les deux scripts de détection.",
+                                                  en="Part 2 alone: the two detection scripts."))
     def part2_scripts(self):
         self._solve_scripts()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 seule : le fichier extrait et les réponses de l'enquête."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 3 seule : le fichier extrait et les réponses de l'enquête.",
+                              en="Part 3 alone: the extracted file and the answers of the investigation."))
     def part3_investigation(self):
         self._solve_investigation()
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 seule : le pot de miel Cowrie."))
+    @sre_state(user_allowed=False, description=tr("Partie 4 seule : le pot de miel Cowrie.",
+                                                  en="Part 4 alone: the Cowrie honeypot."))
     def part4_honeypot(self):
         self._solve_honeypot()
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 seule : les réponses de la corrélation."))
+    @sre_state(user_allowed=False, description=tr("Partie 5 seule : les réponses de la corrélation.",
+                                                  en="Part 5 alone: the answers of the correlation."))
     def part5_correlation(self):
         """Forms only: the answers come from the cheat answers of the state."""
         self.cmd('analyst', "true")
 
-    @sre_state(user_allowed=False, description=tr("Bonus seul : les indicateurs du cadre Intel."))
+    @sre_state(user_allowed=False, description=tr("Bonus seul : les indicateurs du cadre Intel.",
+                                                  en="Bonus alone: the indicators of the Intel framework."))
     def bonus_intel(self):
         self._solve_intel()
 
     @sre_state(user_allowed=False,
-               description=tr("Solution de référence complète (toutes les parties et le bonus, formulaires remplis)."))
+               description=tr("Solution de référence complète (toutes les parties et le bonus, formulaires remplis).",
+                              en="Complete reference solution (every part and the bonus, forms filled in)."))
     def final(self):
         """Reference solution, applicable more than once: every grade element reaches its maximum."""
         self._solve_scripts()
@@ -2302,5 +2310,1336 @@ is `{out_uid}`.
 """,
         "et à la fin de `{local}` :":
             "and at the end of `{local}`:",
+        "Supervision de sécurité et investigation réseau : Zeek, analyse de capture, Cowrie": "Network security monitoring and forensics: Zeek, a pcap investigation, Cowrie",
+        """**Sommaire**
+
+""": """**Contents**
+
+""",
+        "La supervision de sécurité réseau": "Network security monitoring",
+        """
+
+La **supervision de sécurité réseau** (*Network Security Monitoring*, NSM) consiste à **collecter**,
+**analyser** et **conserver** des traces de l'activité du réseau, pour détecter les intrusions et pour
+pouvoir, après coup, reconstituer ce qui s'est passé. Elle part d'un constat : la prévention finit
+toujours par échouer un jour ; il faut alors **voir** l'attaquant une fois entré, et avoir gardé de quoi
+enquêter.
+
+Les traces, de la plus volumineuse à la plus légère :
+
+| type | exemple | ce qu'on en tire | conservation |
+|------|---------|------------------|--------------|
+| contenu complet | une capture `pcap` (tcpdump, Wireshark) | tout, y compris les fichiers transférés | heures, jours |
+| transactions | les journaux de Zeek (`http.log`, `dns.log`...) | qui a demandé quoi, à qui, avec quelle réponse | mois |
+| sessions, flux | `conn.log` de Zeek, NetFlow / IPFIX | qui a parlé à qui, combien, combien de temps | mois, années |
+| alertes | Suricata, les *notices* de Zeek | ce qu'une règle a jugé suspect | années |
+
+Une alerte seule dit rarement tout : l'analyste remonte de l'alerte aux transactions et aux sessions,
+puis au contenu quand il l'a encore. Un IDS à signatures (Suricata) cherche ce qu'on lui a décrit ;
+**Zeek** décrit tout ce qu'il voit, ce qui permet de chercher après coup ce qu'on ne savait pas encore
+chercher (la *chasse aux menaces*, *threat hunting*). Les deux se complètent.
+
+La sonde reçoit une **copie** du trafic (un port miroir, un TAP, ou ici un concentrateur) sur une
+interface **sans adresse** : elle n'émet rien sur le réseau observé et s'administre par une autre
+interface.
+""": """
+
+**Network security monitoring** (NSM) means **collecting**, **analysing** and **keeping** traces of
+the network's activity, to detect intrusions and to be able to reconstruct, after the fact, what
+happened. It starts from an observation: prevention always fails one day; you must then **see** the
+attacker once inside, and have kept enough to investigate.
+
+The traces, from the bulkiest to the lightest:
+
+| type | example | what it tells | retention |
+|------|---------|---------------|-----------|
+| full content | a `pcap` capture (tcpdump, Wireshark) | everything, including the transferred files | hours, days |
+| transactions | the Zeek logs (`http.log`, `dns.log`...) | who asked for what, from whom, with which answer | months |
+| sessions, flows | Zeek's `conn.log`, NetFlow / IPFIX | who talked to whom, how much, for how long | months, years |
+| alerts | Suricata, Zeek's *notices* | what a rule judged suspicious | years |
+
+An alert alone rarely tells the whole story: the analyst goes back from the alert to the transactions
+and the sessions, then to the content while it is still available. A signature-based IDS (Suricata)
+looks for what it has been told about; **Zeek** describes everything it sees, which makes it possible to
+search afterwards for what you did not yet know you had to look for (*threat hunting*). The two
+complement each other.
+
+The sensor receives a **copy** of the traffic (a mirror port, a TAP, or here a hub) on an interface
+**without an address**: it sends nothing on the monitored network and is managed through another
+interface.
+""",
+        "Réponse à incident et preuves": "Incident response and evidence",
+        """
+
+Le guide NIST SP 800-61 découpe la réponse à un incident en phases : **préparation** (sondes, journaux,
+procédures), **détection et analyse**, **confinement**, **éradication** et **rétablissement**, puis
+**retour d'expérience**. Ce TP traite surtout de la détection et de l'analyse : établir ce qui s'est
+passé, quand, depuis où, et ce qui a été touché.
+
+Les règles d'une investigation (*forensics*) :
+
+- **ne jamais travailler sur l'original** : copier la preuve, calculer son empreinte à la collecte
+  (`sha256sum`), la vérifier avant toute analyse (`sha256sum -c`) ; une empreinte qui change désigne
+  une preuve altérée. Noter qui a eu la preuve en main, et quand (la **chaîne de possession**) ;
+- **horodater en UTC**, et vérifier que les horloges étaient synchronisées (NTP) : corréler des
+  journaux dont les horloges divergent mène à de fausses conclusions ;
+- **noter chaque étape** (les commandes et leurs résultats) : l'analyse doit être reproductible ;
+- construire une **chronologie** (*timeline*) : la liste datée des événements, de la première trace de
+  l'attaquant à la dernière ;
+- en tirer des **indicateurs de compromission** (*IOC*) : adresses, noms de domaine, URL, empreintes de
+  fichiers, à rechercher ailleurs et à partager (section @@ref:intel@@).
+""": """
+
+The NIST SP 800-61 guide divides incident response into phases: **preparation** (sensors, logs,
+procedures), **detection and analysis**, **containment**, **eradication** and **recovery**, then
+**lessons learned**. This lab deals mostly with detection and analysis: establishing what happened,
+when, from where, and what was affected.
+
+The rules of an investigation (*forensics*):
+
+- **never work on the original**: copy the evidence, compute its hash when collecting it
+  (`sha256sum`), check it before any analysis (`sha256sum -c`); a hash that changes points to tampered
+  evidence. Record who had the evidence in hand, and when (the **chain of custody**);
+- **timestamp in UTC**, and check that the clocks were synchronised (NTP): correlating logs whose clocks
+  drift apart leads to false conclusions;
+- **record every step** (the commands and their results): the analysis must be reproducible;
+- build a **timeline**: the dated list of the events, from the attacker's first trace to the last
+  one;
+- derive **indicators of compromise** (*IOC*) from it: addresses, domain names, URLs, file hashes, to
+  look for elsewhere and to share (section @@ref:intel@@).
+""",
+        "Zeek": "Zeek",
+        """
+
+**Zeek** (anciennement Bro) est un moniteur de sécurité réseau libre. Il ne compare pas seulement le
+trafic à des signatures : il **analyse les protocoles** et décrit chaque échange dans des **journaux**
+structurés. Deux couches :
+
+1. un **moteur d'événements** (en C++) capture les paquets, reconstitue les connexions et les flux TCP,
+   reconnaît les protocoles (DNS, HTTP, TLS, SSH, SMB...) quel que soit le port, et produit des
+   **événements** : `new_connection`, `dns_request`, `http_request`, `http_reply`,
+   `connection_state_remove`...
+2. des **scripts**, écrits dans le langage de Zeek, réagissent à ces événements : ceux qui sont fournis
+   écrivent les journaux, d'autres détectent (scans, force brute SSH, injections SQL) et lèvent des
+   **notices** (section @@ref:notice@@) ; on y ajoute les siens (section @@ref:scripting@@).
+
+Zeek analyse une interface en direct (`zeek -i eth1 local`) ou une capture (`zeek -r capture.pcap`) :
+la même analyse, ce qui en fait un outil d'investigation autant que de supervision. Zeek ne bloque
+rien : c'est un outil de **visibilité**. D'une session chiffrée (HTTPS, SSH), il ne voit que les
+métadonnées : le nom du serveur (SNI), le certificat, les versions, les volumes et les durées.
+""": """
+
+**Zeek** (formerly Bro) is a free network security monitor. It does not merely compare the traffic with
+signatures: it **analyses the protocols** and describes each exchange in structured **logs**. Two
+layers:
+
+1. an **event engine** (in C++) captures the packets, reassembles the connections and the TCP streams,
+   recognises the protocols (DNS, HTTP, TLS, SSH, SMB...) whatever the port, and produces
+   **events**: `new_connection`, `dns_request`, `http_request`, `http_reply`,
+   `connection_state_remove`...
+2. **scripts**, written in the Zeek language, react to these events: the bundled ones write the logs,
+   others detect (scans, SSH brute force, SQL injections) and raise **notices** (section
+   @@ref:notice@@); you add your own (section @@ref:scripting@@).
+
+Zeek analyses a live interface (`zeek -i eth1 local`) or a capture (`zeek -r capture.pcap`): the same
+analysis, which makes it an investigation tool as much as a monitoring tool. Zeek blocks nothing: it is
+a **visibility** tool. Of an encrypted session (HTTPS, SSH), it only sees the metadata: the server name
+(SNI), the certificate, the versions, the volumes and the durations.
+""",
+        "Les journaux de Zeek": "The Zeek logs",
+        """
+
+Zeek écrit un fichier par type d'activité, une ligne par transaction : dans le répertoire courant pour
+`zeek -r`, dans `/opt/zeek/logs/current/` pour une sonde en service (les journaux des heures passées sont
+archivés, compressés, dans `/opt/zeek/logs/AAAA-MM-JJ/`).
+
+| journal | une ligne par... | champs utiles |
+|---------|------------------|---------------|
+| `conn.log` | connexion TCP, UDP, ICMP | `id.orig_h`, `id.orig_p`, `id.resp_h`, `id.resp_p`, `proto`, `service`, `duration`, `orig_bytes`, `resp_bytes`, `conn_state`, `history`, `local_orig`, `local_resp` |
+| `dns.log` | requête DNS | `query`, `qtype_name`, `rcode_name`, `answers` |
+| `http.log` | requête HTTP | `method`, `host`, `uri`, `user_agent`, `status_code`, `resp_fuids` |
+| `files.log` | fichier transféré | `fuid`, `mime_type`, `filename`, `md5`, `sha1`, `sha256` |
+| `ssl.log` | session TLS | `server_name` (SNI), `version`, `cipher` |
+| `ssh.log` | session SSH | `client`, `server`, `auth_success` (une estimation) |
+| `notice.log` | notice d'un script | `note`, `msg`, `src`, `sub` |
+| `intel.log` | indicateur reconnu | `seen.indicator`, `seen.where` |
+| `weird.log` | anomalie de protocole | `name` |
+
+Chaque connexion reçoit un identifiant unique, le **`uid`** (`CHhAvVGS1DHFjwGM9`), repris par toutes les
+lignes qui la concernent : la ligne de `conn.log`, les requêtes de `http.log`, les fichiers de `files.log`
+se relient par lui. Le **`community_id`** (`1:LQU9qZlK+B5F3KDmev6m5PMibrg=`, chargé par
+`@load policy/protocols/conn/community-id-logging`) est un hachage du quintuplet (adresses, ports,
+protocole) que Suricata et d'autres outils calculent aussi : il relie les journaux d'outils différents.
+
+`conn_state` résume le déroulement d'une connexion TCP :
+
+| `conn_state` | signification |
+|--------------|---------------|
+| `S0` | un SYN sans réponse (port filtré) |
+| `REJ` | un SYN refusé par un RST (port fermé) |
+| `S1` | établie, pas encore terminée |
+| `SF` | établie et terminée normalement |
+| `RSTO` / `RSTR` | interrompue par un RST de l'origine / du répondeur |
+| `OTH` | début de connexion non vu |
+
+et `history` en détaille les étapes, une lettre par événement, majuscule pour l'origine et minuscule
+pour le répondeur : `S` SYN, `h` SYN-ACK, `A` ACK, `D` données, `F` FIN, `R` RST. `ShADadFf` est une
+connexion complète, `Sr` un port fermé ; un SYN-ACK suivi d'un RST de l'origine (`ShR`) est la
+signature d'un scan SYN (`nmap -sS`).
+""": """
+
+Zeek writes one file per type of activity, one line per transaction: in the current directory for
+`zeek -r`, in `/opt/zeek/logs/current/` for a running sensor (the logs of past hours are archived,
+compressed, in `/opt/zeek/logs/YYYY-MM-DD/`).
+
+| log | one line per... | useful fields |
+|-----|-----------------|---------------|
+| `conn.log` | TCP, UDP, ICMP connection | `id.orig_h`, `id.orig_p`, `id.resp_h`, `id.resp_p`, `proto`, `service`, `duration`, `orig_bytes`, `resp_bytes`, `conn_state`, `history`, `local_orig`, `local_resp` |
+| `dns.log` | DNS query | `query`, `qtype_name`, `rcode_name`, `answers` |
+| `http.log` | HTTP request | `method`, `host`, `uri`, `user_agent`, `status_code`, `resp_fuids` |
+| `files.log` | transferred file | `fuid`, `mime_type`, `filename`, `md5`, `sha1`, `sha256` |
+| `ssl.log` | TLS session | `server_name` (SNI), `version`, `cipher` |
+| `ssh.log` | SSH session | `client`, `server`, `auth_success` (an estimate) |
+| `notice.log` | notice raised by a script | `note`, `msg`, `src`, `sub` |
+| `intel.log` | indicator seen | `seen.indicator`, `seen.where` |
+| `weird.log` | protocol anomaly | `name` |
+
+Each connection gets a unique identifier, the **`uid`** (`CHhAvVGS1DHFjwGM9`), repeated by every line
+about it: the line of `conn.log`, the requests of `http.log`, the files of `files.log` are linked by it.
+The **`community_id`** (`1:LQU9qZlK+B5F3KDmev6m5PMibrg=`, loaded by
+`@load policy/protocols/conn/community-id-logging`) is a hash of the 5-tuple (addresses, ports,
+protocol) that Suricata and other tools compute too: it links the logs of different tools.
+
+`conn_state` sums up how a TCP connection went:
+
+| `conn_state` | meaning |
+|--------------|---------|
+| `S0` | a SYN without an answer (filtered port) |
+| `REJ` | a SYN refused by a RST (closed port) |
+| `S1` | established, not yet finished |
+| `SF` | established and closed normally |
+| `RSTO` / `RSTR` | aborted by a RST from the originator / the responder |
+| `OTH` | start of the connection not seen |
+
+and `history` details its steps, one letter per event, upper case for the originator and lower case for
+the responder: `S` SYN, `h` SYN-ACK, `A` ACK, `D` data, `F` FIN, `R` RST. `ShADadFf` is a complete
+connection, `Sr` a closed port; a SYN-ACK followed by a RST from the originator (`ShR`) is the signature
+of a SYN scan (`nmap -sS`).
+""",
+        "Mettre une sonde en service : zeekctl": "Running a sensor: zeekctl",
+        """
+
+Sur une sonde, Zeek est piloté par **`zeekctl`**, configuré dans `/opt/zeek/etc/` :
+
+- `node.cfg` : les processus de Zeek. Une sonde autonome :
+
+```
+[zeek]
+type=standalone
+host=localhost
+interface=eth1
+```
+
+  (pour un gros débit, un *cluster* : un manager, un proxy et plusieurs *workers* qui se partagent le
+  trafic) ;
+- `networks.cfg` : les **réseaux locaux**, un par ligne (`10.1.2.0/24   DMZ`). Zeek en déduit les champs
+  `local_orig` et `local_resp` de `conn.log`, donc le sens de chaque connexion (entrante, sortante,
+  interne), et plusieurs scripts s'en servent (`known-hosts`, la détection des scans...). Attention :
+  Zeek tient aussi pour locales, par défaut, toutes les adresses de `Site::private_address_space` (les
+  réseaux privés de la RFC 1918, mais aussi 100.64.0.0/10, 198.18.0.0/15, les plages de documentation...) ;
+  pour que seul `networks.cfg` compte, `redef Site::private_address_space_is_local = F;` dans
+  `local.zeek` ;
+- `zeekctl.cfg` : les répertoires, la rotation des journaux (`LogRotationInterval`, une heure).
+
+La **politique du site** est `/opt/zeek/share/zeek/site/local.zeek` : les scripts chargés (`@load`) et les
+réglages (`redef`). Pour des journaux en **JSON** plutôt qu'en colonnes séparées par des tabulations,
+on y ajoute :
+
+```
+@load policy/tuning/json-logs
+```
+
+| commande | effet |
+|----------|-------|
+| `zeekctl check` | vérifie la configuration et les scripts |
+| `zeekctl deploy` | installe la configuration et (re)démarre Zeek : après **chaque** modification |
+| `zeekctl status` | l'état des processus |
+| `zeekctl stop` | arrête Zeek |
+| `zeekctl diag` | le diagnostic d'un processus qui ne démarre pas |
+
+Une carte réseau calcule souvent elle-même les sommes de contrôle (*checksum offloading*) : une capture
+faite sur la machine émettrice montre alors des sommes fausses, et Zeek ignore ces paquets (`weird.log` :
+`bad_TCP_checksum`). Pour lire une telle capture : `zeek -C -r capture.pcap` (ou
+`redef ignore_checksums = T;`).
+""": """
+
+On a sensor, Zeek is driven by **`zeekctl`**, configured in `/opt/zeek/etc/`:
+
+- `node.cfg`: the Zeek processes. A standalone sensor:
+
+```
+[zeek]
+type=standalone
+host=localhost
+interface=eth1
+```
+
+  (for a high throughput, a *cluster*: a manager, a proxy and several *workers* that share the
+  traffic);
+- `networks.cfg`: the **local networks**, one per line (`10.1.2.0/24   DMZ`). Zeek derives from them the
+  fields `local_orig` and `local_resp` of `conn.log`, hence the direction of each connection (inbound,
+  outbound, internal), and several scripts use them (`known-hosts`, scan detection...). Beware: by
+  default Zeek also considers local all the addresses of `Site::private_address_space` (the private
+  networks of RFC 1918, but also 100.64.0.0/10, 198.18.0.0/15, the documentation ranges...); for
+  `networks.cfg` alone to count, `redef Site::private_address_space_is_local = F;` in
+  `local.zeek`;
+- `zeekctl.cfg`: the directories, the log rotation (`LogRotationInterval`, one hour).
+
+The **site policy** is `/opt/zeek/share/zeek/site/local.zeek`: the loaded scripts (`@load`) and the
+settings (`redef`). For logs in **JSON** rather than in tab-separated columns, add to it:
+
+```
+@load policy/tuning/json-logs
+```
+
+| command | effect |
+|---------|--------|
+| `zeekctl check` | checks the configuration and the scripts |
+| `zeekctl deploy` | installs the configuration and (re)starts Zeek: after **every** change |
+| `zeekctl status` | the state of the processes |
+| `zeekctl stop` | stops Zeek |
+| `zeekctl diag` | the diagnosis of a process that does not start |
+
+A network card often computes the checksums itself (*checksum offloading*): a capture made on the
+sending machine then shows wrong checksums, and Zeek ignores these packets (`weird.log`:
+`bad_TCP_checksum`). To read such a capture: `zeek -C -r capture.pcap` (or
+`redef ignore_checksums = T;`).
+""",
+        "Lire les journaux : zeek-cut et jq": "Reading the logs: zeek-cut and jq",
+        """
+
+Au format TSV, `zeek-cut` extrait des colonnes par leur nom (il lit l'en-tête `#fields`) :
+
+```
+zeek-cut id.orig_h id.resp_h id.resp_p service conn_state < conn.log
+zeek-cut -u ts query answers < dns.log
+```
+
+(`-u` : les dates en UTC lisibles ; `-d` en heure locale). Au format JSON, une ligne est un objet, et
+`jq` sélectionne, transforme et compte :
+
+```
+jq -c '[.ts, ."id.orig_h", .host, .uri]' http.log
+jq -r 'select(.status_code == 404) | ."id.orig_h"' http.log | sort | uniq -c | sort -rn
+jq -r 'select(.conn_state == "REJ") | ."id.resp_p"' conn.log | sort -n | uniq
+jq -r 'select(.query | endswith(".example")) | .query' dns.log
+```
+
+Un nom qui contient un point s'écrit entre guillemets : `."id.orig_h"`. `jq -s` (*slurp*) lit tout le
+fichier comme un tableau (pour grouper : `group_by`, `length`). `date -u -d @1764000000` convertit un `ts`
+en date.
+""": """
+
+In TSV format, `zeek-cut` extracts columns by their name (it reads the `#fields` header):
+
+```
+zeek-cut id.orig_h id.resp_h id.resp_p service conn_state < conn.log
+zeek-cut -u ts query answers < dns.log
+```
+
+(`-u`: readable UTC dates; `-d` in local time). In JSON format, a line is an object, and `jq` selects,
+transforms and counts:
+
+```
+jq -c '[.ts, ."id.orig_h", .host, .uri]' http.log
+jq -r 'select(.status_code == 404) | ."id.orig_h"' http.log | sort | uniq -c | sort -rn
+jq -r 'select(.conn_state == "REJ") | ."id.resp_p"' conn.log | sort -n | uniq
+jq -r 'select(.query | endswith(".example")) | .query' dns.log
+```
+
+A name that contains a dot is written in quotes: `."id.orig_h"`. `jq -s` (*slurp*) reads the whole file
+as an array (to group: `group_by`, `length`). `date -u -d @1764000000` converts a `ts` into a date.
+""",
+        "Écrire un script Zeek": "Writing a Zeek script",
+        """
+
+Un script déclare des **gestionnaires d'événements**. Les types usuels : `addr` (`10.1.2.3`), `subnet`
+(`10.1.2.0/24`), `port` (`80/tcp`), `count`, `int`, `string`, `bool` (`T` / `F`), `time`, `interval`
+(`30sec`, `2min`), et les conteneurs `set[addr]`, `table[addr] of count`, `vector of string`, `record`.
+Une connexion est un `record` de type `connection` : `c$id$orig_h`, `c$id$orig_p`, `c$id$resp_h`,
+`c$id$resp_p`, `c$uid`.
+
+```
+module DEMO;
+
+export {
+    const watched = 10.1.2.3 &redef;      # une constante qu'un redef peut changer
+}
+
+global per_client: table[addr] of count &default=0 &create_expire=5min;
+
+event http_request(c: connection, method: string, original_URI: string,
+                   unescaped_URI: string, version: string)
+    {
+    if ( c$id$resp_h != watched )
+        return;
+    per_client[c$id$orig_h] += 1;
+    print fmt("%s -> %s : %s (%d)", c$id$orig_h, c$id$resp_h, original_URI, per_client[c$id$orig_h]);
+    }
+```
+
+Quelques événements : `zeek_init()` (au démarrage), `new_connection(c: connection)` (le premier paquet
+d'une connexion, TCP, UDP ou ICMP : `c$id$orig_h` est celui qui l'a ouverte),
+`connection_established(c: connection)` (une poignée de main TCP complète),
+`http_reply(c: connection, version: string, code: count, reason: string)`,
+`dns_request(c: connection, msg: dns_msg, query: string, qtype: count, qclass: count)`,
+`connection_state_remove(c: connection)` (la connexion oubliée).
+
+Les attributs d'une table règlent la **durée de vie** de ses entrées : `&create_expire = 5min` (5 minutes
+après sa **création** : une fenêtre qui commence au premier événement), `&write_expire` (après la
+dernière écriture), `&read_expire` (après la dernière lecture) ; `&default = 0` donne la valeur d'une
+clé absente. Une adresse se teste par `if ( a in 10.1.2.0/24 )`, `Site::is_local_addr(a)`.
+
+Pour essayer un script : dans un répertoire vide, `zeek -C -r capture.pcap mon-script.zeek` ; `print`
+écrit dans le terminal, une erreur est signalée avec son numéro de ligne (`zeek --parse-only script.zeek`
+vérifie la syntaxe seule).
+""": """
+
+A script declares **event handlers**. The usual types: `addr` (`10.1.2.3`), `subnet` (`10.1.2.0/24`),
+`port` (`80/tcp`), `count`, `int`, `string`, `bool` (`T` / `F`), `time`, `interval` (`30sec`, `2min`),
+and the containers `set[addr]`, `table[addr] of count`, `vector of string`, `record`. A connection is a
+`record` of type `connection`: `c$id$orig_h`, `c$id$orig_p`, `c$id$resp_h`, `c$id$resp_p`, `c$uid`.
+
+```
+module DEMO;
+
+export {
+    const watched = 10.1.2.3 &redef;      # a constant that a redef can change
+}
+
+global per_client: table[addr] of count &default=0 &create_expire=5min;
+
+event http_request(c: connection, method: string, original_URI: string,
+                   unescaped_URI: string, version: string)
+    {
+    if ( c$id$resp_h != watched )
+        return;
+    per_client[c$id$orig_h] += 1;
+    print fmt("%s -> %s : %s (%d)", c$id$orig_h, c$id$resp_h, original_URI, per_client[c$id$orig_h]);
+    }
+```
+
+A few events: `zeek_init()` (at startup), `new_connection(c: connection)` (the first packet of a
+connection, TCP, UDP or ICMP: `c$id$orig_h` is the side that opened it),
+`connection_established(c: connection)` (a complete TCP handshake),
+`http_reply(c: connection, version: string, code: count, reason: string)`,
+`dns_request(c: connection, msg: dns_msg, query: string, qtype: count, qclass: count)`,
+`connection_state_remove(c: connection)` (the connection is forgotten).
+
+The attributes of a table set the **lifetime** of its entries: `&create_expire = 5min` (5 minutes after
+its **creation**: a window that starts at the first event), `&write_expire` (after the last write),
+`&read_expire` (after the last read); `&default = 0` gives the value of a missing key. An address is
+tested with `if ( a in 10.1.2.0/24 )`, `Site::is_local_addr(a)`.
+
+To try a script: in an empty directory, `zeek -C -r capture.pcap my-script.zeek`; `print` writes to the
+terminal, an error is reported with its line number (`zeek --parse-only script.zeek` checks the syntax
+alone).
+""",
+        "Les notices": "Notices",
+        """
+
+Un script signale ce qu'il juge important en levant une **notice**, écrite dans `notice.log` :
+
+```
+module DEMO;
+
+export {
+    redef enum Notice::Type += { Big_Upload };     # le type DEMO::Big_Upload
+}
+
+event connection_state_remove(c: connection)
+    {
+    if ( c$orig?$size && c$orig$size > 10000000 )
+        NOTICE([$note=Big_Upload, $conn=c,
+                $msg=fmt("%s a envoyé %d octets", c$id$orig_h, c$orig$size),
+                $identifier=cat(c$id$orig_h)]);
+    }
+```
+
+- `$note` : le type, déclaré par `redef enum Notice::Type += { ... };` dans le bloc `export` d'un
+  `module` : il s'appelle alors `Module::Nom` (`DEMO::Big_Upload`) ;
+- `$msg` : le texte lisible, `$sub` un complément ;
+- `$conn = c` remplit l'`uid` et les champs `id.orig_h`, `id.orig_p`, `id.resp_h`, `id.resp_p` de la
+  notice ; sans connexion, `$src` donne une adresse (le champ `src`) ;
+- `$identifier` (et `$suppress_for`, une heure par défaut) : deux notices de même type et de même
+  identifiant dans ce délai n'en font qu'une.
+
+Le crochet `hook Notice::policy` ajoute des actions (courriel, `Notice::ACTION_ALARM`...).
+""": """
+
+A script reports what it considers important by raising a **notice**, written to `notice.log`:
+
+```
+module DEMO;
+
+export {
+    redef enum Notice::Type += { Big_Upload };     # the type DEMO::Big_Upload
+}
+
+event connection_state_remove(c: connection)
+    {
+    if ( c$orig?$size && c$orig$size > 10000000 )
+        NOTICE([$note=Big_Upload, $conn=c,
+                $msg=fmt("%s sent %d bytes", c$id$orig_h, c$orig$size),
+                $identifier=cat(c$id$orig_h)]);
+    }
+```
+
+- `$note`: the type, declared by `redef enum Notice::Type += { ... };` in the `export` block of a
+  `module`: it is then called `Module::Name` (`DEMO::Big_Upload`);
+- `$msg`: the readable text, `$sub` some additional detail;
+- `$conn = c` fills in the `uid` and the fields `id.orig_h`, `id.orig_p`, `id.resp_h`, `id.resp_p` of the
+  notice; without a connection, `$src` gives an address (the field `src`);
+- `$identifier` (and `$suppress_for`, one hour by default): two notices of the same type and with the
+  same identifier within that delay count as one.
+
+The hook `hook Notice::policy` adds actions (email, `Notice::ACTION_ALARM`...).
+""",
+        "Le renseignement sur les menaces : le cadre Intel": "Threat intelligence: the Intel framework",
+        """
+
+Les indicateurs de compromission partagés (par un CERT, une plate-forme MISP, un flux commercial) se
+donnent à Zeek dans un fichier texte : une ligne d'en-tête `#fields`, puis un indicateur par ligne, les
+champs séparés par **une tabulation** (jamais des espaces : la cause la plus fréquente d'un fichier
+ignoré, signalée dans `reporter.log`) :
+
+```
+#fields	indicator	indicator_type	meta.source	meta.desc
+203.0.113.66	Intel::ADDR	CERT-X	scanner connu
+evil.example	Intel::DOMAIN	CERT-X	domaine de commande et contrôle
+www.example.org/payload.exe	Intel::URL	CERT-X	charge malveillante
+```
+
+Les types : `Intel::ADDR`, `Intel::SUBNET`, `Intel::DOMAIN`, `Intel::URL` (sans `http://` : l'hôte suivi
+du chemin, comme `Host` + l'URI de la requête), `Intel::FILE_HASH`, `Intel::EMAIL`, `Intel::USER_AGENT`,
+`Intel::CERT_HASH`... Le chargement, dans `local.zeek` :
+
+```
+@load frameworks/intel/seen
+redef Intel::read_files += { "/opt/zeek/share/zeek/site/intel.dat" };
+```
+
+`frameworks/intel/seen` présente au cadre Intel ce que Zeek voit : les adresses des connexions, les
+requêtes DNS, les URL et en-têtes HTTP, les empreintes des fichiers, les certificats... Une
+correspondance est écrite dans `intel.log` (`seen.indicator`, et `seen.where` : `Conn::IN_ORIG`,
+`DNS::IN_REQUEST`, `HTTP::IN_URL`...). Le fichier est relu quand il change : la sonde n'a pas besoin
+d'être redémarrée. En lecture d'une capture, en revanche, Zeek peut avoir fini avant d'avoir lu le
+fichier (il le lit en parallèle) : `zeek --pseudo-realtime=1 -r capture.pcap` rejoue la capture à sa
+vitesse réelle.
+""": """
+
+Shared indicators of compromise (from a CERT, a MISP platform, a commercial feed) are given to Zeek in a
+text file: a `#fields` header line, then one indicator per line, the fields separated by **a tab**
+(never spaces: the most frequent cause of an ignored file, reported in `reporter.log`):
+
+```
+#fields	indicator	indicator_type	meta.source	meta.desc
+203.0.113.66	Intel::ADDR	CERT-X	known scanner
+evil.example	Intel::DOMAIN	CERT-X	command and control domain
+www.example.org/payload.exe	Intel::URL	CERT-X	malicious payload
+```
+
+The types: `Intel::ADDR`, `Intel::SUBNET`, `Intel::DOMAIN`, `Intel::URL` (without `http://`: the host
+followed by the path, like `Host` + the URI of the request), `Intel::FILE_HASH`, `Intel::EMAIL`,
+`Intel::USER_AGENT`, `Intel::CERT_HASH`... Loading it, in `local.zeek`:
+
+```
+@load frameworks/intel/seen
+redef Intel::read_files += { "/opt/zeek/share/zeek/site/intel.dat" };
+```
+
+`frameworks/intel/seen` hands the Intel framework what Zeek sees: the addresses of the connections, the
+DNS queries, the HTTP URLs and headers, the file hashes, the certificates... A match is written to
+`intel.log` (`seen.indicator`, and `seen.where`: `Conn::IN_ORIG`, `DNS::IN_REQUEST`, `HTTP::IN_URL`...).
+The file is read again when it changes: the sensor does not need to be restarted. When reading a
+capture, on the other hand, Zeek may have finished before it has read the file (it reads it in
+parallel): `zeek --pseudo-realtime=1 -r capture.pcap` replays the capture at its real speed.
+""",
+        "Analyser une capture": "Analysing a capture",
+        """
+
+Une méthode :
+
+1. **intégrité** : `sha256sum -c incident.pcap.sha256`, puis travailler sur une copie ;
+2. **vue d'ensemble** : `capinfos incident.pcap` (dates, durée, nombre de paquets),
+   `tshark -r incident.pcap -q -z conv,ip` (les conversations), `-z io,phs` (les protocoles) ;
+3. **journaux** : `mkdir zeek && cd zeek && zeek -C -r ../incident.pcap local`, puis les questions par
+   `zeek-cut` ou `jq` : qui parle le plus, à qui, quels noms sont demandés, quels fichiers passent
+   (`local` charge la politique du site : les empreintes des fichiers, entre autres) ;
+4. **zoom** sur ce qui intrigue, avec `tshark` et un filtre d'affichage, ou Wireshark (*Follow TCP
+   Stream*).
+
+| besoin | commande |
+|--------|----------|
+| des champs choisis | `tshark -r f.pcap -Y 'http.request' -T fields -e frame.time_epoch -e ip.src -e http.host -e http.request.uri` |
+| le contenu d'un flux TCP | `tshark -r f.pcap -q -z follow,tcp,ascii,5` (le flux n° 5 : champ `tcp.stream`) |
+| les statistiques HTTP | `tshark -r f.pcap -q -z http,tree` |
+| les noms demandés | `tshark -r f.pcap -Y 'dns.flags.response == 0' -T fields -e dns.qry.name` |
+| les champs des formulaires envoyés | `tshark -r f.pcap -Y urlencoded-form -T fields -e urlencoded-form.key -e urlencoded-form.value` |
+| extraire les fichiers | `tshark -r f.pcap --export-objects http,/tmp/objets` |
+
+Zeek extrait aussi les fichiers (`@load frameworks/files/extract-all-files`, dans `extract_files/`), et
+`files.log` donne leurs empreintes (`frameworks/files/hash-all-files`, chargé par `local`). Un formulaire
+envoie ses champs encodés (`application/x-www-form-urlencoded`) : `%21` est `!`, `+` une espace ;
+tshark les décode (`urlencoded-form.value`), le contenu brut d'un flux les montre tels quels.
+""": """
+
+A method:
+
+1. **integrity**: `sha256sum -c incident.pcap.sha256`, then work on a copy;
+2. **overview**: `capinfos incident.pcap` (dates, duration, number of packets),
+   `tshark -r incident.pcap -q -z conv,ip` (the conversations), `-z io,phs` (the protocols);
+3. **logs**: `mkdir zeek && cd zeek && zeek -C -r ../incident.pcap local`, then the questions through
+   `zeek-cut` or `jq`: who talks the most, to whom, which names are queried, which files go through
+   (`local` loads the site policy: the file hashes, among other things);
+4. **zoom** in on what looks odd, with `tshark` and a display filter, or Wireshark (*Follow TCP
+   Stream*).
+
+| need | command |
+|------|---------|
+| chosen fields | `tshark -r f.pcap -Y 'http.request' -T fields -e frame.time_epoch -e ip.src -e http.host -e http.request.uri` |
+| the content of a TCP stream | `tshark -r f.pcap -q -z follow,tcp,ascii,5` (stream no. 5: field `tcp.stream`) |
+| the HTTP statistics | `tshark -r f.pcap -q -z http,tree` |
+| the queried names | `tshark -r f.pcap -Y 'dns.flags.response == 0' -T fields -e dns.qry.name` |
+| the fields of the submitted forms | `tshark -r f.pcap -Y urlencoded-form -T fields -e urlencoded-form.key -e urlencoded-form.value` |
+| extract the files | `tshark -r f.pcap --export-objects http,/tmp/objets` |
+
+Zeek extracts the files too (`@load frameworks/files/extract-all-files`, into `extract_files/`), and
+`files.log` gives their hashes (`frameworks/files/hash-all-files`, loaded by `local`). A form sends its
+fields encoded (`application/x-www-form-urlencoded`): `%21` is `!`, `+` a space; tshark decodes them
+(`urlencoded-form.value`), the raw content of a stream shows them as they are.
+""",
+        "Reconnaître une attaque dans le trafic": "Recognising an attack in the traffic",
+        """
+
+| activité | ce qu'on voit |
+|----------|---------------|
+| **scan de ports** | une source, une cible (ou beaucoup), de nombreux ports en peu de temps ; `REJ` (fermé) ou `S0` (filtré) ; pour un port **ouvert**, un SYN-ACK suivi d'un RST de la source (`ShR`) |
+| **recherche de mots de passe** | des requêtes répétées vers la même cible et le même service (`POST /login`, SSH), des réponses d'échec (`401`, ou `200` avec un message d'erreur), puis une réponse différente : le succès (`302`, un cookie) |
+| **téléchargement d'une charge** | un `GET` d'un script ou d'un exécutable, souvent par un outil en ligne de commande (`Wget`, `curl`, `python-requests`) ; dans `files.log`, le type MIME et les empreintes |
+| **balise de C2** (*beaconing*) | une machine interne qui contacte la même destination à **intervalle régulier** (parfois avec une petite gigue), de petites requêtes et réponses, un User-Agent incongru |
+| **exfiltration par DNS** | des noms très longs, des sous-domaines tous différents sous un même domaine, un contenu à forte entropie (hexadécimal, base32, base64) : les données sont **dans les noms demandés**, les réponses importent peu (`NXDOMAIN`) |
+| **mouvement latéral** | des connexions internes inhabituelles (SMB, RDP, SSH) depuis une machine compromise |
+
+Pour mesurer un intervalle : les `ts` des requêtes, puis leurs différences successives
+(`... | awk 'NR > 1 {print $1 - p} {p = $1}'`). Pour décoder de l'hexadécimal :
+`echo 48656c6c6f | xxd -r -p`.
+""": """
+
+| activity | what you see |
+|----------|--------------|
+| **port scan** | one source, one target (or many), many ports in a short time; `REJ` (closed) or `S0` (filtered); for an **open** port, a SYN-ACK followed by a RST from the source (`ShR`) |
+| **password guessing** | repeated requests to the same target and the same service (`POST /login`, SSH), failure answers (`401`, or `200` with an error message), then a different answer: the success (`302`, a cookie) |
+| **payload download** | a `GET` of a script or an executable, often by a command-line tool (`Wget`, `curl`, `python-requests`); in `files.log`, the MIME type and the hashes |
+| **C2 beacon** (*beaconing*) | an internal machine that contacts the same destination at a **regular interval** (sometimes with a little jitter), small requests and answers, an odd User-Agent |
+| **DNS exfiltration** | very long names, subdomains that all differ under one domain, high-entropy content (hexadecimal, base32, base64): the data is **in the queried names**, the answers hardly matter (`NXDOMAIN`) |
+| **lateral movement** | unusual internal connections (SMB, RDP, SSH) from a compromised machine |
+
+To measure an interval: the `ts` of the requests, then their successive differences
+(`... | awk 'NR > 1 {print $1 - p} {p = $1}'`). To decode hexadecimal:
+`echo 48656c6c6f | xxd -r -p`.
+""",
+        "Les pots de miel": "Honeypots",
+        """
+
+Un **pot de miel** (*honeypot*) est un système **leurre**, sans usage légitime, offert aux attaquants
+pour les observer. Puisque personne n'a de raison de s'y connecter, **toute connexion est suspecte** :
+pas de faux positif, une alerte précoce (un attaquant qui explore le réseau interne y tombe), et des
+journaux riches sur ses méthodes (les mots de passe essayés, les commandes, les logiciels téléchargés).
+
+Trois niveaux d'**interaction** :
+
+- **basse** : un service qui accepte la connexion et note qui frappe (une bannière, un port ouvert) ;
+- **moyenne** : l'émulation d'un service et d'un système. **Cowrie** est un serveur SSH et un shell
+  factices : l'attaquant croit taper des commandes, rien n'est réellement exécuté ;
+- **haute** : un vrai système instrumenté : le plus réaliste, et le plus risqué.
+
+Précautions :
+
+- un pot de miel ne doit servir de **rebond** à personne : l'isoler (DMZ, VLAN), filtrer ses connexions
+  sortantes et le surveiller ; un pot de miel qui ouvre lui-même une connexion est une alerte en soi ;
+- son vrai accès d'administration passe par un autre port, ouvert au seul réseau des administrateurs ;
+- le rendre **crédible** : un nom d'hôte, une bannière, un noyau, des fichiers plausibles ; un Cowrie
+  laissé avec ses réglages par défaut (le nom `svr04`, sa bannière, son noyau) se reconnaît en une
+  commande ;
+- côté juridique, on n'observe que ses propres systèmes ; les journaux contiennent des données
+  personnelles au sens du RGPD (des adresses IP) : durée de conservation et accès à définir. On ne
+  « contre-attaque » jamais.
+
+Exposé à Internet, un pot de miel étudie les attaques de masse ; placé à l'intérieur (DMZ, réseaux
+internes), il sert de **détecteur d'intrusion**.
+""": """
+
+A **honeypot** is a **decoy** system, with no legitimate use, offered to attackers in order to observe
+them. Since nobody has any reason to connect to it, **every connection is suspicious**: no false
+positives, an early warning (an attacker exploring the internal network stumbles on it), and rich logs
+on their methods (the passwords tried, the commands, the software downloaded).
+
+Three levels of **interaction**:
+
+- **low**: a service that accepts the connection and records who knocks (a banner, an open port);
+- **medium**: the emulation of a service and of a system. **Cowrie** is a fake SSH server and shell:
+  the attacker believes they are typing commands, nothing is really executed;
+- **high**: a real, instrumented system: the most realistic, and the riskiest.
+
+Precautions:
+
+- a honeypot must not serve anyone as a **pivot**: isolate it (DMZ, VLAN), filter its outgoing
+  connections and monitor it; a honeypot that opens a connection itself is an alert in its own right;
+- its real administration access goes through another port, open to the administrators' network only;
+- make it **credible**: a host name, a banner, a kernel, plausible files; a Cowrie left with its
+  default settings (the name `svr04`, its banner, its kernel) is recognised with a single
+  command;
+- on the legal side, you only observe your own systems; the logs contain personal data within the
+  meaning of the GDPR (IP addresses): retention period and access must be defined. You never
+  "counter-attack".
+
+Exposed to the Internet, a honeypot studies mass attacks; placed inside (DMZ, internal networks), it
+serves as an **intrusion detector**.
+""",
+        "Cowrie": "Cowrie",
+        """
+
+**Cowrie** est un pot de miel SSH et Telnet à interaction moyenne, en Python. Il est installé ici dans
+`/opt/cowrie` (un environnement virtuel `cowrie-env`), et tourne sous l'utilisateur **`cowrie`** (il
+refuse de tourner en root) :
+
+| chemin | contenu |
+|--------|---------|
+| `/opt/cowrie/etc/cowrie.cfg` | la configuration (créée par `cowrie init` : une copie commentée des valeurs par défaut, comme `cowrie.cfg.dist`) |
+| `/opt/cowrie/etc/userdb.txt` | les comptes acceptés (absent : ceux de `userdb.example`) |
+| `/opt/cowrie/var/log/cowrie/cowrie.json` | les événements, un objet JSON par ligne |
+| `/opt/cowrie/var/log/cowrie/cowrie.log` | le journal du programme (démarrage, erreurs de configuration) |
+| `/opt/cowrie/var/lib/cowrie/tty/` | les sessions enregistrées (à rejouer avec `playlog`) |
+| `/opt/cowrie/var/lib/cowrie/downloads/` | les fichiers téléchargés par les attaquants, nommés par leur SHA-256 |
+
+`cowrie.cfg` est un fichier INI ; seules les clés modifiées comptent (Cowrie lit d'abord ses valeurs par
+défaut). Les commentaires tiennent sur leur propre ligne, jamais en fin de ligne :
+
+```
+[honeypot]
+# le nom affiché par l'invite, hostname et uname
+hostname = web-old-17
+# le nom de la sonde, dans chaque événement (champ sensor)
+sensor_name = hp-site-a
+
+[shell]
+# ce qu'affiche uname -r
+kernel_version = 5.10.0-18-amd64
+
+[ssh]
+# la bannière envoyée au client
+version = SSH-2.0-OpenSSH_7.9p1 Debian-10+deb10u4
+listen_endpoints = tcp:2222:interface=0.0.0.0
+```
+
+`userdb.txt` : une règle par ligne, `utilisateur:x:mot_de_passe`, lues de haut en bas, **la première qui
+correspond décide** ; `*` désigne n'importe quel utilisateur ou mot de passe, un mot de passe précédé de
+`!` **refuse**, `/regex/` est une expression régulière (`/regex/i` sans casse) ; une tentative qu'aucune
+règle ne reconnaît est refusée :
+
+```
+root:x:!root
+root:x:!123456
+root:x:*
+admin:x:admin
+```
+
+(`root` avec tout mot de passe sauf `root` et `123456` ; `admin` avec `admin` seulement ; tout autre
+compte refusé.)
+
+Cowrie écoute sur le port 2222 : un utilisateur ordinaire ne peut pas ouvrir un port inférieur à 1024.
+On lui redirige le port 22 par nftables, après avoir déplacé le vrai `sshd` sur un autre port (`Port`
+dans un fichier de `/etc/ssh/sshd_config.d/`, puis `systemctl restart ssh`) :
+
+```
+table inet honeypot {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        tcp dport 22 redirect to :2222
+    }
+}
+```
+
+Le service `cowrie.service` est fourni, non activé : `systemctl enable --now cowrie`, puis
+`systemctl restart cowrie` après chaque modification (Cowrie lit sa configuration au démarrage
+seulement), `journalctl -u cowrie` et `cowrie.log` en cas d'échec.
+""": """
+
+**Cowrie** is a medium-interaction SSH and Telnet honeypot, written in Python. It is installed here in
+`/opt/cowrie` (a virtual environment `cowrie-env`), and runs as the user **`cowrie`** (it refuses to run
+as root):
+
+| path | content |
+|------|---------|
+| `/opt/cowrie/etc/cowrie.cfg` | the configuration (created by `cowrie init`: a commented copy of the default values, like `cowrie.cfg.dist`) |
+| `/opt/cowrie/etc/userdb.txt` | the accepted accounts (if missing: those of `userdb.example`) |
+| `/opt/cowrie/var/log/cowrie/cowrie.json` | the events, one JSON object per line |
+| `/opt/cowrie/var/log/cowrie/cowrie.log` | the program's log (startup, configuration errors) |
+| `/opt/cowrie/var/lib/cowrie/tty/` | the recorded sessions (to replay with `playlog`) |
+| `/opt/cowrie/var/lib/cowrie/downloads/` | the files downloaded by the attackers, named after their SHA-256 |
+
+`cowrie.cfg` is an INI file; only the changed keys matter (Cowrie reads its default values first).
+Comments stand on their own line, never at the end of a line:
+
+```
+[honeypot]
+# the name shown by the prompt, hostname and uname
+hostname = web-old-17
+# the name of the sensor, in every event (field sensor)
+sensor_name = hp-site-a
+
+[shell]
+# what uname -r prints
+kernel_version = 5.10.0-18-amd64
+
+[ssh]
+# the banner sent to the client
+version = SSH-2.0-OpenSSH_7.9p1 Debian-10+deb10u4
+listen_endpoints = tcp:2222:interface=0.0.0.0
+```
+
+`userdb.txt`: one rule per line, `user:x:password`, read from top to bottom, **the first one that
+matches decides**; `*` stands for any user or password, a password preceded by `!` **refuses**,
+`/regex/` is a regular expression (`/regex/i` case-insensitive); an attempt that no rule matches is
+refused:
+
+```
+root:x:!root
+root:x:!123456
+root:x:*
+admin:x:admin
+```
+
+(`root` with any password except `root` and `123456`; `admin` with `admin` only; any other account
+refused.)
+
+Cowrie listens on port 2222: an ordinary user cannot open a port below 1024. Port 22 is redirected to
+it by nftables, after moving the real `sshd` to another port (`Port` in a file of
+`/etc/ssh/sshd_config.d/`, then `systemctl restart ssh`):
+
+```
+table inet honeypot {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        tcp dport 22 redirect to :2222
+    }
+}
+```
+
+The service `cowrie.service` is provided, not enabled: `systemctl enable --now cowrie`, then
+`systemctl restart cowrie` after each change (Cowrie reads its configuration at startup only),
+`journalctl -u cowrie` and `cowrie.log` in case of failure.
+""",
+        "Les journaux de Cowrie": "The Cowrie logs",
+        """
+
+Chaque événement de `cowrie.json` porte `eventid`, `timestamp` (UTC), `src_ip`, `session` (12 chiffres
+hexadécimaux, propres à une connexion) et `sensor` :
+
+| `eventid` | champs propres |
+|-----------|----------------|
+| `cowrie.session.connect` | `src_port`, `dst_ip`, `dst_port` |
+| `cowrie.client.version` | `version` : le logiciel du client (`SSH-2.0-Go`, `SSH-2.0-libssh_0.9.6`...) |
+| `cowrie.client.kex` | `hassh` : l'empreinte des algorithmes proposés par le client |
+| `cowrie.login.failed`, `cowrie.login.success` | `username`, `password` |
+| `cowrie.command.input` | `input` : la ligne tapée |
+| `cowrie.session.file_download` | `url`, `shasum` (SHA-256), `outfile`, `destfile` |
+| `cowrie.session.closed` | `duration` |
+
+```
+jq -r 'select(.eventid == "cowrie.login.success") | [.src_ip, .username, .password] | @tsv' cowrie.json
+jq -r 'select(.eventid == "cowrie.command.input") | [.session, .input] | @tsv' cowrie.json
+jq -r 'select(.eventid == "cowrie.login.failed") | .src_ip' cowrie.json | sort | uniq -c | sort -rn
+```
+""": """
+
+Each event of `cowrie.json` carries `eventid`, `timestamp` (UTC), `src_ip`, `session` (12 hexadecimal
+digits, specific to one connection) and `sensor`:
+
+| `eventid` | specific fields |
+|-----------|-----------------|
+| `cowrie.session.connect` | `src_port`, `dst_ip`, `dst_port` |
+| `cowrie.client.version` | `version`: the client's software (`SSH-2.0-Go`, `SSH-2.0-libssh_0.9.6`...) |
+| `cowrie.client.kex` | `hassh`: the fingerprint of the algorithms offered by the client |
+| `cowrie.login.failed`, `cowrie.login.success` | `username`, `password` |
+| `cowrie.command.input` | `input`: the line typed |
+| `cowrie.session.file_download` | `url`, `shasum` (SHA-256), `outfile`, `destfile` |
+| `cowrie.session.closed` | `duration` |
+
+```
+jq -r 'select(.eventid == "cowrie.login.success") | [.src_ip, .username, .password] | @tsv' cowrie.json
+jq -r 'select(.eventid == "cowrie.command.input") | [.session, .input] | @tsv' cowrie.json
+jq -r 'select(.eventid == "cowrie.login.failed") | .src_ip' cowrie.json | sort | uniq -c | sort -rn
+```
+""",
+        "Corréler des journaux": "Correlating logs",
+        """
+
+Une même activité laisse des traces dans plusieurs journaux, chacun avec sa vue : le pot de miel voit la
+session (les identifiants, les commandes), la sonde réseau voit les connexions (volumes, durées, et ce
+que la machine attaquée contacte ensuite). Relier ces traces, c'est les **corréler**. Les clés :
+
+- le **temps** : des horloges synchronisées (NTP), en UTC, et une marge (un journal note le début d'une
+  connexion, un autre sa fin) ;
+- le **quintuplet** : adresses, ports et protocole. Le port source d'un client change à chaque connexion,
+  ce qui en fait une bonne clé ; attention aux traductions d'adresses et de ports (NAT, redirection :
+  le pot de miel note le port 2222 que la redirection lui a donné, la sonde a vu le port 22) ;
+- les identifiants : `uid` (Zeek), `session` (Cowrie), `community_id` (commun à plusieurs outils).
+
+À grande échelle, un **SIEM** (Wazuh, Elastic, Splunk...) centralise les journaux, les normalise et
+automatise ces corrélations ; à la main, `jq` suffit :
+
+```
+jq -r 'select(.session == "a1b2c3d4e5f6" and .eventid == "cowrie.session.connect")
+       | [.src_ip, .src_port] | @tsv' cowrie.json
+jq -c 'select(."id.orig_h" == "203.0.113.7" and ."id.orig_p" == 51234)' conn.log
+```
+""": """
+
+The same activity leaves traces in several logs, each with its own view: the honeypot sees the session
+(the credentials, the commands), the network sensor sees the connections (volumes, durations, and what
+the attacked machine contacts next). Linking these traces together is **correlating** them. The keys:
+
+- **time**: synchronised clocks (NTP), in UTC, and a margin (one log records the start of a
+  connection, another its end);
+- the **5-tuple**: addresses, ports and protocol. The source port of a client changes with every
+  connection, which makes it a good key; beware of address and port translations (NAT, redirection:
+  the honeypot records the port 2222 that the redirection gave it, the sensor saw port 22);
+- the identifiers: `uid` (Zeek), `session` (Cowrie), `community_id` (shared by several tools).
+
+At large scale, a **SIEM** (Wazuh, Elastic, Splunk...) centralises the logs, normalises them and
+automates these correlations; by hand, `jq` is enough:
+
+```
+jq -r 'select(.session == "a1b2c3d4e5f6" and .eventid == "cowrie.session.connect")
+       | [.src_ip, .src_port] | @tsv' cowrie.json
+jq -c 'select(."id.orig_h" == "203.0.113.7" and ."id.orig_p" == 51234)' conn.log
+```
+""",
+        "Aide-mémoire": "Cheat sheet",
+        """
+
+| besoin | commande |
+|--------|----------|
+| appliquer la configuration de la sonde | `zeekctl deploy` (puis `zeekctl status`) |
+| les journaux de la sonde | `ls /opt/zeek/logs/current/` |
+| analyser une capture | `mkdir t && cd t && zeek -C -r ../capture.pcap local` |
+| essayer un script | `zeek -C -r capture.pcap script.zeek` puis `cat notice.log` |
+| extraire des colonnes | `zeek-cut ...` (TSV), `jq` (JSON) |
+| vérifier une empreinte | `sha256sum -c fichier.sha256`, `sha256sum fichier` |
+| extraire les fichiers HTTP d'une capture | `tshark -r f.pcap --export-objects http,/tmp/objets` |
+| redémarrer Cowrie | `systemctl restart cowrie` |
+| les événements de Cowrie | `tail -f /opt/cowrie/var/log/cowrie/cowrie.json \\| jq -c .` |
+| les règles nftables | `nft list ruleset` |
+| les ports en écoute | `ss -ltnp` |
+""": """
+
+| need | command |
+|------|---------|
+| apply the sensor's configuration | `zeekctl deploy` (then `zeekctl status`) |
+| the sensor's logs | `ls /opt/zeek/logs/current/` |
+| analyse a capture | `mkdir t && cd t && zeek -C -r ../capture.pcap local` |
+| try a script | `zeek -C -r capture.pcap script.zeek` then `cat notice.log` |
+| extract columns | `zeek-cut ...` (TSV), `jq` (JSON) |
+| check a hash | `sha256sum -c file.sha256`, `sha256sum file` |
+| extract the HTTP files of a capture | `tshark -r f.pcap --export-objects http,/tmp/objets` |
+| restart Cowrie | `systemctl restart cowrie` |
+| the Cowrie events | `tail -f /opt/cowrie/var/log/cowrie/cowrie.json \\| jq -c .` |
+| the nftables rules | `nft list ruleset` |
+| the listening ports | `ss -ltnp` |
+""",
+        "Partie 1 seule : la sonde Zeek configurée et lancée.": "Part 1 alone: the Zeek sensor configured and running.",
+        "Partie 2 seule : les deux scripts de détection.": "Part 2 alone: the two detection scripts.",
+        "Partie 3 seule : le fichier extrait et les réponses de l'enquête.": "Part 3 alone: the extracted file and the answers of the investigation.",
+        "Partie 4 seule : le pot de miel Cowrie.": "Part 4 alone: the Cowrie honeypot.",
+        "Partie 5 seule : les réponses de la corrélation.": "Part 5 alone: the answers of the correlation.",
+        "Bonus seul : les indicateurs du cadre Intel.": "Bonus alone: the indicators of the Intel framework.",
+        "Solution de référence complète (toutes les parties et le bonus, formulaires remplis).": "Complete reference solution (every part and the bonus, forms filled in).",
+        """
+| réseau | préfixe | machines |
+|--------|---------|----------|
+| `wan` (« Internet ») | `{wan}` | `gw` eth0 (`{gw_wan}`), `attacker` (`{attacker}`, votre machine d'attaque) |
+| `dmz` (un **concentrateur**) | `{dmz}` | `gw` eth1 (`{gw_dmz}`), `www` (`{www}`, serveur web et DNS de `corp.lab`), `honeypot` (`{hp}`), `sensor` eth1 (**sans adresse**) |
+| `lan` (interne) | `{lan}` | `gw` eth2 (`{gw_lan}`), `sensor` eth0 (`{sensor}`, gestion de la sonde), `analyst` (`{analyst}`, poste d'investigation) |
+""": """
+| network | prefix | machines |
+|---------|--------|----------|
+| `wan` ("Internet") | `{wan}` | `gw` eth0 (`{gw_wan}`), `attacker` (`{attacker}`, your attack machine) |
+| `dmz` (a **hub**) | `{dmz}` | `gw` eth1 (`{gw_dmz}`), `www` (`{www}`, web and DNS server of `corp.lab`), `honeypot` (`{hp}`), `sensor` eth1 (**no address**) |
+| `lan` (internal) | `{lan}` | `gw` eth2 (`{gw_lan}`), `sensor` eth0 (`{sensor}`, management of the sensor), `analyst` (`{analyst}`, forensics workstation) |
+""",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente la supervision de sécurité réseau, Zeek (journaux,
+zeekctl, scripts, cadre Intel), l'analyse d'une capture, les pots de miel et Cowrie, la corrélation des
+journaux.
+
+**La maquette** (onglet *Schéma*) : un routeur `gw` relie « Internet » (`wan`, où se trouve votre
+machine `attacker`) à une DMZ et au réseau interne `lan`. La DMZ est un **concentrateur** (*hub*) : la
+sonde `sensor` y voit tout le trafic.
+""": """
+Read the **Informations** tab: it presents network security monitoring, Zeek (logs, zeekctl, scripts,
+the Intel framework), the analysis of a capture, honeypots and Cowrie, log correlation.
+
+**The topology** (*Schema* tab): a router `gw` connects the "Internet" (`wan`, where your machine
+`attacker` sits) to a DMZ and to the internal network `lan`. The DMZ is a **hub**: the sensor `sensor`
+sees all its traffic.
+""",
+        """
+Déjà en place (ne pas modifier) : les adresses et les routes, les noms dans `/etc/hosts` (`www`,
+`honeypot`, `sensor`, `analyst`...), le serveur web et le serveur DNS de `corp.lab` sur `www`, le vrai
+serveur SSH de `honeypot` (comptes `student` / `student` et `root` / `root`, sur le port 22 pour
+l'instant). Zeek (`/opt/zeek`) et Cowrie (`/opt/cowrie`) sont installés, arrêtés, sur `sensor`,
+`honeypot` et `analyst`. Les pièces de l'enquête sont sur `analyst`, dans `/root/evidence/`.
+
+Règles valables pour tout le TP :
+
+- chaque **partie est indépendante** : la terminer donne ses points quel que soit l'état des autres.
+  Ce qui est noté est l'état final des machines et vos réponses : laissez vos configurations en place ;
+- l'évaluation est surtout **comportementale** : une machine cachée de `wan` utilise les adresses
+  `{first}` et `{second}` pour des requêtes HTTP et DNS vers `www` et des connexions SSH vers
+  `honeypot` (ports 22 et {admin}) ; vous verrez ces adresses dans les journaux, c'est normal. Elle
+  rejoue aussi hors ligne, sur `sensor`, des captures avec vos scripts ;
+- les parties 3 et 5 sont des enquêtes : leurs réponses se donnent dans les formulaires ;
+- une évaluation automatique a lieu toutes les cinq minutes.
+""": """
+Already in place (do not modify): the addresses and the routes, the names in `/etc/hosts` (`www`,
+`honeypot`, `sensor`, `analyst`...), the web server and the DNS server of `corp.lab` on `www`, the real
+SSH server of `honeypot` (accounts `student` / `student` and `root` / `root`, on port 22 for now). Zeek
+(`/opt/zeek`) and Cowrie (`/opt/cowrie`) are installed, stopped, on `sensor`, `honeypot` and `analyst`.
+The evidence of the investigation is on `analyst`, in `/root/evidence/`.
+
+Rules for the whole lab:
+
+- each **part is independent**: completing it gives its points whatever the state of the others. What
+  is graded is the final state of the machines and your answers: leave your configurations in place;
+- the evaluation is mostly **behavioural**: a hidden machine of `wan` uses the addresses `{first}` and
+  `{second}` for HTTP and DNS requests to `www` and SSH connections to `honeypot` (ports 22 and
+  {admin}); you will see these addresses in the logs, that is normal. It also replays captures offline,
+  on `sensor`, with your scripts;
+- parts 3 and 5 are investigations: their answers are given in the forms;
+- an automatic evaluation takes place every five minutes.
+""",
+        "Partie 1 — La sonde Zeek": "Part 1 — The Zeek sensor",
+        "Mettre la sonde en service": "Putting the sensor into service",
+        """
+Sur `sensor`, l'interface `eth1` (sans adresse) est branchée sur le concentrateur de la DMZ et
+l'interface `eth0` sur le réseau interne (gestion). Configurez Zeek (sections @@ref:zeek@@ à
+@@ref:zeekctl@@) :
+
+1. `node.cfg` : une sonde autonome qui capture sur **`eth1`** ;
+2. `networks.cfg` : exactement les deux réseaux internes, la DMZ `{dmz}` et le réseau `lan` `{lan}` ;
+   « Internet » (`wan`) utilise ici `{wan}`, une plage que Zeek range par défaut parmi les adresses
+   privées, donc locales : dans `local.zeek`, faites que seul `networks.cfg` compte ;
+3. `local.zeek` : des journaux au format **JSON** ;
+4. `zeekctl deploy`, puis `zeekctl status`.
+
+Depuis `attacker`, visitez `http://www/` et faites une requête DNS (`dig @www www.corp.lab`), depuis
+`analyst` aussi, puis lisez `/opt/zeek/logs/current/` (`conn.log`, `http.log`, `dns.log`) : retrouvez
+vos requêtes et le sens que Zeek leur donne (`local_orig`, `local_resp`). L'évaluation fait de même.
+""": """
+On `sensor`, the interface `eth1` (no address) is plugged into the DMZ hub and the interface `eth0`
+into the internal network (management). Configure Zeek (sections @@ref:zeek@@ to
+@@ref:zeekctl@@):
+
+1. `node.cfg`: a standalone sensor capturing on **`eth1`**;
+2. `networks.cfg`: exactly the two internal networks, the DMZ `{dmz}` and the `lan` network `{lan}`;
+   the "Internet" (`wan`) uses `{wan}` here, a range that Zeek counts by default among the private
+   addresses, hence local: in `local.zeek`, make `networks.cfg` alone count;
+3. `local.zeek`: logs in **JSON** format;
+4. `zeekctl deploy`, then `zeekctl status`.
+
+From `attacker`, visit `http://www/` and make a DNS query (`dig @www www.corp.lab`), from `analyst`
+too, then read `/opt/zeek/logs/current/` (`conn.log`, `http.log`, `dns.log`): find your requests and
+the direction Zeek gives them (`local_orig`, `local_resp`). The evaluation does the same.
+""",
+        "Zeek tourne sur sensor et capture sur eth1": "Zeek runs on sensor and captures on eth1",
+        "la requête HTTP de l'évaluation est dans http.log, au format JSON": "the evaluation's HTTP request is in http.log, in JSON format",
+        "conn.log : wan → www entrante (local_orig F, local_resp T), analyst → www interne (T, T)": "conn.log: wan → www inbound (local_orig F, local_resp T), analyst → www internal (T, T)",
+        "la requête DNS de l'évaluation est dans dns.log": "the evaluation's DNS query is in dns.log",
+        "Ce que Zeek écrit": "What Zeek writes",
+        """
+- que désigne le champ `uid` présent dans `conn.log`, `http.log`, `dns.log`... ? @@{uid:>une connexion : toutes les lignes qui la concernent portent le même uid>>>connection|la sonde qui a écrit la ligne>>>sensor|l'utilisateur connecté au serveur>>>user}@@
+- à quoi sert `networks.cfg` ? @@{networks:>dire quels réseaux sont locaux : Zeek en déduit le sens des connexions (local_orig, local_resp)>>>direction|choisir les réseaux à capturer>>>capture|exclure des réseaux de l'analyse>>>exclude}@@
+- que voit Zeek d'une session HTTPS ? @@{https:>les métadonnées : nom du serveur (SNI), certificat, versions, volumes, pas les URL ni le contenu>>>metadata|tout, il déchiffre TLS>>>everything|rien du tout>>>nothing}@@
+""": """
+- what does the field `uid`, present in `conn.log`, `http.log`, `dns.log`..., identify? @@{uid:>a connection: every line about it carries the same uid>>>connection|the sensor that wrote the line>>>sensor|the user logged in to the server>>>user}@@
+- what is `networks.cfg` for? @@{networks:>saying which networks are local: Zeek derives the direction of the connections from it (local_orig, local_resp)>>>direction|choosing the networks to capture>>>capture|excluding networks from the analysis>>>exclude}@@
+- what does Zeek see of an HTTPS session? @@{https:>the metadata: server name (SNI), certificate, versions, volumes, but neither the URLs nor the content>>>metadata|everything, it decrypts TLS>>>everything|nothing at all>>>nothing}@@
+""",
+        "uid = une connexion ; networks.cfg = le sens ; HTTPS = les métadonnées": "uid = a connection; networks.cfg = the direction; HTTPS = the metadata",
+        "Partie 2 — Écrire des scripts de détection": "Part 2 — Writing detection scripts",
+        "Deux scripts de détection": "Two detection scripts",
+        """
+Sur `sensor`, écrivez dans `{dir}` (sections @@ref:scripting@@ et @@ref:notice@@) :
+
+1. **`web-scan.zeek`** : une notice **`SRE::Web_Scan`**, avec `$src` = l'adresse du client, quand un même
+   client reçoit au moins **{n}** réponses HTTP **404** en moins de **2 minutes**, comptées à partir de sa
+   première 404. **Une seule** notice par client. Ni {below} réponses 404, ni des réponses 200, ni {n}
+   réponses 404 étalées sur plusieurs minutes ne doivent en lever.
+2. **`honeypot.zeek`** : une notice **`SRE::Honeypot_Outbound`**, avec `$conn`, pour **toute connexion
+   ouverte par** le pot de miel `{hp}`, quel que soit le protocole (TCP, UDP...). Les connexions qu'il
+   **reçoit** (les attaques) ne doivent pas en lever.
+
+Mettez-les au point hors ligne sur la capture `{training}`, qui contient ces cas :
+
+```
+cd $(mktemp -d) && zeek -C -r {training} {dir}/web-scan.zeek && jq -c . notice.log
+```
+
+(les journaux sont en TSV si vous ne chargez pas `policy/tuning/json-logs` : `cat notice.log`).
+L'évaluation rejoue **chaque script seul**, hors ligne, sur une autre capture des mêmes cas (d'autres
+adresses), avec des journaux JSON : elle ne dépend pas de la partie 1.
+""": """
+On `sensor`, write in `{dir}` (sections @@ref:scripting@@ and @@ref:notice@@):
+
+1. **`web-scan.zeek`**: a notice **`SRE::Web_Scan`**, with `$src` = the client's address, when one
+   client receives at least **{n}** HTTP **404** answers within **2 minutes**, counted from its first
+   404. **A single** notice per client. Neither {below} 404 answers, nor 200 answers, nor {n} 404
+   answers spread over several minutes may raise one.
+2. **`honeypot.zeek`**: a notice **`SRE::Honeypot_Outbound`**, with `$conn`, for **every connection
+   opened by** the honeypot `{hp}`, whatever the protocol (TCP, UDP...). The connections it
+   **receives** (the attacks) must not raise one.
+
+Debug them offline on the capture `{training}`, which contains these cases:
+
+```
+cd $(mktemp -d) && zeek -C -r {training} {dir}/web-scan.zeek && jq -c . notice.log
+```
+
+(the logs are in TSV if you do not load `policy/tuning/json-logs`: `cat notice.log`). The evaluation
+replays **each script alone**, offline, on another capture of the same cases (other addresses), with
+JSON logs: it does not depend on part 1.
+""",
+        "SRE::Web_Scan pour le client aux nombreuses 404 (2), une seule fois (1)": "SRE::Web_Scan for the client with many 404s (2), only once (1)",
+        "SRE::Web_Scan dès le seuil atteint exactement": "SRE::Web_Scan as soon as the threshold is reached exactly",
+        "aucune notice sous le seuil, pour des réponses 200, ni pour des 404 étalées (fenêtre de 2 min)": "no notice below the threshold, for 200 answers, nor for spread-out 404s (2 min window)",
+        "SRE::Honeypot_Outbound pour la connexion TCP ouverte par le pot de miel (2), avec $conn (1)": "SRE::Honeypot_Outbound for the TCP connection opened by the honeypot (2), with $conn (1)",
+        "SRE::Honeypot_Outbound pour une requête DNS (UDP) du pot de miel": "SRE::Honeypot_Outbound for a DNS query (UDP) of the honeypot",
+        "aucune notice pour les connexions reçues par le pot de miel ni pour les autres machines": "no notice for the connections received by the honeypot nor for the other machines",
+        "Partie 3 — Enquête sur une capture": "Part 3 — Investigating a capture",
+        "L'enquête": "The investigation",
+        """
+Il y a quelques jours, l'équipe d'exploitation a remarqué un trafic inhabituel. La sonde enregistrait
+alors tout le trafic de la DMZ et du réseau interne : la capture est sur `analyst`, dans `{pcap}`, avec
+son empreinte `{pcap}.sha256`. Reconstituez l'incident (sections @@ref:response@@, @@ref:pcap@@ et
+@@ref:patterns@@) : vérifiez d'abord l'intégrité de la preuve, puis travaillez sur une copie, avec Zeek
+(`zeek -C -r ... local`), `zeek-cut` ou `jq`, et `tshark`.
+
+Les machines de la capture : le serveur de fichiers `files` (`{files}`), l'application `intranet`
+(`{intranet}`, `intranet.corp.lab`), le résolveur DNS `{resolver}`, des postes du réseau interne
+`{lan}` ; les adresses de `{wan}` et les autres sont « Internet ».
+""": """
+A few days ago, the operations team noticed unusual traffic. The sensor was then recording all the
+traffic of the DMZ and of the internal network: the capture is on `analyst`, in `{pcap}`, with its hash
+`{pcap}.sha256`. Reconstruct the incident (sections @@ref:response@@, @@ref:pcap@@ and
+@@ref:patterns@@): first check the integrity of the evidence, then work on a copy, with Zeek
+(`zeek -C -r ... local`), `zeek-cut` or `jq`, and `tshark`.
+
+The machines of the capture: the file server `files` (`{files}`), the application `intranet`
+(`{intranet}`, `intranet.corp.lab`), the DNS resolver `{resolver}`, workstations of the internal network
+`{lan}`; the addresses of `{wan}` and the others are the "Internet".
+""",
+        "Le balayage": "The scan",
+        """
+- l'adresse de la machine qui a balayé les ports de `files` : @@{scanner:[0-9.]+}@@
+- les ports **ouverts** que ce balayage a trouvés, séparés par des virgules (par exemple `25,110`) : @@{ports:[0-9, ]+}@@
+""": """
+- the address of the machine that scanned the ports of `files`: @@{scanner:[0-9.]+}@@
+- the **open** ports that this scan found, separated by commas (for example `25,110`): @@{ports:[0-9, ]+}@@
+""",
+        "l'adresse du scanner (2) et les ports ouverts trouvés (2)": "the scanner's address (2) and the open ports found (2)",
+        "La recherche de mots de passe": "The password guessing",
+        """
+- le compte visé par la recherche de mots de passe sur `intranet` : @@{account:.+}@@
+- le mot de passe finalement trouvé (décodé) : @@{password:.+}@@
+""": """
+- the account targeted by the password guessing on `intranet`: @@{account:.+}@@
+- the password eventually found (decoded): @@{password:.+}@@
+""",
+        "le compte visé (2) et le mot de passe trouvé (2)": "the targeted account (2) and the password found (2)",
+        "Le fichier malveillant": "The malicious file",
+        """
+L'attaquant a déposé un fichier sur `intranet`, qu'un poste interne a ensuite téléchargé.
+
+- le poste interne qui l'a téléchargé : @@{victim:[0-9.]+}@@
+- le nom du fichier : @@{file:.+}@@
+- son empreinte SHA-256 : @@{sha256:[0-9a-fA-F]+}@@
+
+Extrayez aussi le fichier de la capture dans `/root/evidence/extracted/` (sous le nom de votre choix) :
+l'évaluation y cherche un fichier de cette empreinte.
+""": """
+The attacker dropped a file on `intranet`, which an internal workstation then downloaded.
+
+- the internal workstation that downloaded it: @@{victim:[0-9.]+}@@
+- the name of the file: @@{file:.+}@@
+- its SHA-256 hash: @@{sha256:[0-9a-fA-F]+}@@
+
+Also extract the file from the capture into `/root/evidence/extracted/` (under any name you like): the
+evaluation looks there for a file with this hash.
+""",
+        "le poste (1), le nom du fichier (1), son SHA-256 (3)": "the workstation (1), the file name (1), its SHA-256 (3)",
+        "un fichier de /root/evidence/extracted a le SHA-256 du fichier malveillant": "a file of /root/evidence/extracted has the SHA-256 of the malicious file",
+        "La balise": "The beacon",
+        """
+Le poste compromis contacte ensuite régulièrement un serveur de commande et contrôle (C2).
+
+- le nom de domaine du C2 : @@{c2_domain:.+}@@
+- son adresse IP : @@{c2_ip:[0-9.]+}@@
+- la période de ses requêtes, en secondes (à une seconde près) : @@{period:[0-9.,]+}@@
+""": """
+The compromised workstation then regularly contacts a command and control (C2) server.
+
+- the domain name of the C2: @@{c2_domain:.+}@@
+- its IP address: @@{c2_ip:[0-9.]+}@@
+- the period of its requests, in seconds (to within one second): @@{period:[0-9.,]+}@@
+""",
+        "le domaine du C2 (2), son adresse (1), la période (2)": "the C2 domain (2), its address (1), the period (2)",
+        "L'exfiltration": "The exfiltration",
+        """
+Des données sont sorties du réseau sans connexion HTTP.
+
+- le domaine qui reçoit les données : @@{exfil_domain:.+}@@
+- la valeur de `code=` dans les données exfiltrées : @@{code:.+}@@
+""": """
+Data left the network without any HTTP connection.
+
+- the domain that receives the data: @@{exfil_domain:.+}@@
+- the value of `code=` in the exfiltrated data: @@{code:.+}@@
+""",
+        "le domaine de l'exfiltration (2), le code (2)": "the exfiltration domain (2), the code (2)",
+        "Partie 4 — Le pot de miel Cowrie": "Part 4 — The Cowrie honeypot",
+        "Déployer Cowrie": "Deploying Cowrie",
+        """
+Sur `honeypot` (sections @@ref:honeypot@@ et @@ref:cowrie@@), faites de la machine un pot de miel
+crédible :
+
+1. déplacez le vrai serveur SSH sur le port **{admin}**, et n'ouvrez ce port qu'au réseau `lan`
+   (`{lan}`) : depuis `wan`, il doit être fermé ;
+2. faites répondre **Cowrie** sur le port **22** ;
+3. son identité, dans `cowrie.cfg` : le nom d'hôte `{hostname}`, la bannière SSH `{banner}`, la version
+   du noyau `{kernel}` (ce qu'affiche `uname -r`), le nom de sonde `{sensor}` ;
+4. ses comptes, dans `userdb.txt` : `root` accepté avec `{p1}`, `{p2}` ou `{p3}`, et **aucun autre** mot
+   de passe ; `{user2}` accepté avec n'importe quel mot de passe **sauf** `{refused}` ; tout autre compte
+   refusé ;
+5. Cowrie lancé par systemd, sous l'utilisateur `cowrie`, et activé au démarrage.
+
+Testez depuis `attacker` (`ssh root@honeypot`, puis `hostname`, `uname -a`, `ls`...) en suivant
+`cowrie.json`, et depuis `analyst` : `ssh -p {admin} student@honeypot`. L'évaluation se connecte depuis
+`wan` aux ports 22 et {admin} avec des comptes justes et faux, et depuis `analyst` au port {admin}.
+""": """
+On `honeypot` (sections @@ref:honeypot@@ and @@ref:cowrie@@), turn the machine into a credible
+honeypot:
+
+1. move the real SSH server to port **{admin}**, and open this port to the `lan` network (`{lan}`)
+   only: from `wan`, it must be closed;
+2. make **Cowrie** answer on port **22**;
+3. its identity, in `cowrie.cfg`: the host name `{hostname}`, the SSH banner `{banner}`, the kernel
+   version `{kernel}` (what `uname -r` prints), the sensor name `{sensor}`;
+4. its accounts, in `userdb.txt`: `root` accepted with `{p1}`, `{p2}` or `{p3}`, and **no other**
+   password; `{user2}` accepted with any password **except** `{refused}`; any other account
+   refused;
+5. Cowrie started by systemd, as the user `cowrie`, and enabled at boot.
+
+Test from `attacker` (`ssh root@honeypot`, then `hostname`, `uname -a`, `ls`...) while following
+`cowrie.json`, and from `analyst`: `ssh -p {admin} student@honeypot`. The evaluation connects from
+`wan` to ports 22 and {admin} with right and wrong accounts, and from `analyst` to port {admin}.
+""",
+        "le vrai serveur SSH répond sur le port 22222 depuis lan": "the real SSH server answers on port 22222 from lan",
+        "le port 22222 est fermé depuis wan": "port 22222 is closed from wan",
+        "le port 22 envoie la bannière demandée (Cowrie)": "port 22 sends the requested banner (Cowrie)",
+        "Cowrie tourne sous l'utilisateur cowrie (2), le service est activé (1)": "Cowrie runs as the user cowrie (2), the service is enabled (1)",
+        "le nom d'hôte (2), la version du noyau (2), le nom de sonde des événements (2)": "the host name (2), the kernel version (2), the sensor name of the events (2)",
+        "root avec un mot de passe de la liste (1), refusé avec un autre (2) ; le second compte avec un mot de passe quelconque (1), refusé avec le mot de passe exclu (2) ; un compte inconnu refusé (1)": "root with a password of the list (1), refused with another one (2); the second account with any password (1), refused with the excluded password (2); an unknown account refused (1)",
+        """
+- Cowrie est un pot de miel à interaction... @@{level:>moyenne : il émule un shell, rien n'est réellement exécuté>>>medium|haute : c'est un vrai système>>>high|basse : il note seulement les connexions>>>low}@@
+- pourquoi toute connexion à un pot de miel est-elle suspecte ? @@{suspicious:>il n'offre aucun service légitime : personne n'a de raison de s'y connecter>>>no-use|son adresse est secrète>>>secret|il n'accepte que les attaquants>>>attackers}@@
+- le principal risque d'un pot de miel mal isolé ? @@{risk:>servir de rebond vers d'autres machines : filtrer ses connexions sortantes>>>pivot|qu'il soit trop lent>>>slow|qu'il refuse les attaquants>>>refuse}@@
+""": """
+- Cowrie's level of interaction is... @@{level:>medium: it emulates a shell, nothing is really executed>>>medium|high: it is a real system>>>high|low: it only records the connections>>>low}@@
+- why is every connection to a honeypot suspicious? @@{suspicious:>it offers no legitimate service: nobody has any reason to connect to it>>>no-use|its address is secret>>>secret|it only accepts attackers>>>attackers}@@
+- the main risk of a poorly isolated honeypot? @@{risk:>serving as a pivot towards other machines: filter its outgoing connections>>>pivot|being too slow>>>slow|refusing the attackers>>>refuse}@@
+""",
+        "interaction moyenne ; aucun usage légitime ; risque de rebond": "medium interaction; no legitimate use; risk of pivoting",
+        "Partie 5 — Corréler les journaux du pot de miel": "Part 5 — Correlating the honeypot logs",
+        "Les journaux d'hier": "Yesterday's logs",
+        """
+Le pot de miel de production (la sonde `{sensor}`) a été attaqué hier. Sur `analyst`, `{cowrie}` est son
+journal Cowrie de la journée, et `{conn}` le `conn.log` de la sonde Zeek de la DMZ pour la même journée
+(format JSON). Répondez avec `jq` (sections @@ref:cowrie-logs@@ et @@ref:correlation@@) : le premier
+journal raconte les sessions, le second les connexions, et seul le croisement des deux répond aux
+dernières questions.
+""": """
+The production honeypot (the sensor `{sensor}`) was attacked yesterday. On `analyst`, `{cowrie}` is its
+Cowrie log for the day, and `{conn}` the `conn.log` of the DMZ Zeek sensor for the same day (JSON
+format). Answer with `jq` (sections @@ref:cowrie-logs@@ and @@ref:correlation@@): the first log tells
+the story of the sessions, the second that of the connections, and only cross-referencing the two
+answers the last questions.
+""",
+        "Les attaquants": "The attackers",
+        """
+- combien d'adresses différentes ont tenté au moins une authentification ? @@{n_ips:[0-9]+}@@
+- l'adresse qui a échoué le plus souvent : @@{top_ip:[0-9.]+}@@
+- le logiciel client qu'elle utilisait (le champ `version`, tel quel) : @@{top_version:.+}@@
+""": """
+- how many different addresses attempted at least one authentication? @@{n_ips:[0-9]+}@@
+- the address that failed most often: @@{top_ip:[0-9.]+}@@
+- the client software it was using (the field `version`, as is): @@{top_version:.+}@@
+""",
+        "le nombre d'adresses (3), l'adresse la plus active (2) et son client (2)": "the number of addresses (3), the most active address (2) and its client (2)",
+        "La compromission": "The compromise",
+        """
+Un attaquant a réussi à se connecter, a téléchargé un programme et s'est ménagé un accès durable.
+
+- l'URL du programme téléchargé : @@{url:.+}@@
+- son SHA-256 : @@{sha256:[0-9a-fA-F]+}@@
+- le commentaire de la clé SSH ajoutée par l'attaquant (le dernier mot de la clé) : @@{key_comment:.+}@@
+- l'`uid` Zeek de la connexion SSH de cette session : @@{ssh_uid:C[0-9A-Za-z]+}@@
+- l'`uid` Zeek de la connexion que le pot de miel a ouverte pour télécharger le programme : @@{out_uid:C[0-9A-Za-z]+}@@
+""": """
+An attacker managed to log in, downloaded a program and set up persistent access.
+
+- the URL of the downloaded program: @@{url:.+}@@
+- its SHA-256: @@{sha256:[0-9a-fA-F]+}@@
+- the comment of the SSH key added by the attacker (the last word of the key): @@{key_comment:.+}@@
+- the Zeek `uid` of the SSH connection of this session: @@{ssh_uid:C[0-9A-Za-z]+}@@
+- the Zeek `uid` of the connection that the honeypot opened to download the program: @@{out_uid:C[0-9A-Za-z]+}@@
+""",
+        "l'URL (2), le SHA-256 (2), le commentaire de la clé (2), l'uid SSH (2), l'uid sortant (2)": "the URL (2), the SHA-256 (2), the key comment (2), the SSH uid (2), the outgoing uid (2)",
+        "Bonus — Le cadre Intel": "Bonus — The Intel framework",
+        "Les indicateurs du CERT": "The CERT's indicators",
+        """
+Le CERT vous transmet trois indicateurs de compromission : le domaine `{domain}`, l'adresse `{addr}` et
+l'URL `http://{url}`. Sur `sensor` (section @@ref:intel@@) :
+
+1. écrivez `{intel}` avec ces trois indicateurs (la source et la description sont libres) ;
+2. dans `local.zeek`, chargez `frameworks/intel/seen` et ce fichier (`Intel::read_files`).
+
+Si la sonde de la partie 1 tourne, `zeekctl deploy` : une requête `dig @www {domain}` depuis `analyst`
+doit apparaître dans `intel.log`. L'évaluation rejoue hors ligne une capture contenant les trois
+indicateurs, avec `zeek --pseudo-realtime=1 -r ... local` : elle ne dépend pas de la partie 1.
+""": """
+The CERT sends you three indicators of compromise: the domain `{domain}`, the address `{addr}` and the
+URL `http://{url}`. On `sensor` (section @@ref:intel@@):
+
+1. write `{intel}` with these three indicators (the source and the description are up to you);
+2. in `local.zeek`, load `frameworks/intel/seen` and this file (`Intel::read_files`).
+
+If the sensor of part 1 is running, `zeekctl deploy`: a query `dig @www {domain}` from `analyst` must
+show up in `intel.log`. The evaluation replays offline a capture containing the three indicators, with
+`zeek --pseudo-realtime=1 -r ... local`: it does not depend on part 1.
+""",
+        "intel.log reconnaît l'indicateur {kind}": "intel.log recognises the indicator {kind}",
     },
 }

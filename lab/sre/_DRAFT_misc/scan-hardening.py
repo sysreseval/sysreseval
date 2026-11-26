@@ -1164,48 +1164,69 @@ de l'extérieur.
         self._setup_app()
         self._setup_tools()
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 seule : le fichier de la découverte des machines."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 1 seule : le fichier de la découverte des machines.",
+                              en="Part 1 alone: the file of the host discovery."))
     def part1_discovery(self):
         self._solve_recon('discovery')
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 seule : le fichier du scan de tous les ports TCP de server."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 2 seule : le fichier du scan de tous les ports TCP de server.",
+                              en="Part 2 alone: the file of the scan of all the TCP ports of server."))
     def part2_ports(self):
         self._solve_recon('server_tcp')
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 seule : le fichier de la détection des versions."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 3 seule : le fichier de la détection des versions.",
+                              en="Part 3 alone: the file of the version detection."))
     def part3_versions(self):
         self._solve_recon('server_sv')
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 seule : le fichier des scripts par défaut."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 4 seule : le fichier des scripts par défaut.",
+                              en="Part 4 alone: the file of the default scripts."))
     def part4_nse(self):
         self._solve_recon('office_default')
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 seule : les services inutiles de legacy arrêtés et désactivés."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 5 seule : les services inutiles de legacy arrêtés et désactivés.",
+                              en="Part 5 alone: the useless services of legacy stopped and disabled."))
     def part5_surface(self):
         self._solve_surface()
 
-    @sre_state(user_allowed=False, description=tr("Partie 6 seule : Redis et SNMP de db restreints."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 6 seule : Redis et SNMP de db restreints.",
+                              en="Part 6 alone: Redis and SNMP of db restricted."))
     def part6_exposure(self):
         self._solve_exposure()
 
-    @sre_state(user_allowed=False, description=tr("Partie 7 seule : SSH de www durci."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 7 seule : SSH de www durci.",
+                              en="Part 7 alone: SSH of www hardened."))
     def part7_ssh(self):
         self._solve_ssh()
 
-    @sre_state(user_allowed=False, description=tr("Partie 8 seule : nginx et TLS de www durcis."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 8 seule : nginx et TLS de www durcis.",
+                              en="Part 8 alone: nginx and TLS of www hardened."))
     def part8_web(self):
         self._solve_web()
 
-    @sre_state(user_allowed=False, description=tr("Partie 9 seule : le pare-feu persistant de app."))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 9 seule : le pare-feu persistant de app.",
+                              en="Part 9 alone: the persistent firewall of app."))
     def part9_firewall(self):
         self._solve_firewall()
 
-    @sre_state(user_allowed=False, description=tr("Bonus seul : le script NSE du service d'inventaire."))
+    @sre_state(user_allowed=False,
+               description=tr("Bonus seul : le script NSE du service d'inventaire.",
+                              en="Bonus alone: the NSE script of the asset service."))
     def bonus_nse(self):
         self._solve_nse()
 
     @sre_state(user_allowed=False,
-               description=tr("Solution de référence complète (toutes les parties et le bonus, formulaires remplis)."))
+               description=tr("Solution de référence complète (toutes les parties et le bonus, formulaires remplis).",
+                              en="Complete reference solution (all the parts and the bonus, forms filled in)."))
     def final(self):
         """Reference solution, applicable more than once: every grade element reaches its maximum."""
         for key in ('discovery', 'server_tcp', 'server_sv', 'office_default'):
@@ -1967,7 +1988,7 @@ par des listes explicites, puis `sshd -t && systemctl reload ssh` :
             self.add_grade_element(
                 title=no_tr(f"ssh_weak_{key}"), max_grade=1, grade_part=part7,
                 grade=int(algos_seen and not weak[key]),
-                description=no_tr("ssh2-enum-algos : ") + label)
+                description=tr("ssh2-enum-algos : ") + label)
 
         q7_answers = {"keys": "guess", "sha1": "collisions"}
         q7 = self.question_form(
@@ -2105,7 +2126,7 @@ Vérifiez depuis `attacker` et depuis `admin`.
             title=tr("Ce que voit nmap"),
             hash="a3ed61334852eaf3",
             description=tr("""
-- avec la politique `drop`, les ports non autorisés de `app` apparaissent : @@{filtered:>filtered : plus aucune réponse, le scan ralentit et apprend moins>>>drop|closed : la machine répond RST>>>rst|open|filtered>>>openfiltered}@@
+- avec la politique `drop`, les ports non autorisés de `app` apparaissent : @@{filtered:>filtered : plus aucune réponse, le scan ralentit et apprend moins>>>drop|closed : la machine répond RST>>>rst|open/filtered>>>openfiltered}@@
 - et avec `reject with tcp reset` à la place : @@{reject:>closed : un RST revient, comme sans service>>>closed|filtered>>>filtered|open>>>open}@@
 """)
             + instructor(tr("""
@@ -2327,5 +2348,1217 @@ without a service (faster for legitimate clients, more talkative for a scan).
             """
 **Solution.** The reference script:
 """,
+        "Scan et durcissement : nmap, scripts NSE et réduction de la surface d'attaque": "Scanning and hardening: nmap, NSE scripts and attack surface reduction",
+        """**Sommaire**
+
+""": """**Contents**
+
+""",
+        "Pourquoi scanner": "Why scan",
+        """
+
+Un **scan** dresse l'inventaire de ce qu'un réseau expose : les machines actives, leurs ports
+ouverts, les services qui y répondent et leurs versions. C'est la première étape d'un attaquant (la
+**reconnaissance**) et l'outil de base du défenseur, qui vérifie que **seul ce qui doit être exposé
+l'est**.
+
+L'ensemble des points d'entrée d'un système forme sa **surface d'attaque** : chaque service à l'écoute,
+chaque compte, chaque protocole accepté. **Durcir** (*hardening*) une machine, c'est réduire cette
+surface (arrêter, désinstaller, ne pas exposer) puis rendre plus solide ce qui reste (configuration,
+authentification, chiffrement), et **vérifier** le résultat de l'extérieur.
+
+**Cadre légal.** Scanner ou sonder un système sans l'accord de son responsable est une infraction
+(articles 323-1 et suivants du Code pénal : accès et maintien frauduleux, entrave ; 323-3-1 : détention
+d'outils sans motif légitime). Un audit se fait avec un **mandat écrit** qui fixe le périmètre et les
+dates. Dans ce TP, ne scannez que les réseaux de la maquette.
+
+**nmap** est l'outil de référence, libre : `nmap [types de scan] [options] cibles`. Une cible est une
+adresse, un nom, un préfixe (`192.168.1.0/24`), une plage (`10.0.0.1-50`) ou une liste dans un fichier
+(`-iL fichier`). Il faut être `root` pour la plupart des techniques (paquets construits à la main).
+""": """
+
+A **scan** takes the inventory of what a network exposes: the live hosts, their open ports, the
+services answering on them and their versions. It is the first step of an attacker (the
+**reconnaissance**) and the basic tool of the defender, who checks that **only what must be exposed
+is**.
+
+All the entry points of a system make up its **attack surface**: every listening service, every
+account, every accepted protocol. **Hardening** a machine means reducing that surface (stopping,
+uninstalling, not exposing) then making what remains sturdier (configuration, authentication,
+encryption), and **checking** the result from the outside.
+
+**Legal framework.** Scanning or probing a system without the consent of the person responsible for
+it is an offence (in France, articles 323-1 ff. of the Penal Code: fraudulent access and remaining in
+a system, obstruction; 323-3-1: possessing tools without a legitimate reason). An audit is done under
+a **written mandate** that sets its scope and dates. In this lab, only scan the networks of the setup.
+
+**nmap** is the reference tool, free software: `nmap [scan types] [options] targets`. A target is an
+address, a name, a prefix (`192.168.1.0/24`), a range (`10.0.0.1-50`) or a list in a file
+(`-iL file`). Most techniques require `root` (hand-crafted packets).
+""",
+        "Découvrir les machines actives": "Discovering the live hosts",
+        """
+
+Avant de scanner les ports, nmap cherche quelles adresses répondent (*host discovery*) ; `-sn` fait
+**seulement** cette découverte, sans scan de ports.
+
+- Sur le **même segment Ethernet** (et en `root`), nmap envoie une requête **ARP** par adresse : une
+  machine ne peut pas ignorer ARP, la découverte est fiable.
+- **À travers un routeur**, ARP ne passe pas. nmap envoie par défaut quatre sondes et toute réponse,
+  même un refus, prouve que la machine existe :
+
+| sonde | envoyé | réponse attendue |
+|-------|--------|------------------|
+| `-PE` | ICMP *echo request* (ping) | *echo reply* |
+| `-PS443` | TCP SYN vers le port 443 | SYN-ACK (ouvert) ou RST (fermé) |
+| `-PA80` | TCP ACK vers le port 80 | RST (aucune connexion ne correspond) |
+| `-PP` | ICMP *timestamp request* | *timestamp reply* |
+
+- Sans les droits de `root`, nmap se contente de tenter une connexion vers les ports 80 et 443.
+
+Une machine dont le pare-feu **jette** tout ce qui ne vise pas ses propres services ne répond à aucune
+de ces sondes : elle semble éteinte. On choisit alors ses sondes : `-PS21,22,445,873` (SYN vers ces
+ports), `-PA`, `-PU` (UDP), `-PE`, ou `-Pn` qui saute la découverte et scanne chaque adresse comme si
+elle était active (très lent sur un préfixe plein de trous). Une découverte réussie dépend donc de
+l'idée qu'on se fait des services présents.
+
+Options utiles : `-n` (pas de résolution DNS inverse, plus rapide), `-sL` (liste les cibles sans rien
+envoyer), `--reason` (la réponse qui a fait conclure).
+""": """
+
+Before scanning ports, nmap looks for the addresses that answer (*host discovery*); `-sn` does
+**only** this discovery, without a port scan.
+
+- On the **same Ethernet segment** (and as `root`), nmap sends one **ARP** request per address: a
+  machine cannot ignore ARP, the discovery is reliable.
+- **Through a router**, ARP does not get through. By default nmap sends four probes, and any answer,
+  even a refusal, proves that the machine exists:
+
+| probe | sent | expected answer |
+|-------|------|-----------------|
+| `-PE` | ICMP *echo request* (ping) | *echo reply* |
+| `-PS443` | TCP SYN to port 443 | SYN-ACK (open) or RST (closed) |
+| `-PA80` | TCP ACK to port 80 | RST (no connection matches) |
+| `-PP` | ICMP *timestamp request* | *timestamp reply* |
+
+- Without `root` privileges, nmap merely tries a connection to ports 80 and 443.
+
+A machine whose firewall **drops** everything not aimed at its own services answers none of these
+probes: it looks switched off. You then choose your probes: `-PS21,22,445,873` (SYN to these ports),
+`-PA`, `-PU` (UDP), `-PE`, or `-Pn`, which skips the discovery and scans every address as if it were
+up (very slow on a prefix full of holes). A successful discovery therefore depends on your idea of
+the services present.
+
+Useful options: `-n` (no reverse DNS resolution, faster), `-sL` (lists the targets without sending
+anything), `--reason` (the answer that led to the conclusion).
+""",
+        "Scanner les ports TCP": "Scanning TCP ports",
+        """
+
+Rappel : une connexion TCP s'ouvre par SYN, SYN-ACK, ACK ; un port sans service répond RST.
+
+- **`-sS`, scan SYN** (le défaut en `root`) : nmap envoie un SYN ; un SYN-ACK signifie **ouvert** et
+  nmap répond aussitôt RST, sans jamais terminer la poignée de main (scan « semi-ouvert » : rapide, la
+  connexion n'arrive pas jusqu'à l'application) ; un RST signifie **fermé** ; aucune réponse (ou une
+  erreur ICMP) signifie **filtré**. Il faut construire des paquets bruts, donc être `root`.
+- **`-sT`, scan connect** : nmap demande au système d'ouvrir de vraies connexions (`connect()`) ; pas
+  besoin de `root`, mais c'est plus lent et l'application voit (et journalise) chaque connexion.
+
+Les états d'un port :
+
+| état | signification |
+|------|---------------|
+| `open` | un service accepte les connexions |
+| `closed` | la machine répond (RST) mais aucun service n'écoute |
+| `filtered` | aucune réponse ou une erreur ICMP : un pare-feu jette ou rejette les sondes |
+| `unfiltered` | joignable, ouvert ou fermé (scan ACK `-sA` seulement) |
+| `open\\|filtered` | pas de réponse, sans pouvoir trancher (UDP surtout) |
+| `closed\\|filtered` | idem (scan *idle* seulement) |
+
+Choisir les ports : par défaut les **1000 ports les plus fréquents** (fichier `nmap-services`), `-F` les
+100 premiers, `--top-ports N`, `-p 22,80,8000-8100`, et **`-p-`** tous les ports de 1 à 65535. Un service
+placé sur un port inhabituel n'apparaît qu'avec `-p-`.
+
+Autres options : `--open` (seulement les ports ouverts), `-T0` à `-T5` (rythme ; `-T3` par défaut,
+`-T4` sur un réseau local rapide), `--max-retries`, `--host-timeout`. Le scan ACK `-sA` ne dit pas si
+un port est ouvert mais **cartographie un pare-feu** : `unfiltered` (un RST revient) ou `filtered`.
+
+Ce que produit un pare-feu : une règle `drop` donne `filtered` (et ralentit le scan : nmap retente) ;
+`reject with tcp reset` donne `closed` ; un `reject` ICMP donne `filtered`.
+""": """
+
+Reminder: a TCP connection opens with SYN, SYN-ACK, ACK; a port without a service answers RST.
+
+- **`-sS`, SYN scan** (the default as `root`): nmap sends a SYN; a SYN-ACK means **open** and nmap
+  answers RST at once, never completing the handshake ("half-open" scan: fast, the connection never
+  reaches the application); an RST means **closed**; no answer (or an ICMP error) means
+  **filtered**. It needs raw packets, hence `root`.
+- **`-sT`, connect scan**: nmap asks the system to open real connections (`connect()`); no need for
+  `root`, but it is slower and the application sees (and logs) every connection.
+
+The states of a port:
+
+| state | meaning |
+|-------|---------|
+| `open` | a service accepts connections |
+| `closed` | the machine answers (RST) but no service listens |
+| `filtered` | no answer or an ICMP error: a firewall drops or rejects the probes |
+| `unfiltered` | reachable, open or closed (ACK scan `-sA` only) |
+| `open\\|filtered` | no answer, without being able to decide (mostly UDP) |
+| `closed\\|filtered` | likewise (*idle* scan only) |
+
+Choosing the ports: by default the **1000 most frequent ports** (file `nmap-services`), `-F` the
+first 100, `--top-ports N`, `-p 22,80,8000-8100`, and **`-p-`** all the ports from 1 to 65535. A
+service placed on an unusual port only shows up with `-p-`.
+
+Other options: `--open` (only the open ports), `-T0` to `-T5` (pace; `-T3` by default, `-T4` on a
+fast local network), `--max-retries`, `--host-timeout`. The ACK scan `-sA` does not tell whether a
+port is open but **maps a firewall**: `unfiltered` (an RST comes back) or `filtered`.
+
+What a firewall produces: a `drop` rule gives `filtered` (and slows the scan down: nmap retries);
+`reject with tcp reset` gives `closed`; an ICMP `reject` gives `filtered`.
+""",
+        "Scanner les ports UDP": "Scanning UDP ports",
+        """
+
+UDP n'a pas de poignée de main. Avec `-sU`, nmap envoie un datagramme, vide ou avec une charge propre au
+protocole attendu sur ce port (une requête DNS vers 53, SNMP vers 161...) :
+
+- une réponse UDP : **open** ;
+- une erreur ICMP *port unreachable* : **closed** ;
+- rien : **open|filtered** : un service qui ignore une requête qu'il ne comprend pas, ou un datagramme
+  jeté par un pare-feu. Un serveur TFTP répond depuis un **autre** port : nmap ne relie pas sa réponse
+  à la sonde et conclut aussi `open|filtered`.
+
+Un scan UDP est d'habitude **lent** : Linux limite le débit des erreurs ICMP qu'il émet (environ une
+par seconde et par destination après une petite rafale : `net.ipv4.icmp_ratelimit`, 1000 ms par défaut)
+et nmap ralentit pour ne pas prendre une erreur manquante pour un port ouvert : cent ports demandent une
+à deux minutes face à une machine Linux ordinaire. (Les conteneurs de la maquette ont cette limite à 0 :
+ici, le scan UDP est rapide.) On se limite donc : `-sU --top-ports 20`, ou `-sU -p 53,69,123,161` ;
+`-sV` aide à lever les `open|filtered`.
+""": """
+
+UDP has no handshake. With `-sU`, nmap sends a datagram, empty or with a payload specific to the
+protocol expected on that port (a DNS query to 53, SNMP to 161...):
+
+- a UDP answer: **open**;
+- an ICMP *port unreachable* error: **closed**;
+- nothing: **open|filtered**: a service ignoring a request it does not understand, or a datagram
+  dropped by a firewall. A TFTP server answers from **another** port: nmap does not link its answer
+  to the probe and also concludes `open|filtered`.
+
+A UDP scan is usually **slow**: Linux limits the rate of the ICMP errors it sends (about one per
+second and per destination after a small burst: `net.ipv4.icmp_ratelimit`, 1000 ms by default) and
+nmap slows down so as not to take a missing error for an open port: a hundred ports take one to two
+minutes against an ordinary Linux machine. (The containers of the setup have this limit at 0: here,
+the UDP scan is fast.) So you keep it small: `-sU --top-ports 20`, or `-sU -p 53,69,123,161`; `-sV`
+helps resolve the `open|filtered` ones.
+""",
+        "Identifier les services et leurs versions": "Identifying the services and their versions",
+        """
+
+Le numéro de port ne dit pas quel service y répond. Avec **`-sV`**, nmap envoie des sondes (fichier
+`nmap-service-probes`), compare les réponses à sa base et affiche le **produit**, la **version** et des
+détails (`--version-intensity 0` à `9` règle l'effort). Un service inconnu qui répond quand même est
+signalé avec une empreinte `SF:...` qui contient les octets reçus : sa bannière s'y lit.
+
+À la main, on récupère une **bannière** en se connectant : `nc -v HÔTE PORT` (ou `ncat`), `curl -I
+http://HÔTE/`, `openssl s_client -connect HÔTE:443`.
+
+Pourquoi c'est important : une version se compare aux **bulletins de sécurité** (CVE) et permet de
+prioriser les correctifs. Masquer une version ne corrige aucune faille, mais évite de la donner
+gratuitement à l'attaquant.
+
+`-O` tente de reconnaître le système d'exploitation d'après sa pile TCP/IP ; `-A` regroupe `-O -sV -sC
+--traceroute`. Dans la maquette, toutes les machines sont des conteneurs qui partagent le noyau de
+l'hôte : `-O` y apprend peu.
+""": """
+
+The port number does not tell which service answers on it. With **`-sV`**, nmap sends probes (file
+`nmap-service-probes`), compares the answers with its database and shows the **product**, the
+**version** and details (`--version-intensity 0` to `9` sets the effort). An unknown service that
+answers anyway is reported with a `SF:...` fingerprint holding the bytes received: its banner can be
+read there.
+
+By hand, you grab a **banner** by connecting: `nc -v HOST PORT` (or `ncat`), `curl -I
+http://HOST/`, `openssl s_client -connect HOST:443`.
+
+Why it matters: a version is compared with the **security advisories** (CVE) and lets you
+prioritise the fixes. Hiding a version fixes no vulnerability, but avoids handing it to the attacker
+for free.
+
+`-O` tries to recognise the operating system from its TCP/IP stack; `-A` combines `-O -sV -sC
+--traceroute`. In the setup, all the machines are containers sharing the kernel of the host: `-O`
+learns little there.
+""",
+        "Enregistrer et comparer les résultats": "Saving and comparing the results",
+        """
+
+- `-oN f.txt` (sortie normale), **`-oX f.xml`** (XML : la forme que lisent les outils, et l'évaluation
+  de ce TP), `-oG f.gnmap` (une ligne par machine, pour `grep`), `-oA base` (les trois à la fois :
+  `base.nmap`, `base.xml`, `base.gnmap`) ; `-oX -` écrit le XML sur la sortie standard.
+- **`ndiff avant.xml apres.xml`** compare deux scans : ports apparus (`+`), disparus (`-`), versions
+  changées. C'est la preuve qu'un durcissement a eu l'effet voulu.
+- `xsltproc f.xml -o rapport.html` produit un rapport HTML (feuille `/usr/share/nmap/nmap.xsl`).
+- `-v` (plus de détails pendant le scan), `--packet-trace` (chaque paquet), `--stats-every 10s`.
+""": """
+
+- `-oN f.txt` (normal output), **`-oX f.xml`** (XML: the form tools read, and so does the evaluation
+  of this lab), `-oG f.gnmap` (one line per host, for `grep`), `-oA base` (all three at once:
+  `base.nmap`, `base.xml`, `base.gnmap`); `-oX -` writes the XML to the standard output.
+- **`ndiff before.xml after.xml`** compares two scans: ports that appeared (`+`), disappeared (`-`),
+  changed versions. It is the proof that a hardening had the intended effect.
+- `xsltproc f.xml -o report.html` produces an HTML report (stylesheet `/usr/share/nmap/nmap.xsl`).
+- `-v` (more details during the scan), `--packet-trace` (every packet), `--stats-every 10s`.
+""",
+        "Le moteur de scripts NSE": "The NSE scripting engine",
+        """
+
+Le **Nmap Scripting Engine** exécute des scripts écrits en **Lua** (`/usr/share/nmap/scripts`, plus de
+600) après la découverte des ports. Chaque script déclare une **règle** (sur quelle machine ou quel port
+il s'applique : `portrule`, `hostrule`...) et une **action** (ce qu'il fait), et appartient à des
+**catégories** :
+
+| catégorie | contenu |
+|-----------|---------|
+| `default` | lancés par `-sC` : utiles, rapides, sans danger |
+| `safe` / `intrusive` | sans effet sur la cible / peuvent la perturber ou laisser des traces |
+| `discovery` | collecte d'informations (titres, certificats, partages...) |
+| `version` | complètent `-sV` |
+| `auth` / `brute` | contrôles d'authentification / essais de mots de passe |
+| `vuln` / `exploit` / `dos` | recherche ou exploitation de failles, déni de service |
+
+Lancer des scripts :
+
+- `-sC` (= `--script default`) ;
+- `--script http-title,ssl-cert` (des noms), `--script "http-*"` (un motif),
+  `--script "default and not intrusive"` (une expression), `--script ./mon-script.nse` (un fichier) ;
+- `--script-args clé=valeur,clé2=valeur2` (paramètres) ; `--script-help nom` (documentation) ;
+  `-d` ou `--script-trace` pour voir pourquoi un script n'affiche rien (un échec est souvent silencieux).
+
+Les scripts d'un même scan partagent les identifiants trouvés : `snmp-brute` essaie les communautés
+d'une liste (`--script-args snmp-brute.communitiesdb=fichier`) et les autres scripts SNMP du même
+lancement utilisent celle qu'il a trouvée. On peut aussi la donner : `--script-args creds.snmp=:COMMUNAUTÉ`.
+
+Quelques scripts utiles :
+
+| script | ce qu'il montre |
+|--------|-----------------|
+| `http-title`, `http-server-header`, `http-headers` | titre de la page, en-tête `Server`, tous les en-têtes |
+| `http-robots.txt` | les chemins que `robots.txt` demande de ne pas indexer (souvent les plus intéressants) |
+| `http-enum`, `http-git` | répertoires connus, dépôt `.git` publié par erreur |
+| `http-auth`, `http-methods`, `http-security-headers` | authentification demandée, méthodes, en-têtes de sécurité |
+| `ssl-cert`, `ssl-enum-ciphers` | certificat ; versions TLS et suites acceptées, notées de A à F |
+| `ssh-hostkey`, `ssh2-enum-algos`, `ssh-auth-methods` | clés, algorithmes et méthodes d'authentification d'un serveur SSH (`ssh.user=`) |
+| `ftp-anon`, `banner` | accès FTP anonyme et fichiers visibles ; bannière brute |
+| `snmp-brute`, `snmp-sysdescr`, `snmp-info` | communauté SNMP, description du système |
+| `redis-info`, `dns-recursion` | base Redis ouverte, résolveur DNS ouvert |
+
+Les catégories `brute`, `intrusive`, `vuln`, `exploit` et `dos` ne s'emploient qu'avec une autorisation
+explicite : elles agissent sur la cible.
+""": """
+
+The **Nmap Scripting Engine** runs scripts written in **Lua** (`/usr/share/nmap/scripts`, more than
+600) after the port discovery. Each script declares a **rule** (which host or port it applies to:
+`portrule`, `hostrule`...) and an **action** (what it does), and belongs to **categories**:
+
+| category | content |
+|----------|---------|
+| `default` | run by `-sC`: useful, fast, harmless |
+| `safe` / `intrusive` | no effect on the target / may disturb it or leave traces |
+| `discovery` | information gathering (titles, certificates, shares...) |
+| `version` | complement `-sV` |
+| `auth` / `brute` | authentication checks / password guessing |
+| `vuln` / `exploit` / `dos` | finding or exploiting vulnerabilities, denial of service |
+
+Running scripts:
+
+- `-sC` (= `--script default`);
+- `--script http-title,ssl-cert` (names), `--script "http-*"` (a pattern),
+  `--script "default and not intrusive"` (an expression), `--script ./my-script.nse` (a file);
+- `--script-args key=value,key2=value2` (parameters); `--script-help name` (documentation);
+  `-d` or `--script-trace` to see why a script shows nothing (a failure is often silent).
+
+The scripts of one scan share the credentials found: `snmp-brute` tries the communities of a list
+(`--script-args snmp-brute.communitiesdb=file`) and the other SNMP scripts of the same run use the
+one it found. You can also give it: `--script-args creds.snmp=:COMMUNITY`.
+
+A few useful scripts:
+
+| script | what it shows |
+|--------|---------------|
+| `http-title`, `http-server-header`, `http-headers` | title of the page, `Server` header, all the headers |
+| `http-robots.txt` | the paths `robots.txt` asks not to index (often the most interesting ones) |
+| `http-enum`, `http-git` | well-known directories, `.git` repository published by mistake |
+| `http-auth`, `http-methods`, `http-security-headers` | authentication required, methods, security headers |
+| `ssl-cert`, `ssl-enum-ciphers` | certificate; accepted TLS versions and cipher suites, graded from A to F |
+| `ssh-hostkey`, `ssh2-enum-algos`, `ssh-auth-methods` | keys, algorithms and authentication methods of an SSH server (`ssh.user=`) |
+| `ftp-anon`, `banner` | anonymous FTP access and visible files; raw banner |
+| `snmp-brute`, `snmp-sysdescr`, `snmp-info` | SNMP community, system description |
+| `redis-info`, `dns-recursion` | open Redis database, open DNS resolver |
+
+The categories `brute`, `intrusive`, `vuln`, `exploit` and `dos` are only used with an explicit
+authorisation: they act on the target.
+""",
+        "Écrire un script NSE": "Writing an NSE script",
+        """
+
+Un script NSE est un fichier Lua qui définit quelques variables et deux fonctions. Exemple : un script
+qui lit la bannière d'un service imaginaire `SRE-WEATHER` (port 7171, qui annonce
+`SRE-WEATHER 1.0 ready city=Orsay`) et affiche la ville :
+
+```
+local nmap = require "nmap"
+local shortport = require "shortport"
+local stdnse = require "stdnse"
+
+description = [[
+Lit la bannière d'un service SRE-WEATHER et affiche sa ville.
+]]
+author = "Moi"
+license = "Same as Nmap--See https://nmap.org/book/man-legal.html"
+categories = {"discovery", "safe"}
+
+-- s'applique au port 7171, ou à un port que -sV a reconnu comme sre-weather
+portrule = shortport.port_or_service(7171, "sre-weather", "tcp")
+
+action = function(host, port)
+  local socket = nmap.new_socket()
+  socket:set_timeout(5000)                  -- millisecondes
+  local ok, err = socket:connect(host, port)
+  if not ok then
+    stdnse.debug1("connexion impossible : %s", err)
+    return nil                              -- nil : le script n'affiche rien
+  end
+  local ok2, banner = socket:receive_lines(1)
+  socket:close()
+  if not ok2 then return nil end
+  local city = banner:match("city=(%S+)")
+  if not city then return nil end
+  return "ville : " .. city                 -- le texte affiché sous le port
+end
+```
+
+- `nmap.new_socket()` donne une socket ; `connect`, `send(données)`, `receive_lines(n)` (au moins n
+  lignes), `receive()`, `close()` ; chaque appel renvoie d'abord un booléen de réussite.
+- Les **motifs** Lua ressemblent aux expressions régulières : `%S+` (des caractères non blancs),
+  `[^;]+` (tout sauf `;`), une capture entre parenthèses ; un caractère spécial s'échappe par `%`
+  (`%-` pour un tiret, `%.` pour un point).
+- Tester : `nmap -p 7171 --script ./weather.nse HÔTE`, `nmap --script-help ./weather.nse` (description et
+  catégories), `-d` pour voir les erreurs Lua.
+""": """
+
+An NSE script is a Lua file that defines a few variables and two functions. Example: a script that
+reads the banner of an imaginary `SRE-WEATHER` service (port 7171, which announces
+`SRE-WEATHER 1.0 ready city=Orsay`) and shows the city:
+
+```
+local nmap = require "nmap"
+local shortport = require "shortport"
+local stdnse = require "stdnse"
+
+description = [[
+Reads the banner of an SRE-WEATHER service and shows its city.
+]]
+author = "Me"
+license = "Same as Nmap--See https://nmap.org/book/man-legal.html"
+categories = {"discovery", "safe"}
+
+-- applies to port 7171, or to a port -sV recognised as sre-weather
+portrule = shortport.port_or_service(7171, "sre-weather", "tcp")
+
+action = function(host, port)
+  local socket = nmap.new_socket()
+  socket:set_timeout(5000)                  -- milliseconds
+  local ok, err = socket:connect(host, port)
+  if not ok then
+    stdnse.debug1("connection failed: %s", err)
+    return nil                              -- nil: the script shows nothing
+  end
+  local ok2, banner = socket:receive_lines(1)
+  socket:close()
+  if not ok2 then return nil end
+  local city = banner:match("city=(%S+)")
+  if not city then return nil end
+  return "city: " .. city                   -- the text shown under the port
+end
+```
+
+- `nmap.new_socket()` gives a socket; `connect`, `send(data)`, `receive_lines(n)` (at least n
+  lines), `receive()`, `close()`; each call first returns a success boolean.
+- Lua **patterns** resemble regular expressions: `%S+` (non-blank characters), `[^;]+` (anything
+  but `;`), a capture between parentheses; a special character is escaped with `%` (`%-` for a
+  hyphen, `%.` for a dot).
+- Testing: `nmap -p 7171 --script ./weather.nse HOST`, `nmap --script-help ./weather.nse`
+  (description and categories), `-d` to see the Lua errors.
+""",
+        "Réduire la surface d'attaque": "Reducing the attack surface",
+        """
+
+Ce qui n'est pas installé ou pas démarré ne peut pas être attaqué. Sur la machine, on fait d'abord
+l'inventaire :
+
+- `ss -tulpn` : les sockets en écoute (TCP et UDP), leur adresse et le processus ;
+- `systemctl list-units --type=service --state=running` (ce qui tourne) et
+  `systemctl list-unit-files --state=enabled` (ce qui démarrera au prochain démarrage).
+
+Puis pour chaque service inutile :
+
+- `systemctl stop X` l'arrête **maintenant** ; `systemctl disable X` l'empêche de **redémarrer au
+  démarrage** ; `systemctl disable --now X` fait les deux ;
+- `systemctl mask X` interdit tout démarrage, même à la main ou comme dépendance d'un autre service
+  (l'unité pointe vers `/dev/null`) ; `unmask` l'annule ;
+- `apt purge paquet` le désinstalle (le plus sûr : plus de binaire à réactiver).
+
+Attention aux services démarrés par un autre : un **super-serveur** `inetd` écoute à la place de petits
+services (telnet...) déclarés une ligne chacun dans `/etc/inetd.conf`. On désactive la ligne
+(`update-inetd --disable telnet`, ou un `#` en tête puis `systemctl restart inetd`) ou `inetd` lui-même.
+De même, une unité `.socket` de systemd peut garder un port ouvert alors que le service est arrêté.
+
+Les protocoles **en clair** sont à remplacer : **telnet** (le mot de passe circule en clair), **FTP**
+(identifiants et fichiers en clair ; en accès anonyme, tout le monde lit), **TFTP** (aucune
+authentification), un démon **rsync** sans authentification. On les remplace par SSH, SFTP, `scp` ou
+`rsync` à travers SSH.
+""": """
+
+What is not installed or not started cannot be attacked. On the machine, you first take the
+inventory:
+
+- `ss -tulpn`: the listening sockets (TCP and UDP), their address and the process;
+- `systemctl list-units --type=service --state=running` (what runs) and
+  `systemctl list-unit-files --state=enabled` (what will start at the next boot).
+
+Then for each useless service:
+
+- `systemctl stop X` stops it **now**; `systemctl disable X` prevents it from **starting again at
+  boot**; `systemctl disable --now X` does both;
+- `systemctl mask X` forbids any start, even by hand or as a dependency of another service (the unit
+  points to `/dev/null`); `unmask` undoes it;
+- `apt purge package` uninstalls it (the safest: no binary left to reactivate).
+
+Beware of services started by another one: a **super-server** `inetd` listens on behalf of small
+services (telnet...) declared one line each in `/etc/inetd.conf`. You disable the line
+(`update-inetd --disable telnet`, or a leading `#` then `systemctl restart inetd`) or `inetd` itself.
+Likewise, a systemd `.socket` unit can keep a port open while the service is stopped.
+
+The **cleartext** protocols must be replaced: **telnet** (the password travels in clear), **FTP**
+(credentials and files in clear; with anonymous access, everybody reads), **TFTP** (no
+authentication at all), an **rsync** daemon without authentication. They are replaced by SSH, SFTP,
+`scp` or `rsync` over SSH.
+""",
+        "N'écouter que là où il faut": "Listening only where needed",
+        """
+
+Un démon écoute sur une **adresse** : `0.0.0.0` (ou `[::]`) = toutes les interfaces, `127.0.0.1` = la
+machine elle-même seulement, une adresse précise = le seul réseau de cette interface. La colonne
+*Local Address* de `ss -tlnp` le montre.
+
+**Redis** est une base clé-valeur en mémoire prévue pour être interrogée par des programmes **locaux**,
+sans authentification par défaut. Exposée, elle laisse lire et modifier ses données, et même écrire des
+fichiers sur le disque (`CONFIG SET dir` puis `SAVE`) : de quoi prendre la machine. Directives de
+`/etc/redis/redis.conf` : `bind 127.0.0.1 -::1` (écouter sur la boucle locale seulement),
+`protected-mode yes`, `requirepass MOTDEPASSE` ; puis `systemctl restart redis-server`. Un client local
+s'authentifie : `redis-cli -a MOTDEPASSE --no-auth-warning ping` répond `PONG`, sans le mot de passe
+`NOAUTH`.
+
+Écouter sur la boucle locale et filtrer avec un pare-feu se complètent : un service lié à `127.0.0.1`
+reste inaccessible même si le pare-feu disparaît ; le pare-feu est nécessaire quand de vrais clients
+distants existent.
+
+**SNMP** v1 et v2c authentifient par un simple nom de **communauté**, qui circule **en clair**. Les
+valeurs par défaut `public` (lecture) et `private` (écriture !) sont les premières essayées. Dans
+`/etc/snmp/snmpd.conf` : `agentaddress udp:161`, `rocommunity NOM SOURCE` (lecture seule, depuis un
+réseau source seulement : `rocommunity s3cr3t 192.168.1.0/24`), jamais de `rwcommunity` inutile ; mieux,
+SNMPv3 avec des utilisateurs authentifiés et chiffrés. Test : `snmpget -v2c -c NOM HÔTE
+1.3.6.1.2.1.1.1.0` (la description du système).
+""": """
+
+A daemon listens on an **address**: `0.0.0.0` (or `[::]`) = all the interfaces, `127.0.0.1` = the
+machine itself only, a specific address = only the network of that interface. The *Local Address*
+column of `ss -tlnp` shows it.
+
+**Redis** is an in-memory key-value database meant to be queried by **local** programs, without
+authentication by default. Exposed, it lets anyone read and modify its data, and even write files to
+the disk (`CONFIG SET dir` then `SAVE`): enough to take over the machine. Directives of
+`/etc/redis/redis.conf`: `bind 127.0.0.1 -::1` (listen on the loopback only), `protected-mode yes`,
+`requirepass PASSWORD`; then `systemctl restart redis-server`. A local client authenticates:
+`redis-cli -a PASSWORD --no-auth-warning ping` answers `PONG`, without the password `NOAUTH`.
+
+Listening on the loopback and filtering with a firewall complement each other: a service bound to
+`127.0.0.1` stays unreachable even if the firewall disappears; the firewall is needed when real
+remote clients exist.
+
+**SNMP** v1 and v2c authenticate with a mere **community** name, which travels **in clear**. The
+default values `public` (read) and `private` (write!) are the first ones tried. In
+`/etc/snmp/snmpd.conf`: `agentaddress udp:161`, `rocommunity NAME SOURCE` (read-only, from one
+source network only: `rocommunity s3cr3t 192.168.1.0/24`), never a needless `rwcommunity`; better,
+SNMPv3 with authenticated and encrypted users. Test: `snmpget -v2c -c NAME HOST
+1.3.6.1.2.1.1.1.0` (the system description).
+""",
+        "Durcir SSH": "Hardening SSH",
+        """
+
+La configuration du serveur est dans `/etc/ssh/sshd_config` et dans les fichiers
+`/etc/ssh/sshd_config.d/*.conf` inclus **au début** de celui-ci. Pour la plupart des directives, la
+**première valeur lue l'emporte** : modifiez le fichier de `sshd_config.d` qui fixe déjà la directive
+(ou placez la vôtre dans un fichier lu avant). Vérifiez toujours la configuration **effective** :
+`sshd -T` (par exemple `sshd -T | grep -i permitrootlogin`), la syntaxe avec `sshd -t`, puis
+`systemctl reload ssh` (les sessions ouvertes restent). Gardez une session ouverte pendant vos essais
+pour ne pas vous enfermer dehors.
+
+- `PermitRootLogin no` : pas de connexion directe de `root` (on se connecte nominativement puis `sudo`) ;
+- `PasswordAuthentication no` et `KbdInteractiveAuthentication no` : clés seulement, plus aucun mot de
+  passe à deviner ;
+- `AllowUsers` / `AllowGroups`, `MaxAuthTries`, `LoginGraceTime` limitent encore.
+
+Les **algorithmes** : `KexAlgorithms` (échange de clés), `Ciphers` (chiffrement), `MACs` (intégrité),
+`HostKeyAlgorithms` (signatures du serveur). Une liste simple **remplace** les valeurs par défaut ; `+liste`
+ajoute, `-liste` retire (motifs `*` permis), `^liste` place en tête. Sont faibles : tout ce qui repose
+sur **SHA-1** (`diffie-hellman-group1-sha1`, `diffie-hellman-group14-sha1`,
+`diffie-hellman-group-exchange-sha1`, `hmac-sha1`, `hmac-sha1-etm@openssh.com`, la signature `ssh-rsa`),
+sur **MD5** (`hmac-md5`), et les modes **CBC** (`aes128-cbc`, `3des-cbc`...). Les valeurs par défaut
+d'OpenSSH 10 sont saines : retirer les ajouts « de compatibilité » suffit presque, mais `hmac-sha1`
+figure encore dans les MAC par défaut.
+
+Vérifier de l'extérieur : `nmap -p 22 --script ssh2-enum-algos,ssh-auth-methods --script-args
+ssh.user=UTILISATEUR HÔTE` ; côté client, `ssh -Q cipher` liste ce que le client sait faire.
+""": """
+
+The configuration of the server is in `/etc/ssh/sshd_config` and in the files
+`/etc/ssh/sshd_config.d/*.conf` included **at the beginning** of it. For most directives, the
+**first value read wins**: edit the file of `sshd_config.d` that already sets the directive (or put
+yours in a file read before it). Always check the **effective** configuration: `sshd -T` (for
+instance `sshd -T | grep -i permitrootlogin`), the syntax with `sshd -t`, then
+`systemctl reload ssh` (the open sessions stay). Keep a session open during your tests so as not to
+lock yourself out.
+
+- `PermitRootLogin no`: no direct login of `root` (log in under your own name, then `sudo`);
+- `PasswordAuthentication no` and `KbdInteractiveAuthentication no`: keys only, no password left to
+  guess;
+- `AllowUsers` / `AllowGroups`, `MaxAuthTries`, `LoginGraceTime` restrict further.
+
+The **algorithms**: `KexAlgorithms` (key exchange), `Ciphers` (encryption), `MACs` (integrity),
+`HostKeyAlgorithms` (signatures of the server). A plain list **replaces** the default values;
+`+list` adds, `-list` removes (`*` patterns allowed), `^list` puts in front. Weak are: everything
+based on **SHA-1** (`diffie-hellman-group1-sha1`, `diffie-hellman-group14-sha1`,
+`diffie-hellman-group-exchange-sha1`, `hmac-sha1`, `hmac-sha1-etm@openssh.com`, the `ssh-rsa`
+signature), on **MD5** (`hmac-md5`), and the **CBC** modes (`aes128-cbc`, `3des-cbc`...). The
+default values of OpenSSH 10 are sound: removing the "compatibility" additions almost suffices, but
+`hmac-sha1` is still among the default MACs.
+
+Checking from the outside: `nmap -p 22 --script ssh2-enum-algos,ssh-auth-methods --script-args
+ssh.user=USER HOST`; on the client side, `ssh -Q cipher` lists what the client can do.
+""",
+        "Durcir un serveur web et TLS": "Hardening a web server and TLS",
+        """
+
+- **Version affichée** : nginx l'envoie dans l'en-tête `Server` et ses pages d'erreur ; `server_tokens
+  off;` dans le contexte `http` (par exemple un fichier de `/etc/nginx/conf.d/`) la retire. Apache :
+  `ServerTokens Prod` et `ServerSignature Off`.
+- **Fichiers qui ne devraient pas être servis** : un dépôt **`.git`** déployé avec le site (`http-git`
+  et quelques requêtes reconstituent l'historique : mots de passe, clés), des **sauvegardes**
+  (`.tar.gz`, `.bak`, `.old`) dans la racine du site, des **listes de répertoires** (`autoindex on`).
+  Avec nginx : sortir ces fichiers de la racine, `autoindex off` (le défaut) et une règle qui refuse les
+  fichiers cachés, `location ~ /\\. { deny all; }`.
+- **TLS** : TLS 1.0 et 1.1 sont obsolètes (RFC 8996) : `ssl_protocols TLSv1.2 TLSv1.3;`. Les suites
+  doivent assurer la confidentialité persistante (échange **ECDHE**) et un chiffrement authentifié
+  (**AES-GCM**, **ChaCha20-Poly1305**) ; jamais d'échange **anonyme** (sans authentification du serveur),
+  ni RC4, 3DES, export ou NULL. Le profil « intermediate » de Mozilla en donne une liste prête
+  (`ssl_ciphers`). `ssl-enum-ciphers` note chaque suite de A à F et résume par `least strength` : visez
+  **A**. `openssl s_client -connect HÔTE:443 -tls1` teste une version précise.
+- **HSTS** : `add_header Strict-Transport-Security "max-age=31536000" always;` dans le serveur HTTPS
+  demande au navigateur de n'utiliser que HTTPS pour ce site pendant un an.
+- Vérifier : `nginx -t`, `systemctl reload nginx`, `curl -skI https://HÔTE/`, puis un nouveau scan.
+""": """
+
+- **Version shown**: nginx sends it in the `Server` header and its error pages; `server_tokens
+  off;` in the `http` context (for instance a file of `/etc/nginx/conf.d/`) removes it. Apache:
+  `ServerTokens Prod` and `ServerSignature Off`.
+- **Files that should not be served**: a **`.git`** repository deployed with the site (`http-git`
+  and a few requests rebuild the history: passwords, keys), **backups** (`.tar.gz`, `.bak`, `.old`)
+  in the document root, **directory listings** (`autoindex on`). With nginx: move these files out of
+  the root, `autoindex off` (the default) and a rule refusing hidden files,
+  `location ~ /\\. { deny all; }`.
+- **TLS**: TLS 1.0 and 1.1 are deprecated (RFC 8996): `ssl_protocols TLSv1.2 TLSv1.3;`. The cipher
+  suites must provide forward secrecy (**ECDHE** key exchange) and authenticated encryption
+  (**AES-GCM**, **ChaCha20-Poly1305**); never an **anonymous** key exchange (without authentication
+  of the server), nor RC4, 3DES, export or NULL. Mozilla's "intermediate" profile gives a ready-made
+  list (`ssl_ciphers`). `ssl-enum-ciphers` grades every suite from A to F and sums up with
+  `least strength`: aim for **A**. `openssl s_client -connect HOST:443 -tls1` tests one specific
+  version.
+- **HSTS**: `add_header Strict-Transport-Security "max-age=31536000" always;` in the HTTPS server
+  asks the browser to use only HTTPS for this site for one year.
+- Checking: `nginx -t`, `systemctl reload nginx`, `curl -skI https://HOST/`, then a new scan.
+""",
+        "Le pare-feu de la machine": "The host firewall",
+        """
+
+Un pare-feu local est la dernière couche : il protège les services qui doivent écouter, mais pour
+certains clients seulement (administration, supervision). Avec nftables, une chaîne `input` à la
+politique `drop` n'accepte que ce qui est listé :
+
+```
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy drop;
+        iif lo accept
+        ct state established,related accept
+        icmp type echo-request accept
+        tcp dport 443 accept
+        ip saddr 192.0.2.0/24 tcp dport 22 accept
+    }
+}
+```
+
+Ce que voit nmap ensuite : les ports non listés passent de `closed` à **`filtered`** (plus aucune
+réponse), le scan ralentit et en apprend moins. Avec `reject with tcp reset`, ils resteraient `closed`.
+
+La configuration chargée au démarrage est `/etc/nftables.conf` (service `nftables`, à activer :
+`systemctl enable nftables`) ; `nft -c -f /etc/nftables.conf` vérifie sa syntaxe sans rien charger,
+`nft -f /etc/nftables.conf` la charge. Autorisez votre propre accès d'administration avant de passer la
+politique à `drop`. Les TP nftables détaillent les chaînes, les ensembles et la journalisation.
+""": """
+
+A local firewall is the last layer: it protects the services that must listen, but for some clients
+only (administration, monitoring). With nftables, an `input` chain with the policy `drop` only
+accepts what is listed:
+
+```
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy drop;
+        iif lo accept
+        ct state established,related accept
+        icmp type echo-request accept
+        tcp dport 443 accept
+        ip saddr 192.0.2.0/24 tcp dport 22 accept
+    }
+}
+```
+
+What nmap sees then: the ports not listed go from `closed` to **`filtered`** (no answer any more),
+the scan slows down and learns less. With `reject with tcp reset`, they would stay `closed`.
+
+The configuration loaded at boot is `/etc/nftables.conf` (service `nftables`, to be enabled:
+`systemctl enable nftables`); `nft -c -f /etc/nftables.conf` checks its syntax without loading
+anything, `nft -f /etc/nftables.conf` loads it. Allow your own administration access before setting
+the policy to `drop`. The nftables labs detail the chains, the sets and the logging.
+""",
+        "Vérifier": "Checking",
+        """
+
+Chaque modification se vérifie **depuis l'endroit où se trouve l'attaquant** : le même scan, mêmes
+options et mêmes ports, avant et après, comparé avec `ndiff`. Vérifiez aussi depuis l'intérieur : un
+réseau d'administration doit toujours atteindre ses services. Et vérifiez la **persistance** : ce qui
+démarrera au prochain démarrage (`systemctl is-enabled`), la configuration qu'un démon relira.
+
+En production, on automatise : des scans réguliers comparés au précédent, une alerte à chaque port
+apparu (un incident ou un service oublié). Un outil d'audit local comme Lynis complète l'inventaire vu
+de l'extérieur.
+""": """
+
+Every change is checked **from where the attacker stands**: the same scan, same options and same
+ports, before and after, compared with `ndiff`. Check from the inside too: an administration network
+must still reach its services. And check the **persistence**: what will start at the next boot
+(`systemctl is-enabled`), the configuration a daemon will read again.
+
+In production, this is automated: regular scans compared with the previous one, an alert for every
+port that appears (an incident or a forgotten service). A local audit tool such as Lynis complements
+the inventory seen from the outside.
+""",
+        "Mémo des commandes": "Command summary",
+        """
+
+| but | commande |
+|-----|----------|
+| découverte seule | `nmap -sn -n RÉSEAU/PRÉFIXE` ; sondes choisies `-PS21,22 -PA80 -PE` |
+| scan SYN de tous les ports | `nmap -sS -p- -T4 HÔTE` |
+| ports UDP fréquents | `nmap -sU --top-ports 20 HÔTE` |
+| versions | `nmap -sV -p PORTS HÔTE` ; à la main `nc -v HÔTE PORT` |
+| scripts par défaut | `nmap -sC -p PORTS HÔTE` |
+| scripts choisis | `nmap --script NOM1,NOM2 --script-args clé=valeur -p PORT HÔTE` |
+| aide d'un script | `nmap --script-help NOM` |
+| enregistrer | `-oX f.xml`, `-oA base` |
+| comparer deux scans | `ndiff avant.xml apres.xml` |
+| sockets en écoute | `ss -tulpn` |
+| arrêter et désactiver | `systemctl disable --now X`, `systemctl mask X` |
+| configuration SSH effective | `sshd -T`, `sshd -t`, `systemctl reload ssh` |
+| tester nginx | `nginx -t`, `systemctl reload nginx` |
+| Redis local | `redis-cli -a MOTDEPASSE --no-auth-warning ping` |
+| SNMP | `snmpget -v2c -c COMMUNAUTÉ HÔTE 1.3.6.1.2.1.1.1.0` |
+| pare-feu persistant | `nft -c -f /etc/nftables.conf`, `systemctl enable --now nftables` |
+""": """
+
+| goal | command |
+|------|---------|
+| discovery only | `nmap -sn -n NETWORK/PREFIX`; chosen probes `-PS21,22 -PA80 -PE` |
+| SYN scan of all the ports | `nmap -sS -p- -T4 HOST` |
+| frequent UDP ports | `nmap -sU --top-ports 20 HOST` |
+| versions | `nmap -sV -p PORTS HOST`; by hand `nc -v HOST PORT` |
+| default scripts | `nmap -sC -p PORTS HOST` |
+| chosen scripts | `nmap --script NAME1,NAME2 --script-args key=value -p PORT HOST` |
+| help of a script | `nmap --script-help NAME` |
+| save | `-oX f.xml`, `-oA base` |
+| compare two scans | `ndiff before.xml after.xml` |
+| listening sockets | `ss -tulpn` |
+| stop and disable | `systemctl disable --now X`, `systemctl mask X` |
+| effective SSH configuration | `sshd -T`, `sshd -t`, `systemctl reload ssh` |
+| test nginx | `nginx -t`, `systemctl reload nginx` |
+| local Redis | `redis-cli -a PASSWORD --no-auth-warning ping` |
+| SNMP | `snmpget -v2c -c COMMUNITY HOST 1.3.6.1.2.1.1.1.0` |
+| persistent firewall | `nft -c -f /etc/nftables.conf`, `systemctl enable --now nftables` |
+""",
+        "Partie 1 seule : le fichier de la découverte des machines.": "Part 1 alone: the file of the host discovery.",
+        "Partie 2 seule : le fichier du scan de tous les ports TCP de server.": "Part 2 alone: the file of the scan of all the TCP ports of server.",
+        "Partie 3 seule : le fichier de la détection des versions.": "Part 3 alone: the file of the version detection.",
+        "Partie 4 seule : le fichier des scripts par défaut.": "Part 4 alone: the file of the default scripts.",
+        "Partie 5 seule : les services inutiles de legacy arrêtés et désactivés.": "Part 5 alone: the useless services of legacy stopped and disabled.",
+        "Partie 6 seule : Redis et SNMP de db restreints.": "Part 6 alone: Redis and SNMP of db restricted.",
+        "Partie 7 seule : SSH de www durci.": "Part 7 alone: SSH of www hardened.",
+        "Partie 8 seule : nginx et TLS de www durcis.": "Part 8 alone: nginx and TLS of www hardened.",
+        "Partie 9 seule : le pare-feu persistant de app.": "Part 9 alone: the persistent firewall of app.",
+        "Bonus seul : le script NSE du service d'inventaire.": "Bonus alone: the NSE script of the asset service.",
+        "Solution de référence complète (toutes les parties et le bonus, formulaires remplis).": "Complete reference solution (all the parts and the bonus, forms filled in).",
+        """
+| réseau | préfixe | machines |
+|--------|---------|----------|
+| `wan` (« Internet ») | `{wan}` | `gw` eth0 (`{gw_wan}`), `attacker` (`{attacker}`, votre poste de scan) |
+| `office` (le réseau à auditer) | `{office}` | `gw` eth1 (`{gw_office}`) et des machines **à découvrir** |
+| `dmz` | `{dmz}` | `gw` eth2 (`{gw_dmz}`), `legacy` (`{legacy}`), `db` (`{db}`), `www` (`{www}`), `app` (`{app}`) |
+| `mgmt` | `{admin_net}` | `gw` eth3 (`{gw_admin}`), `admin` (`{admin}`, poste des administrateurs) |
+""": """
+| network | prefix | machines |
+|---------|--------|----------|
+| `wan` ("the Internet") | `{wan}` | `gw` eth0 (`{gw_wan}`), `attacker` (`{attacker}`, your scanning host) |
+| `office` (the network to audit) | `{office}` | `gw` eth1 (`{gw_office}`) and machines **to be discovered** |
+| `dmz` | `{dmz}` | `gw` eth2 (`{gw_dmz}`), `legacy` (`{legacy}`), `db` (`{db}`), `www` (`{www}`), `app` (`{app}`) |
+| `mgmt` | `{admin_net}` | `gw` eth3 (`{gw_admin}`), `admin` (`{admin}`, the administrators' host) |
+""",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente nmap (découverte, scans TCP et UDP, versions, scripts
+NSE) et le durcissement d'une machine (services, adresses d'écoute, SSH, serveur web et TLS, pare-feu).
+
+**La maquette** (onglet *Schéma*) : un routeur `gw` relie « Internet » (`wan`, où se trouve votre poste
+`attacker`), un réseau de bureau à auditer (`office`), une DMZ de quatre serveurs à durcir (`dmz`) et
+le réseau des administrateurs (`mgmt`).
+""": """
+Read the **Informations** tab: it presents nmap (discovery, TCP and UDP scans, versions, NSE
+scripts) and the hardening of a machine (services, listening addresses, SSH, web server and TLS,
+firewall).
+
+**The setup** (*Schema* tab): a router `gw` links "the Internet" (`wan`, where your host `attacker`
+stands), an office network to audit (`office`), a DMZ of four servers to harden (`dmz`) and the
+administrators' network (`mgmt`).
+""",
+        """
+Deux temps :
+
+1. **l'audit** (parties 1 à 4) : les machines de `office` ne vous sont **pas accessibles** (ni terminal,
+   ni schéma) ; vous ne les connaissez que par ce que vos scans révèlent, depuis `attacker` ;
+2. **le durcissement** (parties 5 à 9) : vous administrez `legacy`, `db`, `www` et `app` (terminaux) et
+   vérifiez vos changements par des scans depuis `attacker`.
+
+Sur `attacker` : nmap, ndiff, les outils SNMP, la liste de communautés `{wordlist}`, la clé SSH du
+compte `deploy` de `www` (`~/.ssh/id_ed25519`). Enregistrez les scans demandés dans `{scans}` sous le
+nom indiqué (format XML : `-oX` ou `-oA`).
+
+Règles valables pour tout le TP :
+
+- chaque **partie est indépendante** : la terminer donne ses points quel que soit l'état des autres.
+  Ce qui est noté est l'état final des machines et de vos fichiers : laissez-les en place ;
+- l'évaluation est surtout **comportementale** : une machine cachée de `wan` (`{probe}`) scanne la DMZ
+  avec nmap, comme vous, et `admin` en fait autant de l'intérieur : **ne modifiez pas `admin`** ;
+- un service à garder doit **rester en service** : un serveur arrêté n'est pas « durci » ;
+- une évaluation automatique a lieu toutes les cinq minutes ;
+- ne scannez que les réseaux de la maquette.
+""": """
+Two phases:
+
+1. **the audit** (parts 1 to 4): the machines of `office` are **not accessible** to you (neither
+   terminal nor schema); you only know them through what your scans reveal, from `attacker`;
+2. **the hardening** (parts 5 to 9): you administer `legacy`, `db`, `www` and `app` (terminals) and
+   check your changes with scans from `attacker`.
+
+On `attacker`: nmap, ndiff, the SNMP tools, the list of communities `{wordlist}`, the SSH key of the
+`deploy` account of `www` (`~/.ssh/id_ed25519`). Save the requested scans in `{scans}` under the
+given name (XML format: `-oX` or `-oA`).
+
+Rules for the whole lab:
+
+- each **part is independent**: completing it gives its points whatever the state of the others.
+  What is graded is the final state of the machines and of your files: leave them in place;
+- the evaluation is mostly **behavioural**: a hidden machine of `wan` (`{probe}`) scans the DMZ with
+  nmap, as you do, and `admin` does the same from the inside: **do not modify `admin`**;
+- a service to keep must **stay in service**: a stopped server is not "hardened";
+- an automatic evaluation takes place every five minutes;
+- only scan the networks of the setup.
+""",
+        "Partie 1 — Découvrir les machines": "Part 1 — Discovering the hosts",
+        "Quelles machines sont actives ?": "Which machines are up?",
+        """
+Depuis `attacker`, découvrez les machines actives du réseau `office` (`{office}`), sans scanner leurs
+ports (section @@ref:discovery@@) :
+
+1. lancez une découverte **par défaut** (`nmap -sn`) et notez les machines trouvées ;
+2. le bureau possède aussi un **NAS** (stockage de fichiers) dont le pare-feu jette tout ce qui ne vise
+   pas ses services : il n'apparaît pas. Trouvez-le en choisissant vos sondes (les ports des services
+   de partage de fichiers : FTP, SSH, SMB, rsync, NFS...) ;
+3. enregistrez la découverte qui montre **toutes** les machines (une découverte seule, sans scan de
+   ports) dans **`{file}`**.
+""": """
+From `attacker`, discover the live machines of the `office` network (`{office}`), without scanning
+their ports (section @@ref:discovery@@):
+
+1. run a **default** discovery (`nmap -sn`) and note the machines found;
+2. the office also has a **NAS** (file storage) whose firewall drops everything not aimed at its
+   services: it does not show up. Find it by choosing your probes (the ports of the file-sharing
+   services: FTP, SSH, SMB, rsync, NFS...);
+3. save the discovery that shows **all** the machines (a discovery alone, without a port scan) in
+   **`{file}`**.
+""",
+        "discovery.xml : une découverte seule (-sn) qui trouve les machines de office": "discovery.xml: a discovery alone (-sn) that finds the machines of office",
+        "discovery.xml montre aussi le NAS actif": "discovery.xml also shows the NAS up",
+        "Résultats de la découverte": "Results of the discovery",
+        """
+- nombre de machines actives (sans compter `gw`) trouvées par un `nmap -sn` par défaut : @@{count:[0-9]+}@@
+- adresse du NAS : @@{nas:[0-9.]*}@@
+- un port TCP qui l'a révélé : @@{port:[0-9]*}@@
+- pourquoi `nmap -sn` par défaut ne le voit pas ? @@{why:>il ne répond ni au ping ni aux sondes TCP vers 443 et 80 : son pare-feu jette tout sauf ses services>>>probes|il est éteint>>>off|nmap -sn ne sonde que les adresses paires>>>even|il n'a pas d'adresse IP>>>noip}@@
+""": """
+- number of live machines (not counting `gw`) found by a default `nmap -sn`: @@{count:[0-9]+}@@
+- address of the NAS: @@{nas:[0-9.]*}@@
+- a TCP port that revealed it: @@{port:[0-9]*}@@
+- why does a default `nmap -sn` not see it? @@{why:>it answers neither the ping nor the TCP probes to 443 and 80: its firewall drops everything but its services>>>probes|it is switched off>>>off|nmap -sn only probes the even addresses>>>even|it has no IP address>>>noip}@@
+""",
+        "4 machines au ping ; adresse du NAS ; port 21 ou 873 ; pare-feu qui jette les sondes": "4 machines with the ping; address of the NAS; port 21 or 873; a firewall dropping the probes",
+        "Partie 2 — Scanner les ports et lire leurs états": "Part 2 — Scanning the ports and reading their states",
+        "Tous les ports de server": "All the ports of server",
+        """
+La machine `server` du bureau a l'adresse `{server}`. Depuis `attacker` (sections @@ref:tcp@@ et
+@@ref:udp@@) :
+
+1. scannez ses ports TCP **par défaut**, puis **tous** ses ports TCP (`-p-`) : comparez ;
+2. enregistrez le scan de **tous** les ports TCP (scan SYN) dans **`{file}`** ;
+3. scannez les ports UDP les plus fréquents (`-sU --top-ports 20`, section @@ref:udp@@).
+""": """
+The office machine `server` has the address `{server}`. From `attacker` (sections @@ref:tcp@@ and
+@@ref:udp@@):
+
+1. scan its **default** TCP ports, then **all** its TCP ports (`-p-`): compare;
+2. save the scan of **all** the TCP ports (SYN scan) in **`{file}`**;
+3. scan the most frequent UDP ports (`-sU --top-ports 20`, section @@ref:udp@@).
+""",
+        "server-tcp.xml : les 65535 ports TCP de server, dont le port haut ouvert": "server-tcp.xml: the 65535 TCP ports of server, including the open high port",
+        "server-tcp.xml montre le port filtré de server": "server-tcp.xml shows the filtered port of server",
+        "États des ports de server": "States of the ports of server",
+        """
+- tous les ports TCP **ouverts** de `server` (séparés par des virgules) : @@{{open:[0-9, ]*}}@@
+- l'état du port TCP {filtered} et ce qu'il signifie : @@{{fstate:>filtered : aucune réponse, un pare-feu jette les sondes>>>filtered|closed : la machine répond RST, aucun service n'écoute>>>closed|open : un service écoute>>>open}}@@
+- l'état du port TCP {closed} et ce qu'il signifie : @@{{cstate:>filtered : aucune réponse, un pare-feu jette les sondes>>>filtered|closed : la machine répond RST, aucun service n'écoute>>>closed|open : un service écoute>>>open}}@@
+- le port UDP ouvert de `server` parmi les 20 plus fréquents : @@{{udp:[0-9]*}}@@
+- le scan SYN (`-sS`) est dit « semi-ouvert » parce que : @@{{syn:>nmap répond RST au SYN-ACK : la connexion n'est jamais établie (et il faut des paquets bruts, donc root)>>>half|il n'envoie que la moitié des paquets>>>packets|il ne scanne qu'un port sur deux>>>ports}}@@
+""": """
+- all the **open** TCP ports of `server` (separated by commas): @@{{open:[0-9, ]*}}@@
+- the state of TCP port {filtered} and what it means: @@{{fstate:>filtered: no answer, a firewall drops the probes>>>filtered|closed: the machine answers RST, no service listens>>>closed|open: a service listens>>>open}}@@
+- the state of TCP port {closed} and what it means: @@{{cstate:>filtered: no answer, a firewall drops the probes>>>filtered|closed: the machine answers RST, no service listens>>>closed|open: a service listens>>>open}}@@
+- the open UDP port of `server` among the 20 most frequent: @@{{udp:[0-9]*}}@@
+- the SYN scan (`-sS`) is called "half-open" because: @@{{syn:>nmap answers the SYN-ACK with an RST: the connection is never established (and it needs raw packets, hence root)>>>half|it only sends half of the packets>>>packets|it only scans every other port>>>ports}}@@
+""",
+        "ports TCP ouverts ; filtered ; closed ; UDP 53 ; scan semi-ouvert": "open TCP ports; filtered; closed; UDP 53; half-open scan",
+        "Partie 3 — Identifier les services et leurs versions": "Part 3 — Identifying the services and their versions",
+        "Qui répond derrière chaque port ?": "Who answers behind each port?",
+        """
+Les numéros de port ne disent pas quel service répond (section @@ref:versions@@). Depuis `attacker` :
+
+1. lancez une détection de versions (`-sV`) sur les ports TCP ouverts de `server` (`{server}`) et
+   enregistrez-la dans **`{file}`** ;
+2. le service du port le plus haut n'est pas reconnu : lisez sa bannière (dans l'empreinte `SF:` de
+   nmap, ou en vous connectant avec `nc`) ;
+3. identifiez le service du port 23 de la caméra du bureau, `camera` (`{camera}`).
+""": """
+Port numbers do not tell which service answers (section @@ref:versions@@). From `attacker`:
+
+1. run a version detection (`-sV`) on the open TCP ports of `server` (`{server}`) and save it in
+   **`{file}`**;
+2. the service of the highest port is not recognised: read its banner (in nmap's `SF:` fingerprint,
+   or by connecting with `nc`);
+3. identify the service of port 23 of the office camera, `camera` (`{camera}`).
+""",
+        "server-sv.xml : -sV identifie OpenSSH sur le port SSH de server": "server-sv.xml: -sV identifies OpenSSH on the SSH port of server",
+        "server-sv.xml : -sV identifie nginx et sa version sur le port 443": "server-sv.xml: -sV identifies nginx and its version on port 443",
+        "Services et versions": "Services and versions",
+        """
+- le port du serveur SSH de `server` : @@{ssh:[0-9]*}@@
+- le produit et sa version sur le port 443 de `server` : @@{web:.*}@@
+- le jeton (`token=`) annoncé par le service du port haut de `server` : @@{token:.*}@@
+- le service du port 23 de `camera` : @@{telnet:>telnet : un accès à distance où tout, mot de passe compris, circule en clair>>>telnet|SSH : un accès à distance chiffré>>>ssh|un serveur web>>>http}@@
+- l'intérêt de connaître les versions lors d'un audit : @@{why:>les comparer aux bulletins de sécurité (CVE) pour savoir quoi corriger en premier>>>cve|nmap en a besoin pour scanner les ports>>>ports|elles donnent le mot de passe par défaut>>>password}@@
+""": """
+- the port of the SSH server of `server`: @@{ssh:[0-9]*}@@
+- the product and its version on port 443 of `server`: @@{web:.*}@@
+- the token (`token=`) announced by the service of the high port of `server`: @@{token:.*}@@
+- the service of port 23 of `camera`: @@{telnet:>telnet: a remote access where everything, password included, travels in clear>>>telnet|SSH: an encrypted remote access>>>ssh|a web server>>>http}@@
+- the point of knowing the versions during an audit: @@{why:>comparing them with the security advisories (CVE) to know what to fix first>>>cve|nmap needs them to scan the ports>>>ports|they give the default password>>>password}@@
+""",
+        "port SSH ; nginx 1.30 ; jeton de la bannière ; telnet ; intérêt des versions": "SSH port; nginx 1.30; token of the banner; telnet; point of the versions",
+        "Partie 4 — Les scripts NSE": "Part 4 — The NSE scripts",
+        "Ce que racontent les scripts": "What the scripts tell",
+        """
+Les scripts NSE (section @@ref:nse@@) interrogent les services trouvés. Depuis `attacker` :
+
+1. lancez les **scripts par défaut** (`-sC`) sur les ports 80 et 443 de `printer` (`{printer}`) et de
+   `server` (`{server}`), et enregistrez le résultat dans **`{file}`** ;
+2. avec les scripts adaptés, répondez aux questions suivantes sur `printer`, `server`, `camera`
+   (`{camera}`) et le NAS de la partie 1. Pour SNMP (UDP 161) de `printer`, la communauté n'est pas
+   `public` : elle figure dans `{wordlist}`.
+""": """
+The NSE scripts (section @@ref:nse@@) query the services found. From `attacker`:
+
+1. run the **default scripts** (`-sC`) on ports 80 and 443 of `printer` (`{printer}`) and of
+   `server` (`{server}`), and save the result in **`{file}`**;
+2. with the appropriate scripts, answer the following questions about `printer`, `server`, `camera`
+   (`{camera}`) and the NAS of part 1. For the SNMP (UDP 161) of `printer`, the community is not
+   `public`: it is in `{wordlist}`.
+""",
+        "office-default.xml : le script http-title sur le port 80 de printer": "office-default.xml: the http-title script on port 80 of printer",
+        "office-default.xml : le script ssl-cert sur le port 443 de server": "office-default.xml: the ssl-cert script on port 443 of server",
+        "Résultats des scripts": "Results of the scripts",
+        """
+- le titre de la page web de `printer` (`http-title`) : @@{title:.*}@@
+- le nom commun (*commonName*) du certificat HTTPS de `server` (`ssl-cert`) : @@{cn:.*}@@
+- le chemin que le `robots.txt` de `server` demande de ne pas indexer (`http-robots.txt`) : @@{robots:.*}@@
+- le domaine d'authentification (*realm*) du port 8080 de `camera` (`http-auth`) : @@{realm:.*}@@
+- le fichier visible par FTP anonyme sur le NAS (`ftp-anon`) : @@{ftp:.*}@@
+- la communauté SNMP de `printer` (`snmp-brute` et la liste) : @@{community:.*}@@
+- la version du micrologiciel (*firmware*) que donne la description SNMP de `printer` (`snmp-sysdescr`) : @@{firmware:.*}@@
+""": """
+- the title of the web page of `printer` (`http-title`): @@{title:.*}@@
+- the common name (*commonName*) of the HTTPS certificate of `server` (`ssl-cert`): @@{cn:.*}@@
+- the path the `robots.txt` of `server` asks not to index (`http-robots.txt`): @@{robots:.*}@@
+- the authentication realm (*realm*) of port 8080 of `camera` (`http-auth`): @@{realm:.*}@@
+- the file visible through anonymous FTP on the NAS (`ftp-anon`): @@{ftp:.*}@@
+- the SNMP community of `printer` (`snmp-brute` and the list): @@{community:.*}@@
+- the firmware version given by the SNMP description of `printer` (`snmp-sysdescr`): @@{firmware:.*}@@
+""",
+        "http-title ; ssl-cert ; http-robots.txt ; http-auth ; ftp-anon ; snmp-brute ; snmp-sysdescr": "http-title; ssl-cert; http-robots.txt; http-auth; ftp-anon; snmp-brute; snmp-sysdescr",
+        "Partie 5 — Réduire la surface d'attaque de legacy": "Part 5 — Reducing the attack surface of legacy",
+        "Fermer ce qui ne sert plus": "Closing what is no longer used",
+        """
+`legacy` (`{legacy}`) est un ancien serveur de fichiers. Seul son accès **SSH** sert encore aux
+administrateurs ; tout le reste est à fermer (section @@ref:surface@@).
+
+1. **Avant** de toucher à quoi que ce soit, scannez ses ports TCP 21, 22, 23 et 873 depuis `attacker`
+   et enregistrez le résultat dans **`{before}`** ; trouvez aussi son service UDP ;
+2. sur `legacy`, faites l'inventaire (`ss -tulpn`) et arrêtez **et désactivez** (ils ne doivent pas
+   revenir au prochain démarrage) le FTP, le telnet, le démon rsync et le TFTP ; gardez SSH ;
+3. scannez à nouveau les mêmes ports dans **`{after}`** et comparez avec `ndiff` (section @@ref:output@@).
+""": """
+`legacy` (`{legacy}`) is an old file server. Only its **SSH** access is still used by the
+administrators; everything else must be closed (section @@ref:surface@@).
+
+1. **Before** touching anything, scan its TCP ports 21, 22, 23 and 873 from `attacker` and save the
+   result in **`{before}`**; find its UDP service too;
+2. on `legacy`, take the inventory (`ss -tulpn`) and stop **and disable** (they must not come back
+   at the next boot) the FTP, the telnet, the rsync daemon and the TFTP; keep SSH;
+3. scan the same ports again into **`{after}`** and compare with `ndiff` (section @@ref:output@@).
+""",
+        "le port {port} ({label}) de legacy n'est plus ouvert (SSH l'est toujours)": "port {port} ({label}) of legacy is no longer open (SSH still is)",
+        "plus rien n'écoute sur le port UDP 69 (TFTP) de legacy": "nothing listens any more on UDP port 69 (TFTP) of legacy",
+        "{unit} ne redémarrera pas au prochain démarrage": "{unit} will not start again at the next boot",
+        "legacy-before.xml montre 21, 23 et 873 ouverts, legacy-after.xml (plus récent) les montre fermés et 22 ouvert": "legacy-before.xml shows 21, 23 and 873 open, legacy-after.xml (more recent) shows them closed and 22 open",
+        "Pourquoi fermer ces services": "Why close these services",
+        """
+- parmi les services fermés, lesquels transmettent identifiants et données **en clair** ? @@{clear:>telnet et FTP (et TFTP, sans même d'authentification)>>>clear|aucun, ils chiffrent tous>>>none|seulement rsync>>>rsync}@@
+- `systemctl mask` par rapport à `systemctl disable` : @@{mask:>mask interdit tout démarrage, même à la main ou comme dépendance ; disable empêche seulement le démarrage automatique>>>mask|c'est la même chose>>>same|mask désinstalle le paquet>>>purge}@@
+""": """
+- among the closed services, which ones carry credentials and data **in clear**? @@{clear:>telnet and FTP (and TFTP, without even any authentication)>>>clear|none, they all encrypt>>>none|only rsync>>>rsync}@@
+- `systemctl mask` compared with `systemctl disable`: @@{mask:>mask forbids any start, even by hand or as a dependency; disable only prevents the automatic start>>>mask|it is the same thing>>>same|mask uninstalls the package>>>purge}@@
+""",
+        "protocoles en clair ; mask et disable": "cleartext protocols; mask and disable",
+        "Partie 6 — Les services exposés de db": "Part 6 — The exposed services of db",
+        "Redis et SNMP": "Redis and SNMP",
+        """
+`db` (`{db}`) héberge une base **Redis**, utilisée uniquement par des programmes de `db` lui-même, et
+un agent **SNMP** de supervision. Scannez-le (TCP 6379, UDP 161 ; `redis-info`, `snmp-brute`...) :
+tout le monde peut lire la base, et la communauté SNMP est une valeur par défaut. Sur `db` (section
+@@ref:bind@@) :
+
+1. Redis : n'écouter que sur la boucle locale, `protected-mode yes`, et le mot de passe
+   **`{password}`** ;
+2. SNMP : plus de communauté par défaut ; une seule communauté, en lecture seule, **`{secret}`**,
+   acceptée seulement depuis le réseau `mgmt` (`{admin_net}`).
+
+Vérifiez de l'extérieur depuis `attacker`, et depuis `admin` pour SNMP.
+""": """
+`db` (`{db}`) hosts a **Redis** database, used only by programs of `db` itself, and an **SNMP**
+monitoring agent. Scan it (TCP 6379, UDP 161; `redis-info`, `snmp-brute`...): everybody can read the
+database, and the SNMP community is a default value. On `db` (section @@ref:bind@@):
+
+1. Redis: listen on the loopback only, `protected-mode yes`, and the password **`{password}`**;
+2. SNMP: no default community any more; a single read-only community, **`{secret}`**, accepted only
+   from the `mgmt` network (`{admin_net}`).
+
+Check from the outside, from `attacker`, and from `admin` for SNMP.
+""",
+        "Redis tourne mais le port 6379 n'est plus ouvert ni depuis wan ni depuis admin": "Redis runs but port 6379 is no longer open, neither from wan nor from admin",
+        "en local, Redis répond PONG avec le mot de passe et NOAUTH sans": "locally, Redis answers PONG with the password and NOAUTH without it",
+        "SNMP de db ne répond plus aux communautés public et private": "the SNMP of db no longer answers the communities public and private",
+        "la communauté secrète répond depuis admin, pas depuis wan": "the secret community answers from admin, not from wan",
+        "Écouter au bon endroit": "Listening in the right place",
+        """
+- faire écouter Redis sur `127.0.0.1` plutôt que compter sur un pare-feu : @@{bind:>le port n'est même plus joignable du réseau, même si le pare-feu disparaît ; le pare-feu reste utile pour les services qui ont de vrais clients distants>>>both|c'est inutile si un pare-feu existe>>>useless|cela chiffre les échanges>>>encrypt}@@
+- une communauté SNMPv2c « secrète » protège-t-elle bien ? @@{community:>peu : elle circule en clair dans chaque requête, d'où la restriction par réseau source (ou SNMPv3)>>>clear|oui, elle est chiffrée>>>encrypted|oui, si elle est longue>>>long}@@
+""": """
+- making Redis listen on `127.0.0.1` rather than relying on a firewall: @@{bind:>the port is not even reachable from the network any more, even if the firewall disappears; the firewall stays useful for the services that have real remote clients>>>both|it is useless if there is a firewall>>>useless|it encrypts the exchanges>>>encrypt}@@
+- does a "secret" SNMPv2c community protect well? @@{community:>hardly: it travels in clear in every request, hence the restriction by source network (or SNMPv3)>>>clear|yes, it is encrypted>>>encrypted|yes, if it is long>>>long}@@
+""",
+        "boucle locale et pare-feu ; communauté en clair": "loopback and firewall; community in clear",
+        "Partie 7 — Durcir SSH sur www": "Part 7 — Hardening SSH on www",
+        "Un serveur SSH qui n'accepte que le nécessaire": "An SSH server that accepts only what is needed",
+        """
+Le serveur SSH de `www` (`{www}`) a gardé une configuration « de compatibilité ». Le compte `deploy`
+s'y connecte avec la clé de `attacker` (`ssh deploy@www`) : cela doit continuer de marcher. Depuis
+`attacker`, examinez-le avec `ssh2-enum-algos` et `ssh-auth-methods` (`--script-args ssh.user=deploy`),
+puis sur `www` (section @@ref:ssh@@) :
+
+1. interdisez la connexion directe de `root` ;
+2. n'acceptez plus que les clés (ni mot de passe, ni *keyboard-interactive*) ;
+3. retirez les algorithmes faibles : modes CBC, échanges de clés et MAC fondés sur SHA-1, MAC MD5,
+   signature `ssh-rsa`.
+
+Vérifiez avec `sshd -T`, puis par un nouveau scan.
+""": """
+The SSH server of `www` (`{www}`) has kept a "compatibility" configuration. The `deploy` account logs
+in with the key of `attacker` (`ssh deploy@www`): this must keep working. From `attacker`, examine
+it with `ssh2-enum-algos` and `ssh-auth-methods` (`--script-args ssh.user=deploy`), then on `www`
+(section @@ref:ssh@@):
+
+1. forbid the direct login of `root`;
+2. accept keys only (neither password nor *keyboard-interactive*);
+3. remove the weak algorithms: CBC modes, key exchanges and MACs based on SHA-1, MD5 MACs, the
+   `ssh-rsa` signature.
+
+Check with `sshd -T`, then with a new scan.
+""",
+        "deploy se connecte avec sa clé, root non (PermitRootLogin no)": "deploy logs in with its key, root does not (PermitRootLogin no)",
+        "ssh-auth-methods : publickey seulement": "ssh-auth-methods: publickey only",
+        "aucun chiffrement CBC, 3DES...": "no CBC, 3DES... encryption",
+        "aucun échange de clés SHA-1": "no SHA-1 key exchange",
+        "aucun MAC SHA-1 ou MD5": "no SHA-1 or MD5 MAC",
+        "pas de signature ssh-rsa (SHA-1)": "no ssh-rsa signature (SHA-1)",
+        "ssh2-enum-algos : ": "ssh2-enum-algos: ",
+        "Pourquoi ces restrictions": "Why these restrictions",
+        """
+- l'intérêt de n'accepter que les clés : @@{keys:>plus aucun mot de passe à deviner ni à voler : la recherche de mots de passe devient inutile>>>guess|les connexions sont plus rapides>>>fast|les clés chiffrent mieux le trafic>>>cipher}@@
+- pourquoi retirer SHA-1 : @@{sha1:>on sait fabriquer des collisions SHA-1 : il ne garantit plus l'authenticité d'une signature>>>collisions|il est trop lent>>>slow|il n'existe pas dans OpenSSH 10>>>absent}@@
+""": """
+- the point of accepting keys only: @@{keys:>no password left to guess or to steal: password guessing becomes useless>>>guess|the connections are faster>>>fast|keys encrypt the traffic better>>>cipher}@@
+- why remove SHA-1: @@{sha1:>SHA-1 collisions can be crafted: it no longer guarantees the authenticity of a signature>>>collisions|it is too slow>>>slow|it does not exist in OpenSSH 10>>>absent}@@
+""",
+        "clés seulement ; SHA-1": "keys only; SHA-1",
+        "Partie 8 — Durcir le serveur web et TLS de www": "Part 8 — Hardening the web server and TLS of www",
+        "Un site qui en dit moins": "A site that says less",
+        """
+Le site de `www` (nginx, ports 80 et 443) doit rester en ligne. Scannez-le depuis `attacker`
+(`http-server-header`, `http-git`, `http-enum`, `ssl-enum-ciphers`, `http-security-headers`), puis sur
+`www` (section @@ref:web@@) :
+
+1. n'affichez plus la version de nginx ;
+2. TLS : seulement TLS 1.2 et 1.3, avec des suites notées **A** par `ssl-enum-ciphers`
+   (`least strength: A`) ;
+3. ne servez plus le dépôt `.git` ni le répertoire de sauvegardes (ni sa liste, ni l'archive) ;
+4. ajoutez l'en-tête HSTS (au moins un jour) aux réponses HTTPS.
+
+Le site est décrit par `{site}`.
+""": """
+The site of `www` (nginx, ports 80 and 443) must stay online. Scan it from `attacker`
+(`http-server-header`, `http-git`, `http-enum`, `ssl-enum-ciphers`, `http-security-headers`), then on
+`www` (section @@ref:web@@):
+
+1. stop showing the version of nginx;
+2. TLS: only TLS 1.2 and 1.3, with cipher suites graded **A** by `ssl-enum-ciphers`
+   (`least strength: A`);
+3. stop serving the `.git` repository and the backup directory (neither its listing nor the archive);
+4. add the HSTS header (at least one day) to the HTTPS responses.
+
+The site is described by `{site}`.
+""",
+        "le site répond et l'en-tête Server ne donne plus de version (80 et 443)": "the site answers and the Server header no longer gives a version (80 and 443)",
+        "ssl-enum-ciphers : ni SSLv3, ni TLS 1.0, ni TLS 1.1": "ssl-enum-ciphers: neither SSLv3, nor TLS 1.0, nor TLS 1.1",
+        "ssl-enum-ciphers : least strength A": "ssl-enum-ciphers: least strength A",
+        "http-git ne trouve plus rien, /.git/HEAD n'est plus servi": "http-git no longer finds anything, /.git/HEAD is no longer served",
+        "ni liste de /backup/, ni archive servie": "neither a listing of /backup/ nor an archive served",
+        "en-tête Strict-Transport-Security, max-age d'au moins un jour": "Strict-Transport-Security header, max-age of at least one day",
+        "Ce que le dépôt publié révélait": "What the published repository revealed",
+        """
+- le message du dernier *commit* que `http-git` affichait : @@{commit:.*}@@
+""": """
+- the message of the last *commit* that `http-git` showed: @@{commit:.*}@@
+""",
+        "message du dernier commit révélé par http-git": "message of the last commit revealed by http-git",
+        "Partie 9 — Le pare-feu de app": "Part 9 — The firewall of app",
+        "Ne laisser passer que le nécessaire": "Letting through only what is needed",
+        """
+`app` (`{app}`) publie une application en HTTPS (443) pour tout le monde. Il écoute aussi SSH (22),
+des métriques de supervision ({metrics}) et une console d'administration ({console}). Écrivez un
+pare-feu nftables (section @@ref:firewall@@) :
+
+1. politique `drop` en entrée ; les réponses, la boucle locale et le ping passent ;
+2. 443 pour tout le monde ; 22 et {metrics} seulement depuis le réseau `mgmt` (`{admin_net}`) ;
+   {console} pour personne ;
+3. **persistant** : dans `{conf}`, chargé au démarrage (service `nftables` activé).
+
+Vérifiez depuis `attacker` et depuis `admin`.
+""": """
+`app` (`{app}`) publishes an application over HTTPS (443) for everybody. It also listens for SSH
+(22), monitoring metrics ({metrics}) and an administration console ({console}). Write an nftables
+firewall (section @@ref:firewall@@):
+
+1. policy `drop` on input; the replies, the loopback and the ping get through;
+2. 443 for everybody; 22 and {metrics} only from the `mgmt` network (`{admin_net}`);
+   {console} for nobody;
+3. **persistent**: in `{conf}`, loaded at boot (service `nftables` enabled).
+
+Check from `attacker` and from `admin`.
+""",
+        "443 ouvert pour tous ; 22 ouvert depuis admin et fermé depuis wan": "443 open for all; 22 open from admin and closed from wan",
+        "le port des métriques ouvert depuis admin et fermé depuis wan": "the metrics port open from admin and closed from wan",
+        "la console fermée depuis wan et depuis admin": "the console closed from wan and from admin",
+        "un port inutilisé apparaît filtered depuis wan (politique drop)": "an unused port shows up filtered from wan (policy drop)",
+        "politique drop en entrée et le ping passe": "policy drop on input and the ping gets through",
+        "/etc/nftables.conf valide, avec une chaîne input à la politique drop, et nftables activé": "/etc/nftables.conf valid, with an input chain with the policy drop, and nftables enabled",
+        "Ce que voit nmap": "What nmap sees",
+        """
+- avec la politique `drop`, les ports non autorisés de `app` apparaissent : @@{filtered:>filtered : plus aucune réponse, le scan ralentit et apprend moins>>>drop|closed : la machine répond RST>>>rst|open/filtered>>>openfiltered}@@
+- et avec `reject with tcp reset` à la place : @@{reject:>closed : un RST revient, comme sans service>>>closed|filtered>>>filtered|open>>>open}@@
+""": """
+- with the `drop` policy, the ports of `app` that are not allowed show up as: @@{filtered:>filtered: no answer any more, the scan slows down and learns less>>>drop|closed: the machine answers RST>>>rst|open/filtered>>>openfiltered}@@
+- and with `reject with tcp reset` instead: @@{reject:>closed: an RST comes back, as without a service>>>closed|filtered>>>filtered|open>>>open}@@
+""",
+        "drop donne filtered ; reject with tcp reset donne closed": "drop gives filtered; reject with tcp reset gives closed",
+        "Bonus — Écrire un script NSE": "Bonus — Writing an NSE script",
+        "Un script pour le service d'inventaire": "A script for the asset service",
+        """
+`printer` (partie 4) fait tourner sur le port TCP {port} un service d'inventaire maison. Il annonce
+`SRE-ASSET 1.2 ready`, puis répond à la commande `INVENTORY` (une ligne) par
+`asset=...;serial=...;owner=...` ; `HELP` liste les commandes. Essayez-le avec `nc`.
+
+Écrivez sur `attacker` le script **`{script}`** (section @@ref:nse-write@@) : il s'applique au port
+{port}, envoie `INVENTORY` et affiche **`serial: <numéro>`** ; il a une description et les catégories
+`discovery` et `safe`. Testez-le contre `printer`. L'évaluation le lance contre un service neuf, au
+numéro de série tiré à chaque fois.
+""": """
+`printer` (part 4) runs a home-made asset service on TCP port {port}. It announces
+`SRE-ASSET 1.2 ready`, then answers the `INVENTORY` command (one line) with
+`asset=...;serial=...;owner=...`; `HELP` lists the commands. Try it with `nc`.
+
+Write the script **`{script}`** on `attacker` (section @@ref:nse-write@@): it applies to port
+{port}, sends `INVENTORY` and shows **`serial: <number>`**; it has a description and the categories
+`discovery` and `safe`. Test it against `printer`. The evaluation runs it against a fresh service,
+with a serial number drawn each time.
+""",
+        "le script affiche le numéro de série d'un service d'inventaire neuf": "the script shows the serial number of a fresh asset service",
+        "--script-help montre sa description et la catégorie safe ou discovery": "--script-help shows its description and the category safe or discovery",
     },
 }

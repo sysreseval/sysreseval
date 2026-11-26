@@ -12,6 +12,7 @@ suppressed route is not advertised.  Covers the data, the topology, the state op
 grading contract (nothing done: 0; everything: 68 + 6 bonus points; **each part alone gives exactly
 its points and everything but one part the rest**) and the texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -71,6 +72,18 @@ def _running_name():
 
 def _text(t, lang='fr'):
     return t.resolve(lang) if hasattr(t, 'resolve') else str(t)
+
+
+def _instructor_literals():
+    """The tr() literals inside the instructor() calls of the lab (also through _by_language)."""
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
 
 
 def _mentions(text, value):
@@ -302,9 +315,21 @@ class World:
     def dmp_output(self, command):
         net, peer = self.ns.net, self.ns.addr('dmp_cust', 'dmp_l2')
         on = 'dmp' in self.f
+        # the flap script keeps the prefix withdrawn half of the time: FRR then lists no damped path, the path
+        # is a history entry with its penalty (shapes seen live on s17, FRR 10.3, 2026-11-26)
+        withdrawn = on and 'dmp_withdrawn' in self.f
         if 'dampened-paths' in command:
+            if withdrawn:
+                return {'routes': {}, 'totalRoutes': 0, 'totalPaths': 3}
             return {'routes': {str(net('dmp_f')): [{'damped': True, 'peerHost': str(peer), 'asPath': '65141',
                                                    'reuseTimerMsecs': 900000}]}} if on else {}
+        if withdrawn:
+            path = _prefix_path(peer, "65141", best=False)
+            del path['valid'], path['bestpath']
+            low = 'dmp_low_penalty' in self.f
+            path.update({'dampeningHistoryEntry': True, 'dampeningFlapCount': 7,
+                         'dampeningPenalty': self.d.damp_suppress - 1 if low else self.d.damp_suppress + 4219})
+            return {'prefix': str(net('dmp_f')), 'paths': [path]}
         return {'prefix': str(net('dmp_f')), 'paths': [_prefix_path(peer, "65141", best=not on, damped=on)]}
 
     def dmp_isp_routes(self):
@@ -547,6 +572,16 @@ class TestGrading:
         grade, _ = _simulate(lab, data, tmp_pub_dir, features=ALL_FEATURES - PARTS[part], answers='final')
         assert _parts(grade) == {key: (FORM_POINTS.get(part, 0) if key == part else POINTS[key]) for key in POINTS}
 
+    @pytest.mark.parametrize('low', [False, True])
+    def test_dampening_read_while_the_prefix_is_withdrawn(self, lab, data, tmp_pub_dir, low):
+        """An evaluation may fall in the half-period where the flap script keeps the prefix withdrawn: FRR then
+        has no damped path, only a history entry and its penalty (a live campaign on s17 lost both elements in
+        every evaluation that way, 2026-11-26). Above the suppress limit configured on dmp_r1 the route counts
+        as suppressed (FRR suppresses it again at its next announcement); below it, it does not."""
+        features = ALL_FEATURES | {'dmp_withdrawn'} | ({'dmp_low_penalty'} if low else set())
+        grade, _ = _simulate(lab, data, tmp_pub_dir, features=features)
+        assert _lost(grade) == ({'dmp_suppressed', 'dmp_not_propagated'} if low else set())
+
     def test_every_data_set(self, lab, tmp_pub_dir):
         for _ in range(8):
             d = lab.Data.generate()
@@ -658,14 +693,48 @@ class TestTexts:
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 10 and result.warnings == []
+        # instructor(tr(...)) and, around a solution in vtysh, instructor(_by_language(tr(...), ...))
+        assert source.count(b'instructor(tr(') + source.count(b'instructor(_by_language(tr(') == 10
+        assert result.calls == len(_instructor_literals()) == 10 and result.warnings == []
+        assert b'**Solution.**' not in result.data and b'instructor(' not in result.data
         stripped = tmp_path / 'bgp_scaling_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('bgp_scaling_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the instructor texts goes with them, the other entries stay
+        english = lab._TRANSLATIONS['en']
+        kept = module._TRANSLATIONS['en']
+        assert result.translations == len(set(_instructor_literals()) & set(english)) == 10
+        assert not set(kept) & set(_instructor_literals()) and len(kept) == len(english) - 10
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (68, 6)
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """French texts with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for every lab
+        of the directory by test_draft_misc_translations.py), the table of the sites in both languages."""
+        import check_sre_translations as cst
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+        assert lab.title.resolve('en') == "BGP: communities, multipath, confederations and dampening"
+        assert lab.NetScheme.solve_cf._sre_state_description.resolve('en') == "Part 3: solution (confederation)"
+        g1, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert fr != en and has_instructor(en), _text(q.title)
+            assert '**Solution.**' in en or '**For the instructor.**' in en, _text(q.title)
+        organisation = g1.get_questions_ordered()[0].description
+        assert "| 1 — communautés bien connues | `ne_*` | `ne_r1` ; `ne_isp`" in _text(organisation, 'fr')
+        assert "| 1 — well-known communities | `ne_*` | `ne_r1`; `ne_isp`" in _text(organisation, 'en')
+        # the routers of a solution in vtysh: a space before the colon in French only
+        solutions = [q.description for q in g1.get_questions_ordered()
+                     if '```\nconfigure terminal' in _text(q.description)]
+        assert len(solutions) == 5
+        for description in solutions:
+            fr, en = _text(description, 'fr'), _text(description, 'en')
+            assert re.search(r"^`[a-z0-9_]+` :\n\n```\nconfigure terminal$", fr, re.M)
+            assert re.search(r"^`[a-z0-9_]+`:\n\n```\nconfigure terminal$", en, re.M) and '` :\n' not in en
 
     def test_english_identifiers(self, lab, data):
         french = re.compile(r'(routeur|reseau|panne|partie|adresse|lien|voisin|bouclage|chemin|client|fournisseur|'

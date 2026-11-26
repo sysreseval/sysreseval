@@ -26,6 +26,7 @@ from ipaddress import IPv4Network
 from typing import Dict
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from grade_helpers import eval_tcp_server, test_dig
@@ -1022,39 +1023,39 @@ avant de passer à la suivante :
         for m in PROBES:
             install_smtp_probe(net_scheme=self, machine=m)
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 1 seule : le message tapé à la main (rejoué par swaks depuis pc1)"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 1 seule : le message tapé à la main (rejoué par swaks depuis pc1)", en="Solution of part 1 alone: the hand-typed message (replayed by swaks from pc1)"))
     def part1(self):
         self._solve_part1()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 2 seule : l'enregistrement MX de alpha.tp sur dns1"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 2 seule : l'enregistrement MX de alpha.tp sur dns1", en="Solution of part 2 alone: the MX record of alpha.tp on dns1"))
     def part2(self):
         self._solve_part2()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 3 seule : Postfix sur mx1"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 3 seule : Postfix sur mx1", en="Solution of part 3 alone: Postfix on mx1"))
     def part3(self):
         self._solve_part3()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 4 seule : pc1 relayé par smtp.isp.tp"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 4 seule : pc1 relayé par smtp.isp.tp", en="Solution of part 4 alone: pc1 relayed by smtp.isp.tp"))
     def part4(self):
         self._solve_part4()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 5 seule : alias, .forward et adresses étendues sur mx3"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 5 seule : alias, .forward et adresses étendues sur mx3", en="Solution of part 5 alone: aliases, .forward and extended addresses on mx3"))
     def part5(self):
         self._solve_part5()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 6 seule : un message différé et un rebond depuis mx3"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 6 seule : un message différé et un rebond depuis mx3", en="Solution of part 6 alone: a deferred message and a bounce from mx3"))
     def part6(self):
         self._solve_part6()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 7 seule : Dovecot sur mx1"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 7 seule : Dovecot sur mx1", en="Solution of part 7 alone: Dovecot on mx1"))
     def part7(self):
         self._solve_part7()
 
-    @sre_state(user_allowed=False, description=tr("Solution du bonus seul : mx4 réparé"))
+    @sre_state(user_allowed=False, description=tr("Solution du bonus seul : mx4 réparé", en="Solution of the bonus alone: mx4 repaired"))
     def bonus(self):
         self._solve_bonus()
 
-    @sre_state(user_allowed=False, description=tr("Solution de référence de tout le TP, bonus compris"))
+    @sre_state(user_allowed=False, description=tr("Solution de référence de tout le TP, bonus compris", en="Reference solution of the whole lab, bonus included"))
     def final(self):
         """Reference solution: every grade element reaches its maximum.
 
@@ -1091,6 +1092,32 @@ def _int(s, default: int = -1) -> int:
 
 def _words(value: str) -> list:
     return [w for w in re.split(r"[\s,]+", (value or "").strip()) if w]
+
+
+# The English labels of the right options of the dropdowns: the English forms show
+# `English label>>>French option`, the answers stored (and graded) are the French options.
+ANSWERS_EN = {
+    "les commandes de l'enveloppe (MAIL FROM, RCPT TO)": "the envelope commands (MAIL FROM, RCPT TO)",
+    "le MX de plus petite valeur est essayé en premier": "the MX with the lowest value is tried first",
+    "un nom ayant un enregistrement A": "a name that has an A record",
+    "le courrier est tenté sur l'adresse A du domaine lui-même":
+        "delivery is attempted to the A address of the domain itself",
+    "le fournisseur bloque le port 25 sortant et ne relaie que pour ses clients authentifiés":
+        "the provider blocks outgoing port 25 and relays only for its authenticated customers",
+    "construire la table /etc/aliases.db que Postfix lit réellement":
+        "build the /etc/aliases.db table that Postfix actually reads",
+    "le serveur MX de delta.tp refuse la connexion": "the MX server of delta.tp refuses the connection",
+    "Postfix réessaie périodiquement, puis renvoie un rapport d'échec à l'expéditeur":
+        "Postfix retries periodically, then returns a failure report to the sender",
+}
+
+
+def _with_answers(text: TranslatedText, answers: dict) -> TranslatedText:
+    """*text* (a tr() text) formatted with the right *answers* of a form, each version in its language:
+    in English, a French option becomes its label of ANSWERS_EN."""
+    return TranslatedText({lang: version.format(**{k: ANSWERS_EN.get(v, v) if lang == "en" else v
+                                                  for k, v in answers.items()})
+                           for lang, version in text.items()})
 
 
 def _imap_message(token: str, rcpt: str) -> str:
@@ -1266,15 +1293,30 @@ class Grade(Grade0):
         # part 7
         dovecot1_maildir = _maildir_ok(dove1)
 
-        addressing = no_tr(f"""
+        addressing = tr(f"""
 | réseau | adresse | machines |
 |--------|---------|----------|
 | `lan1` ({DOMAIN_A}) | `{d.nets.lan1}` | `r1` eth0 (`{d.ips.r1_lan1.ip}`), `dns1` (`{ip('dns1')}`), `mx1` (`{mx1_ip}`), `pc1` (`{pc1_ip}`) |
 | `wan` (l'extérieur) | `{d.nets.wan}` | `r1` eth1 (`{d.ips.r1_wan.ip}`), `mx2` = `{FQDN['mx2']}` (`{ip('mx2')}`), `pc2` (`{ip('pc2')}`), `relay` = `{RELAY_HOST}` (`{ip('relay')}`), `mx3` = `{FQDN['mx3']}` (`{mx3_ip}`), `mx4` = `{FQDN['mx4']}` (`{mx4_ip}`) |
+""", en=f"""
+| network | address | machines |
+|---------|---------|----------|
+| `lan1` ({DOMAIN_A}) | `{d.nets.lan1}` | `r1` eth0 (`{d.ips.r1_lan1.ip}`), `dns1` (`{ip('dns1')}`), `mx1` (`{mx1_ip}`), `pc1` (`{pc1_ip}`) |
+| `wan` (the outside) | `{d.nets.wan}` | `r1` eth1 (`{d.ips.r1_wan.ip}`), `mx2` = `{FQDN['mx2']}` (`{ip('mx2')}`), `pc2` (`{ip('pc2')}`), `relay` = `{RELAY_HOST}` (`{ip('relay')}`), `mx3` = `{FQDN['mx3']}` (`{mx3_ip}`), `mx4` = `{FQDN['mx4']}` (`{mx4_ip}`) |
 """)
-        accounts = no_tr(f"""
+        accounts = tr(f"""
 | machine | compte | mot de passe |
 |---------|--------|--------------|
+| `mx1` | `alice` | `{d.pw_alice}` |
+| `mx2` | `bob` | `{d.pw_bob}` |
+| `mx2` | `dave` | `{d.pw_dave}` |
+| `relay` ({RELAY_HOST}) | `{RELAY_LOGIN}` | `{d.pw_relay}` |
+| `mx3` | `erin` | `{d.pw_erin}` |
+| `mx3` | `frank` | `{d.pw_frank}` |
+| `mx4` | `{ZETA_USER}` | `{d.pw_zoe}` |
+""", en=f"""
+| machine | account | password |
+|---------|---------|----------|
 | `mx1` | `alice` | `{d.pw_alice}` |
 | `mx2` | `bob` | `{d.pw_bob}` |
 | `mx2` | `dave` | `{d.pw_dave}` |
@@ -1372,7 +1414,8 @@ Le serveur `mx2.beta.tp` reçoit le courrier de `beta.tp`. Depuis `pc1` :
 5. recommencez avec `swaks --to bob@beta.tp --from alice@alpha.tp --server mx2.beta.tp` en
    regardant le dialogue, et avec `tcpdump -n -A port 25` sur `pc1` dans un second terminal.
 """)
-            + no_tr(f"\nPhrase secrète à placer dans le corps du message : **`{d.secret1}`**\n")
+            + tr(f"\nPhrase secrète à placer dans le corps du message : **`{d.secret1}`**\n",
+                 en=f"\nSecret sentence to put in the body of the message: **`{d.secret1}`**\n")
             + instructor(
                 tr("""
 **Solution.** Sur `pc1`, `nc mx2.beta.tp 25` puis :
@@ -1412,11 +1455,11 @@ Recipient address rejected: User unknown in local recipient table` ; `RCPT TO:<b
   IMAP @@{port_imap:[0-9]+}@@, IMAP en TLS implicite @@{port_imaps:[0-9]+}@@
 """)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponses.** `{code_banner}` (bannière), `{code_data}` (après DATA), `{code_end}` (message accepté),
 `{code_quit}` (QUIT) ; le routage suit {routing} ; `Return-Path:` reprend `{return_path}` ;
 ports `{port_smtp}`, `{port_submission}`, `{port_imap}`, `{port_imaps}`.
-""").format(**q1_answers)
+"""), q1_answers)
             ),
             cheat_answers={"final": q1_answers, "part1": q1_answers},
         )
@@ -1489,9 +1532,9 @@ puis `unbound-control reload` ; `dig +short MX alpha.tp` doit répondre `10 mx1.
   @@{no_mx:>le courrier est tenté sur l'adresse A du domaine lui-même|le courrier est refusé par l'expéditeur|le courrier est remis au serveur racine|le courrier est envoyé au MX du domaine parent}@@
 """)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponses.** `{ptr_mx2}` ; {priority} ; {mx_target} ; {no_mx}.
-""").format(**q2_answers)
+"""), q2_answers)
             ),
             cheat_answers={"final": q2_answers, "part2": q2_answers},
         )
@@ -1660,9 +1703,9 @@ accepte encore `root@alpha.tp` ; avec un mauvais `myorigin` (`root@localhost.loc
   @@{why_relay:>le fournisseur bloque le port 25 sortant et ne relaie que pour ses clients authentifiés|le relais chiffre les messages jusqu'à la boîte du destinataire|le DNS ne permet pas à pc1 de trouver les MX|Postfix ne sait pas remettre un message sans relais}@@
 """)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponses.** `{starttls_code}` (`5.7.0 Must issue a STARTTLS command first`) ; {why_relay}.
-""").format(**q4_answers)
+"""), q4_answers)
             ),
             cheat_answers={"final": q4_answers, "part4": q4_answers},
         )
@@ -1762,9 +1805,9 @@ postfix`.
 - l'adresse de l'en-tête `X-Original-To:` du message pour `erin+news@gamma.tp` : @@{original_to:[A-Za-z0-9@.+-]+}@@
 """)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponses.** {newaliases} ; `{original_to}` (l'adresse complète, extension comprise).
-""").format(**q5_answers)
+"""), q5_answers)
             ),
             cheat_answers={"final": q5_answers, "part5": q5_answers},
         )
@@ -1852,11 +1895,11 @@ de `MAILER-DAEMON@mx3.gamma.tp`).
   expéditeur du rapport reçu par Erin : @@{bounce_sender:[A-Za-z@.-]+}@@
 """)
             + instructor(
-                tr("""
+                _with_answers(tr("""
 **Réponses.** {reason} (`Connection refused`, erreur temporaire) ; `{command}` (ou `mailq`,
 `postqueue -j`) ; {fate} (`maximal_queue_lifetime`, 5 jours par défaut) ; `{bounce_code}` (`5.1.1 User
 unknown`) ; rapport envoyé par `{bounce_sender}`.
-""").format(**q6_answers)
+"""), q6_answers)
             ),
             cheat_answers={"final": q6_answers, "part6": q6_answers},
         )
@@ -2041,7 +2084,7 @@ Puis `systemctl restart postfix`.
 
 
 # ---------------------------------------------------------------------------
-# English translations of the instructor texts (the course and the questions are French)
+# English translations: texts are French (``tr()``) with their English here, identifiers English
 # ---------------------------------------------------------------------------
 
 _TRANSLATIONS = {
@@ -2081,7 +2124,7 @@ projet.
 **For the instructor.** Every question ends with its solution, computed for the addresses of this
 project.
 
-- The `final` state (tab *Apply a configuration*) applies the whole solution (bonus included) on
+- The `final` state (the *Apply Configuration* tab) applies the whole solution (bonus included) on
   `dns1`, `mx1`, `pc1`, `mx3` and `mx4`, replays the sends asked of the students (the message of part 1
   from `pc1`, the deferred message and the bounce of part 6 from `mx3`) and fills the forms. Wait about
   ten seconds before an evaluation (the bounce comes back from `mx2`). The states `part1` to `part7` and
@@ -2404,5 +2447,1406 @@ Then `systemctl restart postfix`.
   server answering); `h2` connects over IMAP (`STARTTLS`) with the account `zoe` and must see a test
   message written into her mailbox.
 """,
+        "SMTP et IMAP : courrier électronique avec Postfix": "SMTP and IMAP: electronic mail with Postfix",
+        """**Sommaire**
+""": """**Contents**
+""",
+        "Les acteurs du courrier électronique": "The actors of electronic mail",
+        """
+
+Une adresse `alice@alpha.tp` désigne une **boîte aux lettres** (`alice`) hébergée par un
+**domaine** (`alpha.tp`). Le courrier électronique est un système **à relais** : le message est
+remis de serveur en serveur, chacun le rangeant dans une **file d'attente** jusqu'à sa remise au
+suivant, exactement comme une lettre passe par plusieurs centres de tri. Les rôles :
+
+| rôle | fonction | logiciels |
+|------|----------|-----------|
+| **MUA** (*Mail User Agent*) | le client de l'utilisateur : rédige, envoie, lit | Thunderbird, `mutt`, `swaks`, `mail` |
+| **MSA** (*Mail Submission Agent*) | reçoit les messages des utilisateurs authentifiés (port 587) | Postfix, Exim |
+| **MTA** (*Mail Transfer Agent*) | achemine le courrier de domaine en domaine (port 25) | Postfix, Exim, Sendmail |
+| **MDA** (*Mail Delivery Agent*) | range le message dans la boîte du destinataire | `local` de Postfix, Dovecot LMTP, `procmail` |
+| serveur d'accès | donne au MUA accès à la boîte (IMAP, POP3) | Dovecot, Cyrus |
+
+Le chemin d'un message de `alice@alpha.tp` à `bob@beta.tp` :
+
+```
+  MUA d'alice ──(SMTP)──> MTA mx1.alpha.tp ──(DNS : MX de beta.tp ?)
+                                  │
+                             (SMTP, 25)
+                                  v
+                         MTA mx2.beta.tp ──> MDA ──> boîte de bob <──(IMAP, 143)── MUA de bob
+```
+
+Tout se passe avec un seul protocole d'envoi, **SMTP** (*Simple Mail Transfer Protocol*), et un
+protocole de lecture, **IMAP** (ou l'ancien **POP3**). Ports à connaître :
+
+| port | usage |
+|------|-------|
+| **25** | SMTP entre serveurs (MTA → MTA) |
+| **587** | *submission* : dépôt d'un message par un utilisateur authentifié (STARTTLS) |
+| 465 | *submissions* (SMTPS) : idem, en TLS implicite |
+| **143** / 993 | IMAP / IMAP en TLS implicite |
+| 110 / 995 | POP3 / POP3 en TLS implicite |
+
+SMTP date de 1982 (RFC 821, Jon Postel) ; le texte de référence actuel est la RFC 5321 (2008),
+accompagné de la RFC 5322 pour le format des messages. Le protocole d'origine n'a ni chiffrement, ni
+authentification, ni vérification de l'expéditeur. Ce cours décrit le courrier « en clair », tel qu'il
+circule entre serveurs et tel qu'on l'administre : la mise en place du chiffrement (certificats, IMAPS,
+soumission authentifiée), la remise par Dovecot et la lutte contre l'usurpation et le spam (SPF, DKIM,
+DMARC) sont le sujet d'un second TP.
+""": """
+
+An address `alice@alpha.tp` designates a **mailbox** (`alice`) hosted by a **domain** (`alpha.tp`).
+Electronic mail is a **relay** system: the message is handed on from server to server, each one keeping
+it in a **queue** until it has been handed to the next, exactly as a letter goes through several sorting
+centres. The roles:
+
+| role | function | software |
+|------|----------|----------|
+| **MUA** (*Mail User Agent*) | the user's client: writes, sends, reads | Thunderbird, `mutt`, `swaks`, `mail` |
+| **MSA** (*Mail Submission Agent*) | receives the messages of authenticated users (port 587) | Postfix, Exim |
+| **MTA** (*Mail Transfer Agent*) | carries mail from domain to domain (port 25) | Postfix, Exim, Sendmail |
+| **MDA** (*Mail Delivery Agent*) | stores the message in the recipient's mailbox | Postfix's `local`, Dovecot LMTP, `procmail` |
+| access server | gives the MUA access to the mailbox (IMAP, POP3) | Dovecot, Cyrus |
+
+The path of a message from `alice@alpha.tp` to `bob@beta.tp`:
+
+```
+  alice's MUA ──(SMTP)──> MTA mx1.alpha.tp ──(DNS: MX of beta.tp?)
+                                  │
+                             (SMTP, 25)
+                                  v
+                         MTA mx2.beta.tp ──> MDA ──> bob's mailbox <──(IMAP, 143)── bob's MUA
+```
+
+Everything happens with a single sending protocol, **SMTP** (*Simple Mail Transfer Protocol*), and a
+reading protocol, **IMAP** (or the older **POP3**). Ports to know:
+
+| port | use |
+|------|-----|
+| **25** | SMTP between servers (MTA → MTA) |
+| **587** | *submission*: a message handed in by an authenticated user (STARTTLS) |
+| 465 | *submissions* (SMTPS): the same, over implicit TLS |
+| **143** / 993 | IMAP / IMAP over implicit TLS |
+| 110 / 995 | POP3 / POP3 over implicit TLS |
+
+SMTP dates from 1982 (RFC 821, Jon Postel); the current reference text is RFC 5321 (2008), together
+with RFC 5322 for the message format. The original protocol has no encryption, no authentication and no
+check of the sender. This course describes mail "in clear", as it travels between servers and as it is
+administered: setting up encryption (certificates, IMAPS, authenticated submission), delivery by
+Dovecot and the fight against spoofing and spam (SPF, DKIM, DMARC) are the subject of a second lab.
+""",
+        "Le protocole SMTP": "The SMTP protocol",
+        """
+
+SMTP est un protocole **texte** sur TCP : le client envoie des commandes, le serveur répond par un
+**code à trois chiffres** suivi d'un texte libre. Un envoi complet, tel qu'on peut le taper avec
+`nc mx2.beta.tp 25` (ou `telnet`) :
+
+```
+S: 220 mx2.beta.tp ESMTP Postfix (Debian)
+C: EHLO pc1.alpha.tp
+S: 250-mx2.beta.tp
+S: 250-SIZE 10240000
+S: 250-STARTTLS
+S: 250 8BITMIME
+C: MAIL FROM:<alice@alpha.tp>
+S: 250 2.1.0 Ok
+C: RCPT TO:<bob@beta.tp>
+S: 250 2.1.5 Ok
+C: DATA
+S: 354 End data with <CR><LF>.<CR><LF>
+C: From: alice@alpha.tp
+C: To: bob@beta.tp
+C: Subject: bonjour
+C:
+C: Le texte du message.
+C: .
+S: 250 2.0.0 Ok: queued as 4D3F1188285
+C: QUIT
+S: 221 2.0.0 Bye
+```
+
+| commande | rôle |
+|----------|------|
+| `EHLO nom` | se présenter (`HELO` dans le SMTP d'origine) ; la réponse liste les **extensions** du serveur |
+| `MAIL FROM:<adresse>` | expéditeur de l'**enveloppe** (adresse de retour des erreurs) |
+| `RCPT TO:<adresse>` | un destinataire ; répétée pour chaque destinataire |
+| `DATA` | le message lui-même, terminé par une ligne ne contenant qu'un point |
+| `RSET`, `NOOP`, `QUIT` | abandonner le message en cours, ne rien faire, fermer |
+| `STARTTLS`, `AUTH` | passer en TLS, s'authentifier (extensions, section @@ref:smarthost@@) |
+
+**Les codes de réponse** (RFC 5321) : le premier chiffre suffit à décider la suite.
+
+| code | sens | exemples |
+|------|------|----------|
+| **2xx** | commande acceptée | `220` service prêt, `250` ok, `221` au revoir, `235` authentifié |
+| **3xx** | continuez | `354` envoyez le message |
+| **4xx** | erreur **temporaire** : réessayer plus tard | `421` service indisponible, `450` boîte indisponible, `454` relais refusé (temporaire) |
+| **5xx** | erreur **permanente** : abandonner | `550` boîte inconnue, `554` relais refusé, `530` TLS ou authentification exigés |
+
+Postfix ajoute un *code étendu* `x.y.z` (RFC 3463, extension `ENHANCEDSTATUSCODES`) :
+`5.1.1` destinataire inconnu, `5.7.1` refus de politique, `4.4.1` connexion impossible...
+
+**ESMTP.** La réponse à `EHLO` annonce les extensions : `SIZE` (taille maximale), `PIPELINING`
+(commandes groupées), `STARTTLS`, `AUTH PLAIN LOGIN`, `8BITMIME`, `DSN`, `CHUNKING`. Un client qui
+ne les connaît pas les ignore.
+
+**Enveloppe et en-têtes.** Ce qui compte pour l'acheminement, c'est l'**enveloppe** (`MAIL FROM`,
+`RCPT TO`), pas les en-têtes `From:` et `To:` du message, que le serveur ne lit pas : c'est ce qui
+permet les copies cachées (`Bcc`) et les listes de diffusion, mais aussi l'usurpation du `From:`.
+Le `MAIL FROM` devient l'en-tête `Return-Path:` à la remise finale.
+
+Pour envoyer un message sans tout taper : `swaks --to bob@beta.tp --from alice@alpha.tp
+--server mx2.beta.tp --body "bonjour"` affiche le dialogue complet (`-->` envoyé, `<--` reçu) ;
+`mail -s sujet bob@beta.tp` (paquet `bsd-mailx`) et `sendmail` passent par le serveur local de la
+machine.
+""": """
+
+SMTP is a **text** protocol over TCP: the client sends commands, the server answers with a
+**three-digit code** followed by free text. A complete send, as it can be typed with
+`nc mx2.beta.tp 25` (or `telnet`):
+
+```
+S: 220 mx2.beta.tp ESMTP Postfix (Debian)
+C: EHLO pc1.alpha.tp
+S: 250-mx2.beta.tp
+S: 250-SIZE 10240000
+S: 250-STARTTLS
+S: 250 8BITMIME
+C: MAIL FROM:<alice@alpha.tp>
+S: 250 2.1.0 Ok
+C: RCPT TO:<bob@beta.tp>
+S: 250 2.1.5 Ok
+C: DATA
+S: 354 End data with <CR><LF>.<CR><LF>
+C: From: alice@alpha.tp
+C: To: bob@beta.tp
+C: Subject: hello
+C:
+C: The text of the message.
+C: .
+S: 250 2.0.0 Ok: queued as 4D3F1188285
+C: QUIT
+S: 221 2.0.0 Bye
+```
+
+| command | role |
+|---------|------|
+| `EHLO name` | introduce oneself (`HELO` in the original SMTP); the reply lists the server's **extensions** |
+| `MAIL FROM:<address>` | sender of the **envelope** (the address errors are returned to) |
+| `RCPT TO:<address>` | one recipient; repeated for each recipient |
+| `DATA` | the message itself, ended by a line holding only a dot |
+| `RSET`, `NOOP`, `QUIT` | abandon the current message, do nothing, close |
+| `STARTTLS`, `AUTH` | switch to TLS, authenticate (extensions, section @@ref:smarthost@@) |
+
+**The reply codes** (RFC 5321): the first digit is enough to decide what comes next.
+
+| code | meaning | examples |
+|------|---------|----------|
+| **2xx** | command accepted | `220` service ready, `250` ok, `221` goodbye, `235` authenticated |
+| **3xx** | go on | `354` send the message |
+| **4xx** | **temporary** error: try again later | `421` service unavailable, `450` mailbox unavailable, `454` relay refused (temporary) |
+| **5xx** | **permanent** error: give up | `550` unknown mailbox, `554` relay refused, `530` TLS or authentication required |
+
+Postfix adds an *enhanced code* `x.y.z` (RFC 3463, extension `ENHANCEDSTATUSCODES`):
+`5.1.1` unknown recipient, `5.7.1` policy refusal, `4.4.1` connection impossible...
+
+**ESMTP.** The reply to `EHLO` announces the extensions: `SIZE` (maximum size), `PIPELINING`
+(grouped commands), `STARTTLS`, `AUTH PLAIN LOGIN`, `8BITMIME`, `DSN`, `CHUNKING`. A client that
+does not know them ignores them.
+
+**Envelope and headers.** What counts for routing is the **envelope** (`MAIL FROM`, `RCPT TO`), not
+the `From:` and `To:` headers of the message, which the server does not read: this is what makes blind
+copies (`Bcc`) and mailing lists possible, but also the spoofing of the `From:`. The `MAIL FROM`
+becomes the `Return-Path:` header at final delivery.
+
+To send a message without typing everything: `swaks --to bob@beta.tp --from alice@alpha.tp
+--server mx2.beta.tp --body "hello"` shows the complete dialogue (`-->` sent, `<--` received);
+`mail -s subject bob@beta.tp` (package `bsd-mailx`) and `sendmail` go through the machine's local
+server.
+""",
+        "Le message": "The message",
+        """
+
+Un message (RFC 5322) est du texte : des **en-têtes** `Nom: valeur` (une ligne suivie
+éventuellement de lignes de continuation commençant par un espace), une **ligne vide**, puis le
+**corps**. En-têtes écrits par l'expéditeur :
+
+| en-tête | contenu |
+|---------|---------|
+| `From:`, `To:`, `Cc:` | adresses affichées (le `Bcc:` n'est pas transmis) |
+| `Subject:`, `Date:` | sujet et date d'écriture |
+| `Message-ID:` | identifiant unique `<aléa@domaine>`, repris par les réponses (`In-Reply-To:`) |
+| `Reply-To:` | adresse à utiliser pour répondre, si différente de `From:` |
+
+En-têtes **ajoutés par les serveurs**, à lire de haut en bas pour remonter le chemin du message
+(le plus récent est en premier) :
+
+```
+Return-Path: <alice@alpha.tp>          <- le MAIL FROM, posé à la remise finale
+Delivered-To: bob@beta.tp              <- le RCPT TO, idem
+Received: from mx1.alpha.tp (mx1.alpha.tp [192.0.2.10])
+        by mx2.beta.tp (Postfix) with ESMTP id 4D3F1188285
+        for <bob@beta.tp>; Mon, 23 Nov 2026 10:12:07 +0000 (UTC)
+Received: from pc1.alpha.tp (pc1.alpha.tp [192.0.2.20])
+        by mx1.alpha.tp (Postfix) with ESMTP id 7A2B9
+        for <bob@beta.tp>; Mon, 23 Nov 2026 10:12:06 +0000 (UTC)
+```
+
+Chaque `Received:` note qui a remis le message (nom annoncé par `EHLO`, nom et adresse constatés),
+qui l'a reçu, par quel protocole (`ESMTP`, `ESMTPS` = en TLS, `ESMTPSA` = en TLS et authentifié)
+et quand : c'est la trace de référence pour tout diagnostic.
+
+**MIME** (RFC 2045 à 2049) permet les pièces jointes et les caractères non ASCII : les en-têtes
+`Content-Type:` (`text/plain; charset=utf-8`, `multipart/mixed; boundary=...`) et
+`Content-Transfer-Encoding:` (`base64`, `quoted-printable`) décrivent chaque partie. Un rapport
+d'erreur (section @@ref:queue@@) est lui-même un message `multipart/report`.
+""": """
+
+A message (RFC 5322) is text: **headers** `Name: value` (one line, possibly followed by continuation
+lines starting with a space), an **empty line**, then the **body**. Headers written by the sender:
+
+| header | content |
+|--------|---------|
+| `From:`, `To:`, `Cc:` | displayed addresses (the `Bcc:` is not transmitted) |
+| `Subject:`, `Date:` | subject and date of writing |
+| `Message-ID:` | unique identifier `<random@domain>`, repeated by the replies (`In-Reply-To:`) |
+| `Reply-To:` | address to use for replying, if different from `From:` |
+
+Headers **added by the servers**, to be read from top to bottom to trace the path of the message back
+(the most recent comes first):
+
+```
+Return-Path: <alice@alpha.tp>          <- the MAIL FROM, set at final delivery
+Delivered-To: bob@beta.tp              <- the RCPT TO, likewise
+Received: from mx1.alpha.tp (mx1.alpha.tp [192.0.2.10])
+        by mx2.beta.tp (Postfix) with ESMTP id 4D3F1188285
+        for <bob@beta.tp>; Mon, 23 Nov 2026 10:12:07 +0000 (UTC)
+Received: from pc1.alpha.tp (pc1.alpha.tp [192.0.2.20])
+        by mx1.alpha.tp (Postfix) with ESMTP id 7A2B9
+        for <bob@beta.tp>; Mon, 23 Nov 2026 10:12:06 +0000 (UTC)
+```
+
+Each `Received:` records who handed the message over (name announced by `EHLO`, name and address
+observed), who received it, by which protocol (`ESMTP`, `ESMTPS` = over TLS, `ESMTPSA` = over TLS and
+authenticated) and when: it is the reference trace for any diagnosis.
+
+**MIME** (RFC 2045 to 2049) allows attachments and non-ASCII characters: the headers
+`Content-Type:` (`text/plain; charset=utf-8`, `multipart/mixed; boundary=...`) and
+`Content-Transfer-Encoding:` (`base64`, `quoted-printable`) describe each part. An error report
+(section @@ref:queue@@) is itself a `multipart/report` message.
+""",
+        "DNS et courrier : les enregistrements MX": "DNS and mail: the MX records",
+        """
+
+Pour remettre un message à `bob@beta.tp`, le serveur `mx1` demande au DNS **quel serveur reçoit
+le courrier de `beta.tp`** : c'est l'enregistrement **MX** (*Mail eXchanger*) du domaine, qui
+désigne un nom, lui-même résolu en adresse (enregistrement A) :
+
+```
+beta.tp.        IN MX 10 mx2.beta.tp.
+beta.tp.        IN MX 20 mx-secours.beta.tp.
+mx2.beta.tp.    IN A  198.51.100.25
+```
+
+Le nombre est une **priorité** : le serveur essaie le MX de plus petite valeur, puis les suivants
+si le premier ne répond pas (c'est ainsi qu'on déclare un serveur de secours). Sans aucun MX, le
+courrier est tenté sur l'adresse A du domaine lui-même (RFC 5321). Un MX doit pointer vers un nom
+ayant un enregistrement A, jamais vers un CNAME ni une adresse IP. L'enregistrement **PTR**
+(résolution inverse) de l'adresse du serveur est contrôlé par beaucoup de destinataires : un
+serveur sans nom inverse, ou dont le nom inverse ne correspond pas à son `EHLO`, passe pour
+suspect. Les enregistrements **TXT** du domaine portent enfin ses politiques (SPF, DMARC).
+
+Commandes : `dig MX beta.tp`, `dig +short MX beta.tp`, `dig -x 198.51.100.25`,
+`dig @dns1 ...` pour interroger un serveur précis.
+
+**Le DNS du TP.** `dns1` fait tourner **unbound**, qui sert ici des enregistrements statiques
+(`local-data`) : pas de zone au sens de BIND, une ligne par enregistrement. Les enregistrements de
+`alpha.tp` sont dans `/etc/unbound/unbound.conf.d/alpha-tp.conf` :
+
+```
+server:
+    local-data: "mx1.alpha.tp. IN A 192.0.2.10"
+    local-data: "alpha.tp. IN MX 10 mx1.alpha.tp."
+```
+
+Après une modification : `unbound-control reload`, puis vérification avec `dig`.
+""": """
+
+To deliver a message to `bob@beta.tp`, the server `mx1` asks the DNS **which server receives the mail
+of `beta.tp`**: this is the domain's **MX** (*Mail eXchanger*) record, which names a host, itself
+resolved into an address (A record):
+
+```
+beta.tp.        IN MX 10 mx2.beta.tp.
+beta.tp.        IN MX 20 mx-backup.beta.tp.
+mx2.beta.tp.    IN A  198.51.100.25
+```
+
+The number is a **priority**: the server tries the MX with the lowest value, then the following ones
+if the first does not answer (this is how a backup server is declared). Without any MX, delivery is
+attempted to the A address of the domain itself (RFC 5321). An MX must point to a name that has an A
+record, never to a CNAME or an IP address. The **PTR** record (reverse resolution) of the server's
+address is checked by many recipients: a server without a reverse name, or whose reverse name does not
+match its `EHLO`, looks suspicious. Finally, the domain's **TXT** records carry its policies (SPF,
+DMARC).
+
+Commands: `dig MX beta.tp`, `dig +short MX beta.tp`, `dig -x 198.51.100.25`,
+`dig @dns1 ...` to query a given server.
+
+**The DNS of the lab.** `dns1` runs **unbound**, which here serves static records (`local-data`): no
+zone in the BIND sense, one line per record. The records of `alpha.tp` are in
+`/etc/unbound/unbound.conf.d/alpha-tp.conf`:
+
+```
+server:
+    local-data: "mx1.alpha.tp. IN A 192.0.2.10"
+    local-data: "alpha.tp. IN MX 10 mx1.alpha.tp."
+```
+
+After a change: `unbound-control reload`, then check with `dig`.
+""",
+        "Postfix": "Postfix",
+        """
+
+**Postfix** (Wietse Venema, 1998) est le MTA de référence des distributions Linux : rapide, sûr,
+et découpé en petits démons que le processus `master` lance à la demande, chacun avec le minimum
+de privilèges. Ceux qu'on rencontre dans le journal :
+
+| démon | rôle |
+|-------|------|
+| `master` | le superviseur ; lit `master.cf` |
+| `smtpd` | **serveur** SMTP : reçoit les messages des clients et des autres serveurs |
+| `pickup` | récupère les messages déposés localement par `sendmail` / `mail` |
+| `cleanup` | complète les en-têtes (`Message-ID`, `Received`) et place le message dans la file |
+| `qmgr` | gère la **file d'attente** et confie chaque message à un agent de remise |
+| `smtp` | **client** SMTP : remet les messages aux autres serveurs (après une requête MX) |
+| `local` | remise dans les boîtes locales (`/var/mail/alice` ou `~/Maildir`), alias, `.forward` |
+| `bounce` | fabrique les rapports d'erreur |
+| `trivial-rewrite` | complète les adresses (`alice` → `alice@alpha.tp`) et décide du transport |
+
+**Deux fichiers**, dans `/etc/postfix/` :
+
+- `main.cf` : les paramètres, `nom = valeur`, `$nom` pour réutiliser un paramètre. On le modifie
+  avec un éditeur ou avec `postconf -e 'nom = valeur'` ; `postconf nom` affiche une valeur,
+  `postconf -n` les valeurs explicitement fixées, `postconf -d` les valeurs par défaut,
+  `postconf -x nom` une valeur avec ses `$variables` développées ;
+- `master.cf` : les services (un par ligne) et leurs options `-o nom=valeur` qui surchargent
+  `main.cf` pour ce service seulement. `postconf -M` les liste.
+
+Paramètres essentiels de `main.cf` :
+
+| paramètre | rôle |
+|-----------|------|
+| `myhostname` | nom complet du serveur (`mx1.alpha.tp`), annoncé dans la bannière et les `Received:` |
+| `mydomain` | le domaine (`alpha.tp`) ; par défaut `myhostname` sans son premier composant |
+| `myorigin` | domaine ajouté aux adresses sans domaine (`alice` → `alice@alpha.tp`) ; Debian le lit dans `/etc/mailname` |
+| `mydestination` | domaines dont ce serveur **reçoit** le courrier et le range localement |
+| `mynetworks` | réseaux dont ce serveur **relaie** le courrier sans authentification |
+| `inet_interfaces` | adresses d'écoute (`all`, `loopback-only`) |
+| `inet_protocols` | `ipv4`, `ipv6` ou `all` |
+| `relayhost` | serveur auquel confier **tout** le courrier sortant (`[smtp.isp.tp]:587`, crochets = pas de requête MX) |
+| `home_mailbox` | `Maildir/` pour des boîtes au format Maildir dans le répertoire personnel (sinon mbox `/var/mail/$user`) |
+| `alias_maps` | table des alias (`hash:/etc/aliases`) |
+| `recipient_delimiter` | `+` : `alice+promo@alpha.tp` est remis à `alice` (section @@ref:aliases@@) |
+| `smtpd_relay_restrictions` | qui peut relayer (section @@ref:relay@@) |
+
+Format d'une ligne de `master.cf` : `nom type private unpriv chroot wakeup maxproc commande`,
+par exemple `smtp inet n - y - - smtpd` (le service `smtp` écoute sur le port TCP `smtp` = 25 et
+lance `smtpd`).
+
+Après toute modification : `systemctl reload postfix` (ou `postfix reload`) ; `systemctl restart
+postfix` si `master.cf`, `inet_interfaces` ou `inet_protocols` ont changé. `postfix check`
+signale les erreurs de configuration. **Journal** : `/var/log/mail.log` (ou `journalctl -u
+postfix`), une ligne par étape, l'identifiant de file (`4D3F1188285`) reliant les lignes d'un même
+message : `grep 4D3F /var/log/mail.log`.
+""": """
+
+**Postfix** (Wietse Venema, 1998) is the reference MTA of Linux distributions: fast, secure, and split
+into small daemons that the `master` process starts on demand, each with the minimum of privileges.
+Those you meet in the log:
+
+| daemon | role |
+|--------|------|
+| `master` | the supervisor; reads `master.cf` |
+| `smtpd` | SMTP **server**: receives the messages of clients and of other servers |
+| `pickup` | collects the messages handed in locally by `sendmail` / `mail` |
+| `cleanup` | completes the headers (`Message-ID`, `Received`) and puts the message in the queue |
+| `qmgr` | manages the **queue** and hands each message to a delivery agent |
+| `smtp` | SMTP **client**: delivers the messages to the other servers (after an MX lookup) |
+| `local` | delivery into the local mailboxes (`/var/mail/alice` or `~/Maildir`), aliases, `.forward` |
+| `bounce` | builds the error reports |
+| `trivial-rewrite` | completes the addresses (`alice` → `alice@alpha.tp`) and chooses the transport |
+
+**Two files**, in `/etc/postfix/`:
+
+- `main.cf`: the parameters, `name = value`, `$name` to reuse a parameter. It is changed with an
+  editor or with `postconf -e 'name = value'`; `postconf name` shows a value, `postconf -n` the values
+  explicitly set, `postconf -d` the default values, `postconf -x name` a value with its `$variables`
+  expanded;
+- `master.cf`: the services (one per line) and their options `-o name=value`, which override `main.cf`
+  for that service only. `postconf -M` lists them.
+
+Essential parameters of `main.cf`:
+
+| parameter | role |
+|-----------|------|
+| `myhostname` | full name of the server (`mx1.alpha.tp`), announced in the banner and the `Received:` headers |
+| `mydomain` | the domain (`alpha.tp`); by default `myhostname` without its first component |
+| `myorigin` | domain added to the addresses without a domain (`alice` → `alice@alpha.tp`); Debian reads it from `/etc/mailname` |
+| `mydestination` | domains whose mail this server **receives** and stores locally |
+| `mynetworks` | networks whose mail this server **relays** without authentication |
+| `inet_interfaces` | listening addresses (`all`, `loopback-only`) |
+| `inet_protocols` | `ipv4`, `ipv6` or `all` |
+| `relayhost` | server to hand **all** outgoing mail to (`[smtp.isp.tp]:587`, brackets = no MX lookup) |
+| `home_mailbox` | `Maildir/` for Maildir mailboxes in the home directory (otherwise mbox `/var/mail/$user`) |
+| `alias_maps` | alias table (`hash:/etc/aliases`) |
+| `recipient_delimiter` | `+`: `alice+promo@alpha.tp` is delivered to `alice` (section @@ref:aliases@@) |
+| `smtpd_relay_restrictions` | who may relay (section @@ref:relay@@) |
+
+Format of a line of `master.cf`: `name type private unpriv chroot wakeup maxproc command`,
+for example `smtp inet n - y - - smtpd` (the `smtp` service listens on the TCP port `smtp` = 25 and
+starts `smtpd`).
+
+After any change: `systemctl reload postfix` (or `postfix reload`); `systemctl restart
+postfix` if `master.cf`, `inet_interfaces` or `inet_protocols` have changed. `postfix check`
+reports configuration errors. **Log**: `/var/log/mail.log` (or `journalctl -u
+postfix`), one line per step, the queue identifier (`4D3F1188285`) linking the lines of one
+message: `grep 4D3F /var/log/mail.log`.
+""",
+        "Relais et relais ouvert": "Relaying and open relays",
+        """
+
+Un serveur SMTP qui reçoit `RCPT TO:<bob@beta.tp>` a deux attitudes possibles : si `beta.tp` est
+l'un de ses domaines (`mydestination`), il **accepte** et remet le message localement ; sinon il
+doit le **relayer** vers le MX de `beta.tp`, ce qu'il ne doit faire que pour ses propres
+utilisateurs. Un serveur qui relaie pour n'importe qui est un **relais ouvert** (*open relay*) :
+il sert aussitôt à expédier du spam et se retrouve sur les listes noires. Postfix décide avec
+`smtpd_relay_restrictions`, évaluée à `RCPT TO` :
+
+```
+smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination
+```
+
+- `permit_mynetworks` : les clients de `mynetworks` peuvent relayer ;
+- `permit_sasl_authenticated` : les clients authentifiés aussi (section @@ref:smarthost@@) ;
+- `defer_unauth_destination` / `reject_unauth_destination` : tout autre destinataire étranger est
+  refusé (`454 4.7.1 Relay access denied` temporaire, ou `554 5.7.1` permanent).
+
+Un client est donc relayé **soit** parce qu'il vient d'un réseau de confiance, **soit** parce
+qu'il s'est authentifié. Le test est simple : depuis une machine extérieure, essayer d'envoyer un
+message vers un domaine étranger ; le serveur doit répondre `Relay access denied`. `mynetworks =
+0.0.0.0/0`, ou un réseau trop large, fait un relais ouvert.
+
+**Poste satellite.** Un poste de travail ou un serveur d'application n'a pas à remettre
+lui-même le courrier aux quatre coins du monde : son Postfix (*null client*) confie tout à un
+serveur relais avec `relayhost`, n'écoute que sur `localhost` (`inet_interfaces =
+loopback-only`) et ne reçoit rien (`mydestination =` vide) ; `myorigin` donne le domaine des
+adresses de la machine. Les commandes `mail` et `sendmail` de ce poste (les tâches `cron`, les
+alertes des applications) passent alors par le relais.
+""": """
+
+An SMTP server that receives `RCPT TO:<bob@beta.tp>` can take one of two attitudes: if `beta.tp` is one
+of its domains (`mydestination`), it **accepts** and delivers the message locally; otherwise it must
+**relay** it to the MX of `beta.tp`, which it must only do for its own users. A server that relays for
+anyone is an **open relay**: it is immediately used to send spam and ends up on the blacklists.
+Postfix decides with `smtpd_relay_restrictions`, evaluated at `RCPT TO`:
+
+```
+smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination
+```
+
+- `permit_mynetworks`: the clients of `mynetworks` may relay;
+- `permit_sasl_authenticated`: so may authenticated clients (section @@ref:smarthost@@);
+- `defer_unauth_destination` / `reject_unauth_destination`: any other foreign recipient is refused
+  (`454 4.7.1 Relay access denied`, temporary, or `554 5.7.1`, permanent).
+
+A client is therefore relayed **either** because it comes from a trusted network, **or** because it
+has authenticated. The test is simple: from an outside machine, try to send a message to a foreign
+domain; the server must answer `Relay access denied`. `mynetworks = 0.0.0.0/0`, or too wide a network,
+makes an open relay.
+
+**Satellite host.** A workstation or an application server has no business delivering mail itself to
+the four corners of the world: its Postfix (*null client*) hands everything to a relay server with
+`relayhost`, listens only on `localhost` (`inet_interfaces = loopback-only`) and receives nothing
+(`mydestination =` empty); `myorigin` gives the domain of the machine's addresses. The `mail` and
+`sendmail` commands of this host (the `cron` jobs, the alerts of the applications) then go through the
+relay.
+""",
+        "Relais authentifié et réécriture des adresses": "Authenticated relay and address rewriting",
+        """
+
+Beaucoup de fournisseurs d'accès bloquent le port 25 sortant de leurs clients (pour que les machines
+infectées n'envoient pas de spam) et leur offrent à la place un **relais** (*smarthost*) : un serveur
+qui relaie le courrier de ses clients **authentifiés**, sur le port **587** (*submission*, RFC 6409).
+Le Postfix du poste se comporte alors comme un client de messagerie : il passe en TLS (`STARTTLS`),
+s'authentifie (**SASL**, RFC 4954 : l'extension `AUTH`, mécanismes `PLAIN` ou `LOGIN`, identifiant et
+mot de passe en base64, d'où l'exigence de TLS avant), puis envoie. Côté client (agent `smtp` de
+Postfix) :
+
+```
+relayhost = [smtp.isp.tp]:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_tls_security_level = encrypt
+```
+
+```
+# /etc/postfix/sasl_passwd                     (puis : postmap /etc/postfix/sasl_passwd)
+[smtp.isp.tp]:587    identifiant:motdepasse
+```
+
+La clé de la table doit être écrite **exactement** comme `relayhost` (crochets et port compris). Le
+fichier contient un mot de passe : `chmod 600` (le fichier `.db` aussi). `smtp_tls_security_level =
+encrypt` impose TLS vers le relais (sans vérifier son certificat ; `verify` le vérifierait) : sans
+lui, Postfix n'enverrait le mot de passe qu'en clair... ou pas du tout, le relais refusant `AUTH` hors
+TLS (`530 5.7.0 Must issue a STARTTLS command first`). Le message arrive chez le destinataire avec un
+`Received: ... by smtp.isp.tp with ESMTPSA` : déposé en TLS (`S`) par un client authentifié (`A`).
+
+**Réécrire les adresses.** Un relais n'accepte souvent que les adresses d'expéditeur qui appartiennent à
+son client (`553 5.7.1 Sender address rejected: not owned by user`), et le nom interne d'une machine
+(`root@pc1.alpha.tp`) n'a rien à faire dehors. Postfix réécrit les adresses à plusieurs endroits :
+
+| paramètre | quand | exemple |
+|-----------|-------|---------|
+| `myorigin` | adresse sans domaine (`root`) | `root` → `root@alpha.tp` |
+| `masquerade_domains` | retire les sous-domaines | `root@pc1.alpha.tp` → `root@alpha.tp` |
+| `canonical_maps`, `sender_canonical_maps` | à l'entrée, pour toute la suite (y compris la remise locale) | `root@alpha.tp` → `admin@alpha.tp` |
+| `smtp_generic_maps` | à la **sortie** seulement, par l'agent `smtp` (enveloppe et en-têtes) | `root@alpha.tp` → `noreply@alpha.tp` |
+
+```
+# /etc/postfix/generic                            (puis : postmap /etc/postfix/generic)
+root@alpha.tp      noreply@alpha.tp
+```
+
+`smtp_generic_maps = hash:/etc/postfix/generic` est fait pour une machine qui n'a pas d'adresses
+publiques à elle : ce qui sort porte une adresse valide du domaine, ce qui reste local n'est pas
+touché. Après un `postmap`, Postfix relit la table de lui-même ; `postmap -q root@alpha.tp
+hash:/etc/postfix/generic` l'interroge.
+""": """
+
+Many Internet service providers block outgoing port 25 for their customers (so that infected machines
+do not send spam) and offer them a **relay** (*smarthost*) instead: a server that relays the mail of its
+**authenticated** customers, on port **587** (*submission*, RFC 6409). The host's Postfix then behaves
+like a mail client: it switches to TLS (`STARTTLS`), authenticates (**SASL**, RFC 4954: the `AUTH`
+extension, mechanisms `PLAIN` or `LOGIN`, login and password in base64, hence the requirement of TLS
+first), then sends. On the client side (Postfix's `smtp` agent):
+
+```
+relayhost = [smtp.isp.tp]:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_tls_security_level = encrypt
+```
+
+```
+# /etc/postfix/sasl_passwd                     (then: postmap /etc/postfix/sasl_passwd)
+[smtp.isp.tp]:587    login:password
+```
+
+The key of the table must be written **exactly** like `relayhost` (brackets and port included). The
+file holds a password: `chmod 600` (the `.db` file too). `smtp_tls_security_level = encrypt` imposes
+TLS towards the relay (without checking its certificate; `verify` would check it): without it, Postfix
+would send the password only in clear... or not at all, the relay refusing `AUTH` outside TLS (`530
+5.7.0 Must issue a STARTTLS command first`). The message reaches the recipient with a
+`Received: ... by smtp.isp.tp with ESMTPSA`: handed in over TLS (`S`) by an authenticated client (`A`).
+
+**Rewriting addresses.** A relay often accepts only the sender addresses that belong to its customer
+(`553 5.7.1 Sender address rejected: not owned by user`), and the internal name of a machine
+(`root@pc1.alpha.tp`) has no business outside. Postfix rewrites addresses in several places:
+
+| parameter | when | example |
+|-----------|------|---------|
+| `myorigin` | address without a domain (`root`) | `root` → `root@alpha.tp` |
+| `masquerade_domains` | strips the subdomains | `root@pc1.alpha.tp` → `root@alpha.tp` |
+| `canonical_maps`, `sender_canonical_maps` | on entry, for everything that follows (local delivery included) | `root@alpha.tp` → `admin@alpha.tp` |
+| `smtp_generic_maps` | on the **way out** only, by the `smtp` agent (envelope and headers) | `root@alpha.tp` → `noreply@alpha.tp` |
+
+```
+# /etc/postfix/generic                            (then: postmap /etc/postfix/generic)
+root@alpha.tp      noreply@alpha.tp
+```
+
+`smtp_generic_maps = hash:/etc/postfix/generic` is meant for a machine that has no public addresses of
+its own: what goes out carries a valid address of the domain, what stays local is not touched. After a
+`postmap`, Postfix reads the table again by itself; `postmap -q root@alpha.tp
+hash:/etc/postfix/generic` queries it.
+""",
+        "Alias, redirections et adresses étendues": "Aliases, forwarding and extended addresses",
+        """
+
+Un **alias** fait correspondre une adresse locale à une ou plusieurs autres, sans créer de compte.
+Le fichier `/etc/aliases` :
+
+```
+postmaster: root
+root:       erin
+contact:    erin, frank
+rapport:    "|/usr/local/bin/traitement"
+archive:    /var/mail/archive-contact
+```
+
+Un alias peut désigner des utilisateurs, une adresse externe (`support@beta.tp`), un fichier ou une
+commande. Postfix ne lit pas le fichier texte mais la table `hash:/etc/aliases.db` : après chaque
+modification, lancer **`newaliases`** (ou `postalias /etc/aliases`) ; `postalias -q contact
+hash:/etc/aliases` montre ce que Postfix lit vraiment. L'alias `postmaster` est obligatoire (RFC
+5321) : c'est l'adresse à laquelle on signale les problèmes du serveur ; le courrier de `root` doit
+aboutir chez un administrateur réel (Postfix ne remet rien en tant que `root`).
+
+Un utilisateur redirige lui-même son courrier avec le fichier **`~/.forward`**, qui contient les
+adresses de destination (une par ligne ou séparées par des virgules, `\\frank` pour garder aussi une
+copie locale) ; il doit appartenir à l'utilisateur. Le message redirigé repart avec l'**enveloppe
+d'origine** : l'expéditeur réel reste `MAIL FROM`.
+
+**Adresses étendues.** Avec `recipient_delimiter = +`, l'adresse `erin+news@gamma.tp` est remise à
+`erin` : chaque utilisateur peut donner une adresse différente à chaque site (`+news`, `+banque`)
+pour trier son courrier ou savoir qui a divulgué son adresse ; l'adresse complète reste dans les
+en-têtes `Delivered-To:` et `X-Original-To:`. Sans ce réglage, `erin+news` est un compte inconnu.
+
+Pour des domaines **virtuels** (plusieurs domaines sur un serveur, adresses sans compte Unix),
+Postfix utilise `virtual_alias_maps` et `virtual_mailbox_domains` : c'est l'objet du second TP.
+""": """
+
+An **alias** maps a local address to one or more others, without creating an account. The file
+`/etc/aliases`:
+
+```
+postmaster: root
+root:       erin
+contact:    erin, frank
+report:     "|/usr/local/bin/process"
+archive:    /var/mail/archive-contact
+```
+
+An alias can name users, an external address (`support@beta.tp`), a file or a command. Postfix does not
+read the text file but the table `hash:/etc/aliases.db`: after each change, run **`newaliases`** (or
+`postalias /etc/aliases`); `postalias -q contact hash:/etc/aliases` shows what Postfix really reads. The
+`postmaster` alias is mandatory (RFC 5321): it is the address to which the server's problems are
+reported; the mail of `root` must end up with a real administrator (Postfix delivers nothing as
+`root`).
+
+A user forwards their own mail with the file **`~/.forward`**, which holds the destination addresses
+(one per line or separated by commas, `\\frank` to keep a local copy as well); it must belong to the
+user. The forwarded message leaves again with the **original envelope**: the real sender remains the
+`MAIL FROM`.
+
+**Extended addresses.** With `recipient_delimiter = +`, the address `erin+news@gamma.tp` is delivered
+to `erin`: each user can give a different address to each site (`+news`, `+bank`) to sort their mail
+or to find out who disclosed their address; the full address remains in the `Delivered-To:` and
+`X-Original-To:` headers. Without this setting, `erin+news` is an unknown account.
+
+For **virtual** domains (several domains on one server, addresses without a Unix account), Postfix
+uses `virtual_alias_maps` and `virtual_mailbox_domains`: this is the subject of the second lab.
+""",
+        "File d'attente et rapports d'erreur": "Queue and error reports",
+        """
+
+Postfix ne remet rien en direct : tout message accepté entre dans la **file d'attente**
+(`/var/spool/postfix/`), d'où `qmgr` le fait remettre :
+
+| file | contenu |
+|------|---------|
+| `maildrop` | messages déposés par `sendmail` / `mail`, pas encore pris par `pickup` |
+| `incoming` | messages reçus, en attente de `cleanup` |
+| `active` | messages en cours de remise |
+| `deferred` | messages dont la remise a **échoué temporairement** (4xx, connexion impossible) |
+| `hold` | messages bloqués par l'administrateur |
+
+Un message différé est réessayé à intervalles croissants (`minimal_backoff_time` 300 s à
+`maximal_backoff_time` 4000 s) pendant `maximal_queue_lifetime` (5 jours par défaut) ; passé ce
+délai, ou dès la première erreur **permanente** (5xx), Postfix renvoie à l'expéditeur de
+l'enveloppe un **rapport de non-remise** (*bounce*, DSN, RFC 3464) : un message de
+`MAILER-DAEMON`, sujet *Undelivered Mail Returned to Sender*, de type `multipart/report`
+contenant la raison (`Final-Recipient`, `Action: failed`, `Status: 5.1.1`, `Diagnostic-Code`) et
+le message d'origine. Si le rapport lui-même ne peut être remis, il est abandonné (jamais de
+rapport sur un rapport : c'est ce qui évite les boucles).
+
+| commande | rôle |
+|----------|------|
+| `postqueue -p` (ou `mailq`) | affiche la file : identifiant, taille, date, expéditeur, raison du report, destinataires |
+| `postqueue -j` | la même chose en JSON |
+| `postqueue -f` | retente tout de suite les messages différés |
+| `postcat -q ID` | affiche un message de la file |
+| `postsuper -d ID` / `postsuper -d ALL deferred` | supprime un message / toute la file différée |
+| `postsuper -h ID`, `postsuper -H ID` | bloque / débloque un message |
+
+Dans le journal, chaque tentative se termine par `status=sent`, `status=deferred (raison)` ou
+`status=bounced (raison)`.
+""": """
+
+Postfix delivers nothing directly: every accepted message enters the **queue** (`/var/spool/postfix/`),
+from which `qmgr` has it delivered:
+
+| queue | content |
+|-------|---------|
+| `maildrop` | messages handed in by `sendmail` / `mail`, not yet taken by `pickup` |
+| `incoming` | messages received, waiting for `cleanup` |
+| `active` | messages being delivered |
+| `deferred` | messages whose delivery **failed temporarily** (4xx, connection impossible) |
+| `hold` | messages held by the administrator |
+
+A deferred message is retried at increasing intervals (`minimal_backoff_time` 300 s to
+`maximal_backoff_time` 4000 s) for `maximal_queue_lifetime` (5 days by default); after that time, or at
+the first **permanent** error (5xx), Postfix returns to the envelope sender a **non-delivery report**
+(*bounce*, DSN, RFC 3464): a message from `MAILER-DAEMON`, subject *Undelivered Mail Returned to
+Sender*, of type `multipart/report`, holding the reason (`Final-Recipient`, `Action: failed`,
+`Status: 5.1.1`, `Diagnostic-Code`) and the original message. If the report itself cannot be
+delivered, it is dropped (never a report about a report: this is what prevents loops).
+
+| command | role |
+|---------|------|
+| `postqueue -p` (or `mailq`) | shows the queue: identifier, size, date, sender, reason for the deferral, recipients |
+| `postqueue -j` | the same in JSON |
+| `postqueue -f` | retries the deferred messages at once |
+| `postcat -q ID` | shows a message of the queue |
+| `postsuper -d ID` / `postsuper -d ALL deferred` | deletes a message / the whole deferred queue |
+| `postsuper -h ID`, `postsuper -H ID` | holds / releases a message |
+
+In the log, each attempt ends with `status=sent`, `status=deferred (reason)` or
+`status=bounced (reason)`.
+""",
+        "Lire son courrier : POP3, IMAP et Dovecot": "Reading mail: POP3, IMAP and Dovecot",
+        """
+
+Le MDA a rangé le message dans la boîte ; le MUA de l'utilisateur vient le chercher avec l'un
+des deux protocoles d'accès :
+
+| | POP3 (RFC 1939) | IMAP (RFC 3501, 9051) |
+|-|-----------------|-----------------------|
+| principe | télécharge les messages puis les efface du serveur | les messages **restent sur le serveur**, le client en garde une copie |
+| dossiers, état lu/non-lu, recherche | non | oui, synchronisés entre tous les appareils |
+| usage | un seul poste, hors ligne | la règle aujourd'hui (webmail, téléphone, poste) |
+
+**Formats de boîte.** *mbox* : tous les messages d'une boîte dans un seul fichier
+(`/var/mail/alice`), séparés par des lignes `From `, simple mais fragile en écriture concurrente.
+**Maildir** : un répertoire par boîte avec `tmp/`, `new/` (messages non lus) et `cur/`, un fichier
+par message, sans verrou ; c'est le format recommandé avec IMAP (`home_mailbox = Maildir/` côté
+Postfix).
+
+**Dovecot** est le serveur IMAP/POP3 compagnon habituel de Postfix. Sa configuration est répartie
+dans `/etc/dovecot/conf.d/`, et `dovecot.conf` inclut à la fin `local.conf`, un fichier local qui
+**surcharge tout** (pratique pour regrouper ses réglages). Les réglages qui disent où sont les boîtes :
+
+| paramètre | rôle |
+|-----------|------|
+| `mail_driver = maildir` | le format des boîtes |
+| `mail_path = ~/Maildir` | le répertoire des dossiers de l'utilisateur |
+| `mail_inbox_path = ~/Maildir` | la boîte de réception (`INBOX`) : le Maildir où Postfix dépose |
+| `listen = *` | écouter sur toutes les adresses IPv4 (la valeur Debian, `*, ::`, demande IPv6) |
+
+La configuration Debian (`conf.d/10-mail.conf`) est celle du format mbox, avec `mail_inbox_path =
+/var/mail/%{user}` : sans les trois réglages, Dovecot cherche la boîte de réception dans
+`/var/mail/alice` (`Permission denied` dans le journal) ; laissé vide, `mail_inbox_path` la placerait
+dans `~/Maildir/.INBOX`. Les comptes Unix passent par PAM (`passdb pam { }`, configuration Debian).
+
+**Mots de passe et TLS.** Par défaut Dovecot refuse un mot de passe envoyé en clair
+(`auth_allow_cleartext = no` : la réponse à `LOGIN` sans TLS est `NO [PRIVACYREQUIRED] Cleartext
+authentication disallowed`), et Debian le livre avec `ssl = yes` et un certificat auto-signé
+(`/etc/ssl/certs/ssl-cert-snakeoil.pem`) : le client passe en TLS par la commande **`STARTTLS`** sur le
+port 143, ou se connecte en TLS implicite sur le port 993. Remplacer ce certificat par un vrai est
+l'affaire du second TP.
+
+Ces noms sont ceux de **Dovecot 2.4** (Debian 13). La version 2.3, que décrivent encore beaucoup de
+documentations, écrivait `mail_location = maildir:~/Maildir`, `disable_plaintext_auth`, `ssl_cert =
+<fichier` et `ssl_key = <fichier` : Dovecot 2.4 refuse ces anciens noms (`Unknown setting`) et ne
+démarre pas.
+
+`doveconf -n` affiche la configuration qui diffère des valeurs par défaut, `doveconf mail_driver` une
+valeur effective, `doveadm auth test alice` vérifie un mot de passe, `doveadm user alice` ce que
+Dovecot sait d'un compte, `doveadm mailbox path -u alice INBOX` le répertoire de la boîte de
+réception, `journalctl -u dovecot` le journal.
+
+Clients : `mutt -f imap://alice@mx1.alpha.tp/` (avec `set ssl_starttls = yes` dans `~/.muttrc`),
+`curl --ssl-reqd -k --url imap://mx1.alpha.tp/INBOX -u alice -X 'SEARCH ALL'`, et pour voir le
+protocole lui-même `openssl s_client -connect mx1.alpha.tp:143 -starttls imap` puis `a LOGIN alice
+motdepasse`, `b SELECT INBOX`, `c FETCH 1 BODY[HEADER]`, `d LOGOUT` (chaque commande IMAP commence par
+une étiquette, reprise dans la réponse finale `OK`, `NO` ou `BAD`).
+""": """
+
+The MDA has stored the message in the mailbox; the user's MUA comes to fetch it with one of the two
+access protocols:
+
+| | POP3 (RFC 1939) | IMAP (RFC 3501, 9051) |
+|-|-----------------|-----------------------|
+| principle | downloads the messages then deletes them from the server | the messages **stay on the server**, the client keeps a copy |
+| folders, read/unread state, search | no | yes, synchronised between all devices |
+| use | a single host, offline | the rule today (webmail, phone, workstation) |
+
+**Mailbox formats.** *mbox*: all the messages of a mailbox in a single file (`/var/mail/alice`),
+separated by `From ` lines, simple but fragile under concurrent writes. **Maildir**: one directory per
+mailbox with `tmp/`, `new/` (unread messages) and `cur/`, one file per message, no locking; it is the
+recommended format with IMAP (`home_mailbox = Maildir/` on the Postfix side).
+
+**Dovecot** is Postfix's usual companion IMAP/POP3 server. Its configuration is spread over
+`/etc/dovecot/conf.d/`, and `dovecot.conf` includes `local.conf` at the end, a local file that
+**overrides everything** (handy to group one's settings). The settings that say where the mailboxes are:
+
+| parameter | role |
+|-----------|------|
+| `mail_driver = maildir` | the format of the mailboxes |
+| `mail_path = ~/Maildir` | the directory of the user's folders |
+| `mail_inbox_path = ~/Maildir` | the inbox (`INBOX`): the Maildir Postfix delivers into |
+| `listen = *` | listen on all IPv4 addresses (the Debian value, `*, ::`, asks for IPv6) |
+
+Debian's configuration (`conf.d/10-mail.conf`) is the one of the mbox format, with `mail_inbox_path =
+/var/mail/%{user}`: without the three settings, Dovecot looks for the inbox in `/var/mail/alice`
+(`Permission denied` in the log); left empty, `mail_inbox_path` would put it in `~/Maildir/.INBOX`.
+The Unix accounts go through PAM (`passdb pam { }`, Debian's configuration).
+
+**Passwords and TLS.** By default Dovecot refuses a password sent in clear (`auth_allow_cleartext =
+no`: the reply to `LOGIN` without TLS is `NO [PRIVACYREQUIRED] Cleartext authentication disallowed`),
+and Debian ships it with `ssl = yes` and a self-signed certificate
+(`/etc/ssl/certs/ssl-cert-snakeoil.pem`): the client switches to TLS with the **`STARTTLS`** command on
+port 143, or connects over implicit TLS on port 993. Replacing this certificate with a real one is the
+business of the second lab.
+
+These names are those of **Dovecot 2.4** (Debian 13). Version 2.3, which many documents still describe,
+wrote `mail_location = maildir:~/Maildir`, `disable_plaintext_auth`, `ssl_cert = <file` and `ssl_key =
+<file`: Dovecot 2.4 refuses these old names (`Unknown setting`) and does not start.
+
+`doveconf -n` shows the configuration that differs from the default values, `doveconf mail_driver` an
+effective value, `doveadm auth test alice` checks a password, `doveadm user alice` what Dovecot knows
+about an account, `doveadm mailbox path -u alice INBOX` the directory of the inbox, `journalctl -u
+dovecot` the log.
+
+Clients: `mutt -f imap://alice@mx1.alpha.tp/` (with `set ssl_starttls = yes` in `~/.muttrc`),
+`curl --ssl-reqd -k --url imap://mx1.alpha.tp/INBOX -u alice -X 'SEARCH ALL'`, and to see the protocol
+itself `openssl s_client -connect mx1.alpha.tp:143 -starttls imap` then `a LOGIN alice password`,
+`b SELECT INBOX`, `c FETCH 1 BODY[HEADER]`, `d LOGOUT` (each IMAP command starts with a tag, repeated in
+the final reply `OK`, `NO` or `BAD`).
+""",
+        "Observation et diagnostic": "Observation and diagnosis",
+        """
+
+**Le journal d'abord.** `/var/log/mail.log` (ou `journalctl -u postfix -f`) raconte chaque message
+en quatre à six lignes reliées par l'identifiant de file :
+
+```
+smtpd[900]: connect from pc2.beta.tp[198.51.100.20]
+smtpd[900]: 40F661880F0: client=pc2.beta.tp[198.51.100.20]
+cleanup[904]: 40F661880F0: message-id=<20261123101206.000894@pc2>
+qmgr[892]: 40F661880F0: from=<bob@beta.tp>, size=422, nrcpt=1 (queue active)
+local[905]: 40F661880F0: to=<alice@alpha.tp>, relay=local, delay=0.46, dsn=2.0.0,
+           status=sent (delivered to maildir)
+qmgr[892]: 40F661880F0: removed
+```
+
+**Sur le fil.** `tcpdump -n -A -i eth0 port 25` montre le dialogue en clair (`-A` affiche le texte),
+`tshark -i eth0 -Y smtp` le décode ; après STARTTLS on ne voit plus que du TLS, ce qui est le but.
+
+**Une méthode de dépannage.** Suivre le message dans l'ordre où il voyage, et vérifier chaque étape
+avant de passer à la suivante :
+
+1. le service tourne-t-il et écoute-t-il là où il faut ? (`systemctl status`, `ss -tlnp`, la fin de
+   `journalctl -u ...` : une erreur de configuration y est écrite au démarrage) ;
+2. le DNS donne-t-il les bons noms ? (`dig MX`, `dig A`, `dig -x`) ;
+3. que répond le serveur, commande par commande ? (`swaks`, ou à la main) ;
+4. que dit le journal pour cet identifiant de file ? (`status=`, raison entre parenthèses) ;
+5. où le message a-t-il été rangé ? (`/home/*/Maildir/new/`, `/var/mail/`, `postqueue -p`) ;
+6. comparer la configuration effective à ce qu'on croit avoir écrit (`postconf -n`, `doveconf -n`).
+
+**Erreurs courantes :**
+
+| symptôme | cause habituelle |
+|----------|------------------|
+| `Relay access denied` | le client n'est ni dans `mynetworks` ni authentifié, et le domaine n'est pas dans `mydestination` |
+| relais accepté pour n'importe qui | `mynetworks` trop large (`0.0.0.0/0`) : relais ouvert |
+| `User unknown in local recipient table` | compte inexistant, alias non compilé (`newaliases`), `recipient_delimiter` absent |
+| `Name service error` / `Host or domain name not found` | pas de MX ni de A pour le domaine : DNS |
+| `Connection refused` / `Connection timed out`, `status=deferred` | le MX ne répond pas ; le message attend dans `deferred` |
+| `mail for alpha.tp loops back to myself` | le MX pointe vers ce serveur mais `alpha.tp` n'est pas dans `mydestination` |
+| `SASL authentication failed` (côté client : `smtp_sasl_password_maps`) | mot de passe faux, table non compilée, clé différente de `relayhost` |
+| `Sender address rejected: not owned by user` | l'adresse d'expéditeur n'appartient pas au compte authentifié : réécriture des adresses |
+| `warning: ... is not a fully qualified name` | `myhostname` n'est pas réglé |
+| message accepté mais introuvable | `home_mailbox` non réglé : regarder `/var/mail/$user` |
+| `Unknown setting: mail_location` au démarrage de Dovecot | un réglage de Dovecot 2.3 (section @@ref:imap@@) |
+| Dovecot répond mais la boîte de réception est vide | `mail_inbox_path` ne désigne pas le Maildir où Postfix dépose |
+""": """
+
+**The log first.** `/var/log/mail.log` (or `journalctl -u postfix -f`) tells the story of each message
+in four to six lines linked by the queue identifier:
+
+```
+smtpd[900]: connect from pc2.beta.tp[198.51.100.20]
+smtpd[900]: 40F661880F0: client=pc2.beta.tp[198.51.100.20]
+cleanup[904]: 40F661880F0: message-id=<20261123101206.000894@pc2>
+qmgr[892]: 40F661880F0: from=<bob@beta.tp>, size=422, nrcpt=1 (queue active)
+local[905]: 40F661880F0: to=<alice@alpha.tp>, relay=local, delay=0.46, dsn=2.0.0,
+           status=sent (delivered to maildir)
+qmgr[892]: 40F661880F0: removed
+```
+
+**On the wire.** `tcpdump -n -A -i eth0 port 25` shows the dialogue in clear (`-A` prints the text),
+`tshark -i eth0 -Y smtp` decodes it; after STARTTLS only TLS can be seen, which is the point.
+
+**A troubleshooting method.** Follow the message in the order in which it travels, and check each step
+before moving on to the next:
+
+1. is the service running and listening where it should? (`systemctl status`, `ss -tlnp`, the end of
+   `journalctl -u ...`: a configuration error is written there at start-up);
+2. does the DNS give the right names? (`dig MX`, `dig A`, `dig -x`);
+3. what does the server answer, command by command? (`swaks`, or by hand);
+4. what does the log say for this queue identifier? (`status=`, reason in brackets);
+5. where was the message stored? (`/home/*/Maildir/new/`, `/var/mail/`, `postqueue -p`);
+6. compare the effective configuration with what you think you wrote (`postconf -n`, `doveconf -n`).
+
+**Common errors:**
+
+| symptom | usual cause |
+|---------|-------------|
+| `Relay access denied` | the client is neither in `mynetworks` nor authenticated, and the domain is not in `mydestination` |
+| relaying accepted for anyone | `mynetworks` too wide (`0.0.0.0/0`): open relay |
+| `User unknown in local recipient table` | account does not exist, alias table not rebuilt (`newaliases`), `recipient_delimiter` missing |
+| `Name service error` / `Host or domain name not found` | no MX and no A for the domain: DNS |
+| `Connection refused` / `Connection timed out`, `status=deferred` | the MX does not answer; the message waits in `deferred` |
+| `mail for alpha.tp loops back to myself` | the MX points to this server but `alpha.tp` is not in `mydestination` |
+| `SASL authentication failed` (client side: `smtp_sasl_password_maps`) | wrong password, table not compiled, key different from `relayhost` |
+| `Sender address rejected: not owned by user` | the sender address does not belong to the authenticated account: address rewriting |
+| `warning: ... is not a fully qualified name` | `myhostname` is not set |
+| message accepted but nowhere to be found | `home_mailbox` not set: look in `/var/mail/$user` |
+| `Unknown setting: mail_location` when Dovecot starts | a Dovecot 2.3 setting (section @@ref:imap@@) |
+| Dovecot answers but the inbox is empty | `mail_inbox_path` does not name the Maildir Postfix delivers into |
+""",
+        "Organisation du TP": "Organisation of the lab",
+        """
+Lisez l'onglet **Informations** : il présente le courrier électronique, le protocole SMTP, Postfix et
+Dovecot. Vous administrez le courrier de plusieurs domaines :
+
+- **`alpha.tp`**, le vôtre, sur `lan1` : le serveur de courrier `mx1`, le poste `pc1` d'Alice et le
+  serveur DNS `dns1` (déjà en service : `dig @dns1 A mx1.alpha.tp`). Postfix et Dovecot sont installés
+  sur `mx1` et `pc1` mais **rien n'est configuré** (le compte `alice` existe déjà sur `mx1`) ;
+- sur `wan`, « l'extérieur » : le serveur `mx2` de **`beta.tp`** (Postfix + Dovecot, **déjà configuré**,
+  ne le modifiez pas ; vous pouvez y lire `/var/log/mail.log` et les boîtes `/home/*/Maildir`) et le
+  poste `pc2` de Bob (`mutt` y est réglé sur sa boîte) ; **`relay`** = `smtp.isp.tp`, le relais de
+  votre fournisseur d'accès (déjà configuré, n'y touchez pas) ; **`mx3`**, le serveur de l'association
+  **`gamma.tp`** que vous administrez aussi : Postfix y fonctionne déjà ; **`mx4`**, le serveur de
+  **`zeta.tp`**, en panne (le bonus).
+
+Le routeur `r1` relie les deux réseaux. Tous les noms sont servis par `dns1`. Chaque partie se fait
+sur sa propre machine et s'évalue seule : vous pouvez les faire dans l'ordre que vous voulez (l'ordre
+proposé est celui du cours).
+""": """
+Read the **Informations** tab: it presents electronic mail, the SMTP protocol, Postfix and Dovecot. You
+administer the mail of several domains:
+
+- **`alpha.tp`**, yours, on `lan1`: the mail server `mx1`, Alice's host `pc1` and the DNS server `dns1`
+  (already in service: `dig @dns1 A mx1.alpha.tp`). Postfix and Dovecot are installed on `mx1` and
+  `pc1` but **nothing is configured** (the account `alice` already exists on `mx1`);
+- on `wan`, "the outside": the server `mx2` of **`beta.tp`** (Postfix + Dovecot, **already configured**,
+  do not change it; you may read `/var/log/mail.log` and the mailboxes `/home/*/Maildir` there) and
+  Bob's host `pc2` (`mutt` is set up there for his mailbox); **`relay`** = `smtp.isp.tp`, the relay of
+  your Internet service provider (already configured, do not touch it); **`mx3`**, the server of the
+  association **`gamma.tp`**, which you also administer: Postfix already works there; **`mx4`**, the
+  server of **`zeta.tp`**, broken (the bonus).
+
+The router `r1` connects the two networks. All the names are served by `dns1`. Each part is done on its
+own machine and graded on its own: you may do them in any order you like (the order proposed is that of
+the course).
+""",
+        """
+Comptes utilisateurs :
+""": """
+User accounts:
+""",
+        """
+Les réponses aux questions et l'état des serveurs sont évalués automatiquement (bouton
+d'évaluation) : l'évaluation **envoie elle-même des messages de test** (expéditeurs `h1@alpha.tp`,
+`h2@beta.tp`, sujet `[SRE] ...`), en dépose dans certaines boîtes, puis les efface ; ils apparaissent
+dans les journaux, c'est normal. Les mots de passe, la phrase secrète et l'alias demandés sont propres
+à votre instance du TP. Après chaque modification d'un fichier de configuration, **relancez le
+service** et vérifiez dans le journal qu'il a bien démarré.
+""": """
+The answers to the questions and the state of the servers are graded automatically (evaluation
+button): the evaluation **sends test messages itself** (senders `h1@alpha.tp`, `h2@beta.tp`, subject
+`[SRE] ...`), drops some into certain mailboxes, then removes them; they show up in the logs, this is
+normal. The passwords, the secret sentence and the alias asked for are specific to your instance of the
+lab. After each change to a configuration file, **restart the service** and check in the log that it
+started properly.
+""",
+        "Partie 1 — Le protocole SMTP à la main": "Part 1 — The SMTP protocol by hand",
+        "Le protocole SMTP à la main": "The SMTP protocol by hand",
+        """
+Le serveur `mx2.beta.tp` reçoit le courrier de `beta.tp`. Depuis `pc1` :
+
+1. vérifiez que `dig +short MX beta.tp` puis `dig +short mx2.beta.tp` désignent bien `mx2` ;
+2. ouvrez une connexion SMTP **à la main** avec `nc mx2.beta.tp 25` et envoyez un message à
+   `bob@beta.tp` de la part de `alice@alpha.tp` (section @@ref:smtp@@ de l'onglet Informations). Le corps du
+   message doit contenir la phrase secrète ci-dessous. Notez le code de chaque réponse ;
+3. essayez ensuite `RCPT TO:<inconnu@beta.tp>` puis `RCPT TO:<bob@alpha.tp>` et observez les réponses ;
+4. sur `pc2`, lisez le message avec `mutt`, ou sur `mx2` directement dans `/home/bob/Maildir/new/`.
+   Comparez les en-têtes reçus (`Return-Path:`, `Received:`) à ce que vous avez tapé ;
+5. recommencez avec `swaks --to bob@beta.tp --from alice@alpha.tp --server mx2.beta.tp` en
+   regardant le dialogue, et avec `tcpdump -n -A port 25` sur `pc1` dans un second terminal.
+""": """
+The server `mx2.beta.tp` receives the mail of `beta.tp`. From `pc1`:
+
+1. check that `dig +short MX beta.tp` then `dig +short mx2.beta.tp` do name `mx2`;
+2. open an SMTP connection **by hand** with `nc mx2.beta.tp 25` and send a message to
+   `bob@beta.tp` on behalf of `alice@alpha.tp` (section @@ref:smtp@@ of the Informations tab). The body of
+   the message must contain the secret sentence below. Note the code of each reply;
+3. then try `RCPT TO:<inconnu@beta.tp>` then `RCPT TO:<bob@alpha.tp>` and observe the replies;
+4. on `pc2`, read the message with `mutt`, or on `mx2` directly in `/home/bob/Maildir/new/`.
+   Compare the headers received (`Return-Path:`, `Received:`) with what you typed;
+5. do it again with `swaks --to bob@beta.tp --from alice@alpha.tp --server mx2.beta.tp` while
+   watching the dialogue, and with `tcpdump -n -A port 25` on `pc1` in a second terminal.
+""",
+        """
+**Le dialogue.** Codes de réponse observés :
+
+- à la connexion (bannière) : @@{code_banner:[0-9]+}@@ ; après `DATA` : @@{code_data:[0-9]+}@@ ;
+  après le point final : @@{code_end:[0-9]+}@@ ; après `QUIT` : @@{code_quit:[0-9]+}@@
+- ce qui décide à qui le message est remis :
+  @@{routing:>les commandes de l'enveloppe (MAIL FROM, RCPT TO)|les en-têtes From: et To: du message|l'en-tête Subject:}@@
+- l'en-tête `Return-Path:` ajouté à la remise reprend : @@{return_path:>MAIL FROM|RCPT TO|From:|Reply-To:}@@
+- ports TCP : SMTP entre serveurs @@{port_smtp:[0-9]+}@@, soumission @@{port_submission:[0-9]+}@@,
+  IMAP @@{port_imap:[0-9]+}@@, IMAP en TLS implicite @@{port_imaps:[0-9]+}@@
+""": """
+**The dialogue.** Reply codes observed:
+
+- on connection (banner): @@{code_banner:[0-9]+}@@; after `DATA`: @@{code_data:[0-9]+}@@;
+  after the final dot: @@{code_end:[0-9]+}@@; after `QUIT`: @@{code_quit:[0-9]+}@@
+- what decides to whom the message is delivered:
+  @@{routing:>the envelope commands (MAIL FROM, RCPT TO)>>>les commandes de l'enveloppe (MAIL FROM, RCPT TO)|the From: and To: headers of the message>>>les en-têtes From: et To: du message|the Subject: header>>>l'en-tête Subject:}@@
+- the `Return-Path:` header added at delivery repeats: @@{return_path:>MAIL FROM|RCPT TO|From:|Reply-To:}@@
+- TCP ports: SMTP between servers @@{port_smtp:[0-9]+}@@, submission @@{port_submission:[0-9]+}@@,
+  IMAP @@{port_imap:[0-9]+}@@, IMAP over implicit TLS @@{port_imaps:[0-9]+}@@
+""",
+        "le message tapé à la main est dans la boîte de bob sur mx2 (venu de pc1)": "the hand-typed message is in bob's mailbox on mx2 (coming from pc1)",
+        "codes de réponse du dialogue SMTP": "reply codes of the SMTP dialogue",
+        "enveloppe et en-têtes": "envelope and headers",
+        "ports des protocoles du courrier": "ports of the mail protocols",
+        "Partie 2 — Le DNS du courrier : l'enregistrement MX": "Part 2 — The DNS of mail: the MX record",
+        "Le DNS du courrier : l'enregistrement MX de alpha.tp": "The DNS of mail: the MX record of alpha.tp",
+        """
+Le courrier destiné à `alpha.tp` ne peut pas arriver : le domaine n'a pas d'enregistrement **MX**
+(section @@ref:mx@@ de l'onglet Informations).
+
+1. depuis `pc1`, observez `dig +short MX beta.tp`, `dig +short MX alpha.tp` (pas de réponse) et
+   `dig -x` sur l'adresse de `mx2` ;
+2. sur `dns1`, ajoutez dans `/etc/unbound/unbound.conf.d/alpha-tp.conf` l'enregistrement MX de
+   `alpha.tp` désignant `mx1.alpha.tp` (priorité 10) ; `unbound-control reload`, puis vérifiez avec
+   `dig` depuis `pc1` et depuis `pc2`.
+""": """
+Mail for `alpha.tp` cannot arrive: the domain has no **MX** record
+(section @@ref:mx@@ of the Informations tab).
+
+1. from `pc1`, observe `dig +short MX beta.tp`, `dig +short MX alpha.tp` (no answer) and
+   `dig -x` on the address of `mx2`;
+2. on `dns1`, add to `/etc/unbound/unbound.conf.d/alpha-tp.conf` the MX record of `alpha.tp`
+   naming `mx1.alpha.tp` (priority 10); `unbound-control reload`, then check with `dig` from `pc1`
+   and from `pc2`.
+""",
+        """
+**Questions.**
+
+- ce que répond `dig +short -x` sur l'adresse de `mx2` : @@{ptr_mx2:[0-9A-Za-z. -]+}@@
+- le nombre d'un enregistrement MX :
+  @@{priority:>le MX de plus petite valeur est essayé en premier|le MX de plus grande valeur est essayé en premier|l'ordre n'a pas d'importance, les MX sont tirés au sort}@@
+- un MX doit désigner : @@{mx_target:>un nom ayant un enregistrement A|une adresse IP|un CNAME|un enregistrement TXT}@@
+- quand un domaine n'a aucun MX :
+  @@{no_mx:>le courrier est tenté sur l'adresse A du domaine lui-même|le courrier est refusé par l'expéditeur|le courrier est remis au serveur racine|le courrier est envoyé au MX du domaine parent}@@
+""": """
+**Questions.**
+
+- what `dig +short -x` answers for the address of `mx2`: @@{ptr_mx2:[0-9A-Za-z. -]+}@@
+- the number of an MX record:
+  @@{priority:>the MX with the lowest value is tried first>>>le MX de plus petite valeur est essayé en premier|the MX with the highest value is tried first>>>le MX de plus grande valeur est essayé en premier|the order does not matter, the MXs are drawn at random>>>l'ordre n'a pas d'importance, les MX sont tirés au sort}@@
+- an MX must name: @@{mx_target:>a name that has an A record>>>un nom ayant un enregistrement A|an IP address>>>une adresse IP|a CNAME>>>un CNAME|a TXT record>>>un enregistrement TXT}@@
+- when a domain has no MX at all:
+  @@{no_mx:>delivery is attempted to the A address of the domain itself>>>le courrier est tenté sur l'adresse A du domaine lui-même|the mail is rejected by the sender>>>le courrier est refusé par l'expéditeur|the mail is delivered to the root server>>>le courrier est remis au serveur racine|the mail is sent to the MX of the parent domain>>>le courrier est envoyé au MX du domaine parent}@@
+""",
+        "l'enregistrement MX de alpha.tp désigne mx1.alpha.tp": "the MX record of alpha.tp names mx1.alpha.tp",
+        "le nom inverse de mx2": "the reverse name of mx2",
+        "MX : priorité, cible, absence": "MX: priority, target, absence",
+        "Partie 3 — Postfix : le serveur de courrier de alpha.tp": "Part 3 — Postfix: the mail server of alpha.tp",
+        "Postfix sur mx1 : recevoir et relayer le courrier de alpha.tp": "Postfix on mx1: receiving and relaying the mail of alpha.tp",
+        """
+Faites de `mx1` le serveur de courrier de `alpha.tp` (sections @@ref:postfix@@ et @@ref:relay@@ de l'onglet
+Informations) :
+
+1. dans `/etc/postfix/main.cf` (`postconf -e`), réglez `myhostname`, `mydomain`, `myorigin` (ou
+   `/etc/mailname`), `mydestination` (le serveur reçoit le courrier de `alpha.tp`), `mynetworks`
+   (les machines de `lan1` peuvent relayer) et `home_mailbox = Maildir/` ; `inet_interfaces` doit
+   permettre d'écouter sur le réseau ;
+2. lancez Postfix (`systemctl enable --now postfix`), vérifiez le journal et `ss -tlnp` ;
+3. depuis `pc2`, envoyez avec `swaks` un message à `alice@alpha.tp` directement à `mx1`
+   (`--server mx1.alpha.tp`), puis, si l'enregistrement MX de la partie 2 est en place, en passant
+   par `mx2` (`--server mx2.beta.tp`). Suivez-les dans les journaux et retrouvez-les dans
+   `/home/alice/Maildir/new/` ;
+4. depuis `pc1`, envoyez un message à `bob@beta.tp` en passant par `mx1` (`--server mx1.alpha.tp`) :
+   `mx1` doit le relayer vers `mx2`. Vérifiez qu'il arrive, puis que depuis `pc2` le même envoi **via
+   `mx1`** est refusé (`Relay access denied`) : `mx1` n'est pas un relais ouvert.
+""": """
+Make `mx1` the mail server of `alpha.tp` (sections @@ref:postfix@@ and @@ref:relay@@ of the
+Informations tab):
+
+1. in `/etc/postfix/main.cf` (`postconf -e`), set `myhostname`, `mydomain`, `myorigin` (or
+   `/etc/mailname`), `mydestination` (the server receives the mail of `alpha.tp`), `mynetworks`
+   (the machines of `lan1` may relay) and `home_mailbox = Maildir/`; `inet_interfaces` must
+   allow listening on the network;
+2. start Postfix (`systemctl enable --now postfix`), check the log and `ss -tlnp`;
+3. from `pc2`, send a message to `alice@alpha.tp` with `swaks` directly to `mx1`
+   (`--server mx1.alpha.tp`), then, if the MX record of part 2 is in place, through
+   `mx2` (`--server mx2.beta.tp`). Follow them in the logs and find them in
+   `/home/alice/Maildir/new/`;
+4. from `pc1`, send a message to `bob@beta.tp` through `mx1` (`--server mx1.alpha.tp`):
+   `mx1` must relay it to `mx2`. Check that it arrives, then that the same send from `pc2` **via
+   `mx1`** is refused (`Relay access denied`): `mx1` is not an open relay.
+""",
+        "Postfix écoute sur le port 25 de mx1": "Postfix listens on port 25 of mx1",
+        "myhostname, mydomain et myorigin": "myhostname, mydomain and myorigin",
+        "mydestination contient alpha.tp ; boîtes Maildir ; écoute sur le réseau": "mydestination contains alpha.tp; Maildir mailboxes; listening on the network",
+        "mynetworks contient lan1 (et pas wan)": "mynetworks contains lan1 (and not wan)",
+        "un message venu de wan pour alice@alpha.tp est accepté et rangé dans sa boîte": "a message from wan for alice@alpha.tp is accepted and stored in her mailbox",
+        "mx1 relaie vers mx2 un message venu de lan1": "mx1 relays to mx2 a message coming from lan1",
+        "mx1 refuse de relayer un message venu de wan": "mx1 refuses to relay a message coming from wan",
+        "Partie 4 — Poste satellite : le relais authentifié du fournisseur": "Part 4 — Satellite host: the provider's authenticated relay",
+        "Poste satellite : pc1 envoie par le relais authentifié du fournisseur": "Satellite host: pc1 sends through the provider's authenticated relay",
+        """
+`pc1` exécute des tâches automatiques qui envoient du courrier en tant que `root`. Votre fournisseur
+d'accès bloque le port 25 sortant : tout doit passer par son relais **`smtp.isp.tp`**, sur le port
+**587**, en TLS et authentifié avec le compte `alpha` (mot de passe dans le tableau de la première
+question), et ce relais n'accepte que des expéditeurs `@alpha.tp` (sections @@ref:relay@@ et
+@@ref:smarthost@@ de l'onglet Informations).
+
+1. depuis `pc1`, regardez ce que le relais attend : `swaks --server smtp.isp.tp:587 --from
+   alice@alpha.tp --to bob@beta.tp` (sans TLS ni authentification), puis avec `--tls --auth PLAIN
+   --auth-user alpha` ;
+2. faites de `pc1` un **poste satellite** : son Postfix n'écoute que sur `localhost`, ne reçoit rien
+   (`mydestination` vide), donne le domaine `alpha.tp` aux adresses locales (`myorigin`) et confie tout
+   au relais (`relayhost = [smtp.isp.tp]:587`) ;
+3. donnez-lui le compte du relais : `smtp_sasl_auth_enable`, la table **`/etc/postfix/sasl_passwd`**
+   (`postmap`, fichier en mode 600), `smtp_sasl_security_options = noanonymous`, et TLS obligatoire vers
+   le relais (`smtp_tls_security_level = encrypt`) ;
+4. le courrier de `root` doit sortir avec l'adresse **`noreply@alpha.tp`** (enveloppe et `From:`) :
+   table `smtp_generic_maps` ;
+5. relancez Postfix et testez : `echo test | mail -s essai bob@beta.tp` sur `pc1`, puis lisez le message
+   chez Bob (sur `mx2`) : expéditeur et `Received:`. Suivez-le dans `/var/log/mail.log` de `pc1`.
+""": """
+`pc1` runs automatic jobs that send mail as `root`. Your Internet service provider blocks outgoing
+port 25: everything must go through its relay **`smtp.isp.tp`**, on port **587**, over TLS and
+authenticated with the account `alpha` (password in the table of the first question), and this relay
+only accepts senders `@alpha.tp` (sections @@ref:relay@@ and @@ref:smarthost@@ of the Informations
+tab).
+
+1. from `pc1`, look at what the relay expects: `swaks --server smtp.isp.tp:587 --from
+   alice@alpha.tp --to bob@beta.tp` (without TLS or authentication), then with `--tls --auth PLAIN
+   --auth-user alpha`;
+2. make `pc1` a **satellite host**: its Postfix listens only on `localhost`, receives nothing
+   (`mydestination` empty), gives the domain `alpha.tp` to the local addresses (`myorigin`) and hands
+   everything to the relay (`relayhost = [smtp.isp.tp]:587`);
+3. give it the relay account: `smtp_sasl_auth_enable`, the table **`/etc/postfix/sasl_passwd`**
+   (`postmap`, file in mode 600), `smtp_sasl_security_options = noanonymous`, and TLS made mandatory
+   towards the relay (`smtp_tls_security_level = encrypt`);
+4. the mail of `root` must go out with the address **`noreply@alpha.tp`** (envelope and `From:`):
+   table `smtp_generic_maps`;
+5. restart Postfix and test: `echo test | mail -s test bob@beta.tp` on `pc1`, then read the message
+   at Bob's (on `mx2`): sender and `Received:`. Follow it in `/var/log/mail.log` of `pc1`.
+""",
+        """
+**Questions.**
+
+- le code de la réponse du relais à `MAIL FROM` sur le port 587, sans `STARTTLS` : @@{starttls_code:[0-9]+}@@
+- pourquoi passer par le relais du fournisseur ?
+  @@{why_relay:>le fournisseur bloque le port 25 sortant et ne relaie que pour ses clients authentifiés|le relais chiffre les messages jusqu'à la boîte du destinataire|le DNS ne permet pas à pc1 de trouver les MX|Postfix ne sait pas remettre un message sans relais}@@
+""": """
+**Questions.**
+
+- the code of the relay's reply to `MAIL FROM` on port 587, without `STARTTLS`: @@{starttls_code:[0-9]+}@@
+- why go through the provider's relay?
+  @@{why_relay:>the provider blocks outgoing port 25 and relays only for its authenticated customers>>>le fournisseur bloque le port 25 sortant et ne relaie que pour ses clients authentifiés|the relay encrypts the messages all the way to the recipient's mailbox>>>le relais chiffre les messages jusqu'à la boîte du destinataire|the DNS does not let pc1 find the MXs>>>le DNS ne permet pas à pc1 de trouver les MX|Postfix cannot deliver a message without a relay>>>Postfix ne sait pas remettre un message sans relais}@@
+""",
+        "relayhost = smtp.isp.tp, port 587": "relayhost = smtp.isp.tp, port 587",
+        "pc1 n'écoute que sur localhost et ne reçoit aucun domaine": "pc1 listens only on localhost and receives no domain",
+        "authentification SASL du client : la table des mots de passe, en mode 600": "client SASL authentication: the password table, in mode 600",
+        "TLS obligatoire vers le relais": "TLS mandatory towards the relay",
+        "un message déposé sur pc1 arrive sur mx2, relayé par smtp.isp.tp en ESMTPSA": "a message handed in on pc1 reaches mx2, relayed by smtp.isp.tp with ESMTPSA",
+        "le courrier de root sort avec l'adresse noreply@alpha.tp (enveloppe et From:)": "root's mail goes out with the address noreply@alpha.tp (envelope and From:)",
+        "réponse sans STARTTLS": "reply without STARTTLS",
+        "pourquoi un relais": "why a relay",
+        "Partie 5 — Alias, redirection et adresses étendues": "Part 5 — Aliases, forwarding and extended addresses",
+        "Alias, redirection et adresses étendues sur mx3 (gamma.tp)": "Aliases, forwarding and extended addresses on mx3 (gamma.tp)",
+        """
+Le serveur `mx3` de `gamma.tp` fonctionne déjà (Postfix, boîtes Maildir, comptes `erin` et `frank`).
+Sur `mx3` (section @@ref:aliases@@ de l'onglet Informations) :
+
+1. dans `/etc/aliases`, faites aboutir le courrier de `postmaster` et de `root` chez `erin`, et créez
+   l'alias **`{alias}`** remis à la fois à `erin` et à `frank` ; compilez la table et vérifiez avec
+   `postalias -q` ;
+2. `frank` redirige son courrier vers `dave@beta.tp` : créez son `~/.forward` (vérifiez qu'il lui
+   appartient) ;
+3. activez les **adresses étendues** (`recipient_delimiter = +`) : un message pour
+   `erin+news@gamma.tp` doit arriver chez `erin` ;
+4. testez depuis `pc2` (`swaks --server mx3.gamma.tp --to ...`) et suivez les messages dans le journal
+   de `mx3` ; regardez les en-têtes `Delivered-To:` et `X-Original-To:` du message pour
+   `erin+news@gamma.tp`.
+""": """
+The server `mx3` of `gamma.tp` already works (Postfix, Maildir mailboxes, accounts `erin` and `frank`).
+On `mx3` (section @@ref:aliases@@ of the Informations tab):
+
+1. in `/etc/aliases`, make the mail of `postmaster` and of `root` end up with `erin`, and create
+   the alias **`{alias}`**, delivered to both `erin` and `frank`; compile the table and check with
+   `postalias -q`;
+2. `frank` forwards his mail to `dave@beta.tp`: create his `~/.forward` (check that it belongs to
+   him);
+3. enable the **extended addresses** (`recipient_delimiter = +`): a message for
+   `erin+news@gamma.tp` must reach `erin`;
+4. test from `pc2` (`swaks --server mx3.gamma.tp --to ...`) and follow the messages in the log
+   of `mx3`; look at the `Delivered-To:` and `X-Original-To:` headers of the message for
+   `erin+news@gamma.tp`.
+""",
+        """
+**Questions.**
+
+- à quoi sert `newaliases` ?
+  @@{newaliases:>construire la table /etc/aliases.db que Postfix lit réellement|recharger la configuration de Postfix|vérifier que les utilisateurs existent|envoyer un message de test à chaque alias}@@
+- l'adresse de l'en-tête `X-Original-To:` du message pour `erin+news@gamma.tp` : @@{original_to:[A-Za-z0-9@.+-]+}@@
+""": """
+**Questions.**
+
+- what is `newaliases` for?
+  @@{newaliases:>build the /etc/aliases.db table that Postfix actually reads>>>construire la table /etc/aliases.db que Postfix lit réellement|reload the Postfix configuration>>>recharger la configuration de Postfix|check that the users exist>>>vérifier que les utilisateurs existent|send a test message to each alias>>>envoyer un message de test à chaque alias}@@
+- the address of the `X-Original-To:` header of the message for `erin+news@gamma.tp`: @@{original_to:[A-Za-z0-9@.+-]+}@@
+""",
+        "l'alias {alias} est compilé et un message qui lui est adressé arrive chez erin": "the alias {alias} is compiled and a message addressed to it reaches erin",
+        "le courrier de postmaster arrive chez erin": "the mail of postmaster reaches erin",
+        "un message pour frank est redirigé vers dave@beta.tp": "a message for frank is forwarded to dave@beta.tp",
+        "recipient_delimiter = + ; un message pour erin+news@gamma.tp arrive chez erin": "recipient_delimiter = +; a message for erin+news@gamma.tp reaches erin",
+        "X-Original-To": "X-Original-To",
+        "rôle de newaliases": "role of newaliases",
+        "Partie 6 — File d'attente et rapports d'erreur": "Part 6 — Queue and error reports",
+        "File d'attente et rapports d'erreur sur mx3": "Queue and error reports on mx3",
+        """
+Sur `mx3` (section @@ref:queue@@ de l'onglet Informations), envoyez depuis le serveur lui-même
+(`swaks --server 127.0.0.1 ...`, ou `mail`) :
+
+1. un message de `erin@gamma.tp` à `x@delta.tp` : le domaine existe (`dig MX delta.tp`) mais son
+   serveur ne répond pas. Observez le journal, puis `postqueue -p` ; **laissez ce message dans la
+   file** (il est évalué) ;
+2. un message de `erin@gamma.tp` à `inconnu@beta.tp` (compte inexistant) : regardez ce que `mx2`
+   répond à `mx3` dans le journal de `mx3`, puis ce qu'Erin reçoit dans sa boîte quelques secondes plus
+   tard (`/home/erin/Maildir/new/`) ;
+3. affichez le message différé avec `postcat -q`, forcez une nouvelle tentative avec `postqueue -f`.
+""": """
+On `mx3` (section @@ref:queue@@ of the Informations tab), send from the server itself
+(`swaks --server 127.0.0.1 ...`, or `mail`):
+
+1. a message from `erin@gamma.tp` to `x@delta.tp`: the domain exists (`dig MX delta.tp`) but its
+   server does not answer. Observe the log, then `postqueue -p`; **leave this message in the
+   queue** (it is graded);
+2. a message from `erin@gamma.tp` to `inconnu@beta.tp` (an account that does not exist): look at what
+   `mx2` answers `mx3` in the log of `mx3`, then at what Erin receives in her mailbox a few seconds
+   later (`/home/erin/Maildir/new/`);
+3. show the deferred message with `postcat -q`, force a new attempt with `postqueue -f`.
+""",
+        """
+**Questions.**
+
+- pourquoi le message pour `x@delta.tp` reste-t-il dans la file ?
+  @@{reason:>le serveur MX de delta.tp refuse la connexion|le domaine delta.tp n'existe pas dans le DNS|l'utilisateur x est inconnu|mx3 n'a pas le droit de relayer}@@
+- la commande qui affiche la file d'attente : @@{command:[a-zA-Z0-9 -]+}@@
+- que devient ce message ?
+  @@{fate:>Postfix réessaie périodiquement, puis renvoie un rapport d'échec à l'expéditeur|il est supprimé dès la première erreur|il est remis à l'administrateur (postmaster)|il attend indéfiniment}@@
+- le message pour `inconnu@beta.tp` : code de réponse de `mx2` au `RCPT TO` : @@{bounce_code:[0-9]+}@@ ;
+  expéditeur du rapport reçu par Erin : @@{bounce_sender:[A-Za-z@.-]+}@@
+""": """
+**Questions.**
+
+- why does the message for `x@delta.tp` stay in the queue?
+  @@{reason:>the MX server of delta.tp refuses the connection>>>le serveur MX de delta.tp refuse la connexion|the domain delta.tp does not exist in the DNS>>>le domaine delta.tp n'existe pas dans le DNS|the user x is unknown>>>l'utilisateur x est inconnu|mx3 is not allowed to relay>>>mx3 n'a pas le droit de relayer}@@
+- the command that shows the queue: @@{command:[a-zA-Z0-9 -]+}@@
+- what becomes of this message?
+  @@{fate:>Postfix retries periodically, then returns a failure report to the sender>>>Postfix réessaie périodiquement, puis renvoie un rapport d'échec à l'expéditeur|it is deleted at the first error>>>il est supprimé dès la première erreur|it is delivered to the administrator (postmaster)>>>il est remis à l'administrateur (postmaster)|it waits indefinitely>>>il attend indéfiniment}@@
+- the message for `inconnu@beta.tp`: reply code of `mx2` to the `RCPT TO`: @@{bounce_code:[0-9]+}@@;
+  sender of the report Erin received: @@{bounce_sender:[A-Za-z@.-]+}@@
+""",
+        "un message pour delta.tp attend dans la file différée de mx3 (connexion refusée)": "a message for delta.tp waits in the deferred queue of mx3 (connection refused)",
+        "erin a reçu le rapport de non-remise pour inconnu@beta.tp": "erin received the non-delivery report for inconnu@beta.tp",
+        "file d'attente : commande ; code 550 et expéditeur MAILER-DAEMON": "queue: command; code 550 and sender MAILER-DAEMON",
+        "file d'attente : raison, devenir du message": "queue: reason, fate of the message",
+        "Partie 7 — Lire les boîtes avec IMAP : Dovecot sur mx1": "Part 7 — Reading the mailboxes with IMAP: Dovecot on mx1",
+        "Lire les boîtes avec IMAP : Dovecot sur mx1": "Reading the mailboxes with IMAP: Dovecot on mx1",
+        """
+Dovecot est installé sur `mx1` mais arrêté (section @@ref:imap@@ de l'onglet Informations) :
+
+1. configurez-le (`/etc/dovecot/local.conf`, ou les fichiers de `conf.d/`) : écoute sur le réseau
+   (`listen = *`), boîtes au format **Maildir** dans le répertoire personnel, le même que Postfix
+   (`mail_driver`, `mail_path` et `mail_inbox_path`) ; les comptes Unix et le TLS de Debian
+   (`STARTTLS` avec le certificat auto-signé) conviennent tels quels ;
+2. lancez Dovecot (`systemctl enable --now dovecot`), vérifiez `doveconf -n`, `ss -tlnp`,
+   `doveadm auth test alice` et `doveadm mailbox path -u alice INBOX` ;
+3. depuis `pc1`, essayez `nc mx1.alpha.tp 143` puis `a LOGIN alice ...` : observez la réponse ; dialoguez
+   ensuite en TLS avec `openssl s_client -connect mx1.alpha.tp:143 -starttls imap` (`a LOGIN alice ...`,
+   `b SELECT INBOX`, `c FETCH 1 BODY[HEADER]`, `d LOGOUT`), puis avec `mutt -f imap://alice@mx1.alpha.tp/`
+   (`set ssl_starttls = yes` dans `~/.muttrc`) ;
+4. sur `mx1`, observez ce que Dovecot a changé dans `/home/alice/Maildir/` (dossiers `new/` et
+   `cur/`, fichiers `dovecot*`).
+""": """
+Dovecot is installed on `mx1` but stopped (section @@ref:imap@@ of the Informations tab):
+
+1. configure it (`/etc/dovecot/local.conf`, or the files of `conf.d/`): listening on the network
+   (`listen = *`), mailboxes in **Maildir** format in the home directory, the same as Postfix's
+   (`mail_driver`, `mail_path` and `mail_inbox_path`); the Unix accounts and Debian's TLS
+   (`STARTTLS` with the self-signed certificate) are fine as they are;
+2. start Dovecot (`systemctl enable --now dovecot`), check `doveconf -n`, `ss -tlnp`,
+   `doveadm auth test alice` and `doveadm mailbox path -u alice INBOX`;
+3. from `pc1`, try `nc mx1.alpha.tp 143` then `a LOGIN alice ...`: observe the reply; then talk
+   over TLS with `openssl s_client -connect mx1.alpha.tp:143 -starttls imap` (`a LOGIN alice ...`,
+   `b SELECT INBOX`, `c FETCH 1 BODY[HEADER]`, `d LOGOUT`), then with `mutt -f imap://alice@mx1.alpha.tp/`
+   (`set ssl_starttls = yes` in `~/.muttrc`);
+4. on `mx1`, observe what Dovecot changed in `/home/alice/Maildir/` (folders `new/` and
+   `cur/`, files `dovecot*`).
+""",
+        """
+**Questions.**
+
+- port d'IMAP en TLS implicite : @@{port_imaps:[0-9]+}@@
+- où sont stockés les messages d'Alice sur `mx1` ?
+  @@{storage:>/home/alice/Maildir|/var/mail/alice|/var/spool/postfix/alice|/etc/dovecot/alice}@@
+- ce que répond Dovecot à `a LOGIN alice ...` sans TLS :
+  @@{cleartext:>NO [PRIVACYREQUIRED] Cleartext authentication disallowed|OK Logged in|BAD Error in IMAP command|NO [AUTHENTICATIONFAILED] Authentication failed}@@
+""": """
+**Questions.**
+
+- port of IMAP over implicit TLS: @@{port_imaps:[0-9]+}@@
+- where are Alice's messages stored on `mx1`?
+  @@{storage:>/home/alice/Maildir|/var/mail/alice|/var/spool/postfix/alice|/etc/dovecot/alice}@@
+- what Dovecot answers to `a LOGIN alice ...` without TLS:
+  @@{cleartext:>NO [PRIVACYREQUIRED] Cleartext authentication disallowed|OK Logged in|BAD Error in IMAP command|NO [AUTHENTICATIONFAILED] Authentication failed}@@
+""",
+        "Dovecot écoute sur le port 143 de mx1": "Dovecot listens on port 143 of mx1",
+        "boîtes Maildir : mail_driver, mail_path, mail_inbox_path": "Maildir mailboxes: mail_driver, mail_path, mail_inbox_path",
+        "connexion IMAP d'alice acceptée (STARTTLS)": "alice's IMAP login accepted (STARTTLS)",
+        "le message de test est visible par IMAP dans la boîte d'alice": "the test message is visible over IMAP in alice's mailbox",
+        "port d'IMAPS": "IMAPS port",
+        "emplacement des boîtes ; LOGIN sans TLS": "location of the mailboxes; LOGIN without TLS",
+        "Bonus — Dépanner le serveur de zeta.tp": "Bonus — Troubleshooting the server of zeta.tp",
+        "Bonus : dépanner le serveur de zeta.tp": "Bonus: troubleshoot the server of zeta.tp",
+        """
+Le serveur `mx4` de **`zeta.tp`** a été mal remonté après une migration. Les utilisateurs se
+plaignent : `zoe@zeta.tp` ne reçoit plus rien, l'adresse `contact@zeta.tp` est « inconnue », le serveur
+relaie le courrier de n'importe qui (il est déjà sur une liste noire !) et personne ne peut plus lire
+sa boîte en IMAP. Le compte `zoe` et l'enregistrement MX de `zeta.tp` sont corrects.
+
+Trouvez et corrigez les **quatre** pannes, sans réinstaller : la méthode et les erreurs courantes de la
+section @@ref:diagnostic@@ de l'onglet Informations vous guident (journaux, `postconf -n`, `doveconf -n`,
+`swaks` depuis `pc2`, `postalias -q`).
+""": """
+The server `mx4` of **`zeta.tp`** was badly rebuilt after a migration. The users complain:
+`zoe@zeta.tp` no longer receives anything, the address `contact@zeta.tp` is "unknown", the server
+relays anyone's mail (it is already on a blacklist!) and nobody can read their mailbox over IMAP any
+more. The account `zoe` and the MX record of `zeta.tp` are correct.
+
+Find and fix the **four** faults, without reinstalling: the method and the common errors of
+section @@ref:diagnostic@@ of the Informations tab guide you (logs, `postconf -n`, `doveconf -n`,
+`swaks` from `pc2`, `postalias -q`).
+""",
+        "un message pour zoe@zeta.tp est rangé dans sa boîte": "a message for zoe@zeta.tp is stored in her mailbox",
+        "la table des alias de mx4 connaît contact": "mx4's alias table knows contact",
+        "mx4 n'est plus un relais ouvert": "mx4 is no longer an open relay",
+        "Dovecot démarre et zoe lit sa boîte en IMAP": "Dovecot starts and zoe reads her mailbox over IMAP",
     },
 }

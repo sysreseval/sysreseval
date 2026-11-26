@@ -1251,45 +1251,52 @@ Créer un royaume de zéro : `krb5.conf` et `kdc.conf` qui le nomment, `kadm5.ac
     # Each RADIUS part state replaces the configuration of radius by the solution of that part
     # alone (the five parts share its files); the other states add their part.
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 1 seule sur radius (remplace sa configuration)"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 1 seule sur radius (remplace sa configuration)",
+                                                  en="Solution of part 1 alone on radius (replaces its configuration)"))
     def part1(self):
         self.radius_solution([1])
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 2 seule sur radius (remplace sa configuration)"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 2 seule sur radius (remplace sa configuration)",
+                                                  en="Solution of part 2 alone on radius (replaces its configuration)"))
     def part2(self):
         self.radius_solution([2])
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 3 seule sur radius (remplace sa configuration)"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 3 seule sur radius (remplace sa configuration)",
+                                                  en="Solution of part 3 alone on radius (replaces its configuration)"))
     def part3(self):
         self.radius_solution([3])
 
     @sre_state(user_allowed=False, description=tr("Solution de la partie 4 (radius, dont la configuration est "
-                                                  "remplacée, et router)"))
+                                                  "remplacée, et router)",
+                                                  en="Solution of part 4 (radius, whose configuration is replaced, "
+                                                     "and router)"))
     def part4(self):
         self.radius_solution([4])
         self.router_solution()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 5 seule sur radius (remplace sa configuration)"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 5 seule sur radius (remplace sa configuration)",
+                                                  en="Solution of part 5 alone on radius (replaces its configuration)"))
     def part5(self):
         self.radius_solution([5])
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 6 (sw, pc1, pc2)"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 6 (sw, pc1, pc2)", en="Solution of part 6 (sw, pc1, pc2)"))
     def part6(self):
         self.dot1x_solution()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 7 (kdc)"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 7 (kdc)", en="Solution of part 7 (kdc)"))
     def part7(self):
         self.realm_admin_solution()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 8 (srv)"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 8 (srv)", en="Solution of part 8 (srv)"))
     def part8(self):
         self.services_solution()
 
-    @sre_state(user_allowed=False, description=tr("Solution de la partie 9 (ws)"))
+    @sre_state(user_allowed=False, description=tr("Solution de la partie 9 (ws)", en="Solution of part 9 (ws)"))
     def part9(self):
         self.workstation_solution()
 
-    @sre_state(user_allowed=False, description=tr("Solution du bonus (kdc2, et le principal de confiance sur kdc)"))
+    @sre_state(user_allowed=False, description=tr("Solution du bonus (kdc2, et le principal de confiance sur kdc)",
+                                                  en="Solution of the bonus (kdc2, and the trust principal on kdc)"))
     def bonus(self):
         self.bonus_solution()
 
@@ -2349,7 +2356,7 @@ CORP.LAN avec ce ticket).
 
     def _organisation_text(self, d):
         P = d.pw
-        machines = _concat(no_tr("\n| machine | adresse | rôle |\n|---|---|---|\n"), (
+        machines = _concat(tr("\n| machine | adresse | rôle |\n|---|---|---|\n"), (
             no_tr(f"| `{m}` | {d.ip(m)} | ") + role + no_tr(" |\n") for m, role in (
                 ('radius', tr("votre serveur FreeRADIUS (parties 1 à 5)")),
                 ('nac', tr("le serveur RADIUS du switch, déjà configuré (sans terminal)")),
@@ -2375,7 +2382,7 @@ CORP.LAN avec ce ticket).
                 (tr("secret RADIUS de `router` sur `radius` (partie 4)"), d.router_secret),
                 (tr("secret RADIUS de `sw` sur `nac` (partie 6)"), d.nac_secret),
                 (tr("administrateur Kerberos `admin/admin` (parties 7 et 8)"), P("kadmin")))))
-        accounts = _concat(no_tr("\n| compte | mot de passe | |\n|---|---|---|\n"), (
+        accounts = _concat(tr("\n| compte | mot de passe | |\n|---|---|---|\n"), (
             no_tr(f"| `{login}` | `{P(login)}` | ") + where + no_tr(" |\n") for login, where in (
                 ("alice", tr("à créer sur `radius` (partie 1)")),
                 ("bob", tr("à créer sur `radius` (partie 1)")),
@@ -2723,7 +2730,7 @@ accepte toute clé du keytab. Évaluation : `krb_host_keytab` (1), `krb_ssh_sso`
 cachée : `kinit dev2` puis ssh limité à `gssapi-with-mic`).
 """:
             """
-`GSSAPIStrictAcceptorCheck no`: sshd no longer requires the key of `host/NOM_DE_LA_MACHINE` (`host/srv`)
+`GSSAPIStrictAcceptorCheck no`: sshd no longer requires the key of `host/MACHINE_NAME` (`host/srv`)
 and accepts any key of the keytab. Grading: `krb_host_keytab` (1), `krb_ssh_sso` (4, from the hidden
 machine: `kinit dev2` then ssh restricted to `gssapi-with-mic`).
 """,
@@ -2784,6 +2791,1803 @@ Les états `part1` à `part9` et `bonus` appliquent la solution d'une seule part
 scratch on `radius`, `router`, `sw` and the pcs, the realm, `srv`, `ws` and the bonus) and fills in the
 forms. The states `part1` to `part9` and `bonus` apply the solution of one part only (those of parts 1
 to 5 replace the whole configuration of `radius`). Every question ends with its solution.
+""",
+        "AAA : RADIUS, 802.1X, double authentification et Kerberos": "AAA: RADIUS, 802.1X, two-factor authentication and Kerberos",
+        """
+**Sommaire**
+""": """
+**Contents**
+""",
+        "AAA : authentifier, autoriser, tracer": "AAA: authenticate, authorise, account",
+        """
+**AAA** désigne les trois services qu'un réseau d'entreprise rend à chaque accès (à un port de switch,
+au Wi-Fi, au VPN, à la console d'un routeur, à un serveur) :
+
+- **Authentication** (authentification) : qui êtes-vous ? Un mot de passe, un certificat, un code
+  à usage unique, un ticket ;
+- **Authorization** (autorisation) : qu'avez-vous le droit de faire ? Un VLAN, une durée de session,
+  un niveau de privilège, l'accès refusé à certains équipements ;
+- **Accounting** (comptabilité, traçabilité) : qu'avez-vous fait ? Début et fin de session, durée,
+  volume, commandes passées.
+
+Trois acteurs reviennent toujours : l'**utilisateur** (ou son poste, le *supplicant*), l'équipement
+d'accès qui lui ouvre ou non la porte, le **NAS** (*Network Access Server* : switch, point d'accès,
+concentrateur VPN, routeur, serveur ssh) et le **serveur d'authentification**, qui seul connaît les
+comptes et la politique. Le NAS ne décide rien : il pose la question au serveur et applique la réponse.
+Centraliser ainsi évite de créer les comptes sur chaque équipement, et permet de couper un accès partout
+d'un seul geste.
+
+Les protocoles : **RADIUS** (le plus répandu : accès réseau, VPN, Wi-Fi), **TACACS+** (Cisco,
+administration des équipements, commande par commande), **Diameter** (successeur de RADIUS dans les
+réseaux des opérateurs mobiles), **Kerberos** (authentification unique dans un parc de machines et de
+services : c'est le cœur d'Active Directory). Les comptes eux-mêmes vivent souvent dans un **annuaire
+LDAP**, que le serveur RADIUS ou le KDC consultent.
+""": """
+**AAA** refers to the three services that a company network provides for every access (to a switch
+port, to the Wi-Fi, to the VPN, to the console of a router, to a server):
+
+- **Authentication**: who are you? A password, a certificate, a one-time code,
+  a ticket;
+- **Authorization**: what are you allowed to do? A VLAN, a session duration,
+  a privilege level, access denied to some devices;
+- **Accounting** (traceability): what have you done? Start and end of the session, duration,
+  volume, commands typed.
+
+Three actors always come back: the **user** (or their host, the *supplicant*), the access device
+that opens the door to them or not, the **NAS** (*Network Access Server*: switch, access point,
+VPN concentrator, router, ssh server), and the **authentication server**, which alone knows the
+accounts and the policy. The NAS decides nothing: it asks the server and applies the answer.
+Centralising in this way avoids creating the accounts on every device, and makes it possible to cut
+an access everywhere in a single step.
+
+The protocols: **RADIUS** (the most widespread: network access, VPN, Wi-Fi), **TACACS+** (Cisco,
+administration of devices, command by command), **Diameter** (the successor of RADIUS in the
+networks of mobile operators), **Kerberos** (single sign-on across a fleet of machines and
+services: it is the heart of Active Directory). The accounts themselves often live in an **LDAP
+directory**, which the RADIUS server or the KDC consults.
+""",
+        "Le protocole RADIUS": "The RADIUS protocol",
+        """
+### @@sec@@ Requêtes et réponses
+
+RADIUS (RFC 2865 pour l'authentification, RFC 2866 pour la comptabilité) circule sur **UDP**, port
+**1812** (authentification) et **1813** (comptabilité) ; les anciens ports 1645/1646 existent encore.
+Le NAS est le **client** RADIUS, le serveur ne répond qu'aux clients qu'il connaît (son adresse et un
+**secret partagé**) et ignore silencieusement les autres.
+
+| code | paquet | sens |
+|---|---|---|
+| 1 | `Access-Request` | NAS → serveur : un utilisateur demande l'accès |
+| 2 | `Access-Accept` | serveur → NAS : accès accordé, avec les attributs d'autorisation |
+| 3 | `Access-Reject` | serveur → NAS : accès refusé |
+| 11 | `Access-Challenge` | serveur → NAS : il faut une information de plus (EAP, code à usage unique) |
+| 4 / 5 | `Accounting-Request` / `-Response` | comptabilité : `Start`, `Interim-Update`, `Stop` |
+
+Un paquet porte des **attributs** codés type-longueur-valeur, décrits par un dictionnaire :
+`User-Name`, `User-Password`, `CHAP-Password`, `NAS-IP-Address`, `NAS-Identifier`,
+`Calling-Station-Id` (l'adresse MAC du poste), `Called-Station-Id`, `Service-Type`, `Reply-Message`,
+`Session-Timeout`, `Tunnel-Private-Group-Id`… Les constructeurs ajoutent les leurs (*Vendor-Specific*,
+par exemple `Cisco-AVPair`).
+
+### @@sec@@ Le secret partagé
+
+Chaque requête porte un **Request Authenticator** de 16 octets aléatoires ; la réponse porte un
+**Response Authenticator** = MD5(code, identifiant, longueur, Request Authenticator, attributs,
+**secret**) : le NAS sait que la réponse vient du vrai serveur. Le mot de passe `User-Password` n'est
+pas transmis en clair : il est combiné (XOR) avec MD5(secret + Request Authenticator). Ce n'est pas un
+chiffrement moderne : qui capture l'échange et connaît (ou devine) le secret retrouve le mot de passe.
+Avec **CHAP**, le mot de passe ne circule pas du tout : le client envoie MD5(identifiant, mot de passe,
+défi). L'attribut **`Message-Authenticator`** (un HMAC-MD5 du paquet entier avec le secret) protège les
+requêtes ; il est obligatoire avec EAP, et recommandé partout depuis l'attaque *BlastRADIUS* (2024).
+Pour traverser un réseau non sûr on transporte RADIUS dans TLS (**RadSec**, RFC 6614).
+
+### @@sec@@ Comptabilité et relais
+
+Le NAS envoie un `Accounting-Request` `Start` à l'ouverture d'une session (avec `Acct-Session-Id`,
+`Calling-Station-Id`…), des `Interim-Update` réguliers, puis un `Stop` avec la durée et les volumes
+(`Acct-Session-Time`, `Acct-Input-Octets`). Un serveur peut aussi **relayer** (*proxy*) une requête vers
+un autre selon le domaine du nom (`alice@univ.fr`) : c'est ainsi que fonctionne le réseau Wi-Fi
+**eduroam** entre les universités.
+""": """
+### @@sec@@ Requests and responses
+
+RADIUS (RFC 2865 for authentication, RFC 2866 for accounting) runs over **UDP**, port
+**1812** (authentication) and **1813** (accounting); the old ports 1645/1646 still exist.
+The NAS is the RADIUS **client**; the server only answers the clients it knows (their address and a
+**shared secret**) and silently ignores the others.
+
+| code | packet | direction |
+|---|---|---|
+| 1 | `Access-Request` | NAS → server: a user asks for access |
+| 2 | `Access-Accept` | server → NAS: access granted, with the authorisation attributes |
+| 3 | `Access-Reject` | server → NAS: access denied |
+| 11 | `Access-Challenge` | server → NAS: one more piece of information is needed (EAP, one-time code) |
+| 4 / 5 | `Accounting-Request` / `-Response` | accounting: `Start`, `Interim-Update`, `Stop` |
+
+A packet carries **attributes** encoded as type-length-value, described by a dictionary:
+`User-Name`, `User-Password`, `CHAP-Password`, `NAS-IP-Address`, `NAS-Identifier`,
+`Calling-Station-Id` (the MAC address of the host), `Called-Station-Id`, `Service-Type`, `Reply-Message`,
+`Session-Timeout`, `Tunnel-Private-Group-Id`… Vendors add their own (*Vendor-Specific*,
+for example `Cisco-AVPair`).
+
+### @@sec@@ The shared secret
+
+Every request carries a **Request Authenticator** of 16 random bytes; the response carries a
+**Response Authenticator** = MD5(code, identifier, length, Request Authenticator, attributes,
+**secret**): the NAS knows that the response comes from the real server. The `User-Password` is
+not sent in clear text: it is combined (XOR) with MD5(secret + Request Authenticator). This is not
+modern encryption: whoever captures the exchange and knows (or guesses) the secret recovers the
+password. With **CHAP**, the password does not travel at all: the client sends MD5(identifier,
+password, challenge). The **`Message-Authenticator`** attribute (an HMAC-MD5 of the whole packet with
+the secret) protects the requests; it is mandatory with EAP, and recommended everywhere since the
+*BlastRADIUS* attack (2024). To cross an untrusted network, RADIUS is carried inside TLS (**RadSec**,
+RFC 6614).
+
+### @@sec@@ Accounting and proxying
+
+The NAS sends an `Accounting-Request` `Start` when a session opens (with `Acct-Session-Id`,
+`Calling-Station-Id`…), regular `Interim-Update`s, then a `Stop` with the duration and the volumes
+(`Acct-Session-Time`, `Acct-Input-Octets`). A server can also **forward** (*proxy*) a request to
+another one according to the domain of the name (`alice@univ.fr`): this is how the **eduroam** Wi-Fi
+network works between universities.
+""",
+        "FreeRADIUS": "FreeRADIUS",
+        """
+### @@sec@@ L'arborescence
+
+FreeRADIUS 3 (Debian : `/etc/freeradius/3.0`, utilisateur `freerad`) :
+
+| fichier | rôle |
+|---|---|
+| `radiusd.conf` | réglages généraux, journal `/var/log/freeradius/radius.log` |
+| `clients.conf` | les clients RADIUS (NAS) : adresse, secret, nom court |
+| `mods-available/`, `mods-enabled/` | la configuration des modules ; un lien symbolique active un module |
+| `sites-available/`, `sites-enabled/` | les serveurs virtuels : `default` (les requêtes des NAS), `inner-tunnel` (la phase 2 de PEAP / TTLS) |
+| `mods-config/files/authorize` | le fichier **`users`** (lien `users`), lu par le module `files` |
+| `mods-config/preprocess/huntgroups` | les groupes de NAS, lu par le module `preprocess` |
+| `certs/` | les certificats d'EAP |
+
+Un client se déclare ainsi (puis on redémarre le service) :
+
+```
+client sw {
+	ipaddr = 192.0.2.2
+	secret = UnSecretLong
+	shortname = sw
+}
+```
+
+### @@sec@@ Le traitement d'une requête
+
+Le serveur virtuel enchaîne des **sections**, chacune appelant des **modules** dans l'ordre :
+`authorize` (trouver l'utilisateur et choisir la méthode : le module `files` lit `users`, `ldap`
+interroge l'annuaire, `pap` / `chap` / `eap` repèrent le type de requête), `authenticate` (vérifier
+selon l'`Auth-Type` choisi : `pap`, `chap`, `mschap`, `eap`, `ldap`…), `post-auth` (ajuster la réponse),
+et pour la comptabilité `preacct` puis `accounting` (le module `detail` écrit chaque enregistrement
+dans `/var/log/freeradius/radacct/ADRESSE_DU_NAS/detail-DATE`). Chaque module rend un code (`ok`,
+`notfound`, `noop`, `reject`, `fail`, `updated`…) qui pilote la suite.
+
+Les attributs se rangent dans des **listes** : `request` (le paquet reçu), `reply` (la réponse),
+`control` (les informations internes : le mot de passe de référence `Cleartext-Password`,
+`Auth-Type`…). Le langage **unlang** les manipule dans les sections :
+
+```
+if (&User-Name == "bob") {
+	update reply {
+		&Reply-Message := "Bonjour"
+	}
+}
+elsif (&control:LDAP-UserDn) {
+	reject
+}
+```
+
+### @@sec@@ Le fichier users
+
+Une entrée : le nom (ou `DEFAULT`), les **attributs de contrôle** sur la même ligne, puis les
+**attributs de réponse** sur les lignes suivantes, indentées et séparées par des virgules :
+
+```
+bob	Cleartext-Password := "s3cret"
+	Reply-Message := "Bonjour bob",
+	Session-Timeout := 3600
+
+DEFAULT	Huntgroup-Name == "devices", Auth-Type := Reject
+	Reply-Message := "Accès refusé"
+```
+
+Les opérateurs : `:=` pose (remplace), `==` compare (l'entrée ne s'applique que si c'est vrai), `=`
+ajoute s'il n'existe pas, `+=` ajoute, `!=`, `=~` / `!~` comparent à une expression régulière. Les
+entrées sont essayées dans l'ordre et la première qui correspond **termine** la recherche, sauf si elle
+porte `Fall-Through = Yes` : une règle `DEFAULT` qui doit s'appliquer à tous se met donc en tête.
+
+### @@sec@@ Tester et déboguer
+
+Le mode debug montre chaque requête, chaque module et chaque décision : `systemctl stop freeradius`,
+puis `freeradius -X` (Ctrl-C pour arrêter, puis `systemctl start freeradius`). `freeradius -XC` vérifie
+la configuration sans démarrer. Les clients de test :
+
+```
+radtest alice MOTDEPASSE radius.corp.lan 0 SECRET        # PAP (le 0 : le numéro de port du NAS)
+radtest -t chap alice MOTDEPASSE 127.0.0.1 0 testing123   # CHAP, client localhost
+echo 'User-Name = "alice", User-Password = "x"' | radclient -x 127.0.0.1 auth testing123
+```
+""": """
+### @@sec@@ The directory tree
+
+FreeRADIUS 3 (Debian: `/etc/freeradius/3.0`, user `freerad`):
+
+| file | role |
+|---|---|
+| `radiusd.conf` | general settings, log `/var/log/freeradius/radius.log` |
+| `clients.conf` | the RADIUS clients (NAS): address, secret, short name |
+| `mods-available/`, `mods-enabled/` | the configuration of the modules; a symbolic link enables a module |
+| `sites-available/`, `sites-enabled/` | the virtual servers: `default` (the requests of the NAS), `inner-tunnel` (phase 2 of PEAP / TTLS) |
+| `mods-config/files/authorize` | the **`users`** file (link `users`), read by the `files` module |
+| `mods-config/preprocess/huntgroups` | the groups of NAS, read by the `preprocess` module |
+| `certs/` | the EAP certificates |
+
+A client is declared like this (then the service is restarted):
+
+```
+client sw {
+	ipaddr = 192.0.2.2
+	secret = ALongSecret
+	shortname = sw
+}
+```
+
+### @@sec@@ Processing a request
+
+The virtual server chains **sections**, each one calling **modules** in order:
+`authorize` (find the user and choose the method: the `files` module reads `users`, `ldap`
+queries the directory, `pap` / `chap` / `eap` recognise the type of request), `authenticate` (check
+according to the chosen `Auth-Type`: `pap`, `chap`, `mschap`, `eap`, `ldap`…), `post-auth` (adjust
+the response), and for accounting `preacct` then `accounting` (the `detail` module writes each record
+to `/var/log/freeradius/radacct/NAS_ADDRESS/detail-DATE`). Each module returns a code (`ok`,
+`notfound`, `noop`, `reject`, `fail`, `updated`…) that drives what follows.
+
+The attributes are kept in **lists**: `request` (the packet received), `reply` (the response),
+`control` (internal information: the reference password `Cleartext-Password`,
+`Auth-Type`…). The **unlang** language handles them in the sections:
+
+```
+if (&User-Name == "bob") {
+	update reply {
+		&Reply-Message := "Bonjour"
+	}
+}
+elsif (&control:LDAP-UserDn) {
+	reject
+}
+```
+
+### @@sec@@ The users file
+
+An entry: the name (or `DEFAULT`), the **check attributes** on the same line, then the
+**reply attributes** on the following lines, indented and separated by commas:
+
+```
+bob	Cleartext-Password := "s3cret"
+	Reply-Message := "Bonjour bob",
+	Session-Timeout := 3600
+
+DEFAULT	Huntgroup-Name == "devices", Auth-Type := Reject
+	Reply-Message := "Accès refusé"
+```
+
+The operators: `:=` sets (replaces), `==` compares (the entry only applies if it is true), `=`
+adds if it does not exist, `+=` adds, `!=`, `=~` / `!~` compare with a regular expression. The
+entries are tried in order and the first one that matches **ends** the search, unless it
+carries `Fall-Through = Yes`: a `DEFAULT` rule that must apply to everyone therefore goes at the top.
+
+### @@sec@@ Testing and debugging
+
+Debug mode shows every request, every module and every decision: `systemctl stop freeradius`,
+then `freeradius -X` (Ctrl-C to stop it, then `systemctl start freeradius`). `freeradius -XC` checks
+the configuration without starting. The test clients:
+
+```
+radtest alice PASSWORD radius.corp.lan 0 SECRET          # PAP (the 0: the port number of the NAS)
+radtest -t chap alice PASSWORD 127.0.0.1 0 testing123     # CHAP, localhost client
+echo 'User-Name = "alice", User-Password = "x"' | radclient -x 127.0.0.1 auth testing123
+```
+""",
+        "FreeRADIUS et l'annuaire LDAP": "FreeRADIUS and the LDAP directory",
+        """
+### @@sec@@ Le module ldap
+
+Le module `ldap` cherche l'utilisateur dans l'annuaire (avec un **compte de service**, qui ne doit
+pouvoir que lire), puis l'authentifie de deux façons possibles : en lisant son `userPassword` (s'il a
+le droit de le lire : le mot de passe haché `{SSHA}` sert alors de référence au module `pap`), ou, plus
+sûr, en faisant un **bind LDAP** avec le mot de passe reçu (`Auth-Type LDAP`). Les réglages
+principaux de `mods-available/ldap` :
+
+| réglage | rôle |
+|---|---|
+| `server`, `identity`, `password` | l'annuaire et le compte de service |
+| `base_dn` | la racine de l'annuaire |
+| `user { base_dn, filter }` | où et comment chercher la personne (`(uid=%{User-Name})`) |
+| `group { base_dn, filter, membership_filter }` | les groupes : `posixGroup` dont les membres sont dans `memberUid` (un `membership_filter` commenté le prévoit), ou `groupOfNames` (attribut `member`) |
+
+On l'active par un lien (`ln -s ../mods-available/ldap mods-enabled/ldap`). Dans le serveur virtuel
+`default`, la ligne `-ldap` d'`authorize` l'appelle (le `-` : ignorer le module s'il n'est pas
+activé) ; comme rlm_ldap ne choisit pas lui-même la méthode, le fichier prévoit, en commentaire juste
+après, le bloc qui choisit `Auth-Type LDAP` quand la personne a été trouvée, et dans `authenticate` le
+bloc `Auth-Type LDAP { ldap }`. La personne trouvée laisse son DN dans `control:LDAP-UserDn`.
+
+### @@sec@@ Autoriser selon les groupes
+
+L'appartenance se teste en unlang par la comparaison `LDAP-Group == "nom"` (une recherche dans
+l'annuaire à chaque test). La réponse porte alors les attributs d'autorisation, que le NAS applique :
+
+| attribut | effet |
+|---|---|
+| `Tunnel-Type = VLAN` (13), `Tunnel-Medium-Type = IEEE-802` (6), `Tunnel-Private-Group-Id = "20"` | le switch place le port dans le VLAN 20 (**VLAN dynamique**) |
+| `Session-Timeout = 3600` | la session est coupée (ou réauthentifiée) au bout d'une heure |
+| `Filter-Id = "invites"` | le NAS applique un filtre configuré sous ce nom |
+| `Reply-Message` | un message pour l'utilisateur |
+
+Refuser quelqu'un dont le mot de passe est bon mais qui n'a pas sa place se fait par `reject` dans
+`authorize` (ou `post-auth`) : c'est la différence entre authentification et autorisation.
+""": """
+### @@sec@@ The ldap module
+
+The `ldap` module looks the user up in the directory (with a **service account**, which must only be
+able to read), then authenticates them in one of two ways: by reading their `userPassword` (if it is
+allowed to read it: the hashed `{SSHA}` password then serves as the reference for the `pap` module),
+or, more safely, by making an **LDAP bind** with the password received (`Auth-Type LDAP`). The main
+settings of `mods-available/ldap`:
+
+| setting | role |
+|---|---|
+| `server`, `identity`, `password` | the directory and the service account |
+| `base_dn` | the root of the directory |
+| `user { base_dn, filter }` | where and how to look for the person (`(uid=%{User-Name})`) |
+| `group { base_dn, filter, membership_filter }` | the groups: `posixGroup` whose members are in `memberUid` (a commented-out `membership_filter` provides for it), or `groupOfNames` (attribute `member`) |
+
+It is enabled by a link (`ln -s ../mods-available/ldap mods-enabled/ldap`). In the virtual server
+`default`, the `-ldap` line of `authorize` calls it (the `-`: ignore the module if it is not
+enabled); since rlm_ldap does not choose the method itself, the file provides, commented out right
+after it, the block that chooses `Auth-Type LDAP` when the person has been found, and in
+`authenticate` the block `Auth-Type LDAP { ldap }`. The person found leaves their DN in
+`control:LDAP-UserDn`.
+
+### @@sec@@ Authorising according to groups
+
+Membership is tested in unlang with the comparison `LDAP-Group == "name"` (a search in the
+directory at each test). The response then carries the authorisation attributes, which the NAS
+applies:
+
+| attribute | effect |
+|---|---|
+| `Tunnel-Type = VLAN` (13), `Tunnel-Medium-Type = IEEE-802` (6), `Tunnel-Private-Group-Id = "20"` | the switch puts the port in VLAN 20 (**dynamic VLAN**) |
+| `Session-Timeout = 3600` | the session is cut (or re-authenticated) after one hour |
+| `Filter-Id = "invites"` | the NAS applies a filter configured under that name |
+| `Reply-Message` | a message for the user |
+
+Refusing someone whose password is right but who has no place here is done with `reject` in
+`authorize` (or `post-auth`): this is the difference between authentication and authorisation.
+""",
+        "La double authentification : TOTP": "Two-factor authentication: TOTP",
+        """
+Un mot de passe se vole. La **double authentification** exige deux facteurs de nature différente :
+ce que l'on **sait** (mot de passe), ce que l'on **possède** (téléphone, clé matérielle), ce que l'on
+**est** (empreinte). Le second facteur le plus courant est un code à usage unique :
+
+- **HOTP** (RFC 4226) : le serveur et l'application partagent un **secret** ; le code est
+  HMAC-SHA1(secret, compteur), réduit à 6 chiffres par une troncature, et le compteur avance à chaque
+  usage ;
+- **TOTP** (RFC 6238) : le compteur est le temps, `⌊heure Unix / 30⌋` : un nouveau code toutes les
+  **30 secondes**. Les horloges doivent être à l'heure ; le serveur accepte souvent le code précédent
+  pour absorber un petit décalage.
+
+Le secret est donné en **base32** (`JBSWY3DPEHPK3PXP`), souvent sous forme de QR code scanné par
+l'application (Google Authenticator, FreeOTP, Aegis). En ligne de commande :
+`oathtool --totp -b JBSWY3DPEHPK3PXP` affiche le code du moment, `-v` les paramètres.
+
+Avec RADIUS et PAP, le plus simple est de taper le mot de passe **suivi** du code : le serveur sépare
+les six derniers chiffres. (L'autre façon : un `Access-Challenge` qui demande le code dans un second
+échange.) Le module **`totp`** de FreeRADIUS 3.2 ne s'emploie que dans `authenticate` : il compare
+`&request:TOTP-Password` au code calculé à partir de `&control:TOTP-Secret` et rend `ok` ou `fail`. Le
+découpage se fait en unlang dans `authorize`, avec une expression régulière dont les groupes sont
+`%{1}`, `%{2}` :
+
+```
+if (&User-Password =~ /^(.*)([0-9]{6})$/) {
+	update request {
+		&User-Password := "%{1}"
+		&TOTP-Password := "%{2}"
+	}
+}
+```
+""": """
+A password can be stolen. **Two-factor authentication** requires two factors of different kinds:
+something you **know** (a password), something you **have** (a phone, a hardware key), something you
+**are** (a fingerprint). The most common second factor is a one-time code:
+
+- **HOTP** (RFC 4226): the server and the application share a **secret**; the code is
+  HMAC-SHA1(secret, counter), reduced to 6 digits by a truncation, and the counter moves forward at
+  each use;
+- **TOTP** (RFC 6238): the counter is the time, `⌊Unix time / 30⌋`: a new code every
+  **30 seconds**. The clocks must be on time; the server often accepts the previous code
+  to absorb a small drift.
+
+The secret is given in **base32** (`JBSWY3DPEHPK3PXP`), often as a QR code scanned by
+the application (Google Authenticator, FreeOTP, Aegis). On the command line:
+`oathtool --totp -b JBSWY3DPEHPK3PXP` shows the current code, `-v` the parameters.
+
+With RADIUS and PAP, the simplest is to type the password **followed by** the code: the server splits
+off the last six digits. (The other way: an `Access-Challenge` that asks for the code in a second
+exchange.) The **`totp`** module of FreeRADIUS 3.2 is only used in `authenticate`: it compares
+`&request:TOTP-Password` with the code computed from `&control:TOTP-Secret` and returns `ok` or
+`fail`. The splitting is done in unlang in `authorize`, with a regular expression whose groups are
+`%{1}`, `%{2}`:
+
+```
+if (&User-Password =~ /^(.*)([0-9]{6})$/) {
+	update request {
+		&User-Password := "%{1}"
+		&TOTP-Password := "%{2}"
+	}
+}
+```
+""",
+        "Administrer les équipements": "Administering the devices",
+        """
+### @@sec@@ RADIUS ou TACACS+
+
+Les sessions d'administration des routeurs et des switchs méritent un contrôle centralisé : un compte
+par administrateur (et non un mot de passe partagé), des droits différents selon les équipements, une
+trace. **TACACS+** (Cisco, TCP 49) est fait pour cela : il chiffre tout le paquet et sépare
+l'authentification, l'autorisation (commande par commande) et la comptabilité (chaque commande
+tapée). **RADIUS** sait aussi le faire, plus simplement : l'autorisation tient dans la réponse
+(`Service-Type = Administrative-User`, un niveau de privilège dans `Cisco-AVPair = "shell:priv-lvl=15"`).
+Debian n'a plus de serveur TACACS+ : nous utilisons RADIUS.
+
+### @@sec@@ Sur l'équipement : pam_radius_auth
+
+Sur un équipement Linux, c'est **PAM** qui vérifie les mots de passe de `sshd`. Le module
+`pam_radius_auth` les envoie au serveur RADIUS (l'équipement est alors un NAS) :
+
+- `/etc/pam_radius_auth.conf` : une ligne `serveur[:port] secret [délai]` par serveur (le fichier
+  contient le secret : root seul doit pouvoir le lire) ;
+- `/etc/pam.d/sshd` : `auth sufficient pam_radius_auth.so` **avant** `@include common-auth` ; avec
+  `sufficient`, un succès RADIUS suffit et un échec laisse `pam_unix` essayer le mot de passe local
+  (`pam-auth-update --enable radius` fait la même chose dans `common-auth`, pour tous les services).
+
+Le compte doit exister localement (le système a besoin de son identifiant, de son répertoire), mais
+sans mot de passe local : RADIUS seul l'ouvre. On garde toujours un **compte de secours** local (*break
+glass*) pour le jour où le serveur RADIUS ne répond plus.
+
+### @@sec@@ Sur le serveur : une politique par groupe de NAS
+
+Le module `preprocess` classe chaque requête dans un **huntgroup** d'après le NAS
+(`mods-config/preprocess/huntgroups`) :
+
+```
+devices		NAS-IP-Address == 192.0.2.1
+devices		NAS-IP-Address == 192.0.2.254
+```
+
+La requête porte alors `Huntgroup-Name = "devices"`, que le fichier `users` ou unlang peuvent tester :
+par exemple une entrée `DEFAULT` en tête du fichier qui refuse (`Auth-Type := Reject`) sur ce groupe
+tout utilisateur qui n'est pas administrateur réseau. Un même compte peut ainsi entrer sur le Wi-Fi
+et être refusé sur les routeurs.
+""": """
+### @@sec@@ RADIUS or TACACS+
+
+Administration sessions on routers and switches deserve central control: one account per
+administrator (not a shared password), different rights depending on the device, a trail.
+**TACACS+** (Cisco, TCP 49) is made for this: it encrypts the whole packet and separates
+authentication, authorisation (command by command) and accounting (every command typed).
+**RADIUS** can do it too, more simply: the authorisation fits in the response
+(`Service-Type = Administrative-User`, a privilege level in `Cisco-AVPair = "shell:priv-lvl=15"`).
+Debian no longer has a TACACS+ server: we use RADIUS.
+
+### @@sec@@ On the device: pam_radius_auth
+
+On a Linux device, **PAM** checks the passwords for `sshd`. The `pam_radius_auth` module sends them
+to the RADIUS server (the device is then a NAS):
+
+- `/etc/pam_radius_auth.conf`: one line `server[:port] secret [timeout]` per server (the file
+  contains the secret: only root must be able to read it);
+- `/etc/pam.d/sshd`: `auth sufficient pam_radius_auth.so` **before** `@include common-auth`; with
+  `sufficient`, a RADIUS success is enough and a failure lets `pam_unix` try the local password
+  (`pam-auth-update --enable radius` does the same in `common-auth`, for every service).
+
+The account must exist locally (the system needs its identifier, its home directory), but without
+a local password: RADIUS alone opens it. Always keep a local **rescue account** (*break glass*) for
+the day the RADIUS server stops answering.
+
+### @@sec@@ On the server: a policy per group of NAS
+
+The `preprocess` module puts each request in a **huntgroup** according to the NAS
+(`mods-config/preprocess/huntgroups`):
+
+```
+devices		NAS-IP-Address == 192.0.2.1
+devices		NAS-IP-Address == 192.0.2.254
+```
+
+The request then carries `Huntgroup-Name = "devices"`, which the `users` file or unlang can test:
+for example a `DEFAULT` entry at the top of the file that rejects (`Auth-Type := Reject`), on this
+group, any user who is not a network administrator. The same account can thus get onto the Wi-Fi
+and be refused on the routers.
+""",
+        "EAP": "EAP",
+        """
+### @@sec@@ Un cadre pour des méthodes
+
+**EAP** (*Extensible Authentication Protocol*, RFC 3748) n'est pas une méthode mais un cadre : le
+serveur envoie des `EAP-Request`, le client répond par des `EAP-Response`, jusqu'à un `EAP-Success` ou
+un `EAP-Failure` (codes 1 à 4). Le premier échange demande l'identité (type 1, *Identity*), puis le
+serveur propose une **méthode** ; le client peut la refuser (*NAK*) et en proposer une autre.
+
+| type | méthode | principe |
+|---|---|---|
+| 4 | EAP-MD5 | défi-réponse sur un mot de passe, sans authentifier le serveur : à proscrire |
+| 13 | **EAP-TLS** | une session TLS où client **et** serveur présentent un certificat |
+| 21 | EAP-TTLS | un tunnel TLS (certificat du serveur seul), puis une méthode quelconque dedans |
+| 25 | **PEAP** | un tunnel TLS, puis une seconde méthode EAP dedans, en général MSCHAPv2 |
+| 26 | EAP-MSCHAPv2 | défi-réponse Microsoft sur un mot de passe, utilisé dans PEAP |
+
+Dans PEAP et TTLS, l'identité de l'échange extérieur peut être anonyme (`anonymous`), la vraie identité
+ne circule que dans le tunnel. Tout repose sur la vérification du **certificat du serveur** par le
+client : sans elle, un faux point d'accès récupère l'échange MSCHAPv2 et casse le mot de passe hors
+ligne. Le client doit donc connaître la CA (`ca_cert`) et le nom attendu (`domain_match`). En EAP-TLS,
+le serveur vérifie à son tour le certificat du client par la CA qu'il connaît : faire confiance à
+toutes les autorités publiques du système serait accepter n'importe quel certificat acheté.
+
+### @@sec@@ EAP dans RADIUS
+
+Le NAS ne comprend pas EAP : il recopie les messages EAP dans l'attribut `EAP-Message` des requêtes
+RADIUS (avec `Message-Authenticator`), et le serveur répond par des `Access-Challenge` (l'attribut
+`State` relie les tours), jusqu'à l'`Access-Accept` final qui porte l'`EAP-Success` et les clés.
+Dans FreeRADIUS, le module `eap` (`mods-available/eap`) regroupe les méthodes ; la sous-section
+`tls-config tls-common` donne le certificat du serveur (`certificate_file`), sa clé
+(`private_key_file`, `private_key_password` si elle est chiffrée) et la CA des certificats clients
+(`ca_file`) ; `default_eap_type` est la méthode proposée en premier. La phase 2 de PEAP est traitée
+par le serveur virtuel `inner-tunnel` (qui lit aussi le fichier `users`). Les fichiers doivent être
+lisibles par l'utilisateur `freerad`.
+
+### @@sec@@ Tester avec eapol_test
+
+`eapol_test` (paquet `eapoltest`) joue à la fois le client EAP et le NAS, et parle RADIUS directement au
+serveur. Fichier `peap.conf` :
+
+```
+network={
+	key_mgmt=IEEE8021X
+	eap=PEAP
+	identity="carol"
+	password="SON_MOT_DE_PASSE"
+	ca_cert="/root/ca/ca.crt"
+	domain_match="radius.corp.lan"
+	phase2="auth=MSCHAPV2"
+}
+```
+
+et pour EAP-TLS (`tls.conf`), `eap=TLS`, l'identité, `ca_cert`, `client_cert="client.crt"` et
+`private_key="client.key"`. Puis `eapol_test -c peap.conf -a 127.0.0.1 -s testing123` : la dernière
+ligne est `SUCCESS` ou `FAILURE`, les lignes `CTRL-EVENT-EAP-PEER-CERT` montrent les certificats reçus.
+""": """
+### @@sec@@ A framework for methods
+
+**EAP** (*Extensible Authentication Protocol*, RFC 3748) is not a method but a framework: the
+server sends `EAP-Request`s, the client answers with `EAP-Response`s, until an `EAP-Success` or an
+`EAP-Failure` (codes 1 to 4). The first exchange asks for the identity (type 1, *Identity*), then the
+server proposes a **method**; the client can refuse it (*NAK*) and propose another one.
+
+| type | method | principle |
+|---|---|---|
+| 4 | EAP-MD5 | challenge-response on a password, without authenticating the server: to be avoided |
+| 13 | **EAP-TLS** | a TLS session where client **and** server present a certificate |
+| 21 | EAP-TTLS | a TLS tunnel (server certificate only), then any method inside it |
+| 25 | **PEAP** | a TLS tunnel, then a second EAP method inside it, usually MSCHAPv2 |
+| 26 | EAP-MSCHAPv2 | Microsoft challenge-response on a password, used in PEAP |
+
+In PEAP and TTLS, the identity of the outer exchange can be anonymous (`anonymous`); the real
+identity only travels inside the tunnel. Everything rests on the client checking the **server
+certificate**: without it, a fake access point captures the MSCHAPv2 exchange and cracks the
+password offline. The client must therefore know the CA (`ca_cert`) and the expected name
+(`domain_match`). In EAP-TLS, the server in turn checks the client certificate against the CA it
+knows: trusting all the public authorities of the system would mean accepting any purchased
+certificate.
+
+### @@sec@@ EAP in RADIUS
+
+The NAS does not understand EAP: it copies the EAP messages into the `EAP-Message` attribute of the
+RADIUS requests (with `Message-Authenticator`), and the server answers with `Access-Challenge`s (the
+`State` attribute links the rounds), until the final `Access-Accept` that carries the `EAP-Success`
+and the keys. In FreeRADIUS, the `eap` module (`mods-available/eap`) groups the methods; the
+subsection `tls-config tls-common` gives the server certificate (`certificate_file`), its key
+(`private_key_file`, `private_key_password` if it is encrypted) and the CA of the client certificates
+(`ca_file`); `default_eap_type` is the method proposed first. Phase 2 of PEAP is handled by the
+virtual server `inner-tunnel` (which also reads the `users` file). The files must be readable by the
+user `freerad`.
+
+### @@sec@@ Testing with eapol_test
+
+`eapol_test` (package `eapoltest`) plays both the EAP client and the NAS, and speaks RADIUS directly
+to the server. File `peap.conf`:
+
+```
+network={
+	key_mgmt=IEEE8021X
+	eap=PEAP
+	identity="carol"
+	password="THE_PASSWORD"
+	ca_cert="/root/ca/ca.crt"
+	domain_match="radius.corp.lan"
+	phase2="auth=MSCHAPV2"
+}
+```
+
+and for EAP-TLS (`tls.conf`), `eap=TLS`, the identity, `ca_cert`, `client_cert="client.crt"` and
+`private_key="client.key"`. Then `eapol_test -c peap.conf -a 127.0.0.1 -s testing123`: the last
+line is `SUCCESS` or `FAILURE`, the `CTRL-EVENT-EAP-PEER-CERT` lines show the certificates received.
+""",
+        "802.1X : le contrôle d'accès des ports": "802.1X: port-based access control",
+        """
+### @@sec@@ Trois rôles, un protocole de transport
+
+**IEEE 802.1X** contrôle l'accès à un port de switch (ou à un point d'accès Wi-Fi) : tant que le poste
+ne s'est pas authentifié, le port ne laisse passer que les trames d'authentification.
+
+- le **supplicant** : le poste (`wpa_supplicant` sous Linux) ;
+- l'**authenticator** : le switch, qui relaie l'EAP entre le poste et le serveur et ouvre le port ;
+- l'**authentication server** : le serveur RADIUS.
+
+Entre le poste et le switch, EAP voyage dans **EAPOL** (*EAP over LAN*) : des trames Ethernet
+d'EtherType **`0x888e`**, adressées à l'adresse de groupe **`01:80:c2:00:00:03`** (l'adresse PAE, qu'un
+pont ne relaie jamais : la trame s'arrête au switch). Les types de trames : `EAPOL-Start` (le poste
+demande à s'authentifier), `EAP-Packet` (un message EAP), `EAPOL-Logoff` (le poste se déconnecte),
+`EAPOL-Key`. Le déroulement :
+
+| | poste | switch | serveur RADIUS |
+|---|---|---|---|
+| 1 | `EAPOL-Start` → | | |
+| 2 | ← `EAP-Request/Identity` | | |
+| 3 | `EAP-Response/Identity` → | `Access-Request` → | |
+| 4 | ← méthode (TLS…) → | ← `Access-Challenge` / `Access-Request` → | |
+| 5 | ← `EAP-Success` | ← `Access-Accept` (+ VLAN…) | |
+| 6 | port **autorisé** | `Accounting-Request Start` → | |
+
+Les switchs du commerce ajoutent le **VLAN dynamique** (le VLAN de l'`Access-Accept`), un VLAN invité
+pour les échecs, le **MAB** (*MAC Authentication Bypass* : l'adresse MAC sert d'identifiant pour les
+imprimantes sans supplicant, protection faible), plusieurs postes par port, et la réauthentification
+périodique. Un port 802.1X ne protège pas d'un poste qui partage son accès (un hub derrière lui) :
+**MACsec** (802.1AE) chiffre et authentifie ensuite chaque trame.
+
+### @@sec@@ Un switch Linux authentificateur : hostapd
+
+`hostapd`, connu comme point d'accès Wi-Fi, est aussi un authentificateur filaire (pilote `wired`). Un
+fichier par port (`/etc/hostapd/eth1.conf`, démarré par `systemctl start hostapd@eth1`) :
+
+```
+interface=eth1
+driver=wired
+ctrl_interface=/var/run/hostapd
+ieee8021x=1
+eapol_version=2
+use_pae_group_addr=1
+own_ip_addr=192.0.2.2
+nas_identifier=sw
+auth_server_addr=192.0.2.11
+auth_server_port=1812
+auth_server_shared_secret=SECRET
+acct_server_addr=192.0.2.11
+acct_server_port=1813
+acct_server_shared_secret=SECRET
+```
+
+Le pilote `wired` mène l'authentification mais **ne ferme pas le port** : c'est à nous de filtrer. Sur
+un pont Linux, une table nftables de la famille `bridge` jette les trames venant d'un port d'accès dont
+l'adresse source n'est pas dans un *set* d'adresses autorisées :
+
+```
+table bridge dot1x {
+	set authorized {
+		type ether_addr
+	}
+	chain forward {
+		type filter hook forward priority 0; policy accept;
+		iifname { "eth1", "eth2", "eth3" } ether saddr != @authorized drop
+	}
+	chain input {
+		type filter hook input priority 0; policy accept;
+		iifname { "eth1", "eth2", "eth3" } ether type != 0x888e ether saddr != @authorized drop
+	}
+}
+```
+
+La chaîne `input` protège `sw` lui-même ; elle doit laisser passer EAPOL, car les trames de l'adresse
+`01:80:c2:00:00:03` traversent le crochet `input` du pont avant d'arriver à hostapd. Le *set* est tenu à
+jour par `hostapd_cli` en mode action : `hostapd_cli -B -p /var/run/hostapd -i eth1 -a SCRIPT` lance
+`SCRIPT interface événement adresse` à chaque événement, en particulier `AP-STA-CONNECTED` (poste
+autorisé) et `AP-STA-DISCONNECTED` (plus autorisé : `EAPOL-Logoff`, échec, réauthentification ratée).
+Le script ajoute ou retire l'adresse (`nft add element bridge dot1x authorized "{ $3 }"`).
+`hostapd_cli -i eth1 all_sta` liste les postes vus par un port : `flags=[AUTHORIZED]`,
+`dot1xAuthSessionUserName`, `last_eap_type_sta`. Attention : un événement survenu avant le lancement
+de `hostapd_cli` est perdu (un poste qui s'authentifie juste après le démarrage de hostapd), et un
+poste déjà autorisé qui se réauthentifie n'en produit pas de nouveau : après avoir lancé
+`hostapd_cli`, ajoutez au *set* les postes que `all_sta` montre autorisés.
+
+### @@sec@@ Le supplicant : wpa_supplicant
+
+En filaire, `wpa_supplicant` prend le pilote `wired` et ne cherche pas de réseau (`ap_scan=0`) ;
+`/etc/wpa_supplicant/wpa_supplicant-wired-eth0.conf`, démarré par
+`systemctl start wpa_supplicant-wired@eth0` :
+
+```
+ctrl_interface=/var/run/wpa_supplicant
+ap_scan=0
+network={
+	key_mgmt=IEEE8021X
+	eap=PEAP
+	identity="jdoe"
+	password="SON_MOT_DE_PASSE"
+	ca_cert="/etc/ssl/corp/ca.crt"
+	domain_match="nac.corp.lan"
+	phase2="auth=MSCHAPV2"
+	eapol_flags=0
+}
+```
+
+(pour EAP-TLS : `eap=TLS`, `client_cert=` et `private_key=` à la place du mot de passe). `wpa_cli -i
+eth0 status` donne l'état (`suppPortStatus=Authorized`, `EAP state=SUCCESS`, `selectedMethod`) ;
+`wpa_cli -i eth0 logoff` envoie un `EAPOL-Logoff`, `logon` relance l'authentification. Le supplicant
+envoie quelques `EAPOL-Start` à son démarrage : s'il démarre avant hostapd, `logon` relance l'échange.
+""": """
+### @@sec@@ Three roles, one transport protocol
+
+**IEEE 802.1X** controls access to a switch port (or to a Wi-Fi access point): as long as the host
+has not authenticated, the port only lets authentication frames through.
+
+- the **supplicant**: the host (`wpa_supplicant` on Linux);
+- the **authenticator**: the switch, which relays EAP between the host and the server and opens the port;
+- the **authentication server**: the RADIUS server.
+
+Between the host and the switch, EAP travels in **EAPOL** (*EAP over LAN*): Ethernet frames of
+EtherType **`0x888e`**, sent to the group address **`01:80:c2:00:00:03`** (the PAE address, which a
+bridge never forwards: the frame stops at the switch). The frame types: `EAPOL-Start` (the host asks
+to authenticate), `EAP-Packet` (an EAP message), `EAPOL-Logoff` (the host disconnects),
+`EAPOL-Key`. The sequence:
+
+| | host | switch | RADIUS server |
+|---|---|---|---|
+| 1 | `EAPOL-Start` → | | |
+| 2 | ← `EAP-Request/Identity` | | |
+| 3 | `EAP-Response/Identity` → | `Access-Request` → | |
+| 4 | ← method (TLS…) → | ← `Access-Challenge` / `Access-Request` → | |
+| 5 | ← `EAP-Success` | ← `Access-Accept` (+ VLAN…) | |
+| 6 | port **authorised** | `Accounting-Request Start` → | |
+
+Commercial switches add the **dynamic VLAN** (the VLAN of the `Access-Accept`), a guest VLAN for
+failures, **MAB** (*MAC Authentication Bypass*: the MAC address serves as the identifier for printers
+without a supplicant, a weak protection), several hosts per port, and periodic re-authentication. An
+802.1X port does not protect against a host that shares its access (a hub behind it): **MACsec**
+(802.1AE) then encrypts and authenticates every frame.
+
+### @@sec@@ A Linux switch as authenticator: hostapd
+
+`hostapd`, known as a Wi-Fi access point, is also a wired authenticator (driver `wired`). One file
+per port (`/etc/hostapd/eth1.conf`, started by `systemctl start hostapd@eth1`):
+
+```
+interface=eth1
+driver=wired
+ctrl_interface=/var/run/hostapd
+ieee8021x=1
+eapol_version=2
+use_pae_group_addr=1
+own_ip_addr=192.0.2.2
+nas_identifier=sw
+auth_server_addr=192.0.2.11
+auth_server_port=1812
+auth_server_shared_secret=SECRET
+acct_server_addr=192.0.2.11
+acct_server_port=1813
+acct_server_shared_secret=SECRET
+```
+
+The `wired` driver carries out the authentication but **does not close the port**: the filtering is
+up to us. On a Linux bridge, an nftables table of the `bridge` family drops the frames coming from an
+access port whose source address is not in a *set* of authorised addresses:
+
+```
+table bridge dot1x {
+	set authorized {
+		type ether_addr
+	}
+	chain forward {
+		type filter hook forward priority 0; policy accept;
+		iifname { "eth1", "eth2", "eth3" } ether saddr != @authorized drop
+	}
+	chain input {
+		type filter hook input priority 0; policy accept;
+		iifname { "eth1", "eth2", "eth3" } ether type != 0x888e ether saddr != @authorized drop
+	}
+}
+```
+
+The `input` chain protects `sw` itself; it must let EAPOL through, because the frames to the address
+`01:80:c2:00:00:03` cross the `input` hook of the bridge before reaching hostapd. The *set* is kept up
+to date by `hostapd_cli` in action mode: `hostapd_cli -B -p /var/run/hostapd -i eth1 -a SCRIPT` runs
+`SCRIPT interface event address` at every event, in particular `AP-STA-CONNECTED` (host
+authorised) and `AP-STA-DISCONNECTED` (no longer authorised: `EAPOL-Logoff`, failure, failed
+re-authentication). The script adds or removes the address
+(`nft add element bridge dot1x authorized "{ $3 }"`).
+`hostapd_cli -i eth1 all_sta` lists the hosts seen by a port: `flags=[AUTHORIZED]`,
+`dot1xAuthSessionUserName`, `last_eap_type_sta`. Beware: an event that happens before `hostapd_cli`
+is started is lost (a host that authenticates just after hostapd starts), and a host already
+authorised that re-authenticates does not produce a new one: after starting `hostapd_cli`, add to the
+*set* the hosts that `all_sta` shows as authorised.
+
+### @@sec@@ The supplicant: wpa_supplicant
+
+On a wired network, `wpa_supplicant` takes the `wired` driver and does not look for a network
+(`ap_scan=0`); `/etc/wpa_supplicant/wpa_supplicant-wired-eth0.conf`, started by
+`systemctl start wpa_supplicant-wired@eth0`:
+
+```
+ctrl_interface=/var/run/wpa_supplicant
+ap_scan=0
+network={
+	key_mgmt=IEEE8021X
+	eap=PEAP
+	identity="jdoe"
+	password="THE_PASSWORD"
+	ca_cert="/etc/ssl/corp/ca.crt"
+	domain_match="nac.corp.lan"
+	phase2="auth=MSCHAPV2"
+	eapol_flags=0
+}
+```
+
+(for EAP-TLS: `eap=TLS`, `client_cert=` and `private_key=` instead of the password). `wpa_cli -i
+eth0 status` gives the state (`suppPortStatus=Authorized`, `EAP state=SUCCESS`, `selectedMethod`);
+`wpa_cli -i eth0 logoff` sends an `EAPOL-Logoff`, `logon` restarts the authentication. The supplicant
+sends a few `EAPOL-Start`s when it starts: if it starts before hostapd, `logon` restarts the exchange.
+""",
+        "Kerberos": "Kerberos",
+        """
+### @@sec@@ Une tierce partie de confiance
+
+**Kerberos** (MIT, RFC 4120) authentifie les utilisateurs auprès des services d'un réseau **sans que le
+mot de passe ne circule**, et une seule fois par journée (*single sign-on*). Le vocabulaire :
+
+- le **royaume** (*realm*) : le domaine d'administration, en majuscules par convention (`CORP.LAN`) ;
+- le **principal** : une identité du royaume, utilisateur (`dev1@CORP.LAN`, `admin/admin@CORP.LAN`) ou
+  service (`host/srv.corp.lan@CORP.LAN` pour ssh, `HTTP/srv.corp.lan@CORP.LAN` pour le web) ;
+- le **KDC** (*Key Distribution Center*) : le serveur qui connaît la clé secrète de chaque principal
+  (dérivée du mot de passe pour un utilisateur, aléatoire pour un service). Il regroupe l'**AS**
+  (*Authentication Service*) et le **TGS** (*Ticket Granting Service*) ;
+- le **ticket** : une preuve d'identité chiffrée avec la clé du service visé, valable quelques heures,
+  qui contient une **clé de session**.
+
+### @@sec@@ Les échanges
+
+1. **AS-REQ / AS-REP** (`kinit`) : le client demande un ticket pour le TGS ; le KDC répond par le
+   **TGT** (*Ticket Granting Ticket*, principal de service `krbtgt/CORP.LAN@CORP.LAN`, chiffré avec la
+   clé de `krbtgt`, illisible pour le client) et une clé de session chiffrée avec la clé de
+   l'utilisateur : seul celui qui connaît le mot de passe peut l'utiliser. La **pré-authentification**
+   (un horodatage chiffré dans la demande) empêche de récupérer de quoi attaquer le mot de passe sans
+   le connaître.
+2. **TGS-REQ / TGS-REP** : avec son TGT, le client demande un ticket de service (pour
+   `host/srv.corp.lan`), chiffré avec la clé du service.
+3. **AP-REQ** : le client présente ce ticket au service, qui le déchiffre avec sa propre clé, rangée
+   dans un **keytab** (`/etc/krb5.keytab`) : le service n'a jamais besoin de parler au KDC.
+
+Le KDC écoute sur le port **88** (UDP et TCP), `kadmind` (administration à distance) sur 749, le
+changement de mot de passe sur 464. Les tickets portent un type de chiffrement (*etype*,
+`aes256-cts-hmac-sha1-96`), les clés un numéro de version (**kvno**), incrémenté à chaque changement.
+Kerberos est exigeant sur l'**heure** (5 minutes d'écart au plus) et sur les **noms** : le ticket de
+service désigne un nom de machine, qui doit être celui du principal du service. Sans DNS fiable, on
+interdit à la bibliothèque de transformer les noms (`rdns = false`, `dns_canonicalize_hostname = false`).
+""": """
+### @@sec@@ A trusted third party
+
+**Kerberos** (MIT, RFC 4120) authenticates users to the services of a network **without the
+password ever travelling**, and only once a day (*single sign-on*). The vocabulary:
+
+- the **realm**: the administrative domain, in upper case by convention (`CORP.LAN`);
+- the **principal**: an identity of the realm, a user (`dev1@CORP.LAN`, `admin/admin@CORP.LAN`) or a
+  service (`host/srv.corp.lan@CORP.LAN` for ssh, `HTTP/srv.corp.lan@CORP.LAN` for the web);
+- the **KDC** (*Key Distribution Center*): the server that knows the secret key of each principal
+  (derived from the password for a user, random for a service). It groups the **AS**
+  (*Authentication Service*) and the **TGS** (*Ticket Granting Service*);
+- the **ticket**: a proof of identity encrypted with the key of the target service, valid for a few
+  hours, that contains a **session key**.
+
+### @@sec@@ The exchanges
+
+1. **AS-REQ / AS-REP** (`kinit`): the client asks for a ticket for the TGS; the KDC answers with the
+   **TGT** (*Ticket Granting Ticket*, service principal `krbtgt/CORP.LAN@CORP.LAN`, encrypted with the
+   key of `krbtgt`, unreadable for the client) and a session key encrypted with the key of the
+   user: only someone who knows the password can use it. **Pre-authentication** (an encrypted
+   timestamp in the request) prevents anyone from obtaining material to attack the password without
+   knowing it.
+2. **TGS-REQ / TGS-REP**: with its TGT, the client asks for a service ticket (for
+   `host/srv.corp.lan`), encrypted with the key of the service.
+3. **AP-REQ**: the client presents this ticket to the service, which decrypts it with its own key,
+   stored in a **keytab** (`/etc/krb5.keytab`): the service never needs to talk to the KDC.
+
+The KDC listens on port **88** (UDP and TCP), `kadmind` (remote administration) on 749, the password
+change service on 464. Tickets carry an encryption type (*etype*, `aes256-cts-hmac-sha1-96`), keys a
+version number (**kvno**), incremented at each change. Kerberos is demanding about the **time**
+(5 minutes of skew at most) and about **names**: the service ticket names a host, whose name must be
+the one of the service principal. Without a reliable DNS, the library is forbidden to transform the
+names (`rdns = false`, `dns_canonicalize_hostname = false`).
+""",
+        "MIT Kerberos en pratique": "MIT Kerberos in practice",
+        """
+### @@sec@@ Les fichiers
+
+| fichier | rôle |
+|---|---|
+| `/etc/krb5.conf` | tous les clients : royaume par défaut, KDC et serveur d'administration de chaque royaume |
+| `/etc/krb5kdc/kdc.conf` | le KDC : la base, les durées maximales des tickets, les types de chiffrement |
+| `/etc/krb5kdc/kadm5.acl` | les droits d'administration de `kadmind` |
+| `/var/lib/krb5kdc/principal` | la base, chiffrée par la clé maîtresse (sa copie : `/etc/krb5kdc/stash`) |
+
+```
+[libdefaults]
+	default_realm = CORP.LAN
+	dns_lookup_realm = false
+	dns_lookup_kdc = false
+	rdns = false
+	dns_canonicalize_hostname = false
+
+[realms]
+	CORP.LAN = {
+		kdc = kdc.corp.lan
+		admin_server = kdc.corp.lan
+	}
+
+[domain_realm]
+	.corp.lan = CORP.LAN
+```
+
+Une ligne de `kadm5.acl` : `principal droits [cible]`, les droits étant des lettres : `a` ajouter, `d`
+supprimer, `m` modifier, `c` changer un mot de passe, `i` consulter, `l` lister, `*` tout. La cible
+`*@CORP.LAN` ne désigne que les principaux à un seul composant (pas `admin/admin`).
+`admin/admin@CORP.LAN *` donne tous les droits ; `kadmind` relit le fichier à son redémarrage.
+
+### @@sec@@ Administrer
+
+Un royaume se crée sur le KDC par `kdb5_util create -s -r CORP.LAN` (la clé maîtresse est demandée,
+`-s` la range dans le *stash*), puis `systemctl restart krb5-kdc krb5-admin-server`. `kadmin.local`
+(sur le KDC, en root, sans authentification) et `kadmin -p admin/admin` (de n'importe où, par
+`kadmind`) acceptent les mêmes commandes, en interactif ou avec `-q "commande"` :
+
+| commande | effet |
+|---|---|
+| `addprinc dev1`, `addprinc -randkey host/srv.corp.lan` | créer un utilisateur (mot de passe demandé) ou un service (clé aléatoire) |
+| `getprinc dev1`, `listprincs` | consulter |
+| `cpw dev1`, `delprinc dev1` | changer le mot de passe, supprimer |
+| `modprinc -allow_tix dev1` | interdire tout ticket (`+allow_tix` rétablit) ; `-expire` fixe une date de fin |
+| `addpol -minlength 10 -minclasses 3 staff`, `getpol staff` | une politique de mots de passe (longueur, classes de caractères : minuscules, majuscules, chiffres, ponctuation, autres) |
+| `addprinc -policy staff nina`, `modprinc -policy staff nina` | soumettre un compte à une politique |
+| `ktadd -k FICHIER host/srv.corp.lan` | mettre la clé dans un keytab (attention : elle est **renouvelée**, le kvno augmente) |
+
+Côté client : `kinit dev1` (obtenir le TGT ; `kinit` lit le mot de passe sur l'entrée standard quand
+ce n'est pas un terminal), `klist` (`-e` : les types de chiffrement ; `-k FICHIER` : le contenu d'un
+keytab), `kdestroy`, `kvno host/srv.corp.lan` (obtenir un ticket de service et afficher son kvno),
+`kpasswd`. Le cache des tickets est un fichier (`/tmp/krb5cc_UID`, variable `KRB5CCNAME`).
+""": """
+### @@sec@@ The files
+
+| file | role |
+|---|---|
+| `/etc/krb5.conf` | every client: default realm, KDC and administration server of each realm |
+| `/etc/krb5kdc/kdc.conf` | the KDC: the database, the maximum lifetimes of the tickets, the encryption types |
+| `/etc/krb5kdc/kadm5.acl` | the administration rights of `kadmind` |
+| `/var/lib/krb5kdc/principal` | the database, encrypted with the master key (its copy: `/etc/krb5kdc/stash`) |
+
+```
+[libdefaults]
+	default_realm = CORP.LAN
+	dns_lookup_realm = false
+	dns_lookup_kdc = false
+	rdns = false
+	dns_canonicalize_hostname = false
+
+[realms]
+	CORP.LAN = {
+		kdc = kdc.corp.lan
+		admin_server = kdc.corp.lan
+	}
+
+[domain_realm]
+	.corp.lan = CORP.LAN
+```
+
+A line of `kadm5.acl`: `principal rights [target]`, the rights being letters: `a` add, `d` delete,
+`m` modify, `c` change a password, `i` inquire, `l` list, `*` everything. The target `*@CORP.LAN`
+only covers the principals with a single component (not `admin/admin`).
+`admin/admin@CORP.LAN *` gives every right; `kadmind` reads the file again when it restarts.
+
+### @@sec@@ Administering
+
+A realm is created on the KDC with `kdb5_util create -s -r CORP.LAN` (the master key is asked for,
+`-s` stores it in the *stash*), then `systemctl restart krb5-kdc krb5-admin-server`. `kadmin.local`
+(on the KDC, as root, without authentication) and `kadmin -p admin/admin` (from anywhere, through
+`kadmind`) accept the same commands, interactively or with `-q "command"`:
+
+| command | effect |
+|---|---|
+| `addprinc dev1`, `addprinc -randkey host/srv.corp.lan` | create a user (the password is asked for) or a service (random key) |
+| `getprinc dev1`, `listprincs` | inspect |
+| `cpw dev1`, `delprinc dev1` | change the password, delete |
+| `modprinc -allow_tix dev1` | forbid any ticket (`+allow_tix` restores them); `-expire` sets an end date |
+| `addpol -minlength 10 -minclasses 3 staff`, `getpol staff` | a password policy (length, character classes: lower case, upper case, digits, punctuation, others) |
+| `addprinc -policy staff nina`, `modprinc -policy staff nina` | put an account under a policy |
+| `ktadd -k FILE host/srv.corp.lan` | put the key in a keytab (beware: it is **renewed**, the kvno increases) |
+
+On the client side: `kinit dev1` (get the TGT; `kinit` reads the password from standard input when
+it is not a terminal), `klist` (`-e`: the encryption types; `-k FILE`: the content of a keytab),
+`kdestroy`, `kvno host/srv.corp.lan` (get a service ticket and show its kvno), `kpasswd`. The ticket
+cache is a file (`/tmp/krb5cc_UID`, variable `KRB5CCNAME`).
+""",
+        "Des services kerberisés : GSSAPI et SPNEGO": "Kerberized services: GSSAPI and SPNEGO",
+        """
+Les applications n'appellent pas Kerberos directement mais **GSSAPI**, une interface générique.
+Pour un service, il faut : un principal `service/nom.complet@ROYAUME`, sa clé dans un keytab lisible
+par le démon, et le nom par lequel les clients le joignent égal à celui du principal.
+
+**ssh** : côté serveur, `GSSAPIAuthentication yes` dans `sshd_config` (ou un fichier de
+`/etc/ssh/sshd_config.d/`) et la clé de `host/srv.corp.lan` dans `/etc/krb5.keytab`. Par défaut sshd
+n'accepte que la clé de `host/NOM_DE_LA_MACHINE` (`GSSAPIStrictAcceptorCheck yes`) : si le nom de la
+machine est court (`srv`), `GSSAPIStrictAcceptorCheck no` lui fait accepter toute clé du keytab. Côté
+client, `ssh -o GSSAPIAuthentication=yes dev2@srv.corp.lan` avec un TGT (`GSSAPIDelegateCredentials`
+transmet le TGT pour rebondir). Le compte local doit exister : le principal `dev2@CORP.LAN` devient
+l'utilisateur `dev2` du royaume par défaut.
+
+**HTTP** : le mécanisme **SPNEGO** (*Negotiate*, RFC 4559). Le serveur répond `401` avec
+`WWW-Authenticate: Negotiate` ; le client revient avec `Authorization: Negotiate JETON` (un AP-REQ
+pour `HTTP/srv.corp.lan`). Apache le fait avec `mod_auth_gssapi` (`a2enmod auth_gssapi`) :
+
+```
+<Location /private>
+    AuthType GSSAPI
+    AuthName "Corp"
+    GssapiCredStore keytab:/etc/apache2/http.keytab
+    GssapiAllowedMech krb5
+    Require valid-user
+</Location>
+```
+
+Le keytab est lu par Apache (`www-data`) : `chown root:www-data`, `chmod 640`. Le principal de
+l'utilisateur est dans `REMOTE_USER`. Côté client : `curl --negotiate -u : URL` ; Firefox ne négocie
+qu'avec les sites listés dans `network.negotiate-auth.trusted-uris`.
+""": """
+Applications do not call Kerberos directly but **GSSAPI**, a generic interface. A service needs: a
+principal `service/full.name@REALM`, its key in a keytab readable by the daemon, and the name by
+which the clients reach it equal to the one of the principal.
+
+**ssh**: on the server side, `GSSAPIAuthentication yes` in `sshd_config` (or a file of
+`/etc/ssh/sshd_config.d/`) and the key of `host/srv.corp.lan` in `/etc/krb5.keytab`. By default sshd
+only accepts the key of `host/MACHINE_NAME` (`GSSAPIStrictAcceptorCheck yes`): if the name of the
+machine is short (`srv`), `GSSAPIStrictAcceptorCheck no` makes it accept any key of the keytab. On
+the client side, `ssh -o GSSAPIAuthentication=yes dev2@srv.corp.lan` with a TGT
+(`GSSAPIDelegateCredentials` forwards the TGT to hop further). The local account must exist: the
+principal `dev2@CORP.LAN` of the default realm becomes the user `dev2`.
+
+**HTTP**: the **SPNEGO** mechanism (*Negotiate*, RFC 4559). The server answers `401` with
+`WWW-Authenticate: Negotiate`; the client comes back with `Authorization: Negotiate TOKEN` (an AP-REQ
+for `HTTP/srv.corp.lan`). Apache does it with `mod_auth_gssapi` (`a2enmod auth_gssapi`):
+
+```
+<Location /private>
+    AuthType GSSAPI
+    AuthName "Corp"
+    GssapiCredStore keytab:/etc/apache2/http.keytab
+    GssapiAllowedMech krb5
+    Require valid-user
+</Location>
+```
+
+The keytab is read by Apache (`www-data`): `chown root:www-data`, `chmod 640`. The principal of the
+user is in `REMOTE_USER`. On the client side: `curl --negotiate -u : URL`; Firefox only negotiates
+with the sites listed in `network.negotiate-auth.trusted-uris`.
+""",
+        "Ouvrir une session avec Kerberos : PAM": "Logging in with Kerberos: PAM",
+        """
+Pour qu'une ouverture de session (console, `su`, `ssh` avec mot de passe) vérifie le mot de passe auprès
+du KDC, on place `pam_krb5` dans PAM ; Debian fournit un profil (`/usr/share/pam-configs/krb5`) que
+`pam-auth-update --enable krb5` insère dans les fichiers `common-auth`, `common-account`,
+`common-password` et `common-session`. Le module fait un `kinit` avec le mot de passe tapé : en cas de
+succès la session est ouverte **et** l'utilisateur a son TGT (cache `/tmp/krb5cc_UID_…`, `klist`), donc
+l'accès sans mot de passe aux services kerberisés. `kpasswd` (ou `passwd`) change le mot de passe dans
+le KDC.
+
+Kerberos ne fournit que l'authentification : le compte (UID, groupe, répertoire) doit exister pour le
+système, en local ou dans un annuaire (NSS + LDAP). **SSSD** réunit les deux (identités LDAP,
+authentification Kerberos, cache hors ligne) ; c'est ce que fait un poste dans un domaine **Active
+Directory**, qui est un annuaire LDAP doublé d'un KDC.
+""": """
+For a login (console, `su`, `ssh` with a password) to check the password against the KDC,
+`pam_krb5` is placed in PAM; Debian provides a profile (`/usr/share/pam-configs/krb5`) that
+`pam-auth-update --enable krb5` inserts into the files `common-auth`, `common-account`,
+`common-password` and `common-session`. The module performs a `kinit` with the password typed: on
+success the session is opened **and** the user has their TGT (cache `/tmp/krb5cc_UID_…`, `klist`),
+hence password-less access to the kerberized services. `kpasswd` (or `passwd`) changes the password
+in the KDC.
+
+Kerberos only provides authentication: the account (UID, group, home directory) must exist for the
+system, locally or in a directory (NSS + LDAP). **SSSD** brings the two together (LDAP identities,
+Kerberos authentication, offline cache); this is what a host in an **Active Directory** domain does,
+Active Directory being an LDAP directory coupled with a KDC.
+""",
+        "Plusieurs royaumes : l'approbation": "Several realms: trust",
+        """
+Deux royaumes peuvent se faire confiance (*cross-realm trust*). Pour que les utilisateurs de
+`LAB.CORP.LAN` obtiennent des tickets pour les services de `CORP.LAN`, les deux KDC partagent la clé du
+principal **`krbtgt/CORP.LAN@LAB.CORP.LAN`** : le KDC de `LAB.CORP.LAN` délivre à son utilisateur un
+TGT « inter-royaumes » chiffré avec cette clé, que le KDC de `CORP.LAN` sait lire, et qu'il échange
+contre un ticket de service. L'approbation est à **sens unique** : l'autre sens demande le principal
+`krbtgt/LAB.CORP.LAN@CORP.LAN`.
+
+Le principal se crée dans les deux bases avec `addprinc` et **le même mot de passe** : la clé est
+dérivée du mot de passe et d'un sel tiré du nom du principal (identique des deux côtés) ; les types de
+chiffrement doivent aussi être les mêmes. Le chemin entre royaumes se déduit des noms (`LAB.CORP.LAN` →
+`CORP.LAN`), ou se donne dans la section `[capaths]` de `krb5.conf`. Le client doit connaître les deux
+royaumes (`[realms]`). Test : `kinit researcher@LAB.CORP.LAN` puis `kvno host/kdc.corp.lan@CORP.LAN`.
+
+Créer un royaume de zéro : `krb5.conf` et `kdc.conf` qui le nomment, `kadm5.acl`,
+`kdb5_util create -s -r LAB.CORP.LAN`, les principaux, puis `systemctl restart krb5-kdc` (et
+`krb5-admin-server` pour l'administration à distance).
+""": """
+Two realms can trust each other (*cross-realm trust*). For the users of `LAB.CORP.LAN` to get
+tickets for the services of `CORP.LAN`, the two KDCs share the key of the principal
+**`krbtgt/CORP.LAN@LAB.CORP.LAN`**: the KDC of `LAB.CORP.LAN` issues its user a "cross-realm" TGT
+encrypted with this key, which the KDC of `CORP.LAN` can read and exchanges for a service ticket.
+The trust is **one-way**: the other direction requires the principal `krbtgt/LAB.CORP.LAN@CORP.LAN`.
+
+The principal is created in both databases with `addprinc` and **the same password**: the key is
+derived from the password and from a salt taken from the name of the principal (identical on both
+sides); the encryption types must also be the same. The path between realms is deduced from the
+names (`LAB.CORP.LAN` → `CORP.LAN`), or given in the `[capaths]` section of `krb5.conf`. The client
+must know both realms (`[realms]`). Test: `kinit researcher@LAB.CORP.LAN` then
+`kvno host/kdc.corp.lan@CORP.LAN`.
+
+Creating a realm from scratch: `krb5.conf` and `kdc.conf` naming it, `kadm5.acl`,
+`kdb5_util create -s -r LAB.CORP.LAN`, the principals, then `systemctl restart krb5-kdc` (and
+`krb5-admin-server` for remote administration).
+""",
+        "Aide-mémoire": "Cheat sheet",
+        """
+| commande | usage |
+|---|---|
+| `systemctl stop freeradius ; freeradius -X` | FreeRADIUS en mode debug ; `freeradius -XC` vérifie la configuration |
+| `radtest USER PASS SERVEUR 0 SECRET` (`-t chap`) | tester une authentification |
+| `radclient -x SERVEUR auth SECRET` | envoyer une requête écrite sur l'entrée standard |
+| `tail -f /var/log/freeradius/radius.log` ; `radacct/*/detail-*` | journal, comptabilité |
+| `ldapsearch -x -H ldap://ldap.corp.lan -D DN -W -b BASE FILTRE` | interroger l'annuaire |
+| `oathtool --totp -b SECRET` | code TOTP du moment |
+| `eapol_test -c FICHIER -a SERVEUR -s SECRET` | tester EAP contre un serveur RADIUS |
+| `systemctl start hostapd@eth1` ; `hostapd_cli -i eth1 all_sta` | authentificateur 802.1X filaire |
+| `hostapd_cli -B -i eth1 -a SCRIPT` | lancer un script à chaque événement |
+| `systemctl start wpa_supplicant-wired@eth0` ; `wpa_cli -i eth0 status` / `logoff` / `logon` | supplicant filaire |
+| `nft list ruleset` ; `nft add element bridge T S "{ MAC }"` | la table du contrôle des ports |
+| `tcpdump -i eth1 -e -n ether proto 0x888e` ; `tcpdump -n udp port 1812` ; `tcpdump -n port 88` | capturer EAPOL, RADIUS, Kerberos |
+| `kinit`, `klist -e`, `kdestroy`, `kvno SERVICE` | tickets |
+| `kadmin.local -q "…"`, `kadmin -p admin/admin -q "…"` | administrer le royaume |
+| `klist -k /etc/krb5.keytab` | lire un keytab |
+| `curl --negotiate -u : URL` ; `ssh -o GSSAPIAuthentication=yes …` | clients kerberisés |
+| `pam-auth-update --enable krb5` / `radius` | ajouter un module dans les fichiers `common-*` |
+""": """
+| command | use |
+|---|---|
+| `systemctl stop freeradius ; freeradius -X` | FreeRADIUS in debug mode; `freeradius -XC` checks the configuration |
+| `radtest USER PASS SERVER 0 SECRET` (`-t chap`) | test an authentication |
+| `radclient -x SERVER auth SECRET` | send a request written on standard input |
+| `tail -f /var/log/freeradius/radius.log`; `radacct/*/detail-*` | log, accounting |
+| `ldapsearch -x -H ldap://ldap.corp.lan -D DN -W -b BASE FILTER` | query the directory |
+| `oathtool --totp -b SECRET` | current TOTP code |
+| `eapol_test -c FILE -a SERVER -s SECRET` | test EAP against a RADIUS server |
+| `systemctl start hostapd@eth1`; `hostapd_cli -i eth1 all_sta` | wired 802.1X authenticator |
+| `hostapd_cli -B -i eth1 -a SCRIPT` | run a script at every event |
+| `systemctl start wpa_supplicant-wired@eth0`; `wpa_cli -i eth0 status` / `logoff` / `logon` | wired supplicant |
+| `nft list ruleset`; `nft add element bridge T S "{ MAC }"` | the port control table |
+| `tcpdump -i eth1 -e -n ether proto 0x888e`; `tcpdump -n udp port 1812`; `tcpdump -n port 88` | capture EAPOL, RADIUS, Kerberos |
+| `kinit`, `klist -e`, `kdestroy`, `kvno SERVICE` | tickets |
+| `kadmin.local -q "…"`, `kadmin -p admin/admin -q "…"` | administer the realm |
+| `klist -k /etc/krb5.keytab` | read a keytab |
+| `curl --negotiate -u : URL`; `ssh -o GSSAPIAuthentication=yes …` | kerberized clients |
+| `pam-auth-update --enable krb5` / `radius` | add a module to the `common-*` files |
+""",
+        "Solution de la partie 1 seule sur radius (remplace sa configuration)": "Solution of part 1 alone on radius (replaces its configuration)",
+        "Solution de la partie 2 seule sur radius (remplace sa configuration)": "Solution of part 2 alone on radius (replaces its configuration)",
+        "Solution de la partie 3 seule sur radius (remplace sa configuration)": "Solution of part 3 alone on radius (replaces its configuration)",
+        "Solution de la partie 4 (radius, dont la configuration est remplacée, et router)": "Solution of part 4 (radius, whose configuration is replaced, and router)",
+        "Solution de la partie 5 seule sur radius (remplace sa configuration)": "Solution of part 5 alone on radius (replaces its configuration)",
+        "Solution de la partie 6 (sw, pc1, pc2)": "Solution of part 6 (sw, pc1, pc2)",
+        "Solution de la partie 7 (kdc)": "Solution of part 7 (kdc)",
+        "Solution de la partie 8 (srv)": "Solution of part 8 (srv)",
+        "Solution de la partie 9 (ws)": "Solution of part 9 (ws)",
+        "Solution du bonus (kdc2, et le principal de confiance sur kdc)": "Solution of the bonus (kdc2, and the trust principal on kdc)",
+        "Solution de référence de tout le TP : FreeRADIUS reconfiguré à neuf sur radius (parties 1 à 5), router, sw et les postes (802.1X), le royaume, srv, ws et le bonus ; le travail en cours sur radius est perdu": "Reference solution of the whole lab: FreeRADIUS reconfigured from scratch on radius (parts 1 to 5), router, sw and the pcs (802.1X), the realm, srv, ws and the bonus; the work in progress on radius is lost",
+        "Organisation du TP": "Organisation of the lab",
+        "Partie 1 — Premiers pas avec FreeRADIUS": "Part 1 — First steps with FreeRADIUS",
+        "Un client et deux utilisateurs": "One client and two users",
+        """
+Sur `radius`, FreeRADIUS tourne avec sa configuration d'origine (`/etc/freeradius/3.0`, section
+@@ref:freeradius@@). Arrêtez le service et lancez-le en mode debug (`systemctl stop freeradius` puis
+`freeradius -X`) dans un terminal pour suivre chaque requête ; testez avec `radtest` depuis `radius`
+lui-même (le client `localhost`, secret `testing123`, **ne le supprimez pas** : l'évaluation s'en sert).
+
+1. Déclarez le switch `sw` ({sw_ip}) comme client RADIUS, nom court `sw`, secret `{secret}`.
+2. Créez l'utilisateur `alice` (mot de passe `{alice}`) et l'utilisateur `bob` (mot de passe `{bob}`),
+   à qui le serveur répond, quand il l'accepte, le message `Reply-Message` « {msg} ».
+3. Relancez FreeRADIUS et testez depuis `sw` : `radtest alice MOT_DE_PASSE radius.corp.lan 0 SECRET`,
+   puis `radtest -t chap …` (CHAP) ; un mauvais mot de passe doit donner `Access-Reject`.
+
+À la fin, laissez FreeRADIUS tourner comme service (`systemctl start freeradius`).
+""": """
+On `radius`, FreeRADIUS runs with its original configuration (`/etc/freeradius/3.0`, section
+@@ref:freeradius@@). Stop the service and start it in debug mode (`systemctl stop freeradius` then
+`freeradius -X`) in a terminal to follow every request; test with `radtest` from `radius` itself
+(the `localhost` client, secret `testing123`; **do not delete it**: the evaluation uses it).
+
+1. Declare the switch `sw` ({sw_ip}) as a RADIUS client, short name `sw`, secret `{secret}`.
+2. Create the user `alice` (password `{alice}`) and the user `bob` (password `{bob}`), to whom
+   the server sends, when it accepts him, the `Reply-Message` "{msg}".
+3. Restart FreeRADIUS and test from `sw`: `radtest alice PASSWORD radius.corp.lan 0 SECRET`,
+   then `radtest -t chap …` (CHAP); a wrong password must give `Access-Reject`.
+
+At the end, leave FreeRADIUS running as a service (`systemctl start freeradius`).
+""",
+        "alice acceptée (PAP) depuis sw": "alice accepted (PAP) from sw",
+        "alice acceptée (CHAP) depuis sw": "alice accepted (CHAP) from sw",
+        "bob accepté avec son Reply-Message": "bob accepted with his Reply-Message",
+        "un mauvais mot de passe est refusé": "a wrong password is rejected",
+        "Observer un échange RADIUS": "Observing a RADIUS exchange",
+        """
+Sur `radius`, capturez le trafic RADIUS (`tcpdump -i eth0 -n -vv udp port 1812 or udp port 1813`, ou
+`tshark -i eth0 -V -f "udp port 1812"`) pendant un `radtest` lancé depuis `sw` (section @@ref:radius@@).
+
+- Port UDP de l'authentification : @@{auth_port:[0-9]+}@@
+- Port UDP de la comptabilité (*accounting*) : @@{acct_port:[0-9]+}@@
+- Code numérique d'un paquet `Access-Accept` : @@{accept_code:[0-9]+}@@
+- Dans la capture, l'attribut `User-Password` est : @@{password:>lisible en clair>>>clear|masqué (MD5 du secret et de l'authentificateur)>>>hidden|absent>>>absent}@@
+""": """
+On `radius`, capture the RADIUS traffic (`tcpdump -i eth0 -n -vv udp port 1812 or udp port 1813`, or
+`tshark -i eth0 -V -f "udp port 1812"`) during a `radtest` run from `sw` (section @@ref:radius@@).
+
+- UDP port of authentication: @@{auth_port:[0-9]+}@@
+- UDP port of accounting: @@{acct_port:[0-9]+}@@
+- Numeric code of an `Access-Accept` packet: @@{accept_code:[0-9]+}@@
+- In the capture, the `User-Password` attribute is: @@{password:>readable in clear text>>>clear|masked (MD5 of the secret and of the authenticator)>>>hidden|absent>>>absent}@@
+""",
+        "Partie 2 — FreeRADIUS sur l'annuaire LDAP": "Part 2 — FreeRADIUS on the LDAP directory",
+        "Authentifier les comptes de l'annuaire": "Authenticating the accounts of the directory",
+        """
+Les comptes du personnel sont dans l'annuaire OpenLDAP de `ldap` (`ldap://ldap.corp.lan`, suffixe
+`dc=corp,dc=lan`) : les personnes sous `ou=people` (attribut `uid`), les groupes `posixGroup` sous
+`ou=groups` (membres dans `memberUid`). L'annuaire ne se lit qu'authentifié : FreeRADIUS utilise le
+compte de service `{dn}` (mot de passe `{pw}`), qui ne lit pas les mots de passe. Vérifiez depuis
+`radius` : `ldapsearch -x -H ldap://ldap.corp.lan -D {dn} -W -b ou=people,dc=corp,dc=lan`.
+
+Configurez le module `ldap` de FreeRADIUS (section @@ref:rlm-ldap@@) : serveur, compte de service,
+bases des personnes et des groupes, filtre d'appartenance aux groupes ; activez-le et faites
+authentifier les comptes trouvés dans l'annuaire **par un bind LDAP** (`Auth-Type LDAP`). Testez :
+`radtest emma MOT_DE_PASSE 127.0.0.1 0 testing123` doit répondre `Access-Accept`.
+""": """
+The staff accounts are in the OpenLDAP directory of `ldap` (`ldap://ldap.corp.lan`, suffix
+`dc=corp,dc=lan`): the people under `ou=people` (attribute `uid`), the `posixGroup` groups under
+`ou=groups` (members in `memberUid`). The directory can only be read once authenticated: FreeRADIUS
+uses the service account `{dn}` (password `{pw}`), which cannot read the passwords. Check from
+`radius`: `ldapsearch -x -H ldap://ldap.corp.lan -D {dn} -W -b ou=people,dc=corp,dc=lan`.
+
+Configure the `ldap` module of FreeRADIUS (section @@ref:rlm-ldap@@): server, service account,
+bases of the people and of the groups, group membership filter; enable it and have the accounts
+found in the directory authenticated **by an LDAP bind** (`Auth-Type LDAP`). Test:
+`radtest emma PASSWORD 127.0.0.1 0 testing123` must answer `Access-Accept`.
+""",
+        "emma acceptée avec le mot de passe tout juste changé dans l'annuaire": "emma accepted with the password just changed in the directory",
+        "Autoriser selon le groupe": "Authorising according to the group",
+        """
+L'authentification ne suffit pas : selon son groupe dans l'annuaire, la réponse du serveur donne au
+poste son VLAN (section @@ref:rlm-ldap@@). Pour les comptes trouvés dans l'annuaire :
+
+- membres de `{staff}` : `Access-Accept` avec `Tunnel-Type = VLAN`, `Tunnel-Medium-Type = IEEE-802`,
+  `Tunnel-Private-Group-Id = "{vlan_staff}"` ;
+- membres de `{guest}` : les mêmes attributs avec le VLAN `{vlan_guest}`, et `Session-Timeout = {timeout}` ;
+- les autres (par exemple `ines`) : `Access-Reject`, même avec le bon mot de passe.
+
+`emma` est dans `{staff}`, `hugo` dans `{guest}`, `ines` dans aucun des deux. Les utilisateurs du
+fichier `users` (partie 1) ne sont pas concernés.
+""": """
+Authentication is not enough: according to the group in the directory, the response of the server
+gives the host its VLAN (section @@ref:rlm-ldap@@). For the accounts found in the directory:
+
+- members of `{staff}`: `Access-Accept` with `Tunnel-Type = VLAN`, `Tunnel-Medium-Type = IEEE-802`,
+  `Tunnel-Private-Group-Id = "{vlan_staff}"`;
+- members of `{guest}`: the same attributes with VLAN `{vlan_guest}`, and `Session-Timeout = {timeout}`;
+- the others (for example `ines`): `Access-Reject`, even with the right password.
+
+`emma` is in `{staff}`, `hugo` in `{guest}`, `ines` in neither. The users of the `users` file
+(part 1) are not affected.
+""",
+        "emma : VLAN du personnel": "emma: staff VLAN",
+        "hugo : VLAN des invités et durée de session": "hugo: guest VLAN and session duration",
+        "ines (aucun groupe) refusée": "ines (no group) rejected",
+        "un mauvais mot de passe LDAP est refusé": "a wrong LDAP password is rejected",
+        "Partie 3 — Double authentification (TOTP)": "Part 3 — Two-factor authentication (TOTP)",
+        "Mot de passe et code à usage unique": "Password and one-time code",
+        """
+`remy` travaille à distance : il s'authentifie avec son mot de passe (`{pw}`) **suivi** du code à six
+chiffres de son application TOTP (section @@ref:totp@@), dont le secret est `{secret}` (base32).
+Calculez un code avec `oathtool --totp -b {secret}`.
+
+Ajoutez `remy` sur `radius` avec son secret TOTP, activez le module `totp` et écrivez la politique :
+pour un utilisateur qui a un secret TOTP, les six derniers chiffres du mot de passe reçu sont le code,
+le reste est le mot de passe ; les deux doivent être bons. Les autres utilisateurs ne changent pas.
+Testez : `radtest remy "{pw}$(oathtool --totp -b {secret})" 127.0.0.1 0 testing123` → `Access-Accept`,
+le mot de passe seul → `Access-Reject`.
+""": """
+`remy` works remotely: he authenticates with his password (`{pw}`) **followed by** the six-digit
+code of his TOTP application (section @@ref:totp@@), whose secret is `{secret}` (base32).
+Compute a code with `oathtool --totp -b {secret}`.
+
+Add `remy` on `radius` with his TOTP secret, enable the `totp` module and write the policy: for a
+user who has a TOTP secret, the last six digits of the password received are the code, the rest is
+the password; both must be right. The other users do not change.
+Test: `radtest remy "{pw}$(oathtool --totp -b {secret})" 127.0.0.1 0 testing123` → `Access-Accept`,
+the password alone → `Access-Reject`.
+""",
+        "mot de passe + code accepté": "password + code accepted",
+        "le mot de passe seul est refusé": "the password alone is rejected",
+        "un code d'une autre heure est refusé": "a code from another time is rejected",
+        "Le code TOTP": "The TOTP code",
+        """
+D'après la section @@ref:totp@@ et `oathtool --totp -v -b SECRET` :
+
+- Durée de validité d'un code (pas de temps), en secondes : @@{step:[0-9]+}@@
+- Nombre de chiffres d'un code : @@{digits:[0-9]+}@@
+""": """
+According to section @@ref:totp@@ and `oathtool --totp -v -b SECRET`:
+
+- Validity of a code (time step), in seconds: @@{step:[0-9]+}@@
+- Number of digits of a code: @@{digits:[0-9]+}@@
+""",
+        "Partie 4 — Administrer un équipement par RADIUS": "Part 4 — Administering a device through RADIUS",
+        "Côté serveur : une politique par équipement": "Server side: a policy per device",
+        """
+L'équipement `router` ({ip}) est administré en ssh ; ses comptes `netadmin` et `auditor` existent
+localement **sans mot de passe** : c'est RADIUS qui les authentifie (section @@ref:device-admin@@).
+Sur `radius` :
+
+1. déclarez `router` comme client, secret `{secret}` ;
+2. créez `netadmin` (mot de passe `{netadmin}`) et `auditor` (mot de passe `{auditor}`) ;
+3. seuls les administrateurs réseau (`netadmin`) peuvent ouvrir une session sur les équipements :
+   regroupez les équipements dans un *huntgroup* `{hg}` (d'après l'adresse du NAS) et refusez sur ce
+   groupe tout autre utilisateur ; `auditor` reste accepté ailleurs (par exemple depuis `localhost`).
+""": """
+The device `router` ({ip}) is administered over ssh; its accounts `netadmin` and `auditor` exist
+locally **without a password**: RADIUS authenticates them (section @@ref:device-admin@@).
+On `radius`:
+
+1. declare `router` as a client, secret `{secret}`;
+2. create `netadmin` (password `{netadmin}`) and `auditor` (password `{auditor}`);
+3. only the network administrators (`netadmin`) may log in on the devices: group the devices in a
+   *huntgroup* `{hg}` (by the address of the NAS) and reject any other user on this group;
+   `auditor` is still accepted elsewhere (for example from `localhost`).
+""",
+        "netadmin accepté depuis router": "netadmin accepted from router",
+        "auditor refusé sur router mais accepté ailleurs": "auditor rejected on router but accepted elsewhere",
+        "Côté équipement : pam_radius_auth": "Device side: pam_radius_auth",
+        """
+Sur `router`, faites vérifier les mots de passe des connexions ssh par `radius` avec le module PAM
+`pam_radius_auth` (section @@ref:device-admin@@) : le serveur et le secret dans
+`/etc/pam_radius_auth.conf` (lisible par root seul), le module dans la pile `auth` de
+`/etc/pam.d/sshd`, **avant** les mots de passe locaux. Le compte local de secours `rescue` (mot de passe
+local `{rescue}`) doit continuer à fonctionner, même si `radius` ne répond pas.
+
+Testez depuis une autre machine (`ssh netadmin@router.corp.lan` depuis `srv`, par exemple) : `netadmin`
+entre avec son mot de passe RADIUS, `auditor` est refusé, `rescue` entre.
+""": """
+On `router`, have the passwords of the ssh logins checked by `radius` with the PAM module
+`pam_radius_auth` (section @@ref:device-admin@@): the server and the secret in
+`/etc/pam_radius_auth.conf` (readable by root only), the module in the `auth` stack of
+`/etc/pam.d/sshd`, **before** the local passwords. The local rescue account `rescue` (local password
+`{rescue}`) must keep working, even if `radius` does not answer.
+
+Test from another machine (`ssh netadmin@router.corp.lan` from `srv`, for example): `netadmin` gets
+in with his RADIUS password, `auditor` is rejected, `rescue` gets in.
+""",
+        "connexion ssh de netadmin sur router": "ssh login of netadmin on router",
+        "connexion ssh d'auditor refusée": "ssh login of auditor rejected",
+        "le compte local de secours fonctionne": "the local rescue account works",
+        "Partie 5 — EAP sur FreeRADIUS": "Part 5 — EAP on FreeRADIUS",
+        "PEAP et EAP-TLS": "PEAP and EAP-TLS",
+        """
+Le module `eap` de FreeRADIUS utilise un certificat *snakeoil* et fait confiance à toutes les autorités
+du système : rien de bon pour du 802.1X (section @@ref:eap@@). La CA de l'entreprise est dans
+`/root/ca` sur `radius` (`ca.crt` et sa clé `ca.key`).
+
+1. Créez pour `radius.corp.lan` une clé et un certificat signé par cette CA (CN et `subjectAltName`
+   `DNS:radius.corp.lan`), copiés dans `/etc/freeradius/3.0/certs/` lisibles par `freerad`.
+2. Configurez le module `eap` : votre certificat et sa clé, la CA de l'entreprise comme seule autorité
+   des certificats clients, la méthode par défaut PEAP.
+3. Créez l'utilisateur `carol` (mot de passe `{carol}`) : il s'authentifie en PEAP-MSCHAPv2.
+4. Testez avec `eapol_test` sur `radius` (fichiers d'exemple dans la section @@ref:eap@@) : PEAP pour
+   `carol`, en vérifiant le certificat du serveur (`ca_cert`, `domain_match="radius.corp.lan"`), et
+   EAP-TLS avec un certificat client signé par la CA, que vous fabriquez aussi.
+""": """
+The `eap` module of FreeRADIUS uses a *snakeoil* certificate and trusts all the authorities of the
+system: nothing good for 802.1X (section @@ref:eap@@). The company CA is in `/root/ca` on `radius`
+(`ca.crt` and its key `ca.key`).
+
+1. Create for `radius.corp.lan` a key and a certificate signed by this CA (CN and `subjectAltName`
+   `DNS:radius.corp.lan`), copied into `/etc/freeradius/3.0/certs/` and readable by `freerad`.
+2. Configure the `eap` module: your certificate and its key, the company CA as the only authority
+   of the client certificates, PEAP as the default method.
+3. Create the user `carol` (password `{carol}`): carol authenticates with PEAP-MSCHAPv2.
+4. Test with `eapol_test` on `radius` (example files in section @@ref:eap@@): PEAP for `carol`,
+   checking the server certificate (`ca_cert`, `domain_match="radius.corp.lan"`), and EAP-TLS with a
+   client certificate signed by the CA, which you make as well.
+""",
+        "PEAP-MSCHAPv2 de carol, certificat du serveur vérifié": "PEAP-MSCHAPv2 of carol, server certificate checked",
+        "PEAP avec un mauvais mot de passe refusé": "PEAP with a wrong password rejected",
+        "EAP-TLS avec un certificat client de la CA": "EAP-TLS with a client certificate of the CA",
+        "EAP-TLS avec le certificat d'une autre CA refusé": "EAP-TLS with the certificate of another CA rejected",
+        "Les méthodes EAP": "The EAP methods",
+        """
+D'après la section @@ref:eap@@ et la sortie de `eapol_test` (lignes `CTRL-EVENT-EAP-PROPOSED-METHOD`) :
+
+- Numéro du type EAP de PEAP : @@{peap:[0-9]+}@@
+- Numéro du type EAP de EAP-TLS : @@{tls:[0-9]+}@@
+- Méthode utilisée à l'intérieur du tunnel PEAP de `carol` : @@{inner:>PAP|CHAP|MSCHAPv2|GTC}@@
+""": """
+According to section @@ref:eap@@ and the output of `eapol_test` (lines `CTRL-EVENT-EAP-PROPOSED-METHOD`):
+
+- EAP type number of PEAP: @@{peap:[0-9]+}@@
+- EAP type number of EAP-TLS: @@{tls:[0-9]+}@@
+- Method used inside the PEAP tunnel of `carol`: @@{inner:>PAP|CHAP|MSCHAPv2|GTC}@@
+""",
+        "Partie 6 — 802.1X sur le switch": "Part 6 — 802.1X on the switch",
+        "L'authentificateur : hostapd sur sw": "The authenticator: hostapd on sw",
+        """
+`sw` est un switch Linux : le pont `br0` relie `eth0` (vers le réseau) et les ports d'accès `eth1`
+(`pc1`), `eth2` (`pc2`) et `eth3` (`pc3`). Pour l'instant tout passe. Faites-en un switch 802.1X
+(section @@ref:dot1x@@), avec le serveur RADIUS de l'entreprise `nac` ({nac}, secret `{secret}`, déjà
+prêt : il connaît `sw` et les comptes des postes) :
+
+1. un `hostapd` par port d'accès (`/etc/hostapd/eth1.conf` … pour `systemctl start hostapd@eth1` …),
+   pilote `wired`, 802.1X, authentification **et comptabilité** vers `nac`, NAS `sw`, et
+   `ctrl_interface=/var/run/hostapd` (l'évaluation interroge `hostapd_cli`) ;
+2. le contrôle des ports : une table nftables de la famille `bridge` ne laisse passer, depuis un port
+   d'accès, que les trames des adresses MAC autorisées (un *set*), EAPOL compris vers `sw` lui-même ;
+3. un script lancé par `hostapd_cli -a` sur chaque port ajoute l'adresse au *set* quand un poste est
+   authentifié (`AP-STA-CONNECTED`) et l'enlève quand il ne l'est plus (`AP-STA-DISCONNECTED`) ;
+   un poste authentifié avant que `hostapd_cli` ne soit lancé doit aussi être ajouté.
+
+`pc3` n'a pas de supplicant : il doit rester sans accès au réseau.
+""": """
+`sw` is a Linux switch: the bridge `br0` links `eth0` (towards the network) and the access ports
+`eth1` (`pc1`), `eth2` (`pc2`) and `eth3` (`pc3`). For now everything goes through. Turn it into an
+802.1X switch (section @@ref:dot1x@@), with the company RADIUS server `nac` ({nac}, secret
+`{secret}`, already set up: it knows `sw` and the accounts of the hosts):
+
+1. one `hostapd` per access port (`/etc/hostapd/eth1.conf` … for `systemctl start hostapd@eth1` …),
+   driver `wired`, 802.1X, authentication **and accounting** towards `nac`, NAS `sw`, and
+   `ctrl_interface=/var/run/hostapd` (the evaluation queries `hostapd_cli`);
+2. the port control: an nftables table of the `bridge` family only lets through, from an access
+   port, the frames of the authorised MAC addresses (a *set*), EAPOL included towards `sw` itself;
+3. a script run by `hostapd_cli -a` on each port adds the address to the *set* when a host is
+   authenticated (`AP-STA-CONNECTED`) and removes it when it no longer is (`AP-STA-DISCONNECTED`);
+   a host authenticated before `hostapd_cli` was started must be added as well.
+
+`pc3` has no supplicant: it must stay without access to the network.
+""",
+        "Les supplicants : pc1 et pc2": "The supplicants: pc1 and pc2",
+        """
+Configurez `wpa_supplicant` en mode filaire (`/etc/wpa_supplicant/wpa_supplicant-wired-eth0.conf` pour
+`systemctl start wpa_supplicant-wired@eth0`, avec `ctrl_interface=/var/run/wpa_supplicant`) :
+
+- `pc1` : PEAP-MSCHAPv2 avec le compte `{user}` (mot de passe `{pw}`), en vérifiant le certificat de
+  `nac` (la CA de l'entreprise est dans `{ca}`, le nom attendu `nac.corp.lan`) ;
+- `pc2` : EAP-TLS avec son certificat `{cert}` et sa clé `{key}` ; `nac` exige que l'identité annoncée
+  soit le CN du certificat, `{identity}`.
+
+`wpa_cli -i eth0 status` doit montrer `suppPortStatus=Authorized`, et `pc1` / `pc2` joindre `radius`.
+Après une déconnexion (`wpa_cli -i eth0 logoff`), le port doit se refermer, et se rouvrir après
+`wpa_cli -i eth0 logon`. `nac` doit avoir reçu de `sw` un enregistrement de comptabilité `Start`.
+Démarrez les supplicants **après** hostapd (sinon `wpa_cli -i eth0 logon` relance l'authentification).
+""": """
+Configure `wpa_supplicant` in wired mode (`/etc/wpa_supplicant/wpa_supplicant-wired-eth0.conf` for
+`systemctl start wpa_supplicant-wired@eth0`, with `ctrl_interface=/var/run/wpa_supplicant`):
+
+- `pc1`: PEAP-MSCHAPv2 with the account `{user}` (password `{pw}`), checking the certificate of
+  `nac` (the company CA is in `{ca}`, the expected name is `nac.corp.lan`);
+- `pc2`: EAP-TLS with its certificate `{cert}` and its key `{key}`; `nac` requires the announced
+  identity to be the CN of the certificate, `{identity}`.
+
+`wpa_cli -i eth0 status` must show `suppPortStatus=Authorized`, and `pc1` / `pc2` must reach `radius`.
+After a disconnection (`wpa_cli -i eth0 logoff`), the port must close again, and reopen after
+`wpa_cli -i eth0 logon`. `nac` must have received from `sw` an accounting `Start` record.
+Start the supplicants **after** hostapd (otherwise `wpa_cli -i eth0 logon` restarts the authentication).
+""",
+        "pc1 authentifié en PEAP, port autorisé": "pc1 authenticated with PEAP, port authorised",
+        "pc2 authentifié en EAP-TLS, port autorisé": "pc2 authenticated with EAP-TLS, port authorised",
+        "pc1 joignable": "pc1 reachable",
+        "pc2 joignable": "pc2 reachable",
+        "pc3 (sans 802.1X) n'a pas accès au réseau": "pc3 (without 802.1X) has no access to the network",
+        "le port de pc1 se ferme après logoff": "the port of pc1 closes after logoff",
+        "le port de pc1 se rouvre après logon": "the port of pc1 reopens after logon",
+        "comptabilité : Start de pc1 reçu par nac": "accounting: Start of pc1 received by nac",
+        "Observer EAPOL": "Observing EAPOL",
+        """
+Sur `sw`, capturez sur le port de `pc1` (`tcpdump -i eth1 -e -n -vv ether proto 0x888e`) pendant un
+`wpa_cli -i eth0 logoff` puis `logon` sur `pc1` (section @@ref:dot1x@@).
+
+- EtherType des trames EAPOL (en hexadécimal) : @@{ethertype:.+}@@
+- Adresse MAC de destination des trames envoyées par `pc1` : @@{dst_mac:.+}@@
+- Première trame envoyée par `pc1` pour lancer l'authentification : @@{first:>EAPOL-Start>>>start|EAP-Response/Identity>>>identity|EAPOL-Logoff>>>logoff|EAP-Success>>>success}@@
+""": """
+On `sw`, capture on the port of `pc1` (`tcpdump -i eth1 -e -n -vv ether proto 0x888e`) during a
+`wpa_cli -i eth0 logoff` then `logon` on `pc1` (section @@ref:dot1x@@).
+
+- EtherType of the EAPOL frames (in hexadecimal): @@{ethertype:.+}@@
+- Destination MAC address of the frames sent by `pc1`: @@{dst_mac:.+}@@
+- First frame sent by `pc1` to start the authentication: @@{first:>EAPOL-Start>>>start|EAP-Response/Identity>>>identity|EAPOL-Logoff>>>logoff|EAP-Success>>>success}@@
+""",
+        "Partie 7 — Administrer le royaume Kerberos": "Part 7 — Administering the Kerberos realm",
+        "Comptes, politique et droits": "Accounts, policy and rights",
+        """
+Le royaume `{realm}` existe sur `kdc` (`krb5kdc` et `kadmind` tournent ; section @@ref:mit@@) avec
+l'administrateur `admin/admin` et les comptes `dev1`, `dev2` et `leaver`. Sur `kdc`, avec
+`kadmin.local` :
+
+1. une politique de mots de passe `{policy}` : au moins {length} caractères de {classes} classes
+   différentes ;
+2. les nouveaux comptes `nina` (mot de passe `{nina}`) et `omar` (`{omar}`), soumis à cette politique ;
+3. `leaver` a quitté l'entreprise : interdisez-lui tout ticket, sans supprimer son compte ;
+4. le compte `{helpdesk}` (mot de passe `{hd}`) peut changer le mot de passe et consulter les comptes des
+   utilisateurs (`*@{realm}`, un seul composant), rien d'autre, et aucun droit sur les administrateurs
+   (`*/admin`) : `kadm5.acl`, puis `systemctl restart krb5-admin-server`.
+
+Testez depuis `kdc` : `kinit nina`, `klist`, `kinit leaver`, `kadmin -p {helpdesk} -q "cpw dev1"`…
+""": """
+The realm `{realm}` exists on `kdc` (`krb5kdc` and `kadmind` are running; section @@ref:mit@@) with
+the administrator `admin/admin` and the accounts `dev1`, `dev2` and `leaver`. On `kdc`, with
+`kadmin.local`:
+
+1. a password policy `{policy}`: at least {length} characters from {classes} different
+   classes;
+2. the new accounts `nina` (password `{nina}`) and `omar` (`{omar}`), subject to this policy;
+3. `leaver` has left the company: forbid this account any ticket, without deleting it;
+4. the account `{helpdesk}` (password `{hd}`) can change the password of the user accounts and
+   inquire about them (`*@{realm}`, a single component), nothing else, and has no right on the
+   administrators (`*/admin`): `kadm5.acl`, then `systemctl restart krb5-admin-server`.
+
+Test from `kdc`: `kinit nina`, `klist`, `kinit leaver`, `kadmin -p {helpdesk} -q "cpw dev1"`…
+""",
+        "kinit de nina et d'omar": "kinit of nina and omar",
+        "politique staff définie": "staff policy defined",
+        "politique staff appliquée à nina et omar": "staff policy applied to nina and omar",
+        "leaver ne reçoit plus de ticket": "leaver no longer gets a ticket",
+        "helpdesk change un mot de passe": "helpdesk changes a password",
+        "helpdesk ne crée pas de compte et ne lit pas admin/admin": "helpdesk does not create an account and does not read admin/admin",
+        "Les tickets": "The tickets",
+        """
+Sur `kdc`, après `kinit dev1`, lisez `klist -e` ; capturez une demande de ticket
+(`tcpdump -i eth0 -n port 88` sur `kdc` pendant un `kinit` lancé depuis `srv` ou `ws` une fois leur
+`krb5.conf` écrit, section @@ref:kerberos@@).
+
+- Principal de service du premier ticket obtenu (le TGT) : @@{tgt:.+}@@
+- Type de chiffrement (*etype*) de ce ticket : @@{enctype:.+}@@
+- Port du KDC : @@{port:[0-9]+}@@
+""": """
+On `kdc`, after `kinit dev1`, read `klist -e`; capture a ticket request
+(`tcpdump -i eth0 -n port 88` on `kdc` during a `kinit` run from `srv` or `ws` once their
+`krb5.conf` is written, section @@ref:kerberos@@).
+
+- Service principal of the first ticket obtained (the TGT): @@{tgt:.+}@@
+- Encryption type (*etype*) of this ticket: @@{enctype:.+}@@
+- Port of the KDC: @@{port:[0-9]+}@@
+""",
+        "Partie 8 — Des services kerberisés": "Part 8 — Kerberized services",
+        "ssh sans mot de passe": "ssh without a password",
+        """
+Sur `srv` (où `dev1` et `dev2` existent sans mot de passe local ; section @@ref:gssapi@@) :
+
+1. écrivez `/etc/krb5.conf` (royaume `{realm}`, KDC et serveur d'administration `kdc.corp.lan`, pas de
+   DNS : `rdns = false`, `dns_canonicalize_hostname = false`) ;
+2. créez le principal `host/srv.corp.lan` et mettez sa clé dans `/etc/krb5.keytab`, avec `kadmin`
+   depuis `srv` (administrateur `admin/admin`, mot de passe `{kadmin}`) ;
+3. autorisez l'authentification GSSAPI dans `sshd` (attention : le nom de la machine est `srv`, la clé
+   celle de `srv.corp.lan`).
+
+Test, depuis `kdc` : `kinit dev2` puis `ssh -o GSSAPIAuthentication=yes dev2@srv.corp.lan` entre sans
+mot de passe.
+""": """
+On `srv` (where `dev1` and `dev2` exist without a local password; section @@ref:gssapi@@):
+
+1. write `/etc/krb5.conf` (realm `{realm}`, KDC and administration server `kdc.corp.lan`, no
+   DNS: `rdns = false`, `dns_canonicalize_hostname = false`);
+2. create the principal `host/srv.corp.lan` and put its key in `/etc/krb5.keytab`, with `kadmin`
+   from `srv` (administrator `admin/admin`, password `{kadmin}`);
+3. allow GSSAPI authentication in `sshd` (beware: the name of the machine is `srv`, the key is the
+   one of `srv.corp.lan`).
+
+Test, from `kdc`: `kinit dev2` then `ssh -o GSSAPIAuthentication=yes dev2@srv.corp.lan` gets in
+without a password.
+""",
+        "clé de host/srv.corp.lan dans /etc/krb5.keytab": "key of host/srv.corp.lan in /etc/krb5.keytab",
+        "ssh de dev2 sur srv avec son ticket": "ssh of dev2 on srv with their ticket",
+        "Un site web protégé par Kerberos": "A website protected by Kerberos",
+        """
+Apache tourne sur `srv` ; la page `{url}` affiche l'utilisateur authentifié (`REMOTE_USER`). Protégez
+`/private` par Kerberos (SPNEGO, module `mod_auth_gssapi`, section @@ref:gssapi@@) : principal
+`HTTP/srv.corp.lan`, sa clé dans un keytab lisible par Apache mais **pas par tout le monde**.
+
+Test, depuis `kdc` après `kinit dev2` : `curl --negotiate -u : {url}` affiche
+`REMOTE_USER=dev2@{realm}` ; sans ticket, `curl -i {url}` répond `401` avec `WWW-Authenticate: Negotiate`.
+""": """
+Apache runs on `srv`; the page `{url}` shows the authenticated user (`REMOTE_USER`). Protect
+`/private` with Kerberos (SPNEGO, module `mod_auth_gssapi`, section @@ref:gssapi@@): principal
+`HTTP/srv.corp.lan`, its key in a keytab readable by Apache but **not by everyone**.
+
+Test, from `kdc` after `kinit dev2`: `curl --negotiate -u : {url}` shows
+`REMOTE_USER=dev2@{realm}`; without a ticket, `curl -i {url}` answers `401` with `WWW-Authenticate: Negotiate`.
+""",
+        "page /private avec le ticket de dev2": "page /private with the ticket of dev2",
+        "sans ticket : 401 Negotiate": "without a ticket: 401 Negotiate",
+        "keytab HTTP protégé": "HTTP keytab protected",
+        "Partie 9 — Ouvrir une session avec Kerberos": "Part 9 — Logging in with Kerberos",
+        "pam_krb5 sur le poste de travail": "pam_krb5 on the workstation",
+        """
+Sur `ws`, les comptes `dev1` et `dev2` existent sans mot de passe local. Faites vérifier les mots de
+passe par le KDC (section @@ref:pam-krb5@@) : `/etc/krb5.conf`, puis le module `pam_krb5` dans les
+fichiers `common-*` (`pam-auth-update`). Une ouverture de session (`su - dev1` lancé par `student`, ou
+`ssh dev2@ws.corp.lan` depuis une autre machine) avec le mot de passe Kerberos doit réussir **et**
+laisser un ticket (`klist` dans la session).
+""": """
+On `ws`, the accounts `dev1` and `dev2` exist without a local password. Have the passwords checked
+by the KDC (section @@ref:pam-krb5@@): `/etc/krb5.conf`, then the `pam_krb5` module in the
+`common-*` files (`pam-auth-update`). A login (`su - dev1` run by `student`, or
+`ssh dev2@ws.corp.lan` from another machine) with the Kerberos password must succeed **and** leave
+a ticket (`klist` in the session).
+""",
+        "su - dev1 avec le mot de passe Kerberos": "su - dev1 with the Kerberos password",
+        "un ticket dans la session": "a ticket in the session",
+        "ssh de dev2 sur ws avec le mot de passe Kerberos": "ssh of dev2 on ws with the Kerberos password",
+        "Bonus — Un second royaume et une approbation": "Bonus — A second realm and a trust",
+        "Le royaume LAB.CORP.LAN": "The realm LAB.CORP.LAN",
+        """
+Le laboratoire veut son propre royaume, `{lab}`, sur `kdc2` (rien n'y est configuré ; section
+@@ref:cross-realm@@) :
+
+1. créez-le de zéro : `krb5.conf`, `kdc.conf`, `kadm5.acl`, la base (`kdb5_util create -s`), `krb5kdc` ;
+2. créez `{researcher}` (mot de passe `{pw}`) ;
+3. établissez une approbation **à sens unique** : les utilisateurs de `{lab}` obtiennent des tickets pour
+   les services de `{realm}` (le principal d'approbation dans les **deux** bases, même mot de passe).
+
+Test, depuis une machine dont le `krb5.conf` connaît les deux royaumes : `kinit {researcher}@{lab}` puis
+`kvno host/kdc.corp.lan@{realm}`.
+""": """
+The research laboratory wants its own realm, `{lab}`, on `kdc2` (nothing is configured there;
+section @@ref:cross-realm@@):
+
+1. create it from scratch: `krb5.conf`, `kdc.conf`, `kadm5.acl`, the database (`kdb5_util create -s`), `krb5kdc`;
+2. create `{researcher}` (password `{pw}`);
+3. establish a **one-way** trust: the users of `{lab}` get tickets for the services of `{realm}`
+   (the trust principal in **both** databases, with the same password).
+
+Test, from a machine whose `krb5.conf` knows both realms: `kinit {researcher}@{lab}` then
+`kvno host/kdc.corp.lan@{realm}`.
+""",
+        "kinit de researcher@LAB.CORP.LAN": "kinit of researcher@LAB.CORP.LAN",
+        "ticket de service de CORP.LAN pour researcher": "CORP.LAN service ticket for researcher",
+        """
+| machine | adresse | rôle |
+|---|---|---|
+""": """
+| machine | address | role |
+|---|---|---|
+""",
+        "votre serveur FreeRADIUS (parties 1 à 5)": "your FreeRADIUS server (parts 1 to 5)",
+        "le serveur RADIUS du switch, déjà configuré (sans terminal)": "the RADIUS server of the switch, already configured (no terminal)",
+        "l'annuaire LDAP de l'entreprise, déjà configuré (sans terminal)": "the company LDAP directory, already configured (no terminal)",
+        "un équipement réseau administré en ssh (partie 4)": "a network device administered over ssh (part 4)",
+        "le switch Linux (`br0`), ports d'accès `eth1` à `eth3` (parties 1 et 6)": "the Linux switch (`br0`), access ports `eth1` to `eth3` (parts 1 and 6)",
+        "poste branché sur `eth1` de `sw` (partie 6)": "host plugged into `eth1` of `sw` (part 6)",
+        "poste branché sur `eth2` de `sw` (partie 6)": "host plugged into `eth2` of `sw` (part 6)",
+        "poste branché sur `eth3` de `sw`, sans 802.1X (partie 6)": "host plugged into `eth3` of `sw`, without 802.1X (part 6)",
+        "le KDC du royaume CORP.LAN, déjà créé (parties 7 et 8)": "the KDC of the realm CORP.LAN, already created (parts 7 and 8)",
+        "le serveur ssh et web à kerberiser (partie 8)": "the ssh and web server to kerberize (part 8)",
+        "le poste de travail (partie 9)": "the workstation (part 9)",
+        "le futur KDC du royaume LAB.CORP.LAN (bonus)": "the future KDC of the realm LAB.CORP.LAN (bonus)",
+        "secret RADIUS de `sw` sur `radius` (partie 1)": "RADIUS secret of `sw` on `radius` (part 1)",
+        "`Reply-Message` de `bob` (partie 1)": "`Reply-Message` of `bob` (part 1)",
+        "compte de service LDAP (partie 2)": "LDAP service account (part 2)",
+        "son mot de passe": "its password",
+        "VLAN du personnel / des invités (partie 2)": "staff / guest VLAN (part 2)",
+        "durée de session des invités, en secondes (partie 2)": "session duration of the guests, in seconds (part 2)",
+        "secret TOTP de `remy`, base32 (partie 3)": "TOTP secret of `remy`, base32 (part 3)",
+        "secret RADIUS de `router` sur `radius` (partie 4)": "RADIUS secret of `router` on `radius` (part 4)",
+        "secret RADIUS de `sw` sur `nac` (partie 6)": "RADIUS secret of `sw` on `nac` (part 6)",
+        "administrateur Kerberos `admin/admin` (parties 7 et 8)": "Kerberos administrator `admin/admin` (parts 7 and 8)",
+        """
+| compte | mot de passe | |
+|---|---|---|
+""": """
+| account | password | |
+|---|---|---|
+""",
+        "à créer sur `radius` (partie 1)": "to create on `radius` (part 1)",
+        "annuaire, groupe `wifi-staff` (partie 2)": "directory, group `wifi-staff` (part 2)",
+        "annuaire, groupe `wifi-guests` (partie 2)": "directory, group `wifi-guests` (part 2)",
+        "annuaire, aucun de ces groupes (partie 2)": "directory, none of these groups (part 2)",
+        "à créer sur `radius`, avec son code TOTP (partie 3)": "to create on `radius`, with his TOTP code (part 3)",
+        "à créer sur `radius` ; compte local sans mot de passe de `router` (partie 4)": "to create on `radius`; local account without a password on `router` (part 4)",
+        "compte local de secours de `router` (partie 4)": "local rescue account of `router` (part 4)",
+        "à créer sur `radius`, PEAP (partie 5)": "to create on `radius`, PEAP (part 5)",
+        "compte PEAP de `pc1`, déjà sur `nac` (partie 6)": "PEAP account of `pc1`, already on `nac` (part 6)",
+        "principal de CORP.LAN ; compte local sans mot de passe de `srv` et `ws`": "principal of CORP.LAN; local account without a password on `srv` and `ws`",
+        "principal de CORP.LAN, à désactiver (partie 7)": "principal of CORP.LAN, to disable (part 7)",
+        "principal à créer (partie 7)": "principal to create (part 7)",
+        "principal de LAB.CORP.LAN, à créer (bonus)": "principal of LAB.CORP.LAN, to create (bonus)",
+        """
+Lisez l'onglet **Informations** : il présente le AAA, RADIUS et FreeRADIUS, l'authentification sur un
+annuaire, la double authentification, l'administration des équipements, EAP et 802.1X, puis Kerberos
+et ses services. L'entreprise fictive **Corp** (domaine `corp.lan`, royaume Kerberos `CORP.LAN`)
+centralise l'authentification de son réseau et de ses serveurs.
+
+**Les machines.**
+""": """
+Read the **Informations** tab: it presents AAA, RADIUS and FreeRADIUS, authentication against a
+directory, two-factor authentication, the administration of devices, EAP and 802.1X, then Kerberos
+and its services. The fictitious company **Corp** (domain `corp.lan`, Kerberos realm `CORP.LAN`)
+centralises the authentication of its network and of its servers.
+
+**The machines.**
+""",
+        """
+Les machines se connaissent par leur nom (`/etc/hosts`, `NOM.corp.lan`) ; il n'y a ni DNS ni accès à
+Internet. Tout se fait en `root` ; le compte local `student` (mot de passe `student`) sert à tester
+`su`. `nac` et `ldap` n'ont pas de terminal : ce sont des services de l'entreprise, déjà prêts.
+
+**Les valeurs de votre instance.**
+""": """
+The machines know each other by name (`/etc/hosts`, `NAME.corp.lan`); there is neither DNS nor
+Internet access. Everything is done as `root`; the local account `student` (password `student`) is
+used to test `su`. `nac` and `ldap` have no terminal: they are company services, already set up.
+
+**The values of your instance.**
+""",
+        """
+**Les comptes.**
+""": """
+**The accounts.**
+""",
+        """
+**Règles.** Les parties sont indépendantes : chacune a ses machines ou ses comptes, et une partie
+terminée rapporte tous ses points quel que soit l'état des autres. Sur `radius`, gardez le client
+`localhost` (secret `testing123`) de `clients.conf` : les parties 2 à 5 sont évaluées par lui. Ne
+changez pas les mots de passe donnés. Vos services doivent tourner au moment de l'évaluation.
+
+**Évaluation.** Elle envoie des requêtes RADIUS depuis `sw` et `router` (avec leurs secrets) et depuis
+`radius` lui-même (`radclient`, `eapol_test`), interroge `hostapd_cli` et `wpa_cli`, lit la
+comptabilité de `nac`, puis, depuis une machine cachée du réseau, se connecte en ssh, demande des
+tickets et des pages web. Elle change **temporairement** le mot de passe d'`emma` dans l'annuaire,
+crée puis supprime le principal `{grader}` sur `kdc`, et fait se déconnecter puis se reconnecter `pc1`.
+""": """
+**Rules.** The parts are independent: each one has its own machines or its own accounts, and a
+completed part gives all its points whatever the state of the others. On `radius`, keep the
+`localhost` client (secret `testing123`) of `clients.conf`: parts 2 to 5 are graded through it. Do
+not change the passwords given. Your services must be running at the time of the evaluation.
+
+**Evaluation.** It sends RADIUS requests from `sw` and `router` (with their secrets) and from
+`radius` itself (`radclient`, `eapol_test`), queries `hostapd_cli` and `wpa_cli`, reads the
+accounting of `nac`, then, from a hidden machine of the network, connects over ssh, asks for tickets
+and web pages. It **temporarily** changes the password of `emma` in the directory, creates then
+deletes the principal `{grader}` on `kdc`, and makes `pc1` log off then log on again.
 """,
     },
 }

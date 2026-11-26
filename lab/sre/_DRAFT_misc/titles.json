@@ -66,8 +66,14 @@
     "en": "Ethernet and local networks",
     "fr": "Ethernet et réseaux locaux"
   },
-  "vlan.py": "VLAN : 802.1Q, routeur « on a stick », ponts et brouter",
-  "bridge.py": "Ponts Ethernet : pont Linux, table MAC, filtrage et STP",
+  "vlan.py": {
+    "en": "VLANs: 802.1Q, router on a stick, bridges and brouter",
+    "fr": "VLAN : 802.1Q, routeur « on a stick », ponts et brouter"
+  },
+  "bridge.py": {
+    "en": "Ethernet bridges: Linux bridge, MAC table, filtering and STP",
+    "fr": "Ponts Ethernet : pont Linux, table MAC, filtrage et STP"
+  },
   "lacp-lldp.py": {
     "en": "LACP and LLDP: link aggregation (bonding) and neighbour discovery",
     "fr": "LACP et LLDP : agrégation de liens (bonding) et découverte des voisins"
@@ -84,12 +90,18 @@
     "en": "IPv6: addressing, static routing, SLAAC, DHCPv6, MTU and 6in4 tunnel",
     "fr": "IPv6 : adressage, routage statique, SLAAC, DHCPv6, MTU et tunnel 6in4"
   },
-  "tcp.py": "TCP : connexions, fenêtres, Nagle, congestion, MPTCP",
+  "tcp.py": {
+    "en": "TCP: connections, windows, Nagle, congestion, MPTCP",
+    "fr": "TCP : connexions, fenêtres, Nagle, congestion, MPTCP"
+  },
   "quic.py": {
     "en": "QUIC and HTTP/3: handshake, encryption, migration, 0-RTT",
     "fr": "QUIC et HTTP/3 : poignée de main, chiffrement, migration, 0-RTT"
   },
-  "tc.py": "tc : contrôle de trafic (netem, tbf, htb, cake)",
+  "tc.py": {
+    "en": "tc: traffic control (netem, tbf, htb, cake)",
+    "fr": "tc : contrôle de trafic (netem, tbf, htb, cake)"
+  },
   "@subtitle routing": {
     "en": "Routing",
     "fr": "Routage"
@@ -178,13 +190,22 @@
     "en": "Firewalls and NAT",
     "fr": "Pare-feu et NAT"
   },
-  "nftables-filter1.py": "nftables : pare-feu d'une machine",
+  "nftables-filter1.py": {
+    "en": "nftables: a host firewall",
+    "fr": "nftables : pare-feu d'une machine"
+  },
   "nftables-filter2.py": {
     "en": "nftables: network firewall (client, server, router and DMZ)",
     "fr": "nftables : pare-feu d'un réseau (client, serveur, routeur et DMZ)"
   },
-  "nftables-nat.py": "nftables : NAT, répartition de charge et proxy (nat)",
-  "nftables-misc.py": "nftables : aspects avancés (sets, limit, reject) (misc)",
+  "nftables-nat.py": {
+    "en": "nftables: NAT, load balancing and proxy (nat)",
+    "fr": "nftables : NAT, répartition de charge et proxy (nat)"
+  },
+  "nftables-misc.py": {
+    "en": "nftables: advanced features (sets, limit, reject) (misc)",
+    "fr": "nftables : aspects avancés (sets, limit, reject) (misc)"
+  },
   "@subtitle vpn": {
     "en": "Tunnels and VPN",
     "fr": "Tunnels et VPN"
@@ -193,9 +214,18 @@
     "en": "SSH 2: tunnels, jump hosts and certificates",
     "fr": "SSH 2 : tunnels, rebonds et certificats"
   },
-  "openvpn.py": "OpenVPN : tunnels, PKI, accès distant, site à site",
-  "wireguard.py": "WireGuard : tunnels, pairs, site à site, tunnel complet",
-  "ipsec.py": "IPsec et IKEv2 : ESP, tunnels site à site, nomade, certificats",
+  "openvpn.py": {
+    "en": "OpenVPN: tunnels, PKI, remote access, site to site",
+    "fr": "OpenVPN : tunnels, PKI, accès distant, site à site"
+  },
+  "wireguard.py": {
+    "en": "WireGuard: tunnels, peers, site to site, full tunnel",
+    "fr": "WireGuard : tunnels, pairs, site à site, tunnel complet"
+  },
+  "ipsec.py": {
+    "en": "IPsec and IKEv2: ESP, site-to-site tunnels, road warrior, certificates",
+    "fr": "IPsec et IKEv2 : ESP, tunnels site à site, nomade, certificats"
+  },
   "@subtitle security": {
     "en": "Security",
     "fr": "Sécurité"
@@ -220,17 +250,26 @@
     "en": "AAA: RADIUS, 802.1X, two-factor authentication and Kerberos",
     "fr": "AAA : RADIUS, 802.1X, double authentification et Kerberos"
   },
-  "tls.py": "TLS : autorité de certification, nginx, apache2, CRL, step-ca et ACME",
+  "tls.py": {
+    "en": "TLS: certification authority, nginx, apache2, CRL, step-ca and ACME",
+    "fr": "TLS : autorité de certification, nginx, apache2, CRL, step-ca et ACME"
+  },
   "@subtitle services": {
     "en": "Network services",
     "fr": "Services réseau"
   },
-  "dns2.py": "DNS 2 : racine privée, résolveur, délégation, secondaires, DNSSEC, DoT/DoH, vues et pannes",
+  "dns2.py": {
+    "en": "DNS 2: private root, resolver, delegation, secondaries, DNSSEC, DoT/DoH, views and faults",
+    "fr": "DNS 2 : racine privée, résolveur, délégation, secondaires, DNSSEC, DoT/DoH, vues et pannes"
+  },
   "ntp.py": {
     "en": "NTP and chrony: time synchronisation",
     "fr": "NTP et chrony : synchronisation du temps"
   },
-  "ldap.py": "LDAP : annuaire OpenLDAP, comptes Unix centralisés, ACL, TLS et réplication",
+  "ldap.py": {
+    "en": "LDAP: an OpenLDAP directory, centralised Unix accounts, ACLs, TLS and replication",
+    "fr": "LDAP : annuaire OpenLDAP, comptes Unix centralisés, ACL, TLS et réplication"
+  },
   "nfs.py": {
     "en": "NFS: network file sharing",
     "fr": "NFS : partage de fichiers en réseau"

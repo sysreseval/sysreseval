@@ -11,6 +11,7 @@ SVIs in the VRF.  Covers the data, the topology, the state ops, the two-pass gra
 done: 0; everything: 88 + 6 bonus points; **each part alone gives exactly its points and everything but
 one part the rest**) and the texts.
 """
+import ast
 import datetime
 import importlib.util
 import json
@@ -736,6 +737,22 @@ def _all_texts(grade, ns):
     return texts
 
 
+def _tr_literals():
+    import check_sre_translations
+    return check_sre_translations.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
+
+
+def _instructor_literals():
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 class TestTexts:
     def test_hashes_and_fragments(self, lab, data, tmp_pub_dir):
         g0, ns0 = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)
@@ -788,15 +805,50 @@ class TestTexts:
         from strip_instructor import strip_source
         source = _LAB_PATH.read_bytes()
         result = strip_source(source)
-        assert result.calls == source.count(b'instructor(tr(') == 10 and result.warnings == []
+        assert result.calls == len(_instructor_literals()) == 10 and result.warnings == []
         assert b'**Solution.**' not in result.data and b"Pour l'enseignant" not in result.data
+        assert b'**For the instructor.**' not in result.data and b'instructor(' not in result.data
         stripped = tmp_path / 'vxlan_evpn_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('vxlan_evpn_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the English of the instructor texts goes with them, the rest stays
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (88, 6)
+        assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())
+
+    def test_translations(self, lab, data, tmp_pub_dir):
+        """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+        every lab of the directory by test_draft_misc_translations.py), the instructor texts included."""
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        english = lab._TRANSLATIONS['en']
+        assert set(english) == _tr_literals() and all(english.values())
+        assert set(_instructor_literals()) <= set(english)
+        assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 10
+        assert _text(lab.title, 'en') == "VXLAN and EVPN: data centre overlay network"
+        assert _text(lab.NetScheme.solve_static._sre_state_description, 'en') == "Part 1: solution (static VXLAN)"
+        g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for q in g1.get_questions_ordered():
+            fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+            assert has_instructor(fr) and has_instructor(en) and fr != en, _text(q.title)
+            assert '**Solution.**' in en or '**For the instructor.**' in en, _text(q.title)
+            # the values built in code read in the language of the text (the site table, the solution blocks)
+            assert ' les hôtes ' not in en and 'sous-réseau' not in en and '` :\n' not in en, _text(q.title)
+            assert "{'" not in en and not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", en), _text(q.title)
+            markdown_to_html(en, show_instructor=True)
+        organisation = _text(g1.get_questions_ordered()[0].description, 'en')
+        assert "| 1 — static VXLAN | `st_*` | `st_r`, the VTEPs `st_vtep1` to `st_vtep3`" in organisation
+        assert f"| external network | `{data.nets.irb_ext_net}` |" in organisation
+        assert f"| site 3, subnet A | `{data.nets.irb_net_a}` |" in organisation
+        french_organisation = _text(g1.get_questions_ordered()[0].description, 'fr')
+        assert f"| réseau extérieur | `{data.nets.irb_ext_net}` |" in french_organisation
+        solution = g1.get_questions_ordered()[1].description
+        assert "`st_vtep1` :\n\n```\nip link add" in _text(solution, 'fr')
+        assert "`st_vtep1`:\n\n```\nip link add" in _text(solution, 'en')
 
     def test_english_identifiers(self, lab, data):
         # ('client' is English too: rr_client; and holds 'lien')

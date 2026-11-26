@@ -377,7 +377,7 @@ def test_topology_and_machines(lab, data):
     adapters = {(a.machine.name, a.network.name): a for a in ns.get_net_adapters()} if hasattr(ns, 'get_net_adapters') else {}
     if adapters:
         assert str(adapters[('m3', 's2')].mac).lower().replace('-', ':') == _mac(data.macs.m3)
-    assert lab.allow_user_states and lab.export_kathara_project and lab._TRANSLATIONS == {}
+    assert lab.allow_user_states and lab.export_kathara_project and set(lab._TRANSLATIONS) == {'en'}
     assert not getattr(lab, 'allow_save_restore', False)
 
 
@@ -681,6 +681,56 @@ def test_stripped_lab_file(lab):
     warnings = result.warnings if hasattr(result, 'warnings') else result[1]
     assert b'instructor(' not in stripped and not warnings, warnings
     compile(stripped, 'bridge_stripped', 'exec')
+
+
+INSTRUCTOR_TEXTS = 9        # the organisation question and the eight questions of the parts
+
+
+def _instructor_literals():
+    import ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
+def test_translations(lab, data, tmp_pub_dir, tmp_path):
+    """The texts are French with every one translated in _TRANSLATIONS['en'] (the markup kept: checked for
+    every lab of the directory by test_draft_misc_translations.py); the stripped module keeps the English
+    of every text but the instructor ones."""
+    import ast
+    import check_sre_translations as cst
+    assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+    english = lab._TRANSLATIONS['en']
+    assert set(english) == cst.get_tr_strings(ast.parse(_LAB_PATH.read_text())) and all(english.values())
+    assert all(value != key for key, value in english.items())
+    literals = _instructor_literals()
+    assert len(literals) == INSTRUCTOR_TEXTS and set(literals) <= set(english)
+    assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) \
+        == INSTRUCTOR_TEXTS
+    # evaluated at import time: the English is inline
+    assert lab.title.resolve('en') == "Ethernet bridges: Linux bridge, MAC table, filtering and STP"
+    form_en = _text(lab.Flavor.flavor_form, 'en')
+    assert 'Random, specific to this instance>>>random' in form_en and '@@{name::Start the project}@@' in form_en
+    assert _text(lab.Flavor.flavor_form).endswith('@@{name::Démarrer le projet}@@')
+    grade, _ = _simulate(lab, data, tmp_pub_dir, _synthetic, instructor_mode=True)
+    for q in grade.get_questions_ordered():
+        fr, en = _text(q.description, 'fr'), _text(q.description, 'en')
+        assert has_instructor(fr) and has_instructor(en) and fr != en, _text(q.title)
+        assert "{'" not in en and not re.search(r"(?<![{%$])\{[a-z_][a-z_0-9]*\}(?!\})", en), en[:80]
+    # the stripped module: the English of the instructor texts goes with them
+    stripped = tmp_path / 'bridge_stripped.py'
+    stripped.write_bytes(strip_instructor.strip_source(_LAB_PATH.read_bytes()).data)
+    spec = importlib.util.spec_from_file_location('bridge_lab_stripped', stripped)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    kept = module._TRANSLATIONS['en']
+    assert not set(kept) & set(literals)
+    assert len(kept) == len(english) - len(set(literals))
 
 
 def test_english_identifiers(lab, data):

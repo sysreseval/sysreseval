@@ -48,6 +48,7 @@ from ipaddress import IPv4Interface, IPv4Network
 from typing import Dict
 
 from SRE import params
+from SRE.common import TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks
@@ -1165,32 +1166,40 @@ table inet filter {
         self._wfile("report.yml", self.report_yml())
         self._play("report.yml")
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (clé SSH, inventaire, ansible.cfg)"))
+    # the descriptions are evaluated at import time, before _TRANSLATIONS (end of the file): the English inline too
+    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (clé SSH, inventaire, ansible.cfg)",
+                                                  en="Part 1: solution (SSH key, inventory, ansible.cfg)"))
     def solve_access(self):
         self._solve_access()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (comptes et droits)"))
+    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (comptes et droits)",
+                                                  en="Part 2: solution (accounts and rights)"))
     def solve_users(self):
         self._solve_users()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (rôle webserver, joué deux fois)"))
+    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (rôle webserver, joué deux fois)",
+                                                  en="Part 3: solution (webserver role, run twice)"))
     def solve_web(self):
         self._solve_web()
         self._play("web.yml")              # the idempotent run
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (répartiteur de charge)"))
+    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (répartiteur de charge)",
+                                                  en="Part 4: solution (load balancer)"))
     def solve_lb(self):
         self._solve_lb()
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (Ansible Vault)"))
+    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (Ansible Vault)",
+                                                  en="Part 5: solution (Ansible Vault)"))
     def solve_vault(self):
         self._solve_vault()
 
-    @sre_state(user_allowed=False, description=tr("Partie 6 : solution (routeur gw)"))
+    @sre_state(user_allowed=False, description=tr("Partie 6 : solution (routeur gw)",
+                                                  en="Part 6: solution (router gw)"))
     def solve_gw(self):
         self._solve_gw()
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (rapport d'inventaire)"))
+    @sre_state(user_allowed=False, description=tr("Bonus : solution (rapport d'inventaire)",
+                                                  en="Bonus: solution (inventory report)"))
     def solve_bonus(self):
         self._solve_bonus()
 
@@ -1261,6 +1270,14 @@ def _blocks(output: str, marker: str = '=== ') -> Dict[str, str]:
 def _code(text: str, lang: str = '') -> str:
     """A fenced block for a solution text."""
     return f"\n```{lang}\n{text if text.endswith(chr(10)) else text + chr(10)}```\n"
+
+
+def _by_language(text: TranslatedText, **values) -> TranslatedText:
+    """*text* (a tr() text) formatted with *values*; a dict value gives one value per language (the
+    comments of a solution's commands)."""
+    return TranslatedText({lang: version.format(**{k: v[lang] if isinstance(v, dict) else v
+                                                  for k, v in values.items()})
+                           for lang, version in text.items()})
 
 
 class Grade(Grade0):
@@ -1595,18 +1612,21 @@ inventaire avec `ansible-inventory --list` et votre configuration avec `ansible-
 --only-changed`.
 """).format(user=REMOTE_USER, workdir=WORKDIR, web=GROUP_WEB, lb=GROUP_LB, routers=GROUP_ROUTERS,
             prod=GROUP_PROD)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.** Sur `control` :
 {keys}
 `{workdir}/inventory.ini` :
 {inventory}
 `{workdir}/ansible.cfg` :
 {cfg}
-""").format(keys=_code("ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519\n"
-                       + "".join(f"ssh-copy-id {REMOTE_USER}@{d.node_ip(m)}\n" for m in NODES)
-                       + f"# mot de passe : {d.ansible_password}\n"
-                       + f"# ou en une fois : ansible all -k -m ansible.posix.authorized_key -a \"user={REMOTE_USER} "
-                         "key={{ lookup('file', '/root/.ssh/id_ed25519.pub') }}\"\n"),
+"""), keys={lang: _code("ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519\n"
+                        + "".join(f"ssh-copy-id {REMOTE_USER}@{d.node_ip(m)}\n" for m in NODES)
+                        + f"# {password} {d.ansible_password}\n"
+                        + f"# {one_go} ansible all -k -m ansible.posix.authorized_key -a \"user={REMOTE_USER} "
+                          "key={{ lookup('file', '/root/.ssh/id_ed25519.pub') }}\"\n")
+                  # the comments of the commands, one value per language
+                  for lang, password, one_go in (('fr', "mot de passe :", "ou en une fois :"),
+                                                 ('en', "password:", "or in one go:"))},
             workdir=WORKDIR, inventory=_code(self.net_scheme.inventory_ini(), 'ini'),
             cfg=_code(self.net_scheme.ansible_cfg(), 'ini'))),
         )
@@ -1912,20 +1932,22 @@ dans aucun fichier** du projet (section @@ref:vault@@).
 Vérifiez sur un nœud : `su - {archiver}` (depuis un compte autre que root) accepte le mot de passe.
 """).format(archiver=ARCHIVER, uid=d.archiver_uid, secret=d.archiver_password, workdir=WORKDIR, vault=VAULT_FILE,
             var=VAULT_VAR, vault_password=d.vault_password, vault_pass=VAULT_PASS_FILE)
-            + instructor(tr("""
+            + instructor(_by_language(tr("""
 **Solution.** Sur `control`, dans `{workdir}` :
 {cmds}
 `secrets.yml` :
 {playbook}
 puis `ansible-playbook secrets.yml`. Le sel fixe de `password_hash` rend la tâche idempotente (sans
 lui, un nouveau condensat à chaque exécution).
-""").format(workdir=WORKDIR,
-            cmds=_code(f"mkdir -p vars\n"
-                       f"echo '{d.vault_password}' > {VAULT_PASS_FILE}\nchmod 600 {VAULT_PASS_FILE}\n"
-                       f"echo 'vault_password_file = {VAULT_PASS_FILE}' >> ansible.cfg   # dans [defaults]\n"
-                       f"printf '{VAULT_VAR}: \"{d.archiver_password}\"\\n' > {VAULT_FILE}\n"
-                       f"ansible-vault encrypt {VAULT_FILE}\n"
-                       f"ansible-vault view {VAULT_FILE}\n"),
+"""), workdir=WORKDIR,
+            cmds={lang: _code(f"mkdir -p vars\n"
+                              f"echo '{d.vault_password}' > {VAULT_PASS_FILE}\nchmod 600 {VAULT_PASS_FILE}\n"
+                              f"echo 'vault_password_file = {VAULT_PASS_FILE}' >> ansible.cfg   # {where}\n"
+                              f"printf '{VAULT_VAR}: \"{d.archiver_password}\"\\n' > {VAULT_FILE}\n"
+                              f"ansible-vault encrypt {VAULT_FILE}\n"
+                              f"ansible-vault view {VAULT_FILE}\n")
+                  # the comment of the commands, one value per language
+                  for lang, where in (('fr', "dans [defaults]"), ('en', "in [defaults]"))},
             playbook=_code(self.net_scheme.secrets_yml(), 'yaml'))),
         )
         self.add_grade_element(
@@ -2046,4 +2068,1534 @@ puis `ansible-playbook report.yml`. Les faits locaux sont dans `hostvars[host]['
             description=tr("par Ansible : une tâche run_once déléguée à localhost a écrit le rapport"))
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "Ansible : automatisation de la configuration": "Ansible: configuration automation",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "Pourquoi automatiser": "Why automate",
+    """
+
+Configurer à la main dix serveurs, c'est dix fois les mêmes commandes, autant d'occasions d'en
+oublier une, et aucune trace de ce qui a été fait. L'**infrastructure as code** décrit l'état voulu
+des machines dans des fichiers texte, versionnés (git), relus et rejoués :
+
+- **déclaratif** : on décrit le résultat (« le paquet est installé », « le fichier a ce contenu »,
+  « le service tourne »), pas la suite de commandes pour y arriver ;
+- **idempotent** : appliquer deux fois la même description ne change rien la seconde fois ; on
+  peut donc la rejouer sans crainte, pour corriger une dérive ou pour vérifier ;
+- **reproductible** : une machine neuve reçoit exactement la même configuration ; la description
+  sert de documentation.
+
+Les outils de gestion de configuration : Puppet et Chef (un **agent** sur chaque machine qui
+interroge un serveur, *pull*), Salt (agent ou SSH), **Ansible** (**sans agent**, en *push* par SSH).
+Ansible est écrit en Python, maintenu par Red Hat ; `ansible-core` fournit le moteur et les modules
+de base, le paquet `ansible` ajoute des **collections** de la communauté.
+""": """
+
+Configuring ten servers by hand means typing the same commands ten times, as many chances to forget
+one, and no record of what was done. **Infrastructure as code** describes the desired state of the
+machines in text files that are versioned (git), reviewed and replayed:
+
+- **declarative**: you describe the result ("the package is installed", "the file has this
+  content", "the service is running"), not the sequence of commands that gets there;
+- **idempotent**: applying the same description twice changes nothing the second time; so it can
+  be replayed without fear, to correct a drift or to check;
+- **reproducible**: a new machine receives exactly the same configuration; the description serves
+  as documentation.
+
+Configuration management tools: Puppet and Chef (an **agent** on each machine that polls a server,
+*pull*), Salt (agent or SSH), **Ansible** (**agentless**, *push* over SSH). Ansible is written in
+Python and maintained by Red Hat; `ansible-core` provides the engine and the base modules, the
+`ansible` package adds community **collections**.
+""",
+    "Architecture d'Ansible": "Architecture of Ansible",
+    """
+
+- Le **nœud de contrôle** (*control node*) : la machine où Ansible est installé et d'où l'on lance
+  les commandes (ici `control`). Il contient le projet : configuration, inventaire, playbooks, rôles.
+- Les **nœuds gérés** (*managed nodes*) : les machines configurées. Il leur faut seulement un
+  **serveur SSH** et **Python 3** ; rien n'y est installé à demeure.
+- Pour chaque tâche, Ansible se connecte en SSH, **copie un module** (un petit programme Python)
+  dans un répertoire temporaire du nœud, l'exécute avec ses arguments, récupère un résultat JSON
+  (`ok`, `changed`, `failed`...) et efface le module. Plusieurs nœuds sont traités en parallèle
+  (`forks`, 5 par défaut).
+- La connexion se fait avec un compte ordinaire (ici `ansible`) ; les actions d'administration
+  passent par l'**élévation de privilèges** : `become: true` (sudo par défaut). `-k` (`--ask-pass`)
+  demande le mot de passe SSH, `-K` (`--ask-become-pass`) celui de sudo.
+- Au premier contact, Ansible cherche l'interpréteur Python du nœud (*interpreter discovery*) et
+  l'annonce par un avertissement ; `interpreter_python = auto_silent` dans `ansible.cfg` le fait
+  taire.
+""": """
+
+- The **control node**: the machine where Ansible is installed and from which the commands are run
+  (here `control`). It holds the project: configuration, inventory, playbooks, roles.
+- The **managed nodes**: the machines being configured. They only need an **SSH server** and
+  **Python 3**; nothing is installed on them permanently.
+- For each task, Ansible connects over SSH, **copies a module** (a small Python program) into a
+  temporary directory of the node, runs it with its arguments, collects a JSON result (`ok`,
+  `changed`, `failed`...) and deletes the module. Several nodes are handled in parallel (`forks`,
+  5 by default).
+- The connection uses an ordinary account (here `ansible`); administrative actions go through
+  **privilege escalation**: `become: true` (sudo by default). `-k` (`--ask-pass`) asks for the SSH
+  password, `-K` (`--ask-become-pass`) for the sudo one.
+- On first contact, Ansible looks for the node's Python interpreter (*interpreter discovery*) and
+  reports it with a warning; `interpreter_python = auto_silent` in `ansible.cfg` silences it.
+""",
+    "La configuration : ansible.cfg": "The configuration: ansible.cfg",
+    """
+
+Ansible lit **un seul** fichier de configuration, le premier trouvé dans cet ordre (les réglages ne
+sont **pas** fusionnés) :
+
+1. le fichier désigné par la variable d'environnement `ANSIBLE_CONFIG` ;
+2. `ansible.cfg` dans le **répertoire courant** (ignoré s'il est accessible en écriture à tous) ;
+3. `~/.ansible.cfg` ;
+4. `/etc/ansible/ansible.cfg`.
+
+On place donc un `ansible.cfg` à la racine du projet et l'on travaille depuis ce répertoire :
+
+```
+[defaults]
+inventory = inventory.ini
+interpreter_python = auto_silent
+host_key_checking = False
+vault_password_file = .vault_pass
+
+[privilege_escalation]
+become_method = sudo
+```
+
+Un chemin relatif y est compris par rapport au fichier. Toute option a aussi sa variable
+d'environnement (`ANSIBLE_INVENTORY`, `ANSIBLE_HOST_KEY_CHECKING`...), prioritaire sur le fichier.
+`ansible-config dump --only-changed` liste ce qui diffère des valeurs par défaut et d'où vient
+chaque valeur ; `ansible-config list` décrit toutes les options. `host_key_checking = False` évite
+la question « *Are you sure you want to continue connecting* » à la première connexion (pratique
+dans une maquette ; en production on remplit plutôt `~/.ssh/known_hosts`, par exemple avec
+`ssh-keyscan`).
+""": """
+
+Ansible reads **a single** configuration file, the first one found in this order (the settings are
+**not** merged):
+
+1. the file named by the environment variable `ANSIBLE_CONFIG`;
+2. `ansible.cfg` in the **current directory** (ignored if it is world-writable);
+3. `~/.ansible.cfg`;
+4. `/etc/ansible/ansible.cfg`.
+
+So you put an `ansible.cfg` at the root of the project and work from that directory:
+
+```
+[defaults]
+inventory = inventory.ini
+interpreter_python = auto_silent
+host_key_checking = False
+vault_password_file = .vault_pass
+
+[privilege_escalation]
+become_method = sudo
+```
+
+A relative path in it is understood relative to the file. Every option also has its environment
+variable (`ANSIBLE_INVENTORY`, `ANSIBLE_HOST_KEY_CHECKING`...), which takes precedence over the
+file. `ansible-config dump --only-changed` lists what differs from the default values and where each
+value comes from; `ansible-config list` describes every option. `host_key_checking = False` avoids
+the question "*Are you sure you want to continue connecting*" on the first connection (handy in a
+test set-up; in production you would rather fill `~/.ssh/known_hosts`, for example with
+`ssh-keyscan`).
+""",
+    "L'inventaire": "The inventory",
+    """
+
+L'**inventaire** liste les nœuds gérés, les range en **groupes** et leur attache des **variables**.
+Format INI :
+
+```
+[webservers]
+web1 ansible_host=192.0.2.11
+web2 ansible_host=192.0.2.12
+
+[dbservers]
+db1 ansible_host=192.0.2.21 ansible_port=2222
+
+[production:children]
+webservers
+dbservers
+
+[webservers:vars]
+http_port=8080
+
+[all:vars]
+ansible_user=ansible
+```
+
+Le même en YAML :
+
+```yaml
+all:
+  vars:
+    ansible_user: ansible
+  children:
+    webservers:
+      hosts:
+        web1: { ansible_host: 192.0.2.11 }
+        web2: { ansible_host: 192.0.2.12 }
+      vars:
+        http_port: 8080
+    production:
+      children:
+        webservers: {}
+```
+
+- Deux groupes existent toujours : `all` (tous les nœuds) et `ungrouped`. Un groupe peut contenir
+  d'autres groupes (`children`) ; un nœud peut être dans plusieurs groupes.
+- Le nom d'un nœud est libre ; `ansible_host` dit où se connecter (sinon le nom est résolu).
+  Variables de connexion : `ansible_host`, `ansible_port`, `ansible_user`,
+  `ansible_ssh_private_key_file`, `ansible_python_interpreter`, `ansible_become`...
+- Mieux que les sections `:vars` : des fichiers YAML à côté de l'inventaire (ou du playbook),
+  `group_vars/<groupe>.yml` (ou un répertoire `group_vars/<groupe>/` de plusieurs fichiers) et
+  `host_vars/<nœud>.yml`.
+- **Motifs** (*patterns*) pour désigner des nœuds : `all`, `webservers`, `web1:web2` (union),
+  `webservers:&production` (intersection), `all:!gw` (exclusion), `web*`.
+- Vérifier : `ansible-inventory --graph` (l'arbre des groupes), `ansible-inventory --list` (tout, en
+  JSON, variables comprises), `ansible-inventory --host web1`.
+""": """
+
+The **inventory** lists the managed nodes, sorts them into **groups** and attaches **variables** to
+them. INI format:
+
+```
+[webservers]
+web1 ansible_host=192.0.2.11
+web2 ansible_host=192.0.2.12
+
+[dbservers]
+db1 ansible_host=192.0.2.21 ansible_port=2222
+
+[production:children]
+webservers
+dbservers
+
+[webservers:vars]
+http_port=8080
+
+[all:vars]
+ansible_user=ansible
+```
+
+The same in YAML:
+
+```yaml
+all:
+  vars:
+    ansible_user: ansible
+  children:
+    webservers:
+      hosts:
+        web1: { ansible_host: 192.0.2.11 }
+        web2: { ansible_host: 192.0.2.12 }
+      vars:
+        http_port: 8080
+    production:
+      children:
+        webservers: {}
+```
+
+- Two groups always exist: `all` (every node) and `ungrouped`. A group can contain other groups
+  (`children`); a node can belong to several groups.
+- The name of a node is free; `ansible_host` says where to connect (otherwise the name is resolved).
+  Connection variables: `ansible_host`, `ansible_port`, `ansible_user`,
+  `ansible_ssh_private_key_file`, `ansible_python_interpreter`, `ansible_become`...
+- Better than the `:vars` sections: YAML files next to the inventory (or the playbook),
+  `group_vars/<group>.yml` (or a directory `group_vars/<group>/` of several files) and
+  `host_vars/<node>.yml`.
+- **Patterns** to designate nodes: `all`, `webservers`, `web1:web2` (union),
+  `webservers:&production` (intersection), `all:!gw` (exclusion), `web*`.
+- Check: `ansible-inventory --graph` (the tree of the groups), `ansible-inventory --list`
+  (everything, in JSON, variables included), `ansible-inventory --host web1`.
+""",
+    "Les commandes ad hoc": "Ad hoc commands",
+    """
+
+Une commande **ad hoc** exécute un seul module sur des nœuds, sans playbook :
+`ansible <motif> -m <module> -a "<arguments>" [options]`.
+
+```
+ansible all -m ping                              # connexion SSH + Python : "pong"
+ansible webservers -m command -a "uptime"        # le module par défaut est command
+ansible all -m shell -a "ss -ltn | grep :80"     # shell : tubes, redirections, variables
+ansible web1 -b -m ansible.builtin.systemd_service -a "name=nginx state=restarted"
+ansible all -m setup -a "filter=ansible_default_ipv4"
+ansible all -k -m ping                           # mot de passe SSH demandé (sshpass)
+```
+
+- `command` exécute un programme sans shell (pas de `|`, `>`, `$VAR`) ; `shell` passe par
+  `/bin/sh`. Tous deux disent toujours `changed` : ils ne savent pas ce que fait la commande.
+- `setup` collecte les **faits** (*facts*) d'un nœud : système, interfaces, adresses, mémoire...
+  et les **faits locaux** : chaque fichier `/etc/ansible/facts.d/<nom>.fact` du nœud (JSON ou INI,
+  ou un exécutable qui affiche du JSON) apparaît sous `ansible_local.<nom>`.
+- Options utiles : `-b` (become), `-u <utilisateur>`, `-k`, `-K`, `--limit <motif>`, `-f <forks>`,
+  `-v` / `-vvv` (détails, jusqu'à la connexion SSH), `--list-hosts`.
+- La documentation de chaque module est sur la machine : `ansible-doc -l` (liste),
+  `ansible-doc ansible.builtin.copy` (options et exemples), `ansible-doc -s <module>` (résumé).
+""": """
+
+An **ad hoc** command runs a single module on nodes, without a playbook:
+`ansible <pattern> -m <module> -a "<arguments>" [options]`.
+
+```
+ansible all -m ping                              # SSH connection + Python: "pong"
+ansible webservers -m command -a "uptime"        # the default module is command
+ansible all -m shell -a "ss -ltn | grep :80"     # shell: pipes, redirections, variables
+ansible web1 -b -m ansible.builtin.systemd_service -a "name=nginx state=restarted"
+ansible all -m setup -a "filter=ansible_default_ipv4"
+ansible all -k -m ping                           # SSH password prompted for (sshpass)
+```
+
+- `command` runs a program without a shell (no `|`, `>`, `$VAR`); `shell` goes through `/bin/sh`.
+  Both always report `changed`: they do not know what the command does.
+- `setup` collects the **facts** of a node: system, interfaces, addresses, memory... and the
+  **local facts**: each file `/etc/ansible/facts.d/<name>.fact` of the node (JSON or INI, or an
+  executable printing JSON) appears under `ansible_local.<name>`.
+- Useful options: `-b` (become), `-u <user>`, `-k`, `-K`, `--limit <pattern>`, `-f <forks>`,
+  `-v` / `-vvv` (details, down to the SSH connection), `--list-hosts`.
+- The documentation of every module is on the machine: `ansible-doc -l` (list),
+  `ansible-doc ansible.builtin.copy` (options and examples), `ansible-doc -s <module>` (summary).
+""",
+    "YAML et playbooks": "YAML and playbooks",
+    """
+
+Un **playbook** est un fichier YAML : une liste de **plays** ; un play associe des nœuds (`hosts`) à
+une liste de **tâches** ; une tâche appelle un module.
+
+```yaml
+---
+- name: Serveurs web
+  hosts: webservers
+  become: true
+  vars:
+    page_title: Bienvenue
+  tasks:
+    - name: Page d'accueil
+      ansible.builtin.copy:
+        content: "{{ page_title }}\\n"
+        dest: /var/www/html/index.html
+        mode: "0644"
+
+    - name: nginx démarré au boot
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true
+        state: started
+```
+
+**YAML** : l'**indentation** (des espaces, jamais de tabulation) fait la structure ; `- ` introduit
+un élément de liste, `clé: valeur` une entrée de dictionnaire ; `#` un commentaire. Une valeur qui
+**commence** par `{{` doit être entre guillemets (sinon YAML y voit un dictionnaire). Attention aux
+conversions implicites : `yes`, `no`, `on` sont des booléens, `0644` un entier en octal, `1.10`
+devient `1.1` : écrivez `mode: "0644"`. `|` garde les retours à la ligne d'un bloc de texte, `>`
+les replie.
+
+Exécution : `ansible-playbook site.yml`. Les tâches s'exécutent **dans l'ordre**, chacune sur tous
+les nœuds du play avant la suivante ; un nœud en échec est retiré du play. Le récapitulatif final
+(*PLAY RECAP*) compte par nœud les tâches `ok` (rien à faire), `changed` (modifié), `failed`,
+`skipped`, `unreachable`. La première tâche implicite, *Gathering Facts*, collecte les faits
+(`gather_facts: false` pour s'en passer).
+
+| option | effet |
+|--------|-------|
+| `--syntax-check` | vérifie la syntaxe sans rien exécuter |
+| `--check` | simulation : ce qui serait modifié, sans modifier (`command` / `shell` sont sautés) |
+| `--diff` | montre les différences des fichiers modifiés (avec `--check` : avant de modifier) |
+| `--list-tasks`, `--list-hosts` | ce qui serait exécuté, et où |
+| `--limit web1` | restreint aux nœuds du motif |
+| `--tags t1` / `--skip-tags t1` | seulement les tâches étiquetées (`tags: [t1]`) / sauf elles |
+| `--start-at-task "nom"`, `--step` | reprendre à une tâche, confirmer chaque tâche |
+| `-e var=valeur` | variable « extra », prioritaire sur toutes les autres |
+""": """
+
+A **playbook** is a YAML file: a list of **plays**; a play maps nodes (`hosts`) to a list of
+**tasks**; a task calls a module.
+
+```yaml
+---
+- name: Web servers
+  hosts: webservers
+  become: true
+  vars:
+    page_title: Welcome
+  tasks:
+    - name: Home page
+      ansible.builtin.copy:
+        content: "{{ page_title }}\\n"
+        dest: /var/www/html/index.html
+        mode: "0644"
+
+    - name: nginx started at boot
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true
+        state: started
+```
+
+**YAML**: the **indentation** (spaces, never tabs) gives the structure; `- ` introduces a list item,
+`key: value` a dictionary entry; `#` a comment. A value that **starts** with `{{` must be quoted
+(otherwise YAML sees a dictionary). Beware of implicit conversions: `yes`, `no`, `on` are booleans,
+`0644` an octal integer, `1.10` becomes `1.1`: write `mode: "0644"`. `|` keeps the line breaks of a
+block of text, `>` folds them.
+
+Running: `ansible-playbook site.yml`. The tasks run **in order**, each one on every node of the play
+before the next one; a failing node is removed from the play. The final summary (*PLAY RECAP*)
+counts per node the tasks `ok` (nothing to do), `changed` (modified), `failed`, `skipped`,
+`unreachable`. The first, implicit task, *Gathering Facts*, collects the facts
+(`gather_facts: false` to do without it).
+
+| option | effect |
+|--------|-------|
+| `--syntax-check` | checks the syntax without running anything |
+| `--check` | dry run: what would be changed, without changing it (`command` / `shell` are skipped) |
+| `--diff` | shows the differences of the modified files (with `--check`: before modifying) |
+| `--list-tasks`, `--list-hosts` | what would be run, and where |
+| `--limit web1` | restricts the run to the nodes of the pattern |
+| `--tags t1` / `--skip-tags t1` | only the tagged tasks (`tags: [t1]`) / all but them |
+| `--start-at-task "name"`, `--step` | resume at a task, confirm each task |
+| `-e var=value` | "extra" variable, takes precedence over all the others |
+""",
+    "Les modules courants": "Common modules",
+    """
+
+On nomme un module par son **nom complet** (*FQCN*, *fully qualified collection name*) :
+`ansible.builtin.copy` plutôt que `copy`.
+
+| module | usage |
+|--------|-------|
+| `ansible.builtin.copy` | un fichier du projet (`src`) ou un contenu (`content`) vers `dest`, avec `owner`, `group`, `mode`, `validate`, `backup` |
+| `ansible.builtin.template` | un modèle Jinja2 (`src` dans `templates/`) rendu vers `dest` |
+| `ansible.builtin.file` | répertoire (`state: directory`), lien (`state: link`), suppression (`state: absent`), droits |
+| `ansible.builtin.lineinfile` / `blockinfile` | une ligne / un bloc dans un fichier existant |
+| `ansible.builtin.apt` / `package` | paquets (`state: present`, `latest`, `absent`) |
+| `ansible.builtin.systemd_service` / `service` | services : `state: started`, `stopped`, `restarted`, `reloaded` ; `enabled: true` |
+| `ansible.builtin.user` / `group` | comptes et groupes (`uid`, `groups` + `append`, `shell`, `password`, `state: absent` + `remove`) |
+| `ansible.posix.authorized_key` | une clé publique dans `~/.ssh/authorized_keys` d'un compte |
+| `ansible.posix.sysctl` | un paramètre noyau, appliqué et écrit dans un fichier de `/etc/sysctl.d/` |
+| `ansible.builtin.command` / `shell` | une commande (dernier recours : pas idempotent par lui-même) |
+| `ansible.builtin.debug` | afficher un message ou une variable (`msg`, `var`) |
+| `ansible.builtin.assert` | vérifier des conditions (`that`) |
+| `ansible.builtin.uri` / `get_url` / `wait_for` | requête HTTP, téléchargement, attendre un port |
+
+La plupart des modules prennent un **état** voulu (`state: present` / `absent`) et ne font rien
+s'il est déjà atteint : c'est ce qui les rend idempotents.
+""": """
+
+A module is named by its **full name** (*FQCN*, *fully qualified collection name*):
+`ansible.builtin.copy` rather than `copy`.
+
+| module | use |
+|--------|-------|
+| `ansible.builtin.copy` | a file of the project (`src`) or a content (`content`) to `dest`, with `owner`, `group`, `mode`, `validate`, `backup` |
+| `ansible.builtin.template` | a Jinja2 template (`src` in `templates/`) rendered to `dest` |
+| `ansible.builtin.file` | directory (`state: directory`), link (`state: link`), removal (`state: absent`), permissions |
+| `ansible.builtin.lineinfile` / `blockinfile` | a line / a block in an existing file |
+| `ansible.builtin.apt` / `package` | packages (`state: present`, `latest`, `absent`) |
+| `ansible.builtin.systemd_service` / `service` | services: `state: started`, `stopped`, `restarted`, `reloaded`; `enabled: true` |
+| `ansible.builtin.user` / `group` | accounts and groups (`uid`, `groups` + `append`, `shell`, `password`, `state: absent` + `remove`) |
+| `ansible.posix.authorized_key` | a public key in the `~/.ssh/authorized_keys` of an account |
+| `ansible.posix.sysctl` | a kernel parameter, applied and written to a file of `/etc/sysctl.d/` |
+| `ansible.builtin.command` / `shell` | a command (last resort: not idempotent by itself) |
+| `ansible.builtin.debug` | print a message or a variable (`msg`, `var`) |
+| `ansible.builtin.assert` | check conditions (`that`) |
+| `ansible.builtin.uri` / `get_url` / `wait_for` | HTTP request, download, wait for a port |
+
+Most modules take a desired **state** (`state: present` / `absent`) and do nothing if it is already
+reached: that is what makes them idempotent.
+""",
+    "Variables et faits": "Variables and facts",
+    """
+
+Une variable s'emploie dans une valeur sous la forme `"{{ nom }}"`. On la définit (de la moins à la
+plus prioritaire, en simplifiant) : `defaults/main.yml` d'un rôle < variables de groupe (`all`
+d'abord, puis les autres groupes) < variables d'hôte < `vars:` / `vars_files:` du play <
+`vars/main.yml` d'un rôle < `set_fact` / `register` < `-e` (*extra vars*, toujours gagnantes).
+
+- **Faits** (*facts*) : collectés au début du play, dans `ansible_facts` :
+  `ansible_facts['hostname']`, `ansible_facts['default_ipv4']['address']`,
+  `ansible_facts['distribution']`, `ansible_facts['distribution_version']`, `ansible_facts['eth0']`,
+  `ansible_facts['memtotal_mb']`... Ils restent aussi accessibles sous leur ancien nom préfixé
+  (`ansible_hostname`). Les faits locaux sont sous `ansible_local` :
+  `ansible_local['asset']['serial']` (ou `ansible_facts['ansible_local']['asset']['serial']`).
+- **Variables magiques**, fournies par Ansible : `inventory_hostname` (le nom du nœud dans
+  l'inventaire), `groups` (`groups['webservers']` = la liste des noms du groupe, `groups['all']`),
+  `group_names` (les groupes du nœud courant), `hostvars` (les variables de **tous** les nœuds :
+  `hostvars['web1']['ansible_host']`, et leurs faits s'ils ont été collectés dans ce run),
+  `play_hosts`, `ansible_play_hosts_all`.
+- `register: resultat` garde le résultat d'une tâche (`resultat.stdout`, `resultat.rc`,
+  `resultat.changed`) ; `ansible.builtin.set_fact` crée une variable pendant l'exécution ;
+  `ansible.builtin.debug: var=hostvars['web1']` pour regarder.
+""": """
+
+A variable is used in a value as `"{{ name }}"`. It is defined (from the lowest to the highest
+precedence, simplified): a role's `defaults/main.yml` < group variables (`all` first, then the
+other groups) < host variables < the play's `vars:` / `vars_files:` < a role's `vars/main.yml` <
+`set_fact` / `register` < `-e` (*extra vars*, which always win).
+
+- **Facts**: collected at the start of the play, in `ansible_facts`:
+  `ansible_facts['hostname']`, `ansible_facts['default_ipv4']['address']`,
+  `ansible_facts['distribution']`, `ansible_facts['distribution_version']`, `ansible_facts['eth0']`,
+  `ansible_facts['memtotal_mb']`... They are also still available under their old prefixed name
+  (`ansible_hostname`). The local facts are under `ansible_local`:
+  `ansible_local['asset']['serial']` (or `ansible_facts['ansible_local']['asset']['serial']`).
+- **Magic variables**, provided by Ansible: `inventory_hostname` (the name of the node in the
+  inventory), `groups` (`groups['webservers']` = the list of the names of the group, `groups['all']`),
+  `group_names` (the groups of the current node), `hostvars` (the variables of **all** the nodes:
+  `hostvars['web1']['ansible_host']`, and their facts if they were collected in this run),
+  `play_hosts`, `ansible_play_hosts_all`.
+- `register: result` keeps the result of a task (`result.stdout`, `result.rc`,
+  `result.changed`); `ansible.builtin.set_fact` creates a variable during the run;
+  `ansible.builtin.debug: var=hostvars['web1']` to have a look.
+""",
+    "Jinja2 et templates": "Jinja2 and templates",
+    """
+
+Ansible évalue les valeurs avec **Jinja2** : `{{ expression }}` insère une valeur, `{% ... %}` est
+une instruction, `{# ... #}` un commentaire. Les **filtres** transforment une valeur :
+`{{ nom | upper }}`, `{{ port | default(80) }}`, `{{ liste | join(', ') }}`, `{{ liste | sort }}`,
+`{{ mot_de_passe | password_hash('sha512') }}`, `{{ dico | to_nice_yaml }}`, `{{ x | int }}`,
+`{{ chemin | basename }}`.
+
+Le module `template` rend un fichier `.j2` du répertoire `templates/` (du rôle ou du projet) avec
+les variables et les faits du nœud :
+
+```
+# {{ ansible_managed }}
+server {
+    listen {{ http_port }};
+    server_name {{ inventory_hostname }};
+{% for alias in aliases | default([]) %}
+    # alias : {{ alias }}
+{% endfor %}
+{% if enable_gzip %}
+    gzip on;
+{% endif %}
+}
+```
+
+- `validate: <commande> %s` fait vérifier le fichier **avant** de le mettre en place (`%s` = le
+  fichier temporaire) : `visudo -cf %s` pour sudoers, `nft -c -f %s` pour nftables, `nginx -t -c
+  %s` pour une configuration complète de nginx. Un fichier refusé n'est pas installé : la tâche
+  échoue et l'ancien fichier reste.
+- `backup: true` garde une copie datée de l'ancien fichier.
+- `{{ ansible_managed }}` produit une ligne « *Ansible managed* » : un avertissement pour qui
+  voudrait modifier le fichier à la main.
+""": """
+
+Ansible evaluates the values with **Jinja2**: `{{ expression }}` inserts a value, `{% ... %}` is a
+statement, `{# ... #}` a comment. **Filters** transform a value:
+`{{ name | upper }}`, `{{ port | default(80) }}`, `{{ list | join(', ') }}`, `{{ list | sort }}`,
+`{{ password | password_hash('sha512') }}`, `{{ dict | to_nice_yaml }}`, `{{ x | int }}`,
+`{{ path | basename }}`.
+
+The `template` module renders a `.j2` file of the `templates/` directory (of the role or of the
+project) with the variables and the facts of the node:
+
+```
+# {{ ansible_managed }}
+server {
+    listen {{ http_port }};
+    server_name {{ inventory_hostname }};
+{% for alias in aliases | default([]) %}
+    # alias: {{ alias }}
+{% endfor %}
+{% if enable_gzip %}
+    gzip on;
+{% endif %}
+}
+```
+
+- `validate: <command> %s` has the file checked **before** it is put in place (`%s` = the temporary
+  file): `visudo -cf %s` for sudoers, `nft -c -f %s` for nftables, `nginx -t -c %s` for a complete
+  nginx configuration. A rejected file is not installed: the task fails and the old file stays.
+- `backup: true` keeps a dated copy of the old file.
+- `{{ ansible_managed }}` produces an "*Ansible managed*" line: a warning to anyone who would edit
+  the file by hand.
+""",
+    "Boucles et conditions": "Loops and conditions",
+    """
+
+```yaml
+- name: Comptes des administrateurs
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    uid: "{{ item.uid }}"
+    groups: ops
+    append: true
+  loop: "{{ admins }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Seulement sur les serveurs web Debian
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} est un serveur web"
+  when:
+    - "'webservers' in group_names"
+    - ansible_facts['os_family'] == 'Debian'
+```
+
+- `loop` répète la tâche pour chaque élément, accessible dans `item` (une liste de dictionnaires est
+  courante). `loop_control.label` allège l'affichage ; `register` sur une boucle donne
+  `resultat.results`, un résultat par élément.
+- `when` : une expression Jinja2 **sans** `{{ }}` ; une liste de conditions = toutes vraies. Depuis
+  Ansible 2.19, le résultat d'une condition doit être un **booléen** : `when: ma_chaine` échoue,
+  écrivez `when: ma_chaine | length > 0` ou `when: mon_booleen | bool`.
+- `changed_when` / `failed_when` redéfinissent le résultat d'une tâche (par exemple
+  `changed_when: false` sur une commande de lecture) ; `ignore_errors: true` continue malgré un
+  échec ; `block` / `rescue` / `always` regroupent des tâches et traitent leurs erreurs.
+""": """
+
+```yaml
+- name: Administrator accounts
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    uid: "{{ item.uid }}"
+    groups: ops
+    append: true
+  loop: "{{ admins }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Only on the Debian web servers
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} is a web server"
+  when:
+    - "'webservers' in group_names"
+    - ansible_facts['os_family'] == 'Debian'
+```
+
+- `loop` repeats the task for each item, available in `item` (a list of dictionaries is common).
+  `loop_control.label` makes the output lighter; `register` on a loop gives `result.results`, one
+  result per item.
+- `when`: a Jinja2 expression **without** `{{ }}`; a list of conditions = all of them true. Since
+  Ansible 2.19, the result of a condition must be a **boolean**: `when: my_string` fails, write
+  `when: my_string | length > 0` or `when: my_boolean | bool`.
+- `changed_when` / `failed_when` redefine the result of a task (for example
+  `changed_when: false` on a command that only reads); `ignore_errors: true` carries on despite a
+  failure; `block` / `rescue` / `always` group tasks and handle their errors.
+""",
+    "Handlers": "Handlers",
+    """
+
+Un **handler** est une tâche exécutée seulement si on l'a **notifiée** : on recharge nginx parce
+que sa configuration a changé, pas à chaque exécution.
+
+```yaml
+  tasks:
+    - name: Configuration du site
+      ansible.builtin.template:
+        src: site.conf.j2
+        dest: /etc/nginx/sites-available/site.conf
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+```
+
+- Seule une tâche dont le résultat est **`changed`** notifie ; un résultat `ok` ne déclenche rien.
+- Les handlers s'exécutent **à la fin du play** (après toutes les tâches), **une seule fois** même
+  s'ils ont été notifiés par plusieurs tâches, dans l'ordre où ils sont **définis**.
+- `ansible.builtin.meta: flush_handlers` les exécute tout de suite ; `listen: "web changed"` permet
+  à plusieurs handlers de répondre à une même notification.
+- Si le play échoue après la notification, les handlers ne s'exécutent pas (sauf
+  `--force-handlers`) : la modification reste en place sans être prise en compte.
+""": """
+
+A **handler** is a task run only if it has been **notified**: nginx is reloaded because its
+configuration has changed, not at every run.
+
+```yaml
+  tasks:
+    - name: Site configuration
+      ansible.builtin.template:
+        src: site.conf.j2
+        dest: /etc/nginx/sites-available/site.conf
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+```
+
+- Only a task whose result is **`changed`** notifies; an `ok` result triggers nothing.
+- Handlers run **at the end of the play** (after all the tasks), **only once** even if several tasks
+  notified them, in the order in which they are **defined**.
+- `ansible.builtin.meta: flush_handlers` runs them at once; `listen: "web changed"` lets several
+  handlers respond to the same notification.
+- If the play fails after the notification, the handlers do not run (unless `--force-handlers`):
+  the change stays in place without being taken into account.
+""",
+    "Rôles et collections": "Roles and collections",
+    """
+
+Un **rôle** regroupe tout ce qu'il faut pour une fonction (« serveur web », « base de données ») dans
+une arborescence normalisée, réutilisable d'un projet à l'autre :
+
+```
+roles/webserver/
+├── defaults/main.yml     # variables par défaut (les moins prioritaires : faites pour être redéfinies)
+├── vars/main.yml         # variables internes (prioritaires)
+├── tasks/main.yml        # les tâches
+├── handlers/main.yml     # les handlers
+├── templates/            # les modèles Jinja2 (.j2) du module template
+├── files/                # les fichiers du module copy
+└── meta/main.yml         # dépendances, informations
+```
+
+- Utilisation dans un play : `roles: [webserver]` (les rôles passent **avant** les `tasks:` du
+  play), ou dynamiquement `ansible.builtin.include_role` / statiquement `import_role` dans les
+  tâches. Les noms des tâches d'un rôle s'affichent préfixés : `webserver : Page d'accueil`.
+- `ansible-galaxy role init roles/webserver` crée le squelette ; Ansible cherche les rôles dans
+  `roles/` à côté du playbook (et `roles_path`).
+- Une **collection** distribue modules, rôles et plugins sous un espace de noms : `ansible.builtin`
+  (dans `ansible-core`), `ansible.posix`, `community.general`, `cisco.ios`... ;
+  `ansible-galaxy collection list` montre celles qui sont installées, `ansible-galaxy collection
+  install <nom>` en ajoute.
+""": """
+
+A **role** gathers everything needed for one function ("web server", "database") in a standard
+directory tree, reusable from one project to another:
+
+```
+roles/webserver/
+├── defaults/main.yml     # default variables (lowest precedence: meant to be overridden)
+├── vars/main.yml         # internal variables (high precedence)
+├── tasks/main.yml        # the tasks
+├── handlers/main.yml     # the handlers
+├── templates/            # the Jinja2 templates (.j2) of the template module
+├── files/                # the files of the copy module
+└── meta/main.yml         # dependencies, information
+```
+
+- Use in a play: `roles: [webserver]` (the roles run **before** the `tasks:` of the play), or
+  dynamically `ansible.builtin.include_role` / statically `import_role` in the tasks. The names of
+  the tasks of a role are displayed with a prefix: `webserver : Home page`.
+- `ansible-galaxy role init roles/webserver` creates the skeleton; Ansible looks for roles in
+  `roles/` next to the playbook (and in `roles_path`).
+- A **collection** distributes modules, roles and plugins under a namespace: `ansible.builtin`
+  (in `ansible-core`), `ansible.posix`, `community.general`, `cisco.ios`...;
+  `ansible-galaxy collection list` shows the installed ones, `ansible-galaxy collection
+  install <name>` adds one.
+""",
+    "Idempotence et bonnes pratiques": "Idempotence and good practice",
+    """
+
+Un playbook bien écrit rejoué sur des nœuds déjà configurés finit avec **`changed=0`** : c'est le
+test de l'idempotence. Ce qui la casse :
+
+- `command` / `shell` : toujours `changed`. Préférez un module ; sinon `creates: <fichier>` /
+  `removes: <fichier>` (la commande ne s'exécute que si le fichier n'existe pas / existe), ou
+  `changed_when:` calculé à partir de la sortie ;
+- une valeur qui change à chaque fois : `password_hash('sha512')` tire un **sel aléatoire**, donc un
+  nouveau condensat à chaque exécution ; donnez un sel fixe (`password_hash('sha512', 'monsel')`)
+  ou `update_password: on_create` ;
+- un `lineinfile` dont l'expression `regexp` ne reconnaît pas la ligne qu'il écrit (il l'ajoute à
+  nouveau).
+
+Bonnes pratiques : nommer chaque tâche ; FQCN ; un `--check --diff` avant d'appliquer en
+production ; des variables plutôt que des valeurs en dur ; `ansible-lint` et `yamllint` (installés
+sur `control`) relisent un projet et signalent les écarts.
+""": """
+
+A well-written playbook replayed on nodes that are already configured ends with **`changed=0`**:
+that is the idempotence test. What breaks it:
+
+- `command` / `shell`: always `changed`. Prefer a module; otherwise `creates: <file>` /
+  `removes: <file>` (the command runs only if the file does not exist / exists), or
+  `changed_when:` computed from the output;
+- a value that changes every time: `password_hash('sha512')` draws a **random salt**, hence a new
+  hash at every run; give a fixed salt (`password_hash('sha512', 'mysalt')`) or
+  `update_password: on_create`;
+- a `lineinfile` whose `regexp` expression does not match the line it writes (it adds it again).
+
+Good practice: name every task; FQCN; a `--check --diff` before applying in production; variables
+rather than hard-coded values; `ansible-lint` and `yamllint` (installed on `control`) review a
+project and report the deviations.
+""",
+    "Ansible Vault": "Ansible Vault",
+    """
+
+Les secrets (mots de passe, clés) ne doivent pas être en clair dans un dépôt. **Ansible Vault**
+chiffre des fichiers (AES-256) ; Ansible les déchiffre en mémoire à l'exécution.
+
+```
+ansible-vault create vars/vault.yml        # crée et ouvre l'éditeur
+ansible-vault encrypt vars/vault.yml       # chiffre un fichier existant
+ansible-vault view vars/vault.yml          # affiche le contenu déchiffré
+ansible-vault edit vars/vault.yml          # modifie en place
+ansible-vault decrypt vars/vault.yml       # remet en clair
+ansible-vault rekey vars/vault.yml         # change le mot de passe
+ansible-vault encrypt_string 'S3cret' --name db_password   # une seule valeur, à coller dans un YAML
+```
+
+- Un fichier chiffré commence par `$ANSIBLE_VAULT;1.1;AES256`. On le charge comme les autres :
+  `vars_files:` d'un play, `group_vars/`, `host_vars/`.
+- Le mot de passe du vault : `--ask-vault-pass` à chaque exécution, ou un fichier
+  `--vault-password-file .vault_pass`, ou une fois pour toutes `vault_password_file = .vault_pass`
+  dans `ansible.cfg`. Ce fichier ne doit être lisible que par vous (`chmod 600`) et rester **hors**
+  du dépôt (`.gitignore`). Plusieurs mots de passe : les *vault ids* (`--vault-id dev@prompt`).
+- Convention : le fichier chiffré définit `vault_db_password`, un fichier en clair
+  `db_password: "{{ vault_db_password }}"` : on voit quelles variables existent sans déchiffrer.
+- `no_log: true` sur une tâche empêche l'affichage (et la journalisation) de ses arguments et de son
+  résultat : sinon un `-v` montrerait le secret.
+""": """
+
+Secrets (passwords, keys) must not be in clear text in a repository. **Ansible Vault** encrypts
+files (AES-256); Ansible decrypts them in memory at run time.
+
+```
+ansible-vault create vars/vault.yml        # creates the file and opens the editor
+ansible-vault encrypt vars/vault.yml       # encrypts an existing file
+ansible-vault view vars/vault.yml          # shows the decrypted content
+ansible-vault edit vars/vault.yml          # edits in place
+ansible-vault decrypt vars/vault.yml       # back to clear text
+ansible-vault rekey vars/vault.yml         # changes the password
+ansible-vault encrypt_string 'S3cret' --name db_password   # a single value, to paste into a YAML file
+```
+
+- An encrypted file starts with `$ANSIBLE_VAULT;1.1;AES256`. It is loaded like the others: a play's
+  `vars_files:`, `group_vars/`, `host_vars/`.
+- The vault password: `--ask-vault-pass` at every run, or a file
+  `--vault-password-file .vault_pass`, or once and for all `vault_password_file = .vault_pass`
+  in `ansible.cfg`. That file must be readable by you only (`chmod 600`) and stay **out** of the
+  repository (`.gitignore`). Several passwords: the *vault ids* (`--vault-id dev@prompt`).
+- Convention: the encrypted file defines `vault_db_password`, a clear-text file
+  `db_password: "{{ vault_db_password }}"`: you can see which variables exist without decrypting.
+- `no_log: true` on a task prevents the display (and the logging) of its arguments and of its
+  result: otherwise a `-v` would show the secret.
+""",
+    "Délégation, exécution unique, mises à jour progressives": "Delegation, single execution, rolling updates",
+    """
+
+- `delegate_to: <nœud>` exécute la tâche **sur un autre nœud** que le nœud courant, avec les
+  variables du nœud courant : retirer un serveur du répartiteur avant de le mettre à jour
+  (`delegate_to: lb`), écrire un fichier sur le nœud de contrôle (`delegate_to: localhost`).
+- `run_once: true` exécute la tâche **une seule fois** pour tout le play (sur le premier nœud) :
+  un rapport, une migration de base de données.
+- `connection: local` (ou `hosts: localhost`) pour un play qui ne travaille que sur le nœud de
+  contrôle ; `localhost` existe implicitement même s'il n'est pas dans l'inventaire.
+- `serial: 1` (ou `serial: "30%"`) traite les nœuds **par lots** : tout le play sur le premier lot,
+  puis sur le suivant ; `max_fail_percentage` arrête tout si un lot échoue. C'est la mise à jour
+  progressive (*rolling update*) d'un service sans coupure.
+
+```yaml
+- name: Rapport
+  ansible.builtin.template:
+    src: report.j2
+    dest: /root/rapport.txt
+  delegate_to: localhost
+  run_once: true
+```
+""": """
+
+- `delegate_to: <node>` runs the task **on another node** than the current one, with the variables
+  of the current node: take a server out of the load balancer before updating it
+  (`delegate_to: lb`), write a file on the control node (`delegate_to: localhost`).
+- `run_once: true` runs the task **only once** for the whole play (on the first node): a report, a
+  database migration.
+- `connection: local` (or `hosts: localhost`) for a play that only works on the control node;
+  `localhost` exists implicitly even when it is not in the inventory.
+- `serial: 1` (or `serial: "30%"`) handles the nodes **in batches**: the whole play on the first
+  batch, then on the next one; `max_fail_percentage` stops everything if a batch fails. This is the
+  *rolling update* of a service without downtime.
+
+```yaml
+- name: Report
+  ansible.builtin.template:
+    src: report.j2
+    dest: /root/report.txt
+  delegate_to: localhost
+  run_once: true
+```
+""",
+    "Automatiser le réseau": "Automating the network",
+    """
+
+Un routeur ou un pare-feu Linux se configure comme un serveur : `ansible.posix.sysctl` pour le
+routage (`net.ipv4.ip_forward`, écrit dans `/etc/sysctl.d/` pour survivre au redémarrage), un
+`template` de `/etc/nftables.conf` vérifié par `validate: nft -c -f %s` et rechargé par un handler,
+des routes et des interfaces par des fichiers de configuration. Les variables (noms d'interfaces,
+adresses des serveurs publiés) viennent de l'inventaire et des faits : `hostvars['lb']['ansible_host']`,
+`ansible_facts['eth1']['ipv4']['address']`.
+
+Les équipements réseau des constructeurs, qui n'ont souvent ni Python ni shell, ont leurs propres
+plugins de connexion : `ansible_connection: ansible.netcommon.network_cli` (une session CLI par SSH :
+`cisco.ios.ios_config`, `junipernetworks.junos.junos_command`...), `ansible.netcommon.netconf`
+(NETCONF, des données structurées YANG) ou `ansible.netcommon.httpapi` (API REST). Les modules
+« *resource* » (`cisco.ios.ios_interfaces`, `ios_vlans`...) décrivent l'état voulu d'une
+ressource (`state: merged`, `replaced`, `overridden`), et `*_facts` relit la configuration en
+données structurées. Le principe reste le même : un état voulu, décrit dans des fichiers versionnés.
+""": """
+
+A Linux router or firewall is configured like a server: `ansible.posix.sysctl` for routing
+(`net.ipv4.ip_forward`, written in `/etc/sysctl.d/` to survive a reboot), a `template` of
+`/etc/nftables.conf` checked by `validate: nft -c -f %s` and reloaded by a handler, routes and
+interfaces through configuration files. The variables (interface names, addresses of the published
+servers) come from the inventory and the facts: `hostvars['lb']['ansible_host']`,
+`ansible_facts['eth1']['ipv4']['address']`.
+
+The network equipment of the vendors, which often has neither Python nor a shell, has its own
+connection plugins: `ansible_connection: ansible.netcommon.network_cli` (a CLI session over SSH:
+`cisco.ios.ios_config`, `junipernetworks.junos.junos_command`...), `ansible.netcommon.netconf`
+(NETCONF, structured YANG data) or `ansible.netcommon.httpapi` (REST API). The "*resource*" modules
+(`cisco.ios.ios_interfaces`, `ios_vlans`...) describe the desired state of a resource
+(`state: merged`, `replaced`, `overridden`), and `*_facts` reads the configuration back as
+structured data. The principle stays the same: a desired state, described in versioned files.
+""",
+    "Aide-mémoire": "Cheat sheet",
+    """
+
+| besoin | commande |
+|--------|----------|
+| une clé SSH sans phrase de passe | `ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519` |
+| installer sa clé sur un nœud | `ssh-copy-id ansible@<adresse>` |
+| tester la connexion | `ansible all -m ping` (`-k` : mot de passe) |
+| voir l'inventaire | `ansible-inventory --graph`, `ansible-inventory --list` |
+| voir la configuration | `ansible-config dump --only-changed` |
+| les faits d'un nœud | `ansible web1 -m setup` (`-a "filter=ansible_local"`) |
+| une commande sur un groupe | `ansible webservers -b -m shell -a "..."` |
+| la doc d'un module | `ansible-doc ansible.builtin.template` |
+| vérifier un playbook | `ansible-playbook site.yml --syntax-check`, `--check --diff` |
+| exécuter | `ansible-playbook site.yml` (`--limit`, `--tags`, `-v`) |
+| squelette d'un rôle | `ansible-galaxy role init roles/<nom>` |
+| chiffrer / lire un fichier | `ansible-vault encrypt <f>`, `ansible-vault view <f>` |
+| relire un projet | `ansible-lint`, `yamllint .` |
+""": """
+
+| need | command |
+|--------|----------|
+| an SSH key without a passphrase | `ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519` |
+| install your key on a node | `ssh-copy-id ansible@<address>` |
+| test the connection | `ansible all -m ping` (`-k`: password) |
+| show the inventory | `ansible-inventory --graph`, `ansible-inventory --list` |
+| show the configuration | `ansible-config dump --only-changed` |
+| the facts of a node | `ansible web1 -m setup` (`-a "filter=ansible_local"`) |
+| a command on a group | `ansible webservers -b -m shell -a "..."` |
+| the documentation of a module | `ansible-doc ansible.builtin.template` |
+| check a playbook | `ansible-playbook site.yml --syntax-check`, `--check --diff` |
+| run | `ansible-playbook site.yml` (`--limit`, `--tags`, `-v`) |
+| skeleton of a role | `ansible-galaxy role init roles/<name>` |
+| encrypt / read a file | `ansible-vault encrypt <f>`, `ansible-vault view <f>` |
+| review a project | `ansible-lint`, `yamllint .` |
+""",
+    "Partie 1 : solution (clé SSH, inventaire, ansible.cfg)": "Part 1: solution (SSH key, inventory, ansible.cfg)",
+    "Partie 2 : solution (comptes et droits)": "Part 2: solution (accounts and rights)",
+    "Partie 3 : solution (rôle webserver, joué deux fois)": "Part 3: solution (webserver role, run twice)",
+    "Partie 4 : solution (répartiteur de charge)": "Part 4: solution (load balancer)",
+    "Partie 5 : solution (Ansible Vault)": "Part 5: solution (Ansible Vault)",
+    "Partie 6 : solution (routeur gw)": "Part 6: solution (router gw)",
+    "Bonus : solution (rapport d'inventaire)": "Bonus: solution (inventory report)",
+    """
+| machine | rôle | adresse |
+|---------|------|---------|
+| `control` | nœud de contrôle : **vous travaillez ici**, en root, dans `{workdir}` | `{control}` |
+| `web1`, `web2` | nœuds gérés : serveurs web | `{web1}`, `{web2}` |
+| `lb` | nœud géré : répartiteur de charge | `{lb}` |
+| `gw` | nœud géré : routeur et pare-feu entre `mgmt` et `ext` | `{gw}` (`mgmt`), `{gw_ext}` (`ext`) |
+| `client` | poste extérieur, non géré (pour vos essais de la partie 6) | `{client}` |
+""": """
+| machine | role | address |
+|---------|------|---------|
+| `control` | control node: **you work here**, as root, in `{workdir}` | `{control}` |
+| `web1`, `web2` | managed nodes: web servers | `{web1}`, `{web2}` |
+| `lb` | managed node: load balancer | `{lb}` |
+| `gw` | managed node: router and firewall between `mgmt` and `ext` | `{gw}` (`mgmt`), `{gw_ext}` (`ext`) |
+| `client` | outside host, not managed (for your tests of part 6) | `{client}` |
+""",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente Ansible (architecture, configuration, inventaire,
+commandes ad hoc, playbooks, variables et faits, templates, handlers, rôles, Vault, délégation).
+
+**Le réseau.** Le réseau d'administration `mgmt` (`{mgmt}`) relie le nœud de contrôle aux quatre
+nœuds gérés ; `gw` le relie au réseau extérieur `ext` (`{ext}`). Les machines n'ont pas de nom dans
+le DNS ni dans `/etc/hosts` de `control` : utilisez les adresses.
+""": """
+Read the **Informations** tab: it presents Ansible (architecture, configuration, inventory, ad hoc
+commands, playbooks, variables and facts, templates, handlers, roles, Vault, delegation).
+
+**The network.** The management network `mgmt` (`{mgmt}`) links the control node to the four
+managed nodes; `gw` links it to the outside network `ext` (`{ext}`). The machines have no name in
+the DNS nor in the `/etc/hosts` of `control`: use the addresses.
+""",
+    """
+- Sur les quatre nœuds gérés, le compte **`{user}`** a le mot de passe **`{password}`** et peut
+  utiliser `sudo` sans mot de passe : c'est le compte qu'Ansible emploie (`become: true` pour
+  administrer). La connexion par mot de passe fonctionne dès le départ (`ssh {user}@<adresse>`,
+  `ansible ... -k`) ; la partie 1 la remplace par une clé.
+- Ansible {version} est installé sur `control` (`ansible-core` et les collections de la
+  communauté, dont `ansible.posix`), avec `ansible-lint` et `yamllint`. Les nœuds gérés ont un vrai
+  systemd et **pas d'accès à Internet** : tout ce dont le TP a besoin est déjà installé (nginx,
+  nftables, sudo, Python 3) ; n'utilisez pas `apt`.
+- Le projet Ansible est dans **`{workdir}`** : `ansible.cfg`, l'inventaire, les playbooks, les
+  rôles. Lancez toujours les commandes depuis ce répertoire. Les noms de fichiers, de groupes, de
+  rôles et de comptes donnés dans les questions sont **imposés**.
+
+**Consignes.**
+
+- Les parties sont **indépendantes** : faites-les dans l'ordre que vous voulez. Une partie terminée
+  rapporte tous ses points, quel que soit l'état des autres (elles partagent seulement le projet et
+  l'accès SSH : sans la partie 1, connectez-vous par mot de passe avec `-k`).
+- Toute la configuration des nœuds gérés doit être faite **par Ansible** (playbooks), pas à la main.
+
+**Évaluation.** Chaque évaluation lit vos réponses, l'état des nœuds gérés, vos fichiers dans
+`{workdir}`, lance quelques requêtes (`curl`, connexions TCP depuis `client`) et lit **le journal de
+vos exécutions de `ansible-playbook`** : chaque exécution y est enregistrée (modules, rôles,
+handlers, boucles, résultat par nœud ; jamais les arguments des tâches) dans `{trace}` sur
+`control`. Les éléments « fait par Ansible » (boucle, handler, exécution idempotente, template...)
+ne se gagnent qu'en exécutant vos playbooks ; les commandes ad hoc (`ansible`) ne sont pas
+enregistrées.
+""": """
+- On the four managed nodes, the account **`{user}`** has the password **`{password}`** and may use
+  `sudo` without a password: it is the account Ansible uses (`become: true` to administer). Password
+  login works from the start (`ssh {user}@<address>`, `ansible ... -k`); part 1 replaces it with a
+  key.
+- Ansible {version} is installed on `control` (`ansible-core` and the community collections,
+  `ansible.posix` among them), with `ansible-lint` and `yamllint`. The managed nodes have a genuine
+  systemd and **no Internet access**: everything the lab needs is already installed (nginx,
+  nftables, sudo, Python 3); do not use `apt`.
+- The Ansible project is in **`{workdir}`**: `ansible.cfg`, the inventory, the playbooks, the roles.
+  Always run the commands from that directory. The names of files, groups, roles and accounts given
+  in the questions are **mandatory**.
+
+**Instructions.**
+
+- The parts are **independent**: do them in any order you like. A completed part gives all its
+  points, whatever the state of the others (they only share the project and the SSH access: without
+  part 1, log in with the password using `-k`).
+- All the configuration of the managed nodes must be done **by Ansible** (playbooks), not by hand.
+
+**Evaluation.** Each evaluation reads your answers, the state of the managed nodes, your files in
+`{workdir}`, sends a few requests (`curl`, TCP connections from `client`) and reads **the log of
+your `ansible-playbook` runs**: every run is recorded there (modules, roles, handlers, loops, result
+per node; never the arguments of the tasks) in `{trace}` on `control`. The "done by Ansible"
+elements (loop, handler, idempotent run, template...) are only earned by running your playbooks;
+ad hoc commands (`ansible`) are not recorded.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution pour les valeurs de cette
+instance. La solution de référence est un projet Ansible : les états `solve_access`, `solve_users`,
+`solve_web`, `solve_lb`, `solve_vault`, `solve_gw` et `solve_bonus` écrivent les fichiers d'une partie
+dans `{workdir}` et exécutent son playbook (les parties 2 à 7 se connectent par mot de passe avec un
+inventaire caché, `{ref}`, pour ne pas faire la partie 1) ; `final` les applique toutes, rejoue
+`web.yml` (l'exécution idempotente de la partie 3) et remplit les formulaires : une évaluation
+lancée dès son retour donne tous les points, bonus compris. Après `final`, `{workdir}` sur `control`
+montre le projet complet.
+""": """
+**For the instructor.** Each question ends with its solution for the values of this instance. The
+reference solution is an Ansible project: the states `solve_access`, `solve_users`, `solve_web`,
+`solve_lb`, `solve_vault`, `solve_gw` and `solve_bonus` write the files of one part in `{workdir}`
+and run its playbook (parts 2 to 7 log in with the password through a hidden inventory, `{ref}`, so
+as not to complete part 1); `final` applies them all, replays `web.yml` (the idempotent run of
+part 3) and fills in the forms: an evaluation started as soon as it returns gives every point, bonus
+included. After `final`, `{workdir}` on `control` shows the complete project.
+""",
+    "Partie 1 — accès SSH, inventaire et configuration": "Part 1 — SSH access, inventory and configuration",
+    "Clé SSH, inventaire et ansible.cfg": "SSH key, inventory and ansible.cfg",
+    """
+1. **Clé SSH.** Sur `control`, créez pour root une clé **ed25519 sans phrase de passe** (le
+   fichier par défaut, `~/.ssh/id_ed25519`) et installez-la pour le compte `{user}` des quatre
+   nœuds gérés (`ssh-copy-id`, avec le mot de passe du compte). Vérifiez que `ssh {user}@<adresse>`
+   n'invite plus à saisir de mot de passe.
+2. **Inventaire.** Écrivez `{workdir}/inventory.ini` (ou `inventory.yml`, au format YAML) :
+   - le groupe **`{web}`** avec `web1` et `web2`, le groupe **`{lb}`** avec `lb`, le groupe
+     **`{routers}`** avec `gw` ;
+   - le groupe **`{prod}`**, dont les membres sont les **groupes** `{web}` et `{lb}`
+     (`children`) ;
+   - pour chaque nœud, son adresse (tableau de l'organisation du TP) dans **`ansible_host`**
+     (section @@ref:inventory@@) ;
+   - le compte de connexion `ansible_user={user}` pour tous les nœuds.
+3. **Configuration.** Écrivez `{workdir}/ansible.cfg` pour que l'inventaire soit pris sans
+   option `-i` (section @@ref:config@@) ; profitez-en pour faire taire l'avertissement sur
+   l'interpréteur Python (`interpreter_python = auto_silent`).
+4. Vérifiez : `ansible-inventory --graph`, puis `ansible all -m ping` depuis `{workdir}`.
+
+L'évaluation se connecte depuis `control` en root à chaque nœud, **par clé uniquement**, lit votre
+inventaire avec `ansible-inventory --list` et votre configuration avec `ansible-config dump
+--only-changed`.
+""": """
+1. **SSH key.** On `control`, create for root an **ed25519 key without a passphrase** (the default
+   file, `~/.ssh/id_ed25519`) and install it for the `{user}` account of the four managed nodes
+   (`ssh-copy-id`, with the password of the account). Check that `ssh {user}@<address>` no longer
+   prompts for a password.
+2. **Inventory.** Write `{workdir}/inventory.ini` (or `inventory.yml`, in YAML format):
+   - the group **`{web}`** with `web1` and `web2`, the group **`{lb}`** with `lb`, the group
+     **`{routers}`** with `gw`;
+   - the group **`{prod}`**, whose members are the **groups** `{web}` and `{lb}`
+     (`children`);
+   - for each node, its address (table of the organisation of the lab) in **`ansible_host`**
+     (section @@ref:inventory@@);
+   - the login account `ansible_user={user}` for all the nodes.
+3. **Configuration.** Write `{workdir}/ansible.cfg` so that the inventory is used without the
+   `-i` option (section @@ref:config@@); take the opportunity to silence the warning about the
+   Python interpreter (`interpreter_python = auto_silent`).
+4. Check: `ansible-inventory --graph`, then `ansible all -m ping` from `{workdir}`.
+
+The evaluation connects from `control` as root to each node, **by key only**, reads your inventory
+with `ansible-inventory --list` and your configuration with `ansible-config dump
+--only-changed`.
+""",
+    """
+**Solution.** Sur `control` :
+{keys}
+`{workdir}/inventory.ini` :
+{inventory}
+`{workdir}/ansible.cfg` :
+{cfg}
+""": """
+**Solution.** On `control`:
+{keys}
+`{workdir}/inventory.ini`:
+{inventory}
+`{workdir}/ansible.cfg`:
+{cfg}
+""",
+    "Les faits locaux": "Local facts",
+    """
+Chaque nœud géré porte un fait local, le fichier `/etc/ansible/facts.d/asset.fact` (section
+@@ref:adhoc@@). Relevez-le avec **une seule commande ad hoc** (module `setup`, filtre
+`ansible_local`) et donnez le numéro de série (`serial`) de chaque nœud :
+
+- `web1` : @@{serial_web1:[A-Za-z0-9-]+}@@
+- `web2` : @@{serial_web2:[A-Za-z0-9-]+}@@
+- `lb` : @@{serial_lb:[A-Za-z0-9-]+}@@
+- `gw` : @@{serial_gw:[A-Za-z0-9-]+}@@
+""": """
+Each managed node carries a local fact, the file `/etc/ansible/facts.d/asset.fact` (section
+@@ref:adhoc@@). Read it with **a single ad hoc command** (module `setup`, filter
+`ansible_local`) and give the serial number (`serial`) of each node:
+
+- `web1`: @@{serial_web1:[A-Za-z0-9-]+}@@
+- `web2`: @@{serial_web2:[A-Za-z0-9-]+}@@
+- `lb`: @@{serial_lb:[A-Za-z0-9-]+}@@
+- `gw`: @@{serial_gw:[A-Za-z0-9-]+}@@
+""",
+    """
+**Solution.** `ansible all -m setup -a "filter=ansible_local"` : `web1` {web1}, `web2` {web2}, `lb` {lb},
+`gw` {gw}.
+""": """
+**Solution.** `ansible all -m setup -a "filter=ansible_local"`: `web1` {web1}, `web2` {web2}, `lb` {lb},
+`gw` {gw}.
+""",
+    "Quel ansible.cfg ?": "Which ansible.cfg?",
+    """
+Sans variable `ANSIBLE_CONFIG`, vous lancez `ansible-playbook` depuis un répertoire qui contient un
+`ansible.cfg`, alors que `~/.ansible.cfg` et `/etc/ansible/ansible.cfg` existent aussi.
+
+- le fichier lu : @@{which:>celui du répertoire courant>>>cwd|~/.ansible.cfg>>>home|/etc/ansible/ansible.cfg>>>etc|les trois>>>all}@@
+- les réglages des autres fichiers : @@{merged:>sont ignorés : un seul fichier est lu>>>no|complètent ceux du fichier lu>>>yes}@@
+""": """
+Without an `ANSIBLE_CONFIG` variable, you run `ansible-playbook` from a directory that contains an
+`ansible.cfg`, while `~/.ansible.cfg` and `/etc/ansible/ansible.cfg` exist too.
+
+- the file read: @@{which:>the one in the current directory>>>cwd|~/.ansible.cfg>>>home|/etc/ansible/ansible.cfg>>>etc|all three>>>all}@@
+- the settings of the other files: @@{merged:>are ignored: a single file is read>>>no|add to those of the file read>>>yes}@@
+""",
+    """
+**Solution.** Celui du répertoire courant ; les autres sont ignorés (pas de fusion).
+""": """
+**Solution.** The one in the current directory; the others are ignored (no merging).
+""",
+    "root@control se connecte par clé au compte ansible de chaque nœud (1 par nœud)": "root@control logs in by key to the ansible account of each node (1 per node)",
+    "groupes webservers, loadbalancers, routers ; production = webservers + loadbalancers": "groups webservers, loadbalancers, routers; production = webservers + loadbalancers",
+    "ansible_host de chaque nœud": "ansible_host of each node",
+    "connexion avec le compte ansible": "login with the ansible account",
+    "ansible.cfg du projet désigne l'inventaire": "the project's ansible.cfg names the inventory",
+    "numéros de série lus dans les faits locaux": "serial numbers read from the local facts",
+    "ordre de recherche d'ansible.cfg": "search order of ansible.cfg",
+    "Partie 2 — un premier playbook : comptes et droits": "Part 2 — a first playbook: accounts and rights",
+    "Comptes et droits sur tous les nœuds": "Accounts and rights on all the nodes",
+    """
+Écrivez le playbook `{workdir}/users.yml`, qui configure **les quatre nœuds gérés** (sections
+@@ref:playbooks@@, @@ref:modules@@ et @@ref:loops@@). Les administrateurs de l'équipe :
+""": """
+Write the playbook `{workdir}/users.yml`, which configures **the four managed nodes** (sections
+@@ref:playbooks@@, @@ref:modules@@ and @@ref:loops@@). The administrators of the team:
+""",
+    """
+| compte | UID | clé publique (sur `control`, dans le projet) |
+|--------|-----|----------------------------------------------|
+""": """
+| account | UID | public key (on `control`, in the project) |
+|--------|-----|----------------------------------------------|
+""",
+    """
+1. `/etc/motd` contient exactement la ligne : `{motd}`
+2. le groupe **`{ops}`** existe avec le GID **{gid}** ;
+3. les trois administrateurs existent, avec leur UID, le shell `/bin/bash`, membres
+   (supplémentaires) du groupe `{ops}`, et leur clé publique dans `~/.ssh/authorized_keys`.
+   Décrivez-les dans **une variable de type liste** et créez les comptes avec **une seule tâche et
+   une boucle** (`loop`) ;
+""": """
+1. `/etc/motd` contains exactly the line: `{motd}`
+2. the group **`{ops}`** exists with GID **{gid}**;
+3. the three administrators exist, with their UID, the shell `/bin/bash`, (supplementary) members
+   of the group `{ops}`, and their public key in `~/.ssh/authorized_keys`.
+   Describe them in **a list variable** and create the accounts with **a single task and a loop**
+   (`loop`);
+""",
+    """
+4. les membres de `{ops}` peuvent tout faire avec `sudo` **sans mot de passe** : fichier
+   `{sudoers}`, droits `0440`, **vérifié par `visudo` avant d'être installé** (option `validate` :
+   un fichier sudoers invalide bloquerait `sudo`, donc Ansible) ;
+5. le compte obsolète **`{old}`** est supprimé, avec son répertoire personnel.
+
+Exécutez-le (`ansible-playbook users.yml`), puis une seconde fois : rien ne doit changer.
+""": """
+4. the members of `{ops}` can do anything with `sudo` **without a password**: file
+   `{sudoers}`, mode `0440`, **checked by `visudo` before it is installed** (option `validate`: an
+   invalid sudoers file would block `sudo`, hence Ansible);
+5. the obsolete account **`{old}`** is removed, with its home directory.
+
+Run it (`ansible-playbook users.yml`), then a second time: nothing must change.
+""",
+    """
+**Solution.** `{workdir}/users.yml` :
+{playbook}
+puis `ansible-playbook users.yml`. `lookup('ansible.builtin.file', ...)` lit un fichier **du nœud de
+contrôle** (chemin relatif au playbook ; `files/` est aussi cherché d'office).
+""": """
+**Solution.** `{workdir}/users.yml`:
+{playbook}
+then `ansible-playbook users.yml`. `lookup('ansible.builtin.file', ...)` reads a file **of the control
+node** (path relative to the playbook; `files/` is also searched automatically).
+""",
+    "/etc/motd sur les quatre nœuds": "/etc/motd on the four nodes",
+    "groupe ops avec son GID": "group ops with its GID",
+    "les trois administrateurs : UID, shell, membres de ops": "the three administrators: UID, shell, members of ops",
+    "leurs clés publiques dans authorized_keys": "their public keys in authorized_keys",
+    "sudo sans mot de passe pour ops, fichier 0440 valide": "sudo without a password for ops, valid 0440 file",
+    "compte obsolète supprimé avec son répertoire": "obsolete account removed with its home directory",
+    "par Ansible : une tâche user avec une boucle a réussi sur les quatre nœuds": "by Ansible: a user task with a loop succeeded on the four nodes",
+    "Partie 3 — un rôle webserver (web1, web2)": "Part 3 — a webserver role (web1, web2)",
+    "Le rôle webserver": "The webserver role",
+    """
+Écrivez le rôle **`{role}`** dans `{workdir}/roles/{role}/` et le playbook `{workdir}/web.yml` qui
+l'applique au groupe `{web}` (sections @@ref:variables@@, @@ref:templates@@, @@ref:handlers@@ et
+@@ref:roles@@). Le rôle comprend au moins `tasks/main.yml`, `handlers/main.yml`, `defaults/main.yml`
+et ses modèles dans `templates/`. Sur `web1` et `web2` :
+
+1. nginx sert le site du répertoire `{root}` sur le port **{port}** : ce port est la variable
+   **`http_port`** du **groupe** `{web}` (le rôle lui donne 80 par défaut) ; la configuration du
+   site est `{conf}`, activée par un lien dans `/etc/nginx/sites-enabled/` ;
+2. la page `{root}/index.html` est produite par un **template** et affiche le nom du site, variable
+   `site_name` du groupe : **`{site}`**, le nom de la machine (fait `ansible_facts['hostname']`) et
+   son adresse IPv4 (fait `ansible_facts['default_ipv4']['address']`) ;
+3. le site par défaut de nginx (`/etc/nginx/sites-enabled/default`) est désactivé : plus rien
+   n'écoute sur le port 80 ;
+4. nginx est **démarré et activé** au démarrage ;
+5. une modification de la configuration du site **recharge** nginx par un **handler** du rôle (et
+   seulement dans ce cas).
+
+Exécutez `ansible-playbook web.yml`, vérifiez (`curl http://<web1>:{port}/`), puis exécutez-le
+**une seconde fois** : le récapitulatif doit montrer `changed=0` sur les deux serveurs.
+L'évaluation cherche dans le journal une exécution où le handler du rôle a tourné, et une
+exécution des tâches du rôle sans aucun changement.
+""": """
+Write the role **`{role}`** in `{workdir}/roles/{role}/` and the playbook `{workdir}/web.yml` that
+applies it to the group `{web}` (sections @@ref:variables@@, @@ref:templates@@, @@ref:handlers@@ and
+@@ref:roles@@). The role holds at least `tasks/main.yml`, `handlers/main.yml`, `defaults/main.yml`
+and its templates in `templates/`. On `web1` and `web2`:
+
+1. nginx serves the site of the directory `{root}` on port **{port}**: this port is the variable
+   **`http_port`** of the **group** `{web}` (the role gives it 80 by default); the configuration of
+   the site is `{conf}`, enabled by a link in `/etc/nginx/sites-enabled/`;
+2. the page `{root}/index.html` is produced by a **template** and shows the name of the site,
+   variable `site_name` of the group: **`{site}`**, the name of the machine (fact
+   `ansible_facts['hostname']`) and its IPv4 address (fact `ansible_facts['default_ipv4']['address']`);
+3. the default site of nginx (`/etc/nginx/sites-enabled/default`) is disabled: nothing listens on
+   port 80 any more;
+4. nginx is **started and enabled** at boot;
+5. a change in the configuration of the site **reloads** nginx through a **handler** of the role
+   (and only in that case).
+
+Run `ansible-playbook web.yml`, check (`curl http://<web1>:{port}/`), then run it **a second
+time**: the recap must show `changed=0` on both servers. The evaluation looks in the log for a run
+where the handler of the role ran, and for a run of the tasks of the role without any change.
+""",
+    """
+**Solution.** `{workdir}/group_vars/{web}.yml` :
+{vars}
+`roles/{role}/defaults/main.yml` :
+{defaults}
+`roles/{role}/tasks/main.yml` :
+{tasks}
+`roles/{role}/handlers/main.yml` :
+{handlers}
+`roles/{role}/templates/site.conf.j2` :
+{site_conf}
+`roles/{role}/templates/index.html.j2` :
+{index}
+`web.yml` :
+{web_yml}
+puis `ansible-playbook web.yml` deux fois (la seconde : `changed=0`, le handler ne tourne pas).
+""": """
+**Solution.** `{workdir}/group_vars/{web}.yml`:
+{vars}
+`roles/{role}/defaults/main.yml`:
+{defaults}
+`roles/{role}/tasks/main.yml`:
+{tasks}
+`roles/{role}/handlers/main.yml`:
+{handlers}
+`roles/{role}/templates/site.conf.j2`:
+{site_conf}
+`roles/{role}/templates/index.html.j2`:
+{index}
+`web.yml`:
+{web_yml}
+then `ansible-playbook web.yml` twice (the second time: `changed=0`, the handler does not run).
+""",
+    "Les handlers": "Handlers",
+    """
+- un handler notifié par trois tâches d'un même play, toutes trois `changed`, s'exécute : @@{when:>une seule fois, à la fin du play>>>end_once|trois fois, juste après chaque tâche>>>each|une seule fois, juste après la première tâche>>>first}@@
+- une tâche qui porte `notify` mais dont le résultat est `ok` : @@{ok:>ne déclenche rien>>>nothing|déclenche quand même le handler>>>triggers|fait échouer le play>>>fails}@@
+""": """
+- a handler notified by three tasks of the same play, all three `changed`, runs: @@{when:>only once, at the end of the play>>>end_once|three times, right after each task>>>each|only once, right after the first task>>>first}@@
+- a task that carries `notify` but whose result is `ok`: @@{ok:>triggers nothing>>>nothing|triggers the handler anyway>>>triggers|makes the play fail>>>fails}@@
+""",
+    """
+**Solution.** Une seule fois, à la fin du play ; rien (seul `changed` notifie).
+""": """
+**Solution.** Only once, at the end of the play; nothing (only `changed` notifies).
+""",
+    "nginx écoute sur le port du groupe sur web1 et web2": "nginx listens on the port of the group on web1 and web2",
+    "page d'accueil : nom du site, nom et adresse de la machine (2 par serveur)": "home page: name of the site, name and address of the machine (2 per server)",
+    "nginx démarré et activé sur les deux serveurs": "nginx started and enabled on both servers",
+    "site par défaut désactivé, rien sur le port 80": "default site disabled, nothing on port 80",
+    "arborescence du rôle ; ses tâches ont tourné sur web1 et web2": "directory tree of the role; its tasks ran on web1 and web2",
+    "par Ansible : le handler du rôle a tourné sur les deux serveurs": "by Ansible: the handler of the role ran on both servers",
+    "par Ansible : une exécution du rôle sans aucun changement (changed=0)": "by Ansible: a run of the role without any change (changed=0)",
+    "quand un handler s'exécute": "when a handler runs",
+    "Partie 4 — un répartiteur de charge (lb)": "Part 4 — a load balancer (lb)",
+    "Le répartiteur de charge": "The load balancer",
+    """
+Écrivez le playbook `{workdir}/lb.yml` qui fait de `lb` un répartiteur de charge nginx devant les
+serveurs web (section @@ref:variables@@, *variables magiques*) :
+
+1. la configuration `{conf}` est produite par un **template** ; elle déclare un bloc
+   `upstream` dont les serveurs sont **générés par une boucle** sur `groups['{web}']` : pour chaque
+   serveur web, son adresse `hostvars[...]['ansible_host']` et son port `hostvars[...]['http_port']`
+   (la variable du groupe, **{port}** : définissez-la si la partie 3 ne l'a pas fait) ; aucune
+   adresse écrite en dur ;
+2. nginx écoute sur le port **80** et transmet les requêtes à cet `upstream` (`proxy_pass`) ;
+3. le site par défaut est désactivé ; nginx est démarré et activé ; un changement de configuration
+   le recharge (handler).
+
+Ajouter un serveur au groupe `{web}` puis rejouer `lb.yml` suffirait à l'ajouter au répartiteur.
+
+L'évaluation lit la configuration chargée (`nginx -T`), puis envoie six requêtes à `lb` en
+regardant si `lb` ouvre des connexions vers **les deux** serveurs web, sur le port {port} (que
+nginx y réponde ou non : cette partie ne dépend pas de la partie 3).
+""": """
+Write the playbook `{workdir}/lb.yml` that turns `lb` into an nginx load balancer in front of the
+web servers (section @@ref:variables@@, *magic variables*):
+
+1. the configuration `{conf}` is produced by a **template**; it declares an `upstream` block whose
+   servers are **generated by a loop** over `groups['{web}']`: for each web server, its address
+   `hostvars[...]['ansible_host']` and its port `hostvars[...]['http_port']` (the group variable,
+   **{port}**: define it if part 3 has not done so); no hard-coded address;
+2. nginx listens on port **80** and forwards the requests to this `upstream` (`proxy_pass`);
+3. the default site is disabled; nginx is started and enabled; a change of configuration reloads
+   it (handler).
+
+Adding a server to the group `{web}` and replaying `lb.yml` would be enough to add it to the load
+balancer.
+
+The evaluation reads the loaded configuration (`nginx -T`), then sends six requests to `lb` while
+watching whether `lb` opens connections to **both** web servers, on port {port} (whether nginx
+answers there or not: this part does not depend on part 3).
+""",
+    """
+**Solution.** `{workdir}/templates/lb.conf.j2` :
+{j2}
+`{workdir}/lb.yml` :
+{playbook}
+(`group_vars/{web}.yml` comme en partie 3), puis `ansible-playbook lb.yml`. Rendu sur `lb` :
+`server {web1}:{port};` et `server {web2}:{port};`.
+""": """
+**Solution.** `{workdir}/templates/lb.conf.j2`:
+{j2}
+`{workdir}/lb.yml`:
+{playbook}
+(`group_vars/{web}.yml` as in part 3), then `ansible-playbook lb.yml`. Rendered on `lb`:
+`server {web1}:{port};` and `server {web2}:{port};`.
+""",
+    "nginx démarré, activé, à l'écoute sur le port 80 de lb": "nginx started, enabled, listening on port 80 of lb",
+    "upstream avec les deux serveurs web sur leur port, proxy_pass vers lui": "upstream with both web servers on their port, proxy_pass to it",
+    "des requêtes à lb ouvrent des connexions vers web1 et web2 (2 par serveur)": "requests to lb open connections to web1 and web2 (2 per server)",
+    "le template utilise groups et hostvars": "the template uses groups and hostvars",
+    "par Ansible : une tâche template a réussi sur lb": "by Ansible: a template task succeeded on lb",
+    "Partie 5 — des secrets chiffrés : Ansible Vault": "Part 5 — encrypted secrets: Ansible Vault",
+    "Un compte de service et son mot de passe": "A service account and its password",
+    """
+Un logiciel de sauvegarde se connecte aux nœuds avec le compte **`{archiver}`** (UID **{uid}**,
+shell `/bin/bash`) et le mot de passe **`{secret}`**. Ce mot de passe ne doit apparaître **en clair
+dans aucun fichier** du projet (section @@ref:vault@@).
+
+1. Le fichier `{workdir}/{vault}` définit la variable **`{var}`** avec ce mot de passe ; il est
+   **chiffré** par `ansible-vault` avec le mot de passe de vault **`{vault_password}`**.
+2. Ce mot de passe de vault est dans le fichier `{workdir}/{vault_pass}`, lisible par root seul
+   (`0600`), et `ansible.cfg` y renvoie (`vault_password_file`) : plus besoin de
+   `--ask-vault-pass`.
+3. Le playbook `{workdir}/secrets.yml` charge le fichier chiffré (`vars_files`) et crée le compte
+   `{archiver}` sur **les quatre nœuds** avec ce mot de passe (filtre `password_hash`) ; la tâche
+   ne doit rien afficher du secret (`no_log`).
+
+Vérifiez sur un nœud : `su - {archiver}` (depuis un compte autre que root) accepte le mot de passe.
+""": """
+A backup program connects to the nodes with the account **`{archiver}`** (UID **{uid}**, shell
+`/bin/bash`) and the password **`{secret}`**. This password must not appear **in clear text in any
+file** of the project (section @@ref:vault@@).
+
+1. The file `{workdir}/{vault}` defines the variable **`{var}`** with this password; it is
+   **encrypted** by `ansible-vault` with the vault password **`{vault_password}`**.
+2. This vault password is in the file `{workdir}/{vault_pass}`, readable by root only (`0600`), and
+   `ansible.cfg` points to it (`vault_password_file`): no more need for `--ask-vault-pass`.
+3. The playbook `{workdir}/secrets.yml` loads the encrypted file (`vars_files`) and creates the
+   account `{archiver}` on **the four nodes** with this password (filter `password_hash`); the task
+   must show nothing of the secret (`no_log`).
+
+Check on a node: `su - {archiver}` (from an account other than root) accepts the password.
+""",
+    """
+**Solution.** Sur `control`, dans `{workdir}` :
+{cmds}
+`secrets.yml` :
+{playbook}
+puis `ansible-playbook secrets.yml`. Le sel fixe de `password_hash` rend la tâche idempotente (sans
+lui, un nouveau condensat à chaque exécution).
+""": """
+**Solution.** On `control`, in `{workdir}`:
+{cmds}
+`secrets.yml`:
+{playbook}
+then `ansible-playbook secrets.yml`. The fixed salt of `password_hash` makes the task idempotent
+(without it, a new hash at every run).
+""",
+    "vars/vault.yml est chiffré par ansible-vault": "vars/vault.yml is encrypted by ansible-vault",
+    "déchiffré avec le mot de passe donné, il définit la variable demandée": "decrypted with the given password, it defines the requested variable",
+    "le secret n'apparaît en clair dans aucun fichier du projet": "the secret appears in clear text in no file of the project",
+    "fichier du mot de passe de vault en 0600, désigné par ansible.cfg": "vault password file in mode 0600, named by ansible.cfg",
+    "compte archiver avec le bon mot de passe (1 par nœud)": "archiver account with the right password (1 per node)",
+    "Partie 6 — automatiser le routeur gw": "Part 6 — automating the router gw",
+    "Le routeur et son pare-feu": "The router and its firewall",
+    """
+`gw` relie `mgmt` (`eth0`, `{gw}`) au réseau extérieur `ext` (`eth1`, `{gw_ext}`) où se trouve
+`client` (`{client}`). Les machines de `mgmt` passent déjà par `gw` (route par défaut), et `client`
+aussi ; mais `gw` ne route pas. Écrivez le playbook `{workdir}/gw.yml` (groupe `{routers}`)
+(section @@ref:network@@) :
+
+1. le routage IPv4 est activé avec le module **`ansible.posix.sysctl`**, et rendu permanent dans un
+   fichier de `/etc/sysctl.d/` ;
+2. `/etc/nftables.conf` est produit par un **template**, **vérifié par `nft -c -f` avant d'être
+   installé** (option `validate`), et rechargé par un **handler** quand il change ; le service
+   `nftables` est démarré et activé. Les noms des interfaces sont des variables de `gw`
+   (`host_vars/gw.yml` : `lan_if`, `wan_if`) et l'adresse de `lb` vient de l'inventaire
+   (`hostvars['lb']['ansible_host']`). Le pare-feu :
+   - en **transit** (`forward`) : politique `drop` ; les réponses (`ct state established,related`)
+     passent ; tout ce qui vient de `mgmt` vers `ext` passe ; depuis `ext`, **seul HTTP (TCP 80)
+     vers `lb`** passe ;
+   - pour `gw` lui-même (`input`) : politique `drop` ; `lo`, les réponses et le `ping` passent ;
+     **SSH seulement depuis `mgmt`** (n'oubliez pas : c'est par là qu'Ansible arrive).
+
+L'évaluation vérifie le routage (`control` joint `client`), puis, depuis `client`, que le port 80
+de `lb` est joignable (un refus de connexion compte : nginx n'a pas besoin d'y tourner) et que
+les ports 22 de `lb` et de `gw` ne répondent pas (paquets jetés), enfin que SSH vers `gw` marche
+depuis `control`.
+""": """
+`gw` links `mgmt` (`eth0`, `{gw}`) to the outside network `ext` (`eth1`, `{gw_ext}`) where
+`client` (`{client}`) is. The machines of `mgmt` already go through `gw` (default route), and so
+does `client`; but `gw` does not route. Write the playbook `{workdir}/gw.yml` (group `{routers}`)
+(section @@ref:network@@):
+
+1. IPv4 forwarding is enabled with the module **`ansible.posix.sysctl`**, and made permanent in a
+   file of `/etc/sysctl.d/`;
+2. `/etc/nftables.conf` is produced by a **template**, **checked by `nft -c -f` before it is
+   installed** (option `validate`), and reloaded by a **handler** when it changes; the service
+   `nftables` is started and enabled. The names of the interfaces are variables of `gw`
+   (`host_vars/gw.yml`: `lan_if`, `wan_if`) and the address of `lb` comes from the inventory
+   (`hostvars['lb']['ansible_host']`). The firewall:
+   - in **transit** (`forward`): policy `drop`; the replies (`ct state established,related`)
+     pass; everything coming from `mgmt` towards `ext` passes; from `ext`, **only HTTP (TCP 80)
+     to `lb`** passes;
+   - for `gw` itself (`input`): policy `drop`; `lo`, the replies and `ping` pass;
+     **SSH only from `mgmt`** (do not forget: that is the way Ansible comes in).
+
+The evaluation checks the routing (`control` reaches `client`), then, from `client`, that port 80
+of `lb` is reachable (a refused connection counts: nginx does not need to run there) and that
+ports 22 of `lb` and of `gw` do not answer (packets dropped), finally that SSH to `gw` works
+from `control`.
+""",
+    """
+**Solution.** `{workdir}/host_vars/gw.yml` :
+{host_vars}
+`{workdir}/templates/nftables.conf.j2` :
+{j2}
+`{workdir}/gw.yml` :
+{playbook}
+puis `ansible-playbook gw.yml`.
+""": """
+**Solution.** `{workdir}/host_vars/gw.yml`:
+{host_vars}
+`{workdir}/templates/nftables.conf.j2`:
+{j2}
+`{workdir}/gw.yml`:
+{playbook}
+then `ansible-playbook gw.yml`.
+""",
+    "routage IPv4 actif sur gw : control joint client": "IPv4 forwarding active on gw: control reaches client",
+    "net.ipv4.ip_forward = 1 dans un fichier de /etc/sysctl.d/": "net.ipv4.ip_forward = 1 in a file of /etc/sysctl.d/",
+    "depuis client, le port 80 de lb est joignable": "from client, port 80 of lb is reachable",
+    "depuis client, le port 22 de lb est filtré (jeté)": "from client, port 22 of lb is filtered (dropped)",
+    "SSH vers gw : jeté depuis client, accepté depuis control": "SSH to gw: dropped from client, accepted from control",
+    "service nftables actif et activé, /etc/nftables.conf valide, forward en drop": "nftables service active and enabled, valid /etc/nftables.conf, forward policy drop",
+    "par Ansible : un template et un handler ont tourné sur gw": "by Ansible: a template and a handler ran on gw",
+    "Bonus — un rapport d'inventaire": "Bonus — an inventory report",
+    "Le rapport d'inventaire": "The inventory report",
+    """
+Écrivez le playbook `{workdir}/report.yml` qui collecte les faits des quatre nœuds gérés et écrit
+**sur `control`** le fichier `{workdir}/{report}` : un tableau Markdown, **une ligne par nœud**
+(triés par nom), avec son nom d'inventaire, son adresse IPv4 sur `mgmt` (fait de l'interface
+`eth0` : `gw` n'a pas de route par défaut, son fait `default_ipv4` est vide), son numéro de série
+(fait local) et son système (distribution et version). Une **seule** tâche `template`, exécutée **une seule fois**
+(`run_once`) et **déléguée au nœud de contrôle** (`delegate_to: localhost`), parcourt
+`groups['all']` et `hostvars` (section @@ref:delegation@@).
+""": """
+Write the playbook `{workdir}/report.yml` that collects the facts of the four managed nodes and
+writes **on `control`** the file `{workdir}/{report}`: a Markdown table, **one row per node**
+(sorted by name), with its inventory name, its IPv4 address on `mgmt` (fact of the interface
+`eth0`: `gw` has no default route, its `default_ipv4` fact is empty), its serial number (local
+fact) and its system (distribution and version). A **single** `template` task, run **only once**
+(`run_once`) and **delegated to the control node** (`delegate_to: localhost`), goes through
+`groups['all']` and `hostvars` (section @@ref:delegation@@).
+""",
+    """
+**Solution.** `{workdir}/templates/report.md.j2` :
+{j2}
+`{workdir}/report.yml` :
+{playbook}
+puis `ansible-playbook report.yml`. Les faits locaux sont dans `hostvars[host]['ansible_local']`
+(ou `ansible_facts['ansible_local']` : la clé garde son préfixe).
+""": """
+**Solution.** `{workdir}/templates/report.md.j2`:
+{j2}
+`{workdir}/report.yml`:
+{playbook}
+then `ansible-playbook report.yml`. The local facts are in `hostvars[host]['ansible_local']`
+(or `ansible_facts['ansible_local']`: the key keeps its prefix).
+""",
+    "une ligne par nœud : nom, adresse, numéro de série (1 par nœud)": "one row per node: name, address, serial number (1 per node)",
+    "par Ansible : une tâche run_once déléguée à localhost a écrit le rapport": "by Ansible: a run_once task delegated to localhost wrote the report",
+}}

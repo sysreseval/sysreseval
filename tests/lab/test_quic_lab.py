@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 from cryptography import x509
 
-from SRE import params
+from SRE import form_spec, params
 from SRE.archive_summary import read_archive
 from SRE.common import TranslatedText
 from SRE.informations import resolve_informations, resolve_text
@@ -157,6 +157,11 @@ def _all_texts(grade, ns, lang='fr'):
     for q in grade.get_questions_ordered():
         yield f"title:{_text(q.title)}", _text(q.title, lang)
         yield f"description:{_text(q.title)}", _text(q.description, lang)
+
+
+def _tr_literals():
+    import check_sre_translations
+    return check_sre_translations.get_tr_strings(ast.parse(_LAB_PATH.read_text()))
 
 
 def _instructor_literals():
@@ -400,8 +405,15 @@ class TestTexts:
                 markdown_to_html(text, show_instructor=True)
         literals = _instructor_literals()
         assert len(literals) == INSTRUCTOR_TEXTS
-        assert set(lab._TRANSLATIONS) == {'en'} and set(lab._TRANSLATIONS['en']) == set(literals)
-        assert all(value and value != key for key, value in lab._TRANSLATIONS['en'].items())
+        # every text is translated (the instructor ones and the others): the markup is checked for every lab
+        # of the directory by test_draft_misc_translations.py
+        english = lab._TRANSLATIONS['en']
+        assert set(lab._TRANSLATIONS) == {'en'} and set(english) == _tr_literals() and set(literals) <= set(english)
+        assert all(value and value != key for key, value in english.items())
+        # the dropdowns of the English forms show English labels and store the French options
+        for name, (options, index) in lab.CHOICES.items():
+            assert len(lab.CHOICES_EN[name]) == len(options) and lab._ok(name, 'en') == lab.CHOICES_EN[name][index]
+            assert form_spec.form_fields(lab._dd(name, 'en')) == form_spec.form_fields(lab._dd(name))
         assert _text(lab.title, 'en') != _text(lab.title, 'fr')
         description = lab.NetScheme.final._sre_state_description
         assert _text(description, 'en') != _text(description, 'fr')
@@ -446,7 +458,9 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('quic_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        assert not module._TRANSLATIONS.get('en')
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(set(_instructor_literals()))
         grade, _, _ = _replay(lab, 'solved', tmp_pub_dir, instructor_mode=True, module=module, answers='cheat')
         assert _totals(grade) == (100, 100, 7)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())

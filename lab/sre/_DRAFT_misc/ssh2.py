@@ -959,35 +959,51 @@ Match User depot                 # aussi : Group, Address 192.0.2.0/24, Host, Lo
         for m in ("intranet", "db", "nas"):
             self.cmd(m, f"systemctl start nginx {SYSTEMCTL_QUIET}; true", step=2)
 
-    @sre_state(user_allowed=False, description=tr("Partie 1 : solution (clé, ~/.ssh/config, ops corrigé, vault)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 1 : solution (clé, ~/.ssh/config, ops corrigé, vault)",
+                              en="Part 1: solution (key, ~/.ssh/config, ops fixed, vault)"))
     def solve_part1(self):
         self._solve_part1()
 
-    @sre_state(user_allowed=False, description=tr("Partie 2 : solution (deux tunnels locaux)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 2 : solution (deux tunnels locaux)",
+                              en="Part 2: solution (two local tunnels)"))
     def solve_part2(self):
         self._solve_part2()
 
-    @sre_state(user_allowed=False, description=tr("Partie 3 : solution (tunnel distant depuis nas, GatewayPorts)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 3 : solution (tunnel distant depuis nas, GatewayPorts)",
+                              en="Part 3: solution (remote tunnel from nas, GatewayPorts)"))
     def solve_part3(self):
         self._solve_part3()
 
-    @sre_state(user_allowed=False, description=tr("Partie 4 : solution (proxy SOCKS)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 4 : solution (proxy SOCKS)",
+                              en="Part 4: solution (SOCKS proxy)"))
     def solve_part4(self):
         self._solve_part4()
 
-    @sre_state(user_allowed=False, description=tr("Partie 5 : solution (certificats d'hôte de bastion et relay)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 5 : solution (certificats d'hôte de bastion et relay)",
+                              en="Part 5: solution (host certificates of bastion and relay)"))
     def solve_part5(self):
         self._solve_part5()
 
-    @sre_state(user_allowed=False, description=tr("Partie 6 : solution (certificat d'utilisateur, compte deploy)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 6 : solution (certificat d'utilisateur, compte deploy)",
+                              en="Part 6: solution (user certificate, deploy account)"))
     def solve_part6(self):
         self._solve_part6()
 
-    @sre_state(user_allowed=False, description=tr("Partie 7 : solution (restrictions sur files)"))
+    @sre_state(user_allowed=False,
+               description=tr("Partie 7 : solution (restrictions sur files)",
+                              en="Part 7: solution (restrictions on files)"))
     def solve_part7(self):
         self._solve_part7()
 
-    @sre_state(user_allowed=False, description=tr("Bonus : solution (révocation du stagiaire, multiplexage)"))
+    @sre_state(user_allowed=False,
+               description=tr("Bonus : solution (révocation du stagiaire, multiplexage)",
+                              en="Bonus: solution (revocation of the intern's key, multiplexing)"))
     def solve_bonus(self):
         self._solve_bonus()
 
@@ -1818,4 +1834,1521 @@ avec cette clé vers `deploy@bastion`, refusée, et la ligne `revoked by file` d
                                description=tr("une connexion maîtresse vers relay ouverte"))
 
 
-_TRANSLATIONS = {}
+_TRANSLATIONS = {'en': {
+    "SSH 2 : tunnels, rebonds et certificats": "SSH 2: tunnels, jump hosts and certificates",
+    """**Sommaire**
+""": """**Contents**
+""",
+    "Rappels et outils de diagnostic": "Reminders and diagnostic tools",
+    """
+
+SSH ne sert pas qu'à ouvrir un shell : dans une seule connexion chiffrée, il transporte des
+**canaux** multiplexés (sessions, flux TCP relayés, agent, SFTP). Ce TP fait suite au TP SSH (mots de
+passe, clés, `authorized_keys`, agent), dont il suppose les bases.
+
+| commande | ce qu'elle montre |
+|----------|-------------------|
+| `ssh -G hôte` | la configuration **effective** du client pour `hôte` (tous les fichiers lus), sans se connecter |
+| `ssh -v hôte` (`-vv`, `-vvv`) | le déroulement d'une connexion : clés et certificats essayés, canaux refusés |
+| `sudo sshd -t` | vérifie la configuration du serveur (à lancer avant de redémarrer) |
+| `sudo sshd -T` | la configuration effective du serveur |
+| `sudo sshd -T -C user=alice,host=pc,addr=192.0.2.7` | la même, pour une connexion donnée (blocs `Match` compris) |
+| `/var/log/auth.log` | le journal du serveur : connexions acceptées, refus et leurs raisons |
+""": """
+
+SSH is not only for opening a shell: inside a single encrypted connection, it carries multiplexed
+**channels** (sessions, relayed TCP streams, agent, SFTP). This lab follows the SSH lab (passwords,
+keys, `authorized_keys`, agent) and assumes its basics.
+
+| command | what it shows |
+|---------|---------------|
+| `ssh -G host` | the **effective** configuration of the client for `host` (every file read), without connecting |
+| `ssh -v host` (`-vv`, `-vvv`) | how a connection unfolds: keys and certificates tried, channels refused |
+| `sudo sshd -t` | checks the server configuration (run it before restarting) |
+| `sudo sshd -T` | the effective configuration of the server |
+| `sudo sshd -T -C user=alice,host=pc,addr=192.0.2.7` | the same, for a given connection (`Match` blocks included) |
+| `/var/log/auth.log` | the server log: accepted connections, refusals and their reasons |
+""",
+    "Modifier la configuration du serveur": "Changing the server configuration",
+    """
+
+Sous Debian, `/etc/ssh/sshd_config` commence par `Include /etc/ssh/sshd_config.d/*.conf` : les
+fichiers de ce répertoire sont lus **avant** le reste, dans l'ordre alphabétique. Pour la plupart des
+directives, **la première valeur lue l'emporte** : `PermitRootLogin no` dans
+`sshd_config.d/10-root.conf` gagne sur un `PermitRootLogin yes` écrit plus bas dans `sshd_config`.
+Mettez donc vos réglages dans un fichier de `sshd_config.d/`.
+
+```
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+`reload` envoie le signal HUP à sshd, qui se relance lui-même avec la nouvelle configuration (et les
+nouveaux certificats) ; `systemctl restart ssh` marche aussi, en quelques secondes de plus. Ni l'un ni
+l'autre ne coupe les connexions ouvertes : chacune a son propre processus (`sshd-session`). Gardez une session ouverte pendant vos essais : si la nouvelle configuration vous
+refuse, vous pourrez encore la corriger.
+""": """
+
+On Debian, `/etc/ssh/sshd_config` starts with `Include /etc/ssh/sshd_config.d/*.conf`: the
+files of this directory are read **before** the rest, in alphabetical order. For most
+directives, **the first value read wins**: `PermitRootLogin no` in
+`sshd_config.d/10-root.conf` wins over a `PermitRootLogin yes` written further down in `sshd_config`.
+So put your settings in a file of `sshd_config.d/`.
+
+```
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+`reload` sends the HUP signal to sshd, which restarts itself with the new configuration (and the
+new certificates); `systemctl restart ssh` works too, a few seconds slower. Neither of them
+cuts the open connections: each one has its own process (`sshd-session`). Keep a session open while you experiment: if the new configuration
+locks you out, you can still fix it.
+""",
+    "Le fichier ~/.ssh/config": "The ~/.ssh/config file",
+    """
+
+Le client prend ses options sur la ligne de commande (`-o Option=valeur`), puis dans
+`~/.ssh/config`, puis dans `/etc/ssh/ssh_config`. Là aussi, **la première valeur obtenue pour une
+option est gardée** : on écrit les blocs les plus précis d'abord et `Host *` à la fin.
+
+```
+Host web
+    HostName web.example.org        # nom ou adresse réels
+    User alice                      # compte distant
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519
+
+Host *.example.org !old.example.org
+    User alice
+
+Host *
+    ServerAliveInterval 30
+```
+
+- `Host` accepte plusieurs motifs (`*`, `?`, la négation `!`), comparés au nom **tapé** (`ssh web`),
+  pas au `HostName`.
+- `Include config.d/*.conf` lit d'autres fichiers (chemins relatifs à `~/.ssh`).
+- Le fichier doit appartenir à l'utilisateur et n'être modifiable que par lui.
+- `scp`, `sftp`, `rsync`, `git` et `ssh-copy-id` lisent le même fichier : `scp fichier web:` marche aussi.
+- `ssh -G web` affiche ce que donne la configuration (`hostname`, `user`, `proxyjump`…).
+""": """
+
+The client takes its options from the command line (`-o Option=value`), then from
+`~/.ssh/config`, then from `/etc/ssh/ssh_config`. Here too, **the first value obtained for an
+option is kept**: write the most specific blocks first and `Host *` at the end.
+
+```
+Host web
+    HostName web.example.org        # real name or address
+    User alice                      # remote account
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519
+
+Host *.example.org !old.example.org
+    User alice
+
+Host *
+    ServerAliveInterval 30
+```
+
+- `Host` accepts several patterns (`*`, `?`, the negation `!`), compared with the name **typed** (`ssh web`),
+  not with the `HostName`.
+- `Include config.d/*.conf` reads other files (paths relative to `~/.ssh`).
+- The file must belong to the user and be writable by them only.
+- `scp`, `sftp`, `rsync`, `git` and `ssh-copy-id` read the same file: `scp file web:` works too.
+- `ssh -G web` shows what the configuration gives (`hostname`, `user`, `proxyjump`…).
+""",
+    "Rebondir : ProxyJump": "Jump hosts: ProxyJump",
+    """
+
+Une machine interne n'est souvent joignable qu'à travers une machine d'entrée, le **bastion**. Au
+lieu d'ouvrir un shell sur le bastion puis un second `ssh` (la clé ou l'agent devraient alors se
+trouver sur le bastion), on demande au client de **rebondir** :
+
+```
+ssh -J alice@gw alice@srv1.interne              # un rebond
+ssh -J alice@gw,alice@gw2 alice@db.interne      # deux rebonds, dans l'ordre
+```
+
+Le client ouvre une connexion SSH vers `gw` et lui demande de relayer un flux TCP vers
+`srv1.interne:22` (un canal *direct-tcpip*, comme `ssh -W srv1.interne:22 gw`). La session SSH vers
+`srv1` passe **dans** ce flux, chiffrée de bout en bout : le bastion ne voit que des octets
+chiffrés et n'a besoin ni de la clé ni de l'agent. Conséquences :
+
+- le nom de la destination est **résolu par le bastion** : le poste de départ n'a pas besoin de le connaître ;
+- chaque machine authentifie l'utilisateur, avec les clés du poste de départ ;
+- la destination voit une connexion venant du **bastion** (dans son journal).
+
+Dans `~/.ssh/config` :
+
+```
+Host gw
+    HostName gw.example.org
+    User alice
+Host srv1
+    HostName srv1.interne
+    User alice
+    ProxyJump gw              # ssh srv1 passe par gw
+Host db
+    HostName db.interne
+    User alice
+    ProxyJump srv1            # rebonds en chaîne : gw, puis srv1
+```
+
+`ProxyJump` remplace l'ancienne écriture `ProxyCommand ssh -W %h:%p gw`. Contrairement à l'*agent
+forwarding* (`ssh -A`), il ne laisse aucun accès à votre agent sur les machines intermédiaires.
+
+Le bastion doit autoriser le relais de flux (`AllowTcpForwarding`, section @@ref:server-forwarding@@).
+Sinon le client affiche :
+
+```
+channel 0: open failed: administratively prohibited: open failed
+stdio forwarding failed
+```
+""": """
+
+An internal machine is often reachable only through an entry machine, the **bastion**. Instead
+of opening a shell on the bastion and then a second `ssh` (the key or the agent would then have to
+be on the bastion), you ask the client to **jump**:
+
+```
+ssh -J alice@gw alice@srv1.internal             # one jump
+ssh -J alice@gw,alice@gw2 alice@db.internal     # two jumps, in order
+```
+
+The client opens an SSH connection to `gw` and asks it to relay a TCP stream to
+`srv1.internal:22` (a *direct-tcpip* channel, like `ssh -W srv1.internal:22 gw`). The SSH session to
+`srv1` goes **inside** that stream, encrypted end to end: the bastion sees only encrypted
+bytes and needs neither the key nor the agent. Consequences:
+
+- the destination name is **resolved by the bastion**: the starting host does not need to know it;
+- each machine authenticates the user, with the keys of the starting host;
+- the destination sees a connection coming from the **bastion** (in its log).
+
+In `~/.ssh/config`:
+
+```
+Host gw
+    HostName gw.example.org
+    User alice
+Host srv1
+    HostName srv1.internal
+    User alice
+    ProxyJump gw              # ssh srv1 goes through gw
+Host db
+    HostName db.internal
+    User alice
+    ProxyJump srv1            # chained jumps: gw, then srv1
+```
+
+`ProxyJump` replaces the older form `ProxyCommand ssh -W %h:%p gw`. Unlike *agent
+forwarding* (`ssh -A`), it leaves no access to your agent on the intermediate machines.
+
+The bastion must allow stream relaying (`AllowTcpForwarding`, section @@ref:server-forwarding@@).
+Otherwise the client prints:
+
+```
+channel 0: open failed: administratively prohibited: open failed
+stdio forwarding failed
+```
+""",
+    "Les tunnels : principe": "Tunnels: the principle",
+    """
+
+Un tunnel (*port forwarding*) fait passer des connexions TCP dans la connexion SSH :
+
+| option | qui écoute | qui ouvre la connexion vers la destination |
+|--------|------------|---------------------------------------------|
+| `-L` (local) | le client SSH | le serveur SSH |
+| `-R` (distant, *remote*) | le serveur SSH | le client SSH |
+| `-D` (dynamique) | le client SSH, en proxy SOCKS | le serveur SSH, vers la destination que demande l'application |
+
+- `-N` : aucune commande distante, seulement les tunnels ; `-f` : passer en arrière-plan après
+  l'authentification. `ssh -f -N -L …` rend la main et laisse le tunnel ouvert.
+- `-o ExitOnForwardFailure=yes` : abandonner si le tunnel ne peut pas être ouvert (port déjà pris…).
+- `ss -ltn` liste les ports en écoute (`ss -ltne` : avec l'uid du propriétaire) ; un tunnel en
+  arrière-plan se ferme en tuant son processus `ssh` (`pgrep -a ssh`, `kill`).
+- Par défaut, un port de tunnel n'écoute que sur la boucle locale (`127.0.0.1`, `::1`) ; une adresse
+  d'écoute explicite (`-L 0.0.0.0:5000:…`) l'ouvre aux autres machines.
+""": """
+
+A tunnel (*port forwarding*) carries TCP connections inside the SSH connection:
+
+| option | who listens | who opens the connection to the destination |
+|--------|-------------|---------------------------------------------|
+| `-L` (local) | the SSH client | the SSH server |
+| `-R` (*remote*) | the SSH server | the SSH client |
+| `-D` (dynamic) | the SSH client, as a SOCKS proxy | the SSH server, to the destination the application asks for |
+
+- `-N`: no remote command, only the tunnels; `-f`: go to the background after
+  authentication. `ssh -f -N -L …` gives the prompt back and leaves the tunnel open.
+- `-o ExitOnForwardFailure=yes`: give up if the tunnel cannot be opened (port already taken…).
+- `ss -ltn` lists the listening ports (`ss -ltne`: with the uid of the owner); a background tunnel
+  is closed by killing its `ssh` process (`pgrep -a ssh`, `kill`).
+- By default, a tunnel port listens on the loopback only (`127.0.0.1`, `::1`); an explicit
+  listening address (`-L 0.0.0.0:5000:…`) opens it to the other machines.
+""",
+    "Tunnel local (-L)": "Local tunnel (-L)",
+    """
+
+```
+ssh -L [adresse_écoute:]port_local:destination:port_destination  utilisateur@serveur
+```
+
+Exemple : `web.interne:80` n'est joignable que depuis `gw` :
+
+```
+ssh -f -N -L 5000:web.interne:80 alice@gw
+curl http://localhost:5000/
+```
+
+Le client écoute sur `127.0.0.1:5000` ; chaque connexion y est relayée vers `gw`, qui ouvre lui-même
+la connexion TCP vers `web.interne:80`. La destination est donc **résolue et jointe par le
+serveur SSH** : `localhost` y désigne le serveur SSH lui-même. Pour un service qui n'écoute que sur la
+boucle locale d'une machine `db`, on se connecte à `db`, en rebondissant au besoin :
+
+```
+ssh -f -N -L 5432:localhost:5432 -J alice@gw alice@db.interne
+```
+
+Le service voit une connexion venant de la machine qui l'a ouverte (`gw` dans le premier exemple,
+`127.0.0.1` dans le second), jamais du poste de départ.
+""": """
+
+```
+ssh -L [bind_address:]local_port:destination:destination_port  user@server
+```
+
+Example: `web.internal:80` is reachable only from `gw`:
+
+```
+ssh -f -N -L 5000:web.internal:80 alice@gw
+curl http://localhost:5000/
+```
+
+The client listens on `127.0.0.1:5000`; each connection there is relayed to `gw`, which itself opens
+the TCP connection to `web.internal:80`. The destination is therefore **resolved and reached by the
+SSH server**: there, `localhost` means the SSH server itself. For a service that listens only on the
+loopback of a machine `db`, you connect to `db`, jumping if needed:
+
+```
+ssh -f -N -L 5432:localhost:5432 -J alice@gw alice@db.internal
+```
+
+The service sees a connection coming from the machine that opened it (`gw` in the first example,
+`127.0.0.1` in the second), never from the starting host.
+""",
+    "Tunnel distant (-R)": "Remote tunnel (-R)",
+    """
+
+```
+ssh -R [adresse_écoute:]port_distant:destination:port_destination  utilisateur@serveur
+```
+
+Le **serveur** écoute sur `port_distant` et renvoie chaque connexion au client, qui ouvre la
+connexion vers `destination` (résolue par le client). Usage typique : rendre joignable une machine
+cachée derrière un NAT, qui ne peut qu'**ouvrir** des connexions :
+
+```
+# sur la machine derrière le NAT
+ssh -f -N -R 2222:localhost:22 alice@vps.example.org
+# puis, sur vps.example.org
+ssh -p 2222 utilisateur@localhost
+```
+
+Le serveur n'écoute pas forcément à l'adresse demandée : c'est sa directive `GatewayPorts` qui décide.
+
+| `GatewayPorts` | adresse d'écoute des tunnels `-R` |
+|----------------|------------------------------------|
+| `no` (défaut) | toujours la boucle locale (`127.0.0.1`, `::1`), quoi que demande le client |
+| `yes` | toutes les interfaces (`0.0.0.0`), quoi que demande le client |
+| `clientspecified` | l'adresse demandée : `-R 0.0.0.0:2222:…` (ou `-R '*:2222:…'`) pour toutes les interfaces, la boucle locale sans adresse |
+
+Un tunnel déjà ouvert garde son adresse d'écoute : après avoir changé `GatewayPorts`, relancez-le.
+""": """
+
+```
+ssh -R [bind_address:]remote_port:destination:destination_port  user@server
+```
+
+The **server** listens on `remote_port` and sends each connection back to the client, which opens the
+connection to `destination` (resolved by the client). Typical use: making reachable a machine
+hidden behind a NAT, which can only **open** connections:
+
+```
+# on the machine behind the NAT
+ssh -f -N -R 2222:localhost:22 alice@vps.example.org
+# then, on vps.example.org
+ssh -p 2222 user@localhost
+```
+
+The server does not necessarily listen at the address asked for: its `GatewayPorts` directive decides.
+
+| `GatewayPorts` | listening address of the `-R` tunnels |
+|----------------|----------------------------------------|
+| `no` (default) | always the loopback (`127.0.0.1`, `::1`), whatever the client asks for |
+| `yes` | every interface (`0.0.0.0`), whatever the client asks for |
+| `clientspecified` | the address asked for: `-R 0.0.0.0:2222:…` (or `-R '*:2222:…'`) for every interface, the loopback without an address |
+
+A tunnel already open keeps its listening address: after changing `GatewayPorts`, start it again.
+""",
+    "Tunnel dynamique (-D) : un proxy SOCKS": "Dynamic tunnel (-D): a SOCKS proxy",
+    """
+
+```
+ssh -f -N -D 1080 alice@gw
+```
+
+Le client devient un proxy **SOCKS** (versions 4 et 5) sur `127.0.0.1:1080` : à chaque connexion,
+l'application lui indique la destination voulue, et `gw` l'ouvre. Un seul tunnel suffit pour toutes
+les machines et tous les ports que `gw` peut joindre.
+
+```
+curl --socks5 127.0.0.1:1080 http://192.0.2.10/             # le client résout le nom
+curl --socks5-hostname 127.0.0.1:1080 http://web.interne/   # gw résout le nom
+curl -x socks5h://127.0.0.1:1080 http://web.interne/        # la même chose
+nc -X 5 -x 127.0.0.1:1080 web.interne 80                    # netcat à travers le proxy
+```
+
+Avec SOCKS 5, le nom peut être transmis tel quel au proxy (`socks5h`, `--socks5-hostname`) : c'est
+indispensable quand seuls les serveurs internes connaissent les noms. Un navigateur se règle de même
+(proxy SOCKS 5 et « DNS par le proxy »).
+""": """
+
+```
+ssh -f -N -D 1080 alice@gw
+```
+
+The client becomes a **SOCKS** proxy (versions 4 and 5) on `127.0.0.1:1080`: for each connection,
+the application tells it the destination it wants, and `gw` opens it. A single tunnel is enough for
+every machine and every port that `gw` can reach.
+
+```
+curl --socks5 127.0.0.1:1080 http://192.0.2.10/             # the client resolves the name
+curl --socks5-hostname 127.0.0.1:1080 http://web.internal/  # gw resolves the name
+curl -x socks5h://127.0.0.1:1080 http://web.internal/       # the same thing
+nc -X 5 -x 127.0.0.1:1080 web.internal 80                   # netcat through the proxy
+```
+
+With SOCKS 5, the name can be passed as is to the proxy (`socks5h`, `--socks5-hostname`): this is
+essential when only the internal servers know the names. A browser is set up the same way
+(SOCKS 5 proxy and "DNS through the proxy").
+""",
+    "Contrôler les tunnels côté serveur": "Controlling tunnels on the server side",
+    """
+
+| directive (`sshd_config`) | effet |
+|---------------------------|-------|
+| `AllowTcpForwarding yes`, `no`, `local`, `remote`, `all` | autorise les tunnels ; `local` : `-L`, `-D` et les rebonds (`-J`, `-W`) ; `remote` : `-R` |
+| `PermitOpen hôte:port …` | les destinations permises pour `-L`, `-D`, `-J` (`any` par défaut, `none`) |
+| `PermitListen [adresse:]port …` | les ports que `-R` peut ouvrir |
+| `GatewayPorts` | l'adresse d'écoute des tunnels `-R` (section @@ref:remote@@) |
+| `DisableForwarding yes` | coupe tout : tunnels, agent, X11 |
+
+On place souvent ces directives dans un bloc `Match` (section @@ref:match@@) pour ne viser que certains
+comptes. Un refus apparaît côté client comme `administratively prohibited`.
+""": """
+
+| directive (`sshd_config`) | effect |
+|---------------------------|--------|
+| `AllowTcpForwarding yes`, `no`, `local`, `remote`, `all` | allows tunnels; `local`: `-L`, `-D` and jumps (`-J`, `-W`); `remote`: `-R` |
+| `PermitOpen host:port …` | the destinations allowed for `-L`, `-D`, `-J` (`any` by default, `none`) |
+| `PermitListen [address:]port …` | the ports that `-R` may open |
+| `GatewayPorts` | the listening address of the `-R` tunnels (section @@ref:remote@@) |
+| `DisableForwarding yes` | cuts everything: tunnels, agent, X11 |
+
+These directives are often placed in a `Match` block (section @@ref:match@@) so as to target only some
+accounts. A refusal shows on the client side as `administratively prohibited`.
+""",
+    "Multiplexer les connexions": "Multiplexing connections",
+    """
+
+Chaque `ssh` ouvre une connexion TCP, négocie le chiffrement et s'authentifie. Le **multiplexage**
+fait passer les connexions suivantes vers le même serveur dans une connexion **maîtresse** déjà
+ouverte : elles s'ouvrent instantanément, sans nouvelle authentification.
+
+```
+Host web
+    HostName web.example.org
+    ControlMaster auto          # devenir maître s'il n'y en a pas, sinon s'y rattacher
+    ControlPath ~/.ssh/cm-%C    # la socket du maître (%C : empreinte de l'hôte, du port, du compte…)
+    ControlPersist 10m          # le maître reste 10 min après la dernière session (yes : toujours)
+```
+
+```
+ssh -O check web                             # Master running (pid=…)
+ssh -O forward -L 5000:localhost:80 web      # ajouter un tunnel au maître
+ssh -O exit web                              # fermer le maître
+```
+
+Les tunnels demandés par une connexion rattachée appartiennent au **maître** : ils disparaissent
+avec lui (fin de `ControlPersist`, `ssh -O exit`). `-o ControlMaster=no` (ou `-S none`) ouvre une
+connexion indépendante.
+""": """
+
+Each `ssh` opens a TCP connection, negotiates encryption and authenticates. **Multiplexing**
+sends the following connections to the same server through a **master** connection that is already
+open: they open instantly, without a new authentication.
+
+```
+Host web
+    HostName web.example.org
+    ControlMaster auto          # become the master if there is none, otherwise attach to it
+    ControlPath ~/.ssh/cm-%C    # the socket of the master (%C: hash of the host, the port, the account…)
+    ControlPersist 10m          # the master stays 10 min after the last session (yes: forever)
+```
+
+```
+ssh -O check web                             # Master running (pid=…)
+ssh -O forward -L 5000:localhost:80 web      # add a tunnel to the master
+ssh -O exit web                              # close the master
+```
+
+The tunnels requested by an attached connection belong to the **master**: they disappear
+with it (end of `ControlPersist`, `ssh -O exit`). `-o ControlMaster=no` (or `-S none`) opens an
+independent connection.
+""",
+    "Pourquoi des certificats SSH ?": "Why SSH certificates?",
+    """
+
+Les clés seules posent deux problèmes dès qu'il y a beaucoup de machines :
+
+- côté client, la première connexion à un serveur demande d'en vérifier l'empreinte (*trust on first
+  use*) ; chaque réinstallation déclenche un avertissement, et peu de gens vérifient vraiment ;
+- côté serveur, chaque compte liste ses clés autorisées dans `authorized_keys` : ajouter ou retirer
+  une personne oblige à modifier tous les serveurs.
+
+Un **certificat SSH** est une clé publique signée par une **autorité de certification** (CA), avec
+une identité, une liste de noms (*principals*), une période de validité et des options. La CA est
+une simple paire de clés SSH (`ssh-keygen`) : ni X.509, ni chaîne d'autorités. Il suffit de faire
+confiance à la clé publique de la CA :
+
+- le client fait confiance aux **certificats d'hôte** signés par la CA des serveurs ;
+- le serveur fait confiance aux **certificats d'utilisateur** signés par la CA des utilisateurs.
+
+On utilise deux CA différentes, et la clé privée d'une CA ne quitte pas la machine où l'on signe.
+""": """
+
+Keys alone raise two problems as soon as there are many machines:
+
+- on the client side, the first connection to a server asks you to check its fingerprint (*trust on first
+  use*); every reinstallation triggers a warning, and few people really check;
+- on the server side, each account lists its authorised keys in `authorized_keys`: adding or removing
+  a person means changing every server.
+
+An **SSH certificate** is a public key signed by a **certification authority** (CA), with
+an identity, a list of names (*principals*), a validity period and options. The CA is
+a plain SSH key pair (`ssh-keygen`): no X.509, no chain of authorities. Trusting the public key of
+the CA is enough:
+
+- the client trusts the **host certificates** signed by the server CA;
+- the server trusts the **user certificates** signed by the user CA.
+
+Two different CAs are used, and the private key of a CA never leaves the machine where the signing is done.
+""",
+    "Certificats d'hôte": "Host certificates",
+    """
+
+```
+ssh-keygen -t ed25519 -f ca_serveurs -C "CA des serveurs"      # une seule fois
+
+# pour chaque serveur : signer sa clé publique d'hôte
+ssh-keygen -s ca_serveurs -h -I web.example.org -n web,web.example.org -V +52w ssh_host_ed25519_key.pub
+# → ssh_host_ed25519_key-cert.pub
+```
+
+- `-s` : la clé privée de la CA ; `-h` : un certificat d'**hôte** ;
+- `-I` : l'identité du certificat (libre, reprise dans les journaux) ;
+- `-n` : les *principals*, ici les noms sous lesquels on joint le serveur ; le client vérifie que le
+  nom **qu'il a tapé** y figure ;
+- `-V` : la validité (`+52w`, `-5m:+1d`, `20270101:20280101`) ; `-z` : un numéro de série.
+
+Sur le serveur, dans un fichier de `sshd_config.d/`, puis `systemctl reload ssh` :
+
+```
+HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub
+```
+
+`ssh-keygen -L -f fichier-cert.pub` affiche un certificat ; `ssh-keyscan -c serveur`, celui que
+présente un serveur ; `ssh -v` montre `Server host certificate: …`.
+
+Sur le client, une ligne de `~/.ssh/known_hosts` (ou de `/etc/ssh/ssh_known_hosts`, pour tous les
+utilisateurs) donne la CA et les noms pour lesquels on lui fait confiance :
+
+```
+@cert-authority web,*.example.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA… CA des serveurs
+```
+
+Les motifs sont comparés au nom tapé (`ssh web` : `web` ; `ssh web.example.org` : le nom complet).
+Un serveur signé est alors accepté sans question, même la première fois, même réinstallé (avec un
+nouveau certificat). Si son certificat ne convient pas (CA inconnue, nom absent des *principals*,
+expiré), `ssh` se rabat sur la clé brute et sur les entrées habituelles de `known_hosts`. Les anciennes
+entrées d'un serveur se retirent avec `ssh-keygen -R serveur`.
+""": """
+
+```
+ssh-keygen -t ed25519 -f server_ca -C "server CA"              # once only
+
+# for each server: sign its public host key
+ssh-keygen -s server_ca -h -I web.example.org -n web,web.example.org -V +52w ssh_host_ed25519_key.pub
+# → ssh_host_ed25519_key-cert.pub
+```
+
+- `-s`: the private key of the CA; `-h`: a **host** certificate;
+- `-I`: the identity of the certificate (free text, repeated in the logs);
+- `-n`: the *principals*, here the names under which the server is reached; the client checks that the
+  name **you typed** is among them;
+- `-V`: the validity (`+52w`, `-5m:+1d`, `20270101:20280101`); `-z`: a serial number.
+
+On the server, in a file of `sshd_config.d/`, then `systemctl reload ssh`:
+
+```
+HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub
+```
+
+`ssh-keygen -L -f file-cert.pub` shows a certificate; `ssh-keyscan -c server`, the one a
+server presents; `ssh -v` shows `Server host certificate: …`.
+
+On the client, a line of `~/.ssh/known_hosts` (or of `/etc/ssh/ssh_known_hosts`, for every
+user) gives the CA and the names for which it is trusted:
+
+```
+@cert-authority web,*.example.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA… server CA
+```
+
+The patterns are compared with the name typed (`ssh web`: `web`; `ssh web.example.org`: the full name).
+A signed server is then accepted without a question, even the first time, even reinstalled (with a
+new certificate). If its certificate does not fit (unknown CA, name missing from the *principals*,
+expired), `ssh` falls back on the plain key and on the usual entries of `known_hosts`. The old
+entries of a server are removed with `ssh-keygen -R server`.
+""",
+    "Certificats d'utilisateur": "User certificates",
+    """
+
+```
+ssh-keygen -t ed25519 -f ca_utilisateurs -C "CA des utilisateurs"
+
+# signer la clé publique d'un utilisateur
+ssh-keygen -s ca_utilisateurs -I alice@pc -n alice,admins -V +8h -z 42 ~/.ssh/id_ed25519.pub
+# → ~/.ssh/id_ed25519-cert.pub, utilisé automatiquement avec la clé id_ed25519
+```
+
+Les *principals* (`-n`) sont les comptes, ou les rôles, que le certificat permet d'utiliser. Une
+validité courte limite les dégâts d'une clé volée. `-O` restreint le certificat :
+`-O no-port-forwarding`, `-O force-command=…`, `-O source-address=192.0.2.0/24`.
+
+Sur le serveur :
+
+```
+TrustedUserCAKeys /etc/ssh/ca_utilisateurs.pub
+AuthorizedPrincipalsFile /etc/ssh/principals/%u
+```
+
+- Sans `AuthorizedPrincipalsFile`, un certificat ouvre le compte dont le nom figure dans ses *principals*.
+- Avec, le fichier `/etc/ssh/principals/<compte>` (`%u`) liste les *principals* acceptés pour ce compte :
+  on peut ouvrir le compte `www` à tous les certificats portant le principal `admins`.
+- `authorized_keys` devient inutile. Une clé s'utilise avec son certificat : `ssh -i ~/.ssh/cle …`
+  charge aussi `~/.ssh/cle-cert.pub` (ou `-o CertificateFile=…`).
+
+Le journal du serveur note l'identité, le numéro de série et la CA :
+
+```
+Accepted publickey for www from 192.0.2.7 port 51000 ssh2: ED25519-CERT SHA256:… ID alice@pc (serial 42) CA ED25519 SHA256:…
+```
+""": """
+
+```
+ssh-keygen -t ed25519 -f user_ca -C "user CA"
+
+# sign the public key of a user
+ssh-keygen -s user_ca -I alice@pc -n alice,admins -V +8h -z 42 ~/.ssh/id_ed25519.pub
+# → ~/.ssh/id_ed25519-cert.pub, used automatically with the key id_ed25519
+```
+
+The *principals* (`-n`) are the accounts, or the roles, that the certificate lets you use. A
+short validity limits the damage of a stolen key. `-O` restricts the certificate:
+`-O no-port-forwarding`, `-O force-command=…`, `-O source-address=192.0.2.0/24`.
+
+On the server:
+
+```
+TrustedUserCAKeys /etc/ssh/user_ca.pub
+AuthorizedPrincipalsFile /etc/ssh/principals/%u
+```
+
+- Without `AuthorizedPrincipalsFile`, a certificate opens the account whose name is among its *principals*.
+- With it, the file `/etc/ssh/principals/<account>` (`%u`) lists the *principals* accepted for that account:
+  the account `www` can be opened to every certificate bearing the principal `admins`.
+- `authorized_keys` becomes unnecessary. A key is used with its certificate: `ssh -i ~/.ssh/key …`
+  also loads `~/.ssh/key-cert.pub` (or `-o CertificateFile=…`).
+
+The server log records the identity, the serial number and the CA:
+
+```
+Accepted publickey for www from 192.0.2.7 port 51000 ssh2: ED25519-CERT SHA256:… ID alice@pc (serial 42) CA ED25519 SHA256:…
+```
+""",
+    "Révoquer : les KRL": "Revoking: KRLs",
+    """
+
+Un certificat reste valable jusqu'à sa date de fin, même si la clé est volée. On le **révoque** avec
+une liste de révocation (KRL, *key revocation list*), un fichier binaire produit par `ssh-keygen` :
+
+```
+ssh-keygen -k -f /etc/ssh/revoked_keys cle.pub              # créer la liste : la clé et ses certificats
+ssh-keygen -k -u -f /etc/ssh/revoked_keys autre-cert.pub    # -u : ajouter à une liste existante
+ssh-keygen -k -f revoked_keys -s ca_utilisateurs.pub spec   # par série / identité (lignes « serial: 42 », « id: alice@pc »)
+ssh-keygen -Q -f /etc/ssh/revoked_keys cle.pub              # tester : REVOKED ou ok
+```
+
+Sur le serveur, `RevokedKeys /etc/ssh/revoked_keys`, puis redémarrer. Une tentative avec une clé
+révoquée est notée dans le journal (`Authentication key … revoked by file …`). Si le fichier est
+illisible, sshd refuse **toutes** les clés : créez-le avant d'ajouter la directive.
+""": """
+
+A certificate stays valid until its end date, even if the key is stolen. It is **revoked** with
+a revocation list (KRL, *key revocation list*), a binary file produced by `ssh-keygen`:
+
+```
+ssh-keygen -k -f /etc/ssh/revoked_keys key.pub              # create the list: the key and its certificates
+ssh-keygen -k -u -f /etc/ssh/revoked_keys other-cert.pub    # -u: add to an existing list
+ssh-keygen -k -f revoked_keys -s user_ca.pub spec           # by serial / identity (lines "serial: 42", "id: alice@pc")
+ssh-keygen -Q -f /etc/ssh/revoked_keys key.pub              # test: REVOKED or ok
+```
+
+On the server, `RevokedKeys /etc/ssh/revoked_keys`, then restart. An attempt with a revoked
+key is recorded in the log (`Authentication key … revoked by file …`). If the file is
+unreadable, sshd refuses **every** key: create it before adding the directive.
+""",
+    "Restreindre une clé : les options de authorized_keys": "Restricting a key: the options of authorized_keys",
+    """
+
+Chaque ligne de `authorized_keys` peut commencer par des options, séparées par des virgules, sans
+espace :
+
+```
+from="192.0.2.7",restrict,command="/usr/local/bin/rapport" ssh-ed25519 AAAA… robot@pc
+```
+
+| option | effet |
+|--------|-------|
+| `from="motifs"` | la clé n'est acceptée que depuis ces adresses ou ces noms (`192.0.2.0/24`, `*.example.org`, `!192.0.2.9`) |
+| `command="…"` | la commande lancée à chaque connexion, quelle que soit celle demandée (gardée dans `$SSH_ORIGINAL_COMMAND`) |
+| `restrict` | interdit tout : tunnels, agent, X11, terminal (pty), `~/.ssh/rc` ; on rouvre au besoin (`restrict,pty`) |
+| `no-port-forwarding`, `no-agent-forwarding`, `no-pty`, `no-X11-forwarding` | les interdictions une à une |
+| `permitopen="hôte:port"`, `permitlisten="port"` | les seuls tunnels permis |
+| `expiry-time="20271231"` | une date de fin |
+
+Piège : `command=` seul n'empêche **pas** les tunnels. Avec `ssh -N -L …` ou `ssh -W hôte:port`,
+aucune commande n'est lancée et le tunnel s'ouvre : ajoutez `restrict` (ou au moins
+`no-port-forwarding`).
+""": """
+
+Each line of `authorized_keys` may start with options, separated by commas, without
+spaces:
+
+```
+from="192.0.2.7",restrict,command="/usr/local/bin/report" ssh-ed25519 AAAA… robot@pc
+```
+
+| option | effect |
+|--------|--------|
+| `from="patterns"` | the key is accepted only from these addresses or names (`192.0.2.0/24`, `*.example.org`, `!192.0.2.9`) |
+| `command="…"` | the command run at each connection, whatever the one requested (kept in `$SSH_ORIGINAL_COMMAND`) |
+| `restrict` | forbids everything: tunnels, agent, X11, terminal (pty), `~/.ssh/rc`; reopen what you need (`restrict,pty`) |
+| `no-port-forwarding`, `no-agent-forwarding`, `no-pty`, `no-X11-forwarding` | the prohibitions one by one |
+| `permitopen="host:port"`, `permitlisten="port"` | the only tunnels allowed |
+| `expiry-time="20271231"` | an end date |
+
+Trap: `command=` alone does **not** prevent tunnels. With `ssh -N -L …` or `ssh -W host:port`,
+no command is run and the tunnel opens: add `restrict` (or at least
+`no-port-forwarding`).
+""",
+    "Blocs Match et SFTP en prison": "Match blocks and SFTP in a jail",
+    """
+
+Un bloc `Match` change des réglages pour certaines connexions seulement. Il s'étend jusqu'au `Match`
+suivant ou jusqu'à la fin du **fichier** (dans un fichier de `sshd_config.d/`, il s'arrête à la fin
+de ce fichier) ; seules certaines directives y sont permises (`man sshd_config`). On le place donc en
+dernier ; `Match all` revient aux réglages communs.
+
+```
+Match User depot                 # aussi : Group, Address 192.0.2.0/24, Host, LocalPort
+    ChrootDirectory /srv/sftp/%u
+    ForceCommand internal-sftp
+    AllowTcpForwarding no
+    X11Forwarding no
+```
+
+- `ForceCommand internal-sftp` : la seule commande possible est le serveur SFTP intégré ; `ssh` répond
+  `This service allows sftp connections only.`
+- `ChrootDirectory` : après l'authentification, ce répertoire devient la racine `/` du compte. Lui et
+  **tous ses parents** doivent appartenir à `root` et n'être modifiables que par lui ; sinon le
+  journal dit `bad ownership or modes for chroot directory` et la connexion est coupée. Le compte ne
+  peut donc pas écrire à la racine de sa prison : on lui donne un sous-répertoire à lui.
+- `internal-sftp` n'a besoin d'aucun fichier dans la prison, contrairement à un shell.
+- `sudo sshd -T -C user=depot,host=pc,addr=192.0.2.7` montre la configuration obtenue pour ce compte.
+""": """
+
+A `Match` block changes settings for some connections only. It extends up to the next `Match`
+or to the end of the **file** (in a file of `sshd_config.d/`, it stops at the end
+of that file); only some directives are allowed in it (`man sshd_config`). So it is placed
+last; `Match all` goes back to the common settings.
+
+```
+Match User depot                 # also: Group, Address 192.0.2.0/24, Host, LocalPort
+    ChrootDirectory /srv/sftp/%u
+    ForceCommand internal-sftp
+    AllowTcpForwarding no
+    X11Forwarding no
+```
+
+- `ForceCommand internal-sftp`: the only possible command is the built-in SFTP server; `ssh` answers
+  `This service allows sftp connections only.`
+- `ChrootDirectory`: after authentication, this directory becomes the root `/` of the account. It and
+  **all its parents** must belong to `root` and be writable by it only; otherwise the
+  log says `bad ownership or modes for chroot directory` and the connection is cut. The account therefore
+  cannot write at the root of its jail: it is given a subdirectory of its own.
+- `internal-sftp` needs no file inside the jail, unlike a shell.
+- `sudo sshd -T -C user=depot,host=pc,addr=192.0.2.7` shows the configuration obtained for this account.
+""",
+    "Aide-mémoire": "Cheat sheet",
+    """
+
+| quoi | commande |
+|------|----------|
+| configuration effective du client | `ssh -G hôte` |
+| configuration effective du serveur | `sudo sshd -T [-C user=…,host=…,addr=…]` |
+| vérifier puis appliquer | `sudo sshd -t && sudo systemctl reload ssh` |
+| rebond | `ssh -J compte@bastion compte@interne`, `ProxyJump` |
+| tunnels en arrière-plan | `ssh -f -N -L …`, `-R …`, `-D …` |
+| ports en écoute | `ss -ltne` |
+| proxy SOCKS avec curl | `curl --socks5-hostname 127.0.0.1:port http://nom/` |
+| signer une clé d'hôte | `ssh-keygen -s ca -h -I id -n noms -V +52w cle.pub` |
+| signer une clé d'utilisateur | `ssh-keygen -s ca -I id -n principals -V +1d cle.pub` |
+| lire un certificat | `ssh-keygen -L -f cle-cert.pub`, `ssh-keyscan -c serveur` |
+| empreinte d'une clé | `ssh-keygen -l -f cle.pub` |
+| révoquer | `ssh-keygen -k [-u] -f revoked_keys cle.pub`, `RevokedKeys` |
+| multiplexage | `ssh -O check hôte`, `ssh -O exit hôte` |
+| journal du serveur | `sudo tail -f /var/log/auth.log` |
+""": """
+
+| what | command |
+|------|---------|
+| effective configuration of the client | `ssh -G host` |
+| effective configuration of the server | `sudo sshd -T [-C user=…,host=…,addr=…]` |
+| check, then apply | `sudo sshd -t && sudo systemctl reload ssh` |
+| jump | `ssh -J account@bastion account@internal`, `ProxyJump` |
+| background tunnels | `ssh -f -N -L …`, `-R …`, `-D …` |
+| listening ports | `ss -ltne` |
+| SOCKS proxy with curl | `curl --socks5-hostname 127.0.0.1:port http://name/` |
+| sign a host key | `ssh-keygen -s ca -h -I id -n names -V +52w key.pub` |
+| sign a user key | `ssh-keygen -s ca -I id -n principals -V +1d key.pub` |
+| read a certificate | `ssh-keygen -L -f key-cert.pub`, `ssh-keyscan -c server` |
+| fingerprint of a key | `ssh-keygen -l -f key.pub` |
+| revoke | `ssh-keygen -k [-u] -f revoked_keys key.pub`, `RevokedKeys` |
+| multiplexing | `ssh -O check host`, `ssh -O exit host` |
+| server log | `sudo tail -f /var/log/auth.log` |
+""",
+    "Partie 1 : solution (clé, ~/.ssh/config, ops corrigé, vault)": "Part 1: solution (key, ~/.ssh/config, ops fixed, vault)",
+    "Partie 2 : solution (deux tunnels locaux)": "Part 2: solution (two local tunnels)",
+    "Partie 3 : solution (tunnel distant depuis nas, GatewayPorts)": "Part 3: solution (remote tunnel from nas, GatewayPorts)",
+    "Partie 4 : solution (proxy SOCKS)": "Part 4: solution (SOCKS proxy)",
+    "Partie 5 : solution (certificats d'hôte de bastion et relay)": "Part 5: solution (host certificates of bastion and relay)",
+    "Partie 6 : solution (certificat d'utilisateur, compte deploy)": "Part 6: solution (user certificate, deploy account)",
+    "Partie 7 : solution (restrictions sur files)": "Part 7: solution (restrictions on files)",
+    "Bonus : solution (révocation du stagiaire, multiplexage)": "Bonus: solution (revocation of the intern's key, multiplexing)",
+    "Solution de référence : toutes les parties et le bonus, formulaires remplis.": "Reference solution: every part and the bonus, forms filled.",
+    "Organisation du TP": "Organisation of the lab",
+    """
+Lisez l'onglet **Informations** : il présente la configuration du client, les rebonds, les tunnels,
+les certificats et les restrictions de SSH.
+
+Vous êtes `admin` (mot de passe `admin`) sur votre poste **`laptop`**, sur Internet. L'entreprise
+`corp.lan` a ses serveurs dans des réseaux internes ; la maison d'un collègue a un `nas`.
+
+| réseau | adresse | machines |
+|--------|---------|----------|
+| `internet` | {internet} | `laptop` ({laptop}), `bastion` ({bastion}), `relay` ({relay}), `files` ({files}), le routeur de la maison |
+| `corp` (interne) | {corp} | `bastion` ({bastion_corp}), `intranet`, `db`, `ops` |
+| `secure` (interne) | {secure} | `ops`, `vault` |
+| `home` (maison, derrière un NAT) | {home} | `nas` |
+
+- Seuls `laptop` et `nas` ont un terminal (connexion `admin` / `admin`) ; le reste se fait par SSH.
+- Aucune machine ne route entre Internet et les réseaux internes : depuis `laptop`, seuls `bastion`,
+  `relay` et `files` sont joignables. `laptop` ne connaît que leurs noms (`bastion` ou
+  `bastion.example.net`…) ; les noms internes (`*.corp.lan`) ne sont connus que des machines internes.
+- Sur les serveurs, votre compte est **`{sysop}`**, mot de passe **`{sysop_password}`** ; `sudo` vous rend
+  administrateur de `bastion`, `ops`, `relay` et `files`.
+- `nas` peut joindre Internet, mais personne ne peut le joindre.
+
+**Valeurs de votre instance**
+
+| | |
+|-|-|
+| port local du tunnel vers l'intranet (partie 2) | {port_intranet} |
+| port local du tunnel vers la console de `db` (partie 2) | {port_db} |
+| port à ouvrir sur `relay` (partie 3) | {port_relay} |
+| port local du proxy SOCKS (partie 4) | {port_socks} |
+| principal des certificats d'utilisateur (partie 6) | `{principal}` |
+| mot de passe du compte `upload` de `files` (partie 7) | `{upload_password}` |
+
+**Règles**
+
+- Les tunnels doivent être **ouverts au moment de l'évaluation** : lancez-les en arrière-plan
+  (`ssh -f -N …`) et laissez-les tourner.
+- Après avoir modifié la configuration d'un serveur : `sudo sshd -t && sudo systemctl reload ssh`
+  (section @@ref:sshd-config@@). Les connexions ouvertes ne sont pas coupées.
+- Les parties sont indépendantes : faites-les dans l'ordre que vous voulez.
+- L'évaluation est automatique : elle lit la configuration et les journaux des machines, et teste vos
+  tunnels et vos serveurs depuis `laptop` et depuis une machine cachée sur Internet.
+""": """
+Read the **Informations** tab: it presents the client configuration, jump hosts, tunnels,
+certificates and the restrictions of SSH.
+
+You are `admin` (password `admin`) on your host **`laptop`**, on the Internet. The company
+`corp.lan` has its servers in internal networks; a colleague's house has a `nas`.
+
+| network | address | machines |
+|---------|---------|----------|
+| `internet` | {internet} | `laptop` ({laptop}), `bastion` ({bastion}), `relay` ({relay}), `files` ({files}), the router of the house |
+| `corp` (internal) | {corp} | `bastion` ({bastion_corp}), `intranet`, `db`, `ops` |
+| `secure` (internal) | {secure} | `ops`, `vault` |
+| `home` (house, behind a NAT) | {home} | `nas` |
+
+- Only `laptop` and `nas` have a terminal (login `admin` / `admin`); everything else is done through SSH.
+- No machine routes between the Internet and the internal networks: from `laptop`, only `bastion`,
+  `relay` and `files` are reachable. `laptop` knows only their names (`bastion` or
+  `bastion.example.net`…); the internal names (`*.corp.lan`) are known only to the internal machines.
+- On the servers, your account is **`{sysop}`**, password **`{sysop_password}`**; `sudo` makes you
+  administrator of `bastion`, `ops`, `relay` and `files`.
+- `nas` can reach the Internet, but nobody can reach it.
+
+**Values of your instance**
+
+| | |
+|-|-|
+| local port of the tunnel to the intranet (part 2) | {port_intranet} |
+| local port of the tunnel to the console of `db` (part 2) | {port_db} |
+| port to open on `relay` (part 3) | {port_relay} |
+| local port of the SOCKS proxy (part 4) | {port_socks} |
+| principal of the user certificates (part 6) | `{principal}` |
+| password of the `upload` account of `files` (part 7) | `{upload_password}` |
+
+**Rules**
+
+- The tunnels must be **open at the time of the evaluation**: start them in the background
+  (`ssh -f -N …`) and leave them running.
+- After changing the configuration of a server: `sudo sshd -t && sudo systemctl reload ssh`
+  (section @@ref:sshd-config@@). Open connections are not cut.
+- The parts are independent: do them in any order you like.
+- The evaluation is automatic: it reads the configuration and the logs of the machines, and tests your
+  tunnels and your servers from `laptop` and from a hidden machine on the Internet.
+""",
+    """
+**Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour cette instance. Les
+états `solve_part1` à `solve_part7` et `solve_bonus` appliquent la solution d'une partie, `final`
+toutes (une vingtaine de secondes) ; ils remplissent les formulaires. Ils utilisent des clés de
+référence : ils remplacent `~admin/.ssh/id_ed25519` et les CA de `~admin/ca` sur `laptop`.
+
+- Mots de passe : `root` partout et `admin` des serveurs `{root_password}` ; `sysop` `{sysop_password}` ;
+  `upload` `{upload_password}` ; `deploy` et `backupbot` n'ont pas de mot de passe connu.
+- `ops` démarre avec `AllowTcpForwarding no` (`{hardening}`) : le rebond vers `vault` échoue tant que
+  ce n'est pas corrigé (partie 1).
+- Une machine cachée `probe` ({probe}, sur `internet`) teste le port publié par `relay`, les
+  certificats d'hôte (`ssh-keyscan -c`), le compte SFTP et la clé de sauvegarde depuis une autre adresse
+  que celle de `laptop`.
+- `service ssh …` et `systemctl … ssh` sont équivalents dans ce TP (`/run/systemd/system` existe :
+  `service` passe par le `systemctl` de l'image) ; dans une image sans ce répertoire, mélanger les deux
+  laisse un sshd mort.
+- Le bonus de révocation suppose la CA des utilisateurs de la partie 6 installée sur `bastion`.
+""": """
+**For the instructor.** Each question ends with its solution, computed for this instance. The
+states `solve_part1` to `solve_part7` and `solve_bonus` apply the solution of one part, `final`
+all of them (about twenty seconds); they fill the forms. They use reference
+keys: they replace `~admin/.ssh/id_ed25519` and the CAs of `~admin/ca` on `laptop`.
+
+- Passwords: `root` everywhere and `admin` of the servers `{root_password}`; `sysop` `{sysop_password}`;
+  `upload` `{upload_password}`; `deploy` and `backupbot` have no known password.
+- `ops` starts with `AllowTcpForwarding no` (`{hardening}`): the jump to `vault` fails until
+  this is fixed (part 1).
+- A hidden machine `probe` ({probe}, on `internet`) tests the port published by `relay`, the
+  host certificates (`ssh-keyscan -c`), the SFTP account and the backup key from an address other
+  than that of `laptop`.
+- `service ssh …` and `systemctl … ssh` are equivalent in this lab (`/run/systemd/system` exists:
+  `service` goes through the `systemctl` of the image); in an image without this directory, mixing the two
+  leaves a dead sshd.
+- The revocation bonus assumes that the user CA of part 6 is installed on `bastion`.
+""",
+    "Partie 1 — ~/.ssh/config et rebonds": "Part 1 — ~/.ssh/config and jump hosts",
+    "Rebondir jusqu'à vault": "Jumping to vault",
+    """
+Sections @@ref:config@@ et @@ref:jump@@. Sur `laptop`, en tant que `admin` :
+
+1. Créez une paire de clés **ed25519** `~/.ssh/id_ed25519` (phrase secrète facultative).
+2. Écrivez `~/.ssh/config` pour que :
+   - `ssh bastion` ouvre `{sysop}@bastion.example.net` ;
+   - `ssh ops` ouvre `{sysop}@ops.corp.lan` en rebondissant par `bastion` ;
+   - `ssh vault` ouvre `{sysop}@vault.corp.lan` en rebondissant par `ops` (donc par `bastion`, puis `ops`).
+3. Installez votre clé publique dans le compte `{sysop}` de `bastion`, `ops` et `vault` (`ssh-copy-id`
+   lit votre configuration).
+4. `ssh vault` échoue : lisez le message, trouvez la cause sur `ops` et corrigez-la (`sudo` sur `ops`).
+""": """
+Sections @@ref:config@@ and @@ref:jump@@. On `laptop`, as `admin`:
+
+1. Create an **ed25519** key pair `~/.ssh/id_ed25519` (passphrase optional).
+2. Write `~/.ssh/config` so that:
+   - `ssh bastion` opens `{sysop}@bastion.example.net`;
+   - `ssh ops` opens `{sysop}@ops.corp.lan`, jumping through `bastion`;
+   - `ssh vault` opens `{sysop}@vault.corp.lan`, jumping through `ops` (so through `bastion`, then `ops`).
+3. Install your public key in the `{sysop}` account of `bastion`, `ops` and `vault` (`ssh-copy-id`
+   reads your configuration).
+4. `ssh vault` fails: read the message, find the cause on `ops` and fix it (`sudo` on `ops`).
+""",
+    """
+**Question.** Le contenu du fichier `secret` du compte `{sysop}` de `vault` : @@{{vault_secret:.+}}@@
+""": """
+**Question.** The content of the file `secret` of the `{sysop}` account of `vault`: @@{{vault_secret:.+}}@@
+""",
+    """
+**Solution.**
+
+```
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
+cat > ~/.ssh/config <<'EOF'
+{config}EOF
+chmod 600 ~/.ssh/config
+ssh-copy-id bastion; ssh-copy-id ops           # mot de passe de {sysop} : {sysop_password}
+ssh vault           # channel 0: open failed: administratively prohibited / stdio forwarding failed
+ssh ops
+sudo sed -i 's/^AllowTcpForwarding no/AllowTcpForwarding yes/' {hardening}
+sudo sshd -t && sudo systemctl reload ssh
+exit
+ssh-copy-id vault
+ssh vault cat secret                           # {secret}
+```
+
+`ops` refusait de relayer le flux vers `vault:22` (`AllowTcpForwarding no`, ou `sudo sshd -T | grep
+allowtcpforwarding`) ; `local` suffit aussi. L'évaluation lit `ssh -G bastion`, `ssh -G ops`, `ssh -G vault`
+de `admin` (compte, nom, `proxyjump`), cherche la clé dans `authorized_keys` des trois comptes, lit `sshd -T -C`
+de `ops` (et vérifie qu'aucun fichier n'a été modifié depuis le démarrage de sshd), et cherche dans
+`auth.log` de `vault` une connexion par clé de `{sysop}` venant de `ops` ({ops_ip}).
+""": """
+**Solution.**
+
+```
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
+cat > ~/.ssh/config <<'EOF'
+{config}EOF
+chmod 600 ~/.ssh/config
+ssh-copy-id bastion; ssh-copy-id ops           # password of {sysop}: {sysop_password}
+ssh vault           # channel 0: open failed: administratively prohibited / stdio forwarding failed
+ssh ops
+sudo sed -i 's/^AllowTcpForwarding no/AllowTcpForwarding yes/' {hardening}
+sudo sshd -t && sudo systemctl reload ssh
+exit
+ssh-copy-id vault
+ssh vault cat secret                           # {secret}
+```
+
+`ops` refused to relay the stream to `vault:22` (`AllowTcpForwarding no`, or `sudo sshd -T | grep
+allowtcpforwarding`); `local` is enough too. The evaluation reads `ssh -G bastion`, `ssh -G ops`, `ssh -G vault`
+of `admin` (account, name, `proxyjump`), looks for the key in `authorized_keys` of the three accounts, reads `sshd -T -C`
+of `ops` (and checks that no file has been changed since sshd started), and looks in
+`auth.log` of `vault` for a key login of `{sysop}` coming from `ops` ({ops_ip}).
+""",
+    "clé ed25519 de admin sur laptop": "ed25519 key of admin on laptop",
+    "la clé de admin dans authorized_keys de sysop sur {m}": "admin's key in authorized_keys of sysop on {m}",
+    "ssh bastion : bon nom, bon compte": "ssh bastion: right name, right account",
+    "ssh ops : rebond par bastion": "ssh ops: jump through bastion",
+    "ssh vault : rebonds par bastion puis ops": "ssh vault: jumps through bastion then ops",
+    "ops relaie les flux (appliqué)": "ops relays the streams (applied)",
+    "connexion par clé à vault à travers ops": "key login to vault through ops",
+    "le secret de vault": "the secret of vault",
+    "Partie 2 — Tunnels locaux (-L)": "Part 2 — Local tunnels (-L)",
+    "Tunnels locaux vers l'intranet et vers db": "Local tunnels to the intranet and to db",
+    """
+Sections @@ref:tunnels@@ et @@ref:local@@. Le site `http://intranet.corp.lan/` et la console
+d'administration de `db`, qui n'écoute que sur `127.0.0.1:{console}` **de `db`**, sont hors de portée
+de `laptop`. Ouvrez sur `laptop`, en arrière-plan, et laissez ouverts :
+
+1. un tunnel du port local **{port_intranet}** vers `intranet.corp.lan:80`, à travers `bastion` ;
+2. un tunnel du port local **{port_db}** vers la console de `db` (le compte `{sysop}` existe sur `db`).
+
+À travers vos tunnels, avec `curl`, relevez :
+""": """
+Sections @@ref:tunnels@@ and @@ref:local@@. The site `http://intranet.corp.lan/` and the administration
+console of `db`, which listens only on `127.0.0.1:{console}` **of `db`**, are out of reach
+of `laptop`. On `laptop`, open in the background, and leave open:
+
+1. a tunnel from the local port **{port_intranet}** to `intranet.corp.lan:80`, through `bastion`;
+2. a tunnel from the local port **{port_db}** to the console of `db` (the account `{sysop}` exists on `db`).
+
+Through your tunnels, with `curl`, note:
+""",
+    """
+- le secret de l'intranet : @@{intranet_secret:.+}@@
+- l'adresse du client vue par l'intranet : @@{intranet_client:.+}@@
+- le secret de la console de `db` : @@{db_secret:.+}@@
+- l'adresse du client vue par la console : @@{db_client:.+}@@
+""": """
+- the secret of the intranet: @@{intranet_secret:.+}@@
+- the client address seen by the intranet: @@{intranet_client:.+}@@
+- the secret of the console of `db`: @@{db_secret:.+}@@
+- the client address seen by the console: @@{db_client:.+}@@
+""",
+    """
+**Solution.**
+
+```
+ssh -f -N -o ExitOnForwardFailure=yes -L {port_intranet}:intranet.corp.lan:80 {sysop}@bastion.example.net
+ssh -f -N -o ExitOnForwardFailure=yes -L {port_db}:localhost:{console} -J {sysop}@bastion.example.net {sysop}@db.corp.lan
+curl http://localhost:{port_intranet}/
+curl http://localhost:{port_db}/
+```
+
+(avec la configuration de la partie 1, `ssh -f -N -L {port_intranet}:intranet.corp.lan:80 bastion`). Réponses :
+`{secret_intranet}` ; `{bastion_corp}` (c'est `bastion` qui ouvre la connexion) ; `{secret_db}` ;
+`127.0.0.1` (`localhost` est résolu par `db`). L'évaluation regarde les ports en écoute sur `laptop` et
+passe un `curl` dans chaque tunnel.
+""": """
+**Solution.**
+
+```
+ssh -f -N -o ExitOnForwardFailure=yes -L {port_intranet}:intranet.corp.lan:80 {sysop}@bastion.example.net
+ssh -f -N -o ExitOnForwardFailure=yes -L {port_db}:localhost:{console} -J {sysop}@bastion.example.net {sysop}@db.corp.lan
+curl http://localhost:{port_intranet}/
+curl http://localhost:{port_db}/
+```
+
+(with the configuration of part 1, `ssh -f -N -L {port_intranet}:intranet.corp.lan:80 bastion`). Answers:
+`{secret_intranet}`; `{bastion_corp}` (it is `bastion` that opens the connection); `{secret_db}`;
+`127.0.0.1` (`localhost` is resolved by `db`). The evaluation looks at the listening ports on `laptop` and
+sends a `curl` through each tunnel.
+""",
+    "tunnel local vers l'intranet ouvert et fonctionnel": "local tunnel to the intranet open and working",
+    "tunnel local vers la console de db ouvert et fonctionnel": "local tunnel to the console of db open and working",
+    "secret de l'intranet": "secret of the intranet",
+    "client vu par l'intranet": "client seen by the intranet",
+    "secret de la console de db": "secret of the console of db",
+    "client vu par la console de db": "client seen by the console of db",
+    "Partie 3 — Tunnel distant (-R)": "Part 3 — Remote tunnel (-R)",
+    "Publier le nas par relay": "Publishing the nas through relay",
+    """
+Sections @@ref:remote@@ et @@ref:server-forwarding@@. `nas`, dans la maison, sert une page web sur son
+port 80, derrière un NAT. Rendez-la accessible depuis Internet par `relay` :
+
+1. depuis `nas` (en tant que `admin`), ouvrez en arrière-plan un tunnel distant : le port
+   **{port_relay}** de `relay` (compte `{sysop}`) mène au port 80 de `nas` ;
+2. regardez sur `relay` (`ss -ltn`) l'adresse à laquelle ce port écoute, puis faites en sorte que
+   **toutes** les machines d'Internet puissent l'utiliser : depuis `laptop`,
+   `curl http://relay.example.net:{port_relay}/` doit afficher la page de `nas`. Laissez le tunnel ouvert.
+""": """
+Sections @@ref:remote@@ and @@ref:server-forwarding@@. `nas`, in the house, serves a web page on its
+port 80, behind a NAT. Make it reachable from the Internet through `relay`:
+
+1. from `nas` (as `admin`), open a remote tunnel in the background: port
+   **{port_relay}** of `relay` (account `{sysop}`) leads to port 80 of `nas`;
+2. look on `relay` (`ss -ltn`) at the address this port listens on, then make sure that
+   **every** machine of the Internet can use it: from `laptop`,
+   `curl http://relay.example.net:{port_relay}/` must show the page of `nas`. Leave the tunnel open.
+""",
+    """
+**Question.** Avant tout réglage du serveur, à quelle adresse IPv4 `relay` écoute-t-il ce port ?
+@@{loopback:.+}@@
+""": """
+**Question.** Before any change to the server, on which IPv4 address does `relay` listen on this port?
+@@{loopback:.+}@@
+""",
+    """
+**Solution.**
+
+```
+# sur nas
+ssh -f -N -o ExitOnForwardFailure=yes -R 0.0.0.0:{port_relay}:localhost:80 {sysop}@relay.example.net
+# sur relay : ss -ltn montre 127.0.0.1:{port_relay} (et [::1]) : GatewayPorts no
+echo 'GatewayPorts clientspecified' | sudo tee /etc/ssh/sshd_config.d/60-gateway-ports.conf
+sudo sshd -t && sudo systemctl reload ssh
+# sur nas : tuer le premier tunnel (pkill -x ssh) et le relancer : il écoute alors sur 0.0.0.0
+```
+
+(`GatewayPorts yes` marche aussi, même sans `0.0.0.0:`.) Réponse : `127.0.0.1`. L'évaluation regarde le
+port en écoute sur `relay` et y passe un `curl` local, puis un `curl` depuis la machine cachée sur
+Internet, et lit `GatewayPorts` (`sshd -T`).
+""": """
+**Solution.**
+
+```
+# on nas
+ssh -f -N -o ExitOnForwardFailure=yes -R 0.0.0.0:{port_relay}:localhost:80 {sysop}@relay.example.net
+# on relay: ss -ltn shows 127.0.0.1:{port_relay} (and [::1]): GatewayPorts no
+echo 'GatewayPorts clientspecified' | sudo tee /etc/ssh/sshd_config.d/60-gateway-ports.conf
+sudo sshd -t && sudo systemctl reload ssh
+# on nas: kill the first tunnel (pkill -x ssh) and start it again: it then listens on 0.0.0.0
+```
+
+(`GatewayPorts yes` works too, even without `0.0.0.0:`.) Answer: `127.0.0.1`. The evaluation looks at the
+listening port on `relay` and sends a local `curl` through it, then a `curl` from the hidden machine on
+the Internet, and reads `GatewayPorts` (`sshd -T`).
+""",
+    "tunnel distant ouvert de relay vers nas": "remote tunnel open from relay to nas",
+    "la page de nas joignable depuis Internet par relay": "the page of nas reachable from the Internet through relay",
+    "GatewayPorts sur relay (appliqué)": "GatewayPorts on relay (applied)",
+    "adresse d'écoute par défaut": "default listening address",
+    "Partie 4 — Tunnel dynamique (-D)": "Part 4 — Dynamic tunnel (-D)",
+    "Un proxy SOCKS vers les sites internes": "A SOCKS proxy to the internal sites",
+    """
+Section @@ref:dynamic@@. L'entreprise a deux autres sites internes, `http://wiki.corp.lan/` et
+`http://git.corp.lan/`, dont seules les machines internes connaissent les noms.
+
+1. Ouvrez sur `laptop`, en arrière-plan, un proxy SOCKS sur le port **{port_socks}**, à travers
+   `bastion`, et laissez-le ouvert.
+2. À travers ce proxy, avec `curl`, relevez :
+""": """
+Section @@ref:dynamic@@. The company has two other internal sites, `http://wiki.corp.lan/` and
+`http://git.corp.lan/`, whose names only the internal machines know.
+
+1. On `laptop`, open in the background a SOCKS proxy on port **{port_socks}**, through
+   `bastion`, and leave it open.
+2. Through this proxy, with `curl`, note:
+""",
+    """
+- le secret du wiki : @@{wiki_secret:.+}@@
+- le secret de git : @@{git_secret:.+}@@
+- l'option de `curl` (ou le préfixe d'URL du proxy) qui fait résoudre les noms par `bastion` : @@{curl_option:.+}@@
+""": """
+- the secret of the wiki: @@{wiki_secret:.+}@@
+- the secret of git: @@{git_secret:.+}@@
+- the `curl` option (or the proxy URL prefix) that makes `bastion` resolve the names: @@{curl_option:.+}@@
+""",
+    """
+**Solution.**
+
+```
+ssh -f -N -o ExitOnForwardFailure=yes -D {port_socks} {sysop}@bastion.example.net
+curl --socks5-hostname 127.0.0.1:{port_socks} http://wiki.corp.lan/
+curl -x socks5h://127.0.0.1:{port_socks} http://git.corp.lan/
+```
+
+Réponses : `{wiki}` ; `{git}` ; `--socks5-hostname` (ou `socks5h://`). Avec `--socks5`, c'est `laptop`
+qui cherche le nom : `Could not resolve host`. L'évaluation regarde le port en écoute et passe par le
+proxy pour lire le wiki.
+""": """
+**Solution.**
+
+```
+ssh -f -N -o ExitOnForwardFailure=yes -D {port_socks} {sysop}@bastion.example.net
+curl --socks5-hostname 127.0.0.1:{port_socks} http://wiki.corp.lan/
+curl -x socks5h://127.0.0.1:{port_socks} http://git.corp.lan/
+```
+
+Answers: `{wiki}`; `{git}`; `--socks5-hostname` (or `socks5h://`). With `--socks5`, it is `laptop`
+that looks up the name: `Could not resolve host`. The evaluation looks at the listening port and goes
+through the proxy to read the wiki.
+""",
+    "proxy SOCKS ouvert et fonctionnel": "SOCKS proxy open and working",
+    "secret du wiki": "secret of the wiki",
+    "secret de git": "secret of git",
+    "résolution des noms par le proxy": "name resolution by the proxy",
+    "Partie 5 — Certificats d'hôte": "Part 5 — Host certificates",
+    "Une CA pour les serveurs": "A CA for the servers",
+    """
+Sections @@ref:pki@@ et @@ref:host-certs@@. Plus de question « Are you sure you want to continue
+connecting » pour les serveurs publics de l'entreprise :
+
+1. Sur `laptop`, créez la CA des serveurs : une paire de clés ed25519 `~/ca/host_ca` et `~/ca/host_ca.pub`.
+2. Signez la clé d'hôte ed25519 (`/etc/ssh/ssh_host_ed25519_key.pub`) de `bastion` et celle de `relay` :
+   certificats d'**hôte**, valables dès maintenant et pour un an au plus, pour le nom court **et** le
+   nom complet (`bastion` et `bastion.example.net`, `relay` et `relay.example.net`). Installez chaque
+   certificat dans `/etc/ssh/ssh_host_ed25519_key-cert.pub` de son serveur et faites-le présenter par sshd.
+3. Sur `laptop`, faites confiance à cette CA pour ces quatre noms (dans `~/.ssh/known_hosts` de `admin`,
+   ou dans `/etc/ssh/ssh_known_hosts`).
+
+Vérifiez : après `ssh-keygen -R bastion`, `ssh bastion` ne pose plus de question (`ssh -v` affiche
+`Server host certificate`). La clé publique d'un serveur se récupère avec `scp`, la signature se fait
+sur `laptop`, où reste la clé privée de la CA.
+""": """
+Sections @@ref:pki@@ and @@ref:host-certs@@. No more "Are you sure you want to continue
+connecting" question for the public servers of the company:
+
+1. On `laptop`, create the server CA: an ed25519 key pair `~/ca/host_ca` and `~/ca/host_ca.pub`.
+2. Sign the ed25519 host key (`/etc/ssh/ssh_host_ed25519_key.pub`) of `bastion` and that of `relay`:
+   **host** certificates, valid from now and for one year at most, for the short name **and** the
+   full name (`bastion` and `bastion.example.net`, `relay` and `relay.example.net`). Install each
+   certificate in `/etc/ssh/ssh_host_ed25519_key-cert.pub` of its server and make sshd present it.
+3. On `laptop`, trust this CA for these four names (in `~/.ssh/known_hosts` of `admin`,
+   or in `/etc/ssh/ssh_known_hosts`).
+
+Check: after `ssh-keygen -R bastion`, `ssh bastion` no longer asks a question (`ssh -v` shows
+`Server host certificate`). The public key of a server is fetched with `scp`; the signing is done
+on `laptop`, where the private key of the CA stays.
+""",
+    """
+**Solution.**
+
+```
+mkdir -p ~/ca && ssh-keygen -t ed25519 -f ~/ca/host_ca -C "CA des serveurs"
+for h in bastion relay; do
+  scp {sysop}@$h:/etc/ssh/ssh_host_ed25519_key.pub $h.pub
+  ssh-keygen -s ~/ca/host_ca -h -I $h.example.net -n $h,$h.example.net -V -5m:+52w $h.pub
+  scp $h-cert.pub {sysop}@$h:
+  ssh -t {sysop}@$h "sudo install -m 644 $h-cert.pub /etc/ssh/ssh_host_ed25519_key-cert.pub &&
+    echo 'HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub' | sudo tee /etc/ssh/sshd_config.d/70-host-certificate.conf &&
+    sudo systemctl reload ssh"
+done
+echo "@cert-authority {names} $(cat ~/ca/host_ca.pub)" >> ~/.ssh/known_hosts
+ssh-keygen -R bastion; ssh-keygen -R relay; ssh bastion
+```
+
+L'évaluation : la CA sur `laptop` ; sur chaque serveur, `ssh-keygen -L` du certificat (hôte, signé par
+cette CA, les deux noms, valable, pour la clé ed25519 du serveur) ; le certificat présenté
+(`ssh-keyscan -c` depuis la machine cachée) ; enfin, sur `laptop`, une connexion stricte vers chacun des
+quatre noms avec un `known_hosts` réduit aux lignes `@cert-authority` (une entrée ordinaire ne compte pas).
+""": """
+**Solution.**
+
+```
+mkdir -p ~/ca && ssh-keygen -t ed25519 -f ~/ca/host_ca -C "server CA"
+for h in bastion relay; do
+  scp {sysop}@$h:/etc/ssh/ssh_host_ed25519_key.pub $h.pub
+  ssh-keygen -s ~/ca/host_ca -h -I $h.example.net -n $h,$h.example.net -V -5m:+52w $h.pub
+  scp $h-cert.pub {sysop}@$h:
+  ssh -t {sysop}@$h "sudo install -m 644 $h-cert.pub /etc/ssh/ssh_host_ed25519_key-cert.pub &&
+    echo 'HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub' | sudo tee /etc/ssh/sshd_config.d/70-host-certificate.conf &&
+    sudo systemctl reload ssh"
+done
+echo "@cert-authority {names} $(cat ~/ca/host_ca.pub)" >> ~/.ssh/known_hosts
+ssh-keygen -R bastion; ssh-keygen -R relay; ssh bastion
+```
+
+The evaluation: the CA on `laptop`; on each server, `ssh-keygen -L` of the certificate (host, signed by
+this CA, both names, valid, for the ed25519 key of the server); the certificate presented
+(`ssh-keyscan -c` from the hidden machine); finally, on `laptop`, a strict connection to each of the
+four names with a `known_hosts` reduced to the `@cert-authority` lines (an ordinary entry does not count).
+""",
+    "CA des serveurs sur laptop": "server CA on laptop",
+    "certificat d'hôte de {m}": "host certificate of {m}",
+    "{m} présente son certificat": "{m} presents its certificate",
+    "laptop reconnaît {m} par la CA, sous ses deux noms": "laptop recognises {m} through the CA, under both its names",
+    "Partie 6 — Certificats d'utilisateur": "Part 6 — User certificates",
+    "Le compte deploy, par certificat": "The deploy account, by certificate",
+    """
+Section @@ref:user-certs@@. Le compte `{deploy}` de `bastion` et de `relay` n'a pas de mot de passe connu
+ni de `authorized_keys` : on n'y entre qu'avec un certificat.
+
+1. Sur `laptop`, créez la CA des utilisateurs `~/ca/user_ca` (ed25519), **différente** de celle des serveurs.
+2. Créez une clé ed25519 `~/.ssh/deploy` et faites signer sa partie publique par cette CA : certificat
+   d'utilisateur pour le principal **`{principal}`**, valable dès maintenant et **7 jours au plus**
+   (`~/.ssh/deploy-cert.pub`).
+3. Sur `bastion` et `relay`, faites confiance à cette CA (`/etc/ssh/user_ca.pub`) et ouvrez le compte
+   `{deploy}` aux certificats portant le principal `{principal}` (`/etc/ssh/auth_principals/{deploy}`).
+4. Connectez-vous en `{deploy}` sur `bastion`, puis sur `relay`, avec votre certificat.
+""": """
+Section @@ref:user-certs@@. The account `{deploy}` of `bastion` and `relay` has no known password
+and no `authorized_keys`: the only way in is a certificate.
+
+1. On `laptop`, create the user CA `~/ca/user_ca` (ed25519), **different** from the server CA.
+2. Create an ed25519 key `~/.ssh/deploy` and have its public part signed by this CA: a user
+   certificate for the principal **`{principal}`**, valid from now and for **7 days at most**
+   (`~/.ssh/deploy-cert.pub`).
+3. On `bastion` and `relay`, trust this CA (`/etc/ssh/user_ca.pub`) and open the account
+   `{deploy}` to the certificates bearing the principal `{principal}` (`/etc/ssh/auth_principals/{deploy}`).
+4. Log in as `{deploy}` on `bastion`, then on `relay`, with your certificate.
+""",
+    """
+**Solution.**
+
+```
+ssh-keygen -t ed25519 -f ~/ca/user_ca -C "CA des utilisateurs"
+ssh-keygen -t ed25519 -f ~/.ssh/deploy
+ssh-keygen -s ~/ca/user_ca -I admin@laptop -n {principal} -V -5m:+1d ~/.ssh/deploy.pub
+ssh-keygen -L -f ~/.ssh/deploy-cert.pub
+for h in bastion relay; do
+  scp ~/ca/user_ca.pub {sysop}@$h:
+  ssh -t {sysop}@$h "sudo install -m 644 user_ca.pub /etc/ssh/user_ca.pub &&
+    sudo mkdir -p /etc/ssh/auth_principals && echo {principal} | sudo tee /etc/ssh/auth_principals/{deploy} &&
+    printf 'TrustedUserCAKeys /etc/ssh/user_ca.pub\\nAuthorizedPrincipalsFile /etc/ssh/auth_principals/%%u\\n' |
+      sudo tee /etc/ssh/sshd_config.d/80-user-ca.conf && sudo sshd -t && sudo systemctl reload ssh"
+  ssh -i ~/.ssh/deploy {deploy}@$h true
+done
+```
+
+L'évaluation : la CA (différente de celle des serveurs) ; `ssh-keygen -L` de `~/.ssh/deploy-cert.pub`
+(utilisateur, signé par la CA, principal `{principal}`, validité de 7 jours au plus, pour la clé
+`~/.ssh/deploy`) ; dans `auth.log` de `bastion` et de `relay`, une connexion de `{deploy}` par un
+certificat de cette CA (`ED25519-CERT … CA ED25519 SHA256:…`), hors clé du stagiaire.
+""": """
+**Solution.**
+
+```
+ssh-keygen -t ed25519 -f ~/ca/user_ca -C "user CA"
+ssh-keygen -t ed25519 -f ~/.ssh/deploy
+ssh-keygen -s ~/ca/user_ca -I admin@laptop -n {principal} -V -5m:+1d ~/.ssh/deploy.pub
+ssh-keygen -L -f ~/.ssh/deploy-cert.pub
+for h in bastion relay; do
+  scp ~/ca/user_ca.pub {sysop}@$h:
+  ssh -t {sysop}@$h "sudo install -m 644 user_ca.pub /etc/ssh/user_ca.pub &&
+    sudo mkdir -p /etc/ssh/auth_principals && echo {principal} | sudo tee /etc/ssh/auth_principals/{deploy} &&
+    printf 'TrustedUserCAKeys /etc/ssh/user_ca.pub\\nAuthorizedPrincipalsFile /etc/ssh/auth_principals/%%u\\n' |
+      sudo tee /etc/ssh/sshd_config.d/80-user-ca.conf && sudo sshd -t && sudo systemctl reload ssh"
+  ssh -i ~/.ssh/deploy {deploy}@$h true
+done
+```
+
+The evaluation: the CA (different from the server CA); `ssh-keygen -L` of `~/.ssh/deploy-cert.pub`
+(user, signed by the CA, principal `{principal}`, validity of 7 days at most, for the key
+`~/.ssh/deploy`); in `auth.log` of `bastion` and of `relay`, a login of `{deploy}` with a
+certificate of this CA (`ED25519-CERT … CA ED25519 SHA256:…`), the intern's key excluded.
+""",
+    "CA des utilisateurs sur laptop, distincte de celle des serveurs": "user CA on laptop, distinct from the server CA",
+    "certificat d'utilisateur de ~/.ssh/deploy": "user certificate of ~/.ssh/deploy",
+    "connexion de deploy par certificat sur {m}": "login of deploy by certificate on {m}",
+    "Partie 7 — Restreindre les accès": "Part 7 — Restricting access",
+    "Restrictions sur files": "Restrictions on files",
+    """
+Sections @@ref:key-options@@ et @@ref:match@@. Sur `files` (vous en êtes administrateur avec `sudo`) :
+
+1. Interdisez toute connexion SSH de `root`.
+2. Le compte `{upload}` (mot de passe `{upload_password}`) ne doit servir qu'à déposer des fichiers en
+   SFTP : enfermé dans `{chroot}`, qui devient sa racine `/`, il n'y voit que le répertoire `incoming`,
+   où il peut écrire ; aucune commande, aucun tunnel.
+3. Un robot de sauvegarde se connectera au compte `{backup}` avec la clé dont la partie publique est
+   `~admin/backup_key.pub` sur `laptop`. Installez-la pour qu'elle ne soit acceptée que depuis
+   l'adresse de `laptop` ({laptop}), qu'elle ne lance que la commande `{command}`, quelle que soit la
+   commande demandée, et qu'elle ne permette rien d'autre (ni tunnel, ni terminal, ni agent).
+
+Pour tester depuis `laptop` : `sftp {upload}@files`, `ssh -i ~/backup_key {backup}@files | tar -tzf -`.
+""": """
+Sections @@ref:key-options@@ and @@ref:match@@. On `files` (you are its administrator with `sudo`):
+
+1. Forbid any SSH login of `root`.
+2. The account `{upload}` (password `{upload_password}`) must only be used to drop files over
+   SFTP: locked in `{chroot}`, which becomes its root `/`, it sees only the directory `incoming` there,
+   where it can write; no command, no tunnel.
+3. A backup robot will connect to the account `{backup}` with the key whose public part is
+   `~admin/backup_key.pub` on `laptop`. Install it so that it is accepted only from
+   the address of `laptop` ({laptop}), that it runs only the command `{command}`, whatever the
+   command requested, and that it allows nothing else (no tunnel, no terminal, no agent).
+
+To test from `laptop`: `sftp {upload}@files`, `ssh -i ~/backup_key {backup}@files | tar -tzf -`.
+""",
+    """
+**Solution.** Sur `files` :
+
+```
+sudo mkdir -p {chroot}/incoming
+sudo chown root:root /srv /srv/sftp {chroot} && sudo chmod 755 /srv /srv/sftp {chroot}
+sudo chown {upload}:{upload} {chroot}/incoming
+echo 'PermitRootLogin no' | sudo tee /etc/ssh/sshd_config.d/10-root-login.conf
+sudo tee /etc/ssh/sshd_config.d/90-sftp-upload.conf <<'EOF'
+{match}EOF
+sudo install -d -m 700 -o {backup} -g {backup} /home/{backup}/.ssh
+sudo tee /home/{backup}/.ssh/authorized_keys <<'EOF'
+{line}
+EOF
+sudo chown {backup}: /home/{backup}/.ssh/authorized_keys && sudo chmod 600 /home/{backup}/.ssh/authorized_keys
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+(la clé publique se copie depuis `laptop` : `scp ~/backup_key.pub {sysop}@files:`.) L'évaluation lit
+`PermitRootLogin` (`sshd -T`) ; depuis la machine cachée, elle ouvre une session SFTP de `{upload}` (`pwd`
+doit donner `/`, `ls /` seulement `incoming`, et un dépôt dans `incoming` doit réussir) et tente
+`ssh {upload}@files id` (`This service allows sftp connections only.`) ; depuis `laptop`, la clé doit
+donner l'archive (`data/`) et voir `ssh -W` refusé ; depuis la machine cachée, la même clé doit être refusée.
+""": """
+**Solution.** On `files`:
+
+```
+sudo mkdir -p {chroot}/incoming
+sudo chown root:root /srv /srv/sftp {chroot} && sudo chmod 755 /srv /srv/sftp {chroot}
+sudo chown {upload}:{upload} {chroot}/incoming
+echo 'PermitRootLogin no' | sudo tee /etc/ssh/sshd_config.d/10-root-login.conf
+sudo tee /etc/ssh/sshd_config.d/90-sftp-upload.conf <<'EOF'
+{match}EOF
+sudo install -d -m 700 -o {backup} -g {backup} /home/{backup}/.ssh
+sudo tee /home/{backup}/.ssh/authorized_keys <<'EOF'
+{line}
+EOF
+sudo chown {backup}: /home/{backup}/.ssh/authorized_keys && sudo chmod 600 /home/{backup}/.ssh/authorized_keys
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+(the public key is copied from `laptop`: `scp ~/backup_key.pub {sysop}@files:`.) The evaluation reads
+`PermitRootLogin` (`sshd -T`); from the hidden machine, it opens an SFTP session of `{upload}` (`pwd`
+must give `/`, `ls /` only `incoming`, and an upload into `incoming` must succeed) and tries
+`ssh {upload}@files id` (`This service allows sftp connections only.`); from `laptop`, the key must
+give the archive (`data/`) and see `ssh -W` refused; from the hidden machine, the same key must be refused.
+""",
+    "PermitRootLogin no sur files (appliqué)": "PermitRootLogin no on files (applied)",
+    "upload enfermé dans sa prison SFTP": "upload locked in its SFTP jail",
+    "dépôt possible dans incoming": "upload into incoming possible",
+    "upload : SFTP seulement": "upload: SFTP only",
+    "la clé du robot lance la sauvegarde": "the robot's key runs the backup",
+    "la clé du robot n'ouvre pas de tunnel": "the robot's key opens no tunnel",
+    "la clé du robot refusée depuis une autre adresse": "the robot's key refused from another address",
+    "Bonus — Révocation et multiplexage": "Bonus — Revocation and multiplexing",
+    "Révoquer le stagiaire, multiplexer": "Revoking the intern, multiplexing",
+    """
+Sections @@ref:krl@@ et @@ref:multiplex@@ (le premier point demande la partie 6).
+
+1. Le stagiaire a la clé `~admin/intern/id_ed25519` sur `laptop`. Signez-la avec la CA des
+   utilisateurs (certificat d'utilisateur `~admin/intern/id_ed25519-cert.pub`, principal
+   `{principal}`) et vérifiez qu'elle ouvre le compte `{deploy}` de `bastion`… Puis la clé est perdue :
+   révoquez-la sur `bastion`, sans gêner votre propre certificat.
+2. Configurez le multiplexage des connexions de `admin` vers `relay` (`Host relay`) : une connexion
+   maîtresse qui reste ouverte au moins 10 minutes après la dernière session. Laissez-en une ouverte.
+""": """
+Sections @@ref:krl@@ and @@ref:multiplex@@ (the first item requires part 6).
+
+1. The intern has the key `~admin/intern/id_ed25519` on `laptop`. Sign it with the user
+   CA (user certificate `~admin/intern/id_ed25519-cert.pub`, principal
+   `{principal}`) and check that it opens the account `{deploy}` of `bastion`… Then the key is lost:
+   revoke it on `bastion`, without disturbing your own certificate.
+2. Configure the multiplexing of the connections of `admin` to `relay` (`Host relay`): a master
+   connection that stays open at least 10 minutes after the last session. Leave one open.
+""",
+    """
+**Solution.**
+
+```
+ssh-keygen -s ~/ca/user_ca -I intern -n {principal} -V +1d ~/intern/id_ed25519.pub
+ssh -i ~/intern/id_ed25519 {deploy}@bastion true      # accepté
+scp ~/intern/id_ed25519.pub {sysop}@bastion:intern.pub
+ssh -t {sysop}@bastion "sudo ssh-keygen -k -f {krl} intern.pub &&
+  echo 'RevokedKeys {krl}' | sudo tee /etc/ssh/sshd_config.d/81-revoked-keys.conf &&
+  sudo sshd -t && sudo systemctl reload ssh"
+ssh -i ~/intern/id_ed25519 {deploy}@bastion true      # Permission denied
+cat >> ~/.ssh/config <<'EOF'
+{mux}EOF
+ssh relay true; ssh -O check relay                    # Master running
+```
+
+L'évaluation : le certificat du stagiaire (utilisateur, signé par la CA des utilisateurs) ; une tentative
+avec cette clé vers `deploy@bastion`, refusée, et la ligne `revoked by file` de `auth.log` de `bastion` ;
+`ssh -G relay` (`controlmaster`, `controlpath`, `controlpersist` d'au moins 600 s ou `yes`) et
+`ssh -O check relay`.
+""": """
+**Solution.**
+
+```
+ssh-keygen -s ~/ca/user_ca -I intern -n {principal} -V +1d ~/intern/id_ed25519.pub
+ssh -i ~/intern/id_ed25519 {deploy}@bastion true      # accepted
+scp ~/intern/id_ed25519.pub {sysop}@bastion:intern.pub
+ssh -t {sysop}@bastion "sudo ssh-keygen -k -f {krl} intern.pub &&
+  echo 'RevokedKeys {krl}' | sudo tee /etc/ssh/sshd_config.d/81-revoked-keys.conf &&
+  sudo sshd -t && sudo systemctl reload ssh"
+ssh -i ~/intern/id_ed25519 {deploy}@bastion true      # Permission denied
+cat >> ~/.ssh/config <<'EOF'
+{mux}EOF
+ssh relay true; ssh -O check relay                    # Master running
+```
+
+The evaluation: the intern's certificate (user, signed by the user CA); an attempt
+with this key to `deploy@bastion`, refused, and the line `revoked by file` in `auth.log` of `bastion`;
+`ssh -G relay` (`controlmaster`, `controlpath`, `controlpersist` of at least 600 s or `yes`) and
+`ssh -O check relay`.
+""",
+    "certificat du stagiaire": "the intern's certificate",
+    "certificat du stagiaire révoqué sur bastion": "the intern's certificate revoked on bastion",
+    "multiplexage configuré vers relay": "multiplexing configured to relay",
+    "une connexion maîtresse vers relay ouverte": "a master connection to relay open",
+}}

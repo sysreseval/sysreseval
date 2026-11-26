@@ -47,6 +47,8 @@ ALONE = {'part1_discovery': 'part1', 'part2_ports': 'part2', 'part3_versions': '
 FORMS = {'q_discovery', 'q_ports', 'q_versions', 'q_nse', 'q_surface', 'q_exposure', 'q_ssh', 'q_web', 'q_firewall'}
 TOTAL = 132
 FORM_POINTS = sum(f for _, f in POINTS.values())
+#: the tr() literals inside instructor() calls (each one translated, removed by strip-instructor)
+INSTRUCTOR_TEXTS = 19
 
 
 @pytest.fixture(scope='module')
@@ -332,6 +334,18 @@ class TestLab:
 # ---------------------------------------------------------------------------
 
 
+def _instructor_literals():
+    ast = check_sre_translations.ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
 def _texts(lab, data, tmp_pub_dir):
     name = _running_name()
     marker = Path(params.instructor_mode_marker_filename(name))
@@ -358,12 +372,19 @@ class TestTexts:
                       data.snmp_secret, data.printer_community, data.server_cn, 'Partie 1', 'SRE-ASSET'):
             assert value not in text, value
 
-    def test_instructor_translations(self, lab):
+    def test_translations(self, lab):
+        """Every text is French with its English in _TRANSLATIONS['en'] (the markup kept: checked for every lab
+        of the directory by test_draft_misc_translations.py), the 19 instructor texts among them."""
         tree = check_sre_translations.ast.parse(_LAB_PATH.read_text())
         tr_strings = check_sre_translations.get_tr_strings(tree)
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
         english = lab._TRANSLATIONS['en']
-        assert set(english) <= set(tr_strings) and None not in english.values() and len(english) == 19
+        assert set(english) == set(tr_strings) and all(english.values())
+        literals = _instructor_literals()
+        assert len(literals) == len(set(literals)) == INSTRUCTOR_TEXTS and set(literals) <= set(english)
         assert all(english[k] != k for k in english)
+        assert lab.title.resolve('en') == "Scanning and hardening: nmap, NSE scripts and attack surface reduction"
+        assert lab.NetScheme.final._sre_state_description.resolve('en').startswith("Complete reference solution")
         for fr, en in english.items():
             assert set(re.findall(r'\{(\w+)\}', fr)) == set(re.findall(r'\{(\w+)\}', en)), fr[:60]
 
@@ -397,7 +418,7 @@ class TestTexts:
         result = strip_tool.strip_source(source)
         assert b'instructor(' not in result.data
         assert not result.warnings, result.warnings
-        assert result.calls == 16 and result.translations == 19
+        assert result.calls == 16 and result.translations == INSTRUCTOR_TEXTS
         for text in (b'**Solution', b"Pour l'enseignant", b'For the instructor'):
             assert text not in result.data
         stripped = tmp_path / 'scan_hardening_stripped.py'
@@ -405,5 +426,8 @@ class TestTexts:
         spec = importlib.util.spec_from_file_location('scan_hardening_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        kept = module._TRANSLATIONS['en']
+        assert not set(kept) & set(_instructor_literals())
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - INSTRUCTOR_TEXTS
         grade = _replay(module, _evaluation('final'), answers='final')
         assert _totals(grade) == (TOTAL, TOTAL, 6)

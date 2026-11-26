@@ -423,16 +423,47 @@ def _words_lost(source, rendered):
     return None
 
 
+def _instructor_literals() -> list:
+    """The literals of the tr() calls inside instructor(…) calls, in source order."""
+    ast = check_sre_translations.ast
+    literals = []
+    for node in ast.walk(ast.parse(_LAB_PATH.read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'instructor':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and getattr(sub.func, 'id', '') == 'tr' and sub.args \
+                        and isinstance(sub.args[0], ast.Constant):
+                    literals.append(sub.args[0].value)
+    return literals
+
+
+def _english_entries(source: bytes) -> set:
+    """The keys of _TRANSLATIONS['en'] in a lab source."""
+    ast = check_sre_translations.ast
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', '') == '_TRANSLATIONS':
+            languages = ast.literal_eval(node.value)
+            return set(languages['en'])
+    return set()
+
+
 class TestTexts:
-    def test_instructor_translations(self, lab):
-        """Every instructor text exists in French and English (the other texts are French only for now);
-        no English entry is left over."""
+    def test_translations(self, lab):
+        """Every text is French with its English in _TRANSLATIONS['en'] (the instructor ones and the others; the
+        markup kept: checked for every lab of the directory by test_draft_misc_translations.py); no English
+        entry is missing, empty or left over."""
         tree = check_sre_translations.ast.parse(_LAB_PATH.read_text())
         tr_strings = check_sre_translations.get_tr_strings(tree)
         english = lab._TRANSLATIONS['en']
-        assert set(english) <= set(tr_strings) and None not in english.values()
-        assert len(english) == 42 and all(english[k] != k for k in english if k.strip() != '**Solution.**')
+        assert set(lab._TRANSLATIONS) == {'en'} and lab.default_language == 'fr'
+        assert set(english) == set(tr_strings) and all(english.values())
+        assert all(english[k] != k for k in english if k.strip() not in ('**Solution.**', 'FreeRADIUS', 'EAP', 'Kerberos'))
         assert sum(v.lstrip().startswith(('**Solution.**', '**For the instructor.**')) for v in english.values()) == 19
+        literals = _instructor_literals()
+        assert len(literals) == 43 and set(literals) <= set(english)
+        # the import-time texts carry their English inline (evaluated before _TRANSLATIONS exists)
+        for state in PARTS + ('final',):
+            description = getattr(lab.NetScheme, state)._sre_state_description
+            assert _text(description, 'en') == english[_text(description, 'fr')] != _text(description, 'fr'), state
 
     def test_instructor_fragments_in_both_languages(self, lab, data, tmp_pub_dir):
         _, _, grade = _texts(lab, data, tmp_pub_dir)
@@ -461,11 +492,16 @@ class TestTexts:
                 lost = _words_lost(unwrap_instructor(text) if show else strip_instructor(text), rendered)
                 assert lost is None, (name, show, lost)
 
-    def test_stripped_lab_file(self):
+    def test_stripped_lab_file(self, lab):
         source = _LAB_PATH.read_bytes()
         result = strip_tool.strip_source(source)
         assert b'instructor(tr(' not in result.data and not result.warnings, result.warnings
         compile(result.data, 'aaa_stripped', 'exec')
-        assert result.calls == 20 and result.translations == 42 and result.import_removed
+        instructor_literals = set(_instructor_literals())
+        assert result.calls == 20 and result.translations == len(instructor_literals) == 42 and result.import_removed
+        # the stripped file keeps the English of every other text
+        kept = _english_entries(result.data)
+        assert not kept & instructor_literals
+        assert len(kept) == len(lab._TRANSLATIONS['en']) - len(instructor_literals)
         for text in (b'**Solution.**', b"Pour l'enseignant", b'For the instructor'):
             assert text not in result.data
