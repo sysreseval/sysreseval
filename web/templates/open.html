@@ -4,6 +4,9 @@
 {% block content %}
 <div class="toolbar">
   <h1>{{ _("Open a lab") }}</h1>
+  {% if sharing and not instructor %}
+  <button type="button" id="open-shared" title="{{ _("Join the running project of another student who shares it") }}">{{ _("Open a shared lab…") }}</button>
+  {% endif %}
   {% if instructor %}
   <button type="button" id="costs-toggle" class="toggle" aria-pressed="false" title="{{ _("Show or hide, beside each lab, what one of its projects is counted for on a host") }}">{{ _("Lab costs") }}</button>
   <button type="button" id="costs-table" title="{{ _("The costs of every lab the pool heard of, in a table") }}">{{ _("Costs table…") }}</button>

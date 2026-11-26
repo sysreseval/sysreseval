@@ -28,6 +28,7 @@
   --focus-bg: #80cbc4;              /* the top bars of both pages while the instructor focuses the student on it */
   --exam-bg: #ffe082;               /* the bar and the top bar of a student's page while an exam binds them */
   --private-bg: #f8bbd0;            /* a private conversation: the banner of the invitation, the title bar of its window */
+  --shared-bg: #c5e1a5;             /* a shared project: the banner of a request to join, the top bars of a participant's page */
 }
 
 * { box-sizing: border-box; }
@@ -868,6 +869,58 @@ dialog.webconf table.grid td.actions button { margin-right: 4px; }
 .ctrl-bar .display-status.error { color: var(--danger); }
 .ctrl-bar .display-name { font-size: 90%; opacity: 0.8; }
 .ctrl-bar .display-clipboard { height: 1.6em; width: 16em; resize: none; font: inherit; padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px; }
+
+/* shared projects (sharing.js, share_dialog.js): the banner of the owner, across the top of
+   the page like the invitation above (one line per student asking to join); the dialog of the
+   Share button; the top bars of a participant's page (body.participating, set by project.js) */
+.share-requests {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1060;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--shared-bg);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  color: var(--text);
+}
+.share-requests .share-request { display: flex; align-items: center; gap: 10px; max-width: 100%; }
+.share-requests .text { font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.participating .topbar, body.participating .project-bar { background: var(--shared-bg); }
+button#share-project[aria-pressed="true"] { background: var(--shared-bg); border-color: #7cb342; }
+button#share-project.attention { font-weight: bold; }
+dialog.share-dialog { width: 560px; }
+dialog.shared-labs { width: 860px; overflow: auto; }
+/* the Watch page: the Sharing cell opens the dialog of the project (a dotted link, like a lab or
+   a group cell), a row being closed by a bulk close is greyed, the dialogs of the page */
+table.grid.watch td.sharing { cursor: pointer; text-decoration: underline dotted; }
+table.grid.watch td[data-policy="forbidden"] { color: var(--danger); }
+table.grid.watch tr.row-closing td { color: var(--muted); font-style: italic; }
+dialog.watch-sharing fieldset.share-policy { margin: 8px 0; padding: 6px 10px; border: 1px solid var(--border); }
+dialog.watch-sharing fieldset.share-policy label { display: block; margin: 2px 0; }
+dialog.watch-close { width: 560px; }
+dialog.watch-close h2 { margin: 0 0 6px; font-size: 1.2em; }
+dialog.watch-close ul { max-height: 50vh; overflow: auto; margin: 6px 0 6px 20px; }
+dialog.shared-labs h2 { margin: 0 0 6px; font-size: 1.2em; }
+dialog.shared-labs table.grid.watch { width: 100%; margin: 8px 0; }
+dialog.shared-labs td.actions { white-space: nowrap; }
+.card.shared { border-color: #7cb342; }
+.card.shared .meta .shared-by { color: var(--text); font-weight: bold; }
+dialog.share-dialog h2 { margin: 0 0 6px; font-size: 1.2em; }
+dialog.share-dialog h3 { margin: 12px 0 4px; font-size: 1em; }
+dialog.share-dialog .share-controls { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+dialog.share-dialog .share-controls select { flex: 1; min-width: 0; }
+dialog.share-dialog .share-denied { font-weight: bold; }
+ul.share-users { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow: auto; }
+ul.share-users li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+ul.share-users li .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.share-users li .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); flex: none; }
+ul.share-users li.connected .dot { background: #43a047; }
 
 /* presentations: the overlay of a student's page (the iframe of /present/{id}), the bar and the
    audience dialog of the presenter's page, the read-only terminals of a spectator; the top bars

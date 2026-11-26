@@ -2713,3 +2713,278 @@ msgstr "{used} projets enregistrés sur {max}"
 
 msgid "{used} saved project(s)"
 msgstr "{used} projet(s) enregistré(s)"
+
+# --- the shared projects: project.html, share_dialog.js, sharing.js, sharing_model.js, open.html, shared_labs.js,
+# --- projects.js, watch.html, watch.js, watch_sharing.js, tabs/display.js, tabs/evaluation.js, terminal.js ---
+msgid "Share"
+msgstr "Partager"
+
+msgid "Who works in this project, and whom it is shared with"
+msgstr "Qui travaille dans ce projet, et avec qui il est partagé"
+
+msgid "This project is no longer shared with you."
+msgstr "Ce projet n'est plus partagé avec vous."
+
+msgid "Shared · {n}"
+msgstr "Partagé · {n}"
+
+msgid "Sharing of the project"
+msgstr "Partage du projet"
+
+msgid "The students you accept work in this project with you: its terminals, its questions, its evaluation."
+msgstr "Les étudiants que vous acceptez travaillent dans ce projet avec vous : ses terminaux, ses questions, son évaluation."
+
+msgid "Only you close or save it."
+msgstr "Vous seul le fermez ou l'enregistrez."
+
+msgid "Everybody"
+msgstr "Tout le monde"
+
+msgid "everybody"
+msgstr "tout le monde"
+
+msgid "Share with"
+msgstr "Partager avec"
+
+msgid "Stop sharing"
+msgstr "Arrêter le partage"
+
+msgid "The participants are sent back to their own projects"
+msgstr "Les participants sont renvoyés à leurs propres projets"
+
+msgid "An instructor has forbidden the sharing of this project."
+msgstr "Un enseignant a interdit le partage de ce projet."
+
+msgid "An instructor must allow the sharing of this project first."
+msgstr "Un enseignant doit d'abord autoriser le partage de ce projet."
+
+msgid "On this project"
+msgstr "Sur ce projet"
+
+msgid "On the project now"
+msgstr "Sur le projet en ce moment"
+
+msgid "Not on the project now"
+msgstr "Pas sur le projet en ce moment"
+
+msgid "owner"
+msgstr "propriétaire"
+
+msgid "Take this participant out of the project"
+msgstr "Retirer ce participant du projet"
+
+msgid "Nobody has joined yet."
+msgstr "Personne n'a encore rejoint le projet."
+
+msgid "Asking to join"
+msgstr "Demandent à rejoindre"
+
+msgid "Accept"
+msgstr "Accepter"
+
+msgid "Refuse"
+msgstr "Refuser"
+
+msgid "Shared by {name} with {audience}."
+msgstr "Partagé par {name} avec {audience}."
+
+msgid "This project is not shared."
+msgstr "Ce projet n'est pas partagé."
+
+msgid "Leave the project"
+msgstr "Quitter le projet"
+
+msgid "{name} asks to join {lab}"
+msgstr "{name} demande à rejoindre {lab}"
+
+msgid "{name} no longer asks to join."
+msgstr "{name} ne demande plus à rejoindre le projet."
+
+msgid "{name} accepted you on {lab}."
+msgstr "{name} vous a accepté sur {lab}."
+
+msgid "{name} refused."
+msgstr "{name} a refusé."
+
+msgid "{name} no longer shares this project."
+msgstr "{name} ne partage plus ce projet."
+
+msgid "You were taken out of the project of {name}."
+msgstr "Vous avez été retiré du projet de {name}."
+
+msgid "{name} no longer shares the project with you."
+msgstr "{name} ne partage plus le projet avec vous."
+
+msgid "The project of {name} is closed."
+msgstr "Le projet de {name} est fermé."
+
+msgid "An instructor ended the sharing of the project of {name}."
+msgstr "Un enseignant a mis fin au partage du projet de {name}."
+
+msgid "The sharing of the project of {name} ended: no shared project during an exam."
+msgstr "Le partage du projet de {name} a pris fin : pas de projet partagé pendant un examen."
+
+msgid "This request is over."
+msgstr "Cette demande est terminée."
+
+msgid "Open a shared lab…"
+msgstr "Ouvrir un projet partagé…"
+
+msgid "Open a shared lab"
+msgstr "Ouvrir un projet partagé"
+
+msgid "Join the running project of another student who shares it"
+msgstr "Rejoindre le projet en cours d'un autre étudiant qui le partage"
+
+msgid "The running projects other students share with you."
+msgstr "Les projets en cours que d'autres étudiants partagent avec vous."
+
+msgid "Their owner must accept you; you then work in the project with them."
+msgstr "Leur propriétaire doit vous accepter ; vous travaillez alors dans le projet avec lui."
+
+msgid "Participants"
+msgstr "Participants"
+
+msgid "The students already in the project"
+msgstr "Les étudiants déjà dans le projet"
+
+msgid "Ask to join"
+msgstr "Demander à rejoindre"
+
+msgid "waiting for {name}…"
+msgstr "en attente de {name}…"
+
+msgid "full"
+msgstr "complet"
+
+msgid "Nobody shares a project with you now."
+msgstr "Personne ne partage de projet avec vous en ce moment."
+
+msgid "{name} is not connected: nobody to ask."
+msgstr "{name} n'est pas connecté : personne à qui demander."
+
+msgid "This project takes no more participant."
+msgstr "Ce projet n'accepte plus de participant."
+
+msgid "Please wait a moment before asking again."
+msgstr "Patientez un instant avant de redemander."
+
+msgid "This project is no longer shared."
+msgstr "Ce projet n'est plus partagé."
+
+msgid "Shared by {name}"
+msgstr "Partagé par {name}"
+
+msgid "Leave"
+msgstr "Quitter"
+
+msgid "Evaluation run by {name}"
+msgstr "Évaluation lancée par {name}"
+
+msgid "The owner of the project sets the size of the desktop"
+msgstr "Le propriétaire du projet règle la taille du bureau"
+
+msgid "Sharing"
+msgstr "Partage"
+
+msgid "Whether the owner may share the project with other students, and how many take part in it; click a cell to see them and to decide"
+msgstr "Si le propriétaire peut partager le projet avec d'autres étudiants, et combien y participent ; cliquez sur une cellule pour les voir et pour décider"
+
+msgid "shared · {n}"
+msgstr "partagé · {n}"
+
+msgid "forbidden"
+msgstr "interdit"
+
+msgid "allowed"
+msgstr "autorisé"
+
+msgid "allowed (default)"
+msgstr "autorisé (par défaut)"
+
+msgid "not allowed (default)"
+msgstr "non autorisé (par défaut)"
+
+msgid "Shared with {audience}: {n} participant(s), {connected} on the project now"
+msgstr "Partagé avec {audience} : {n} participant(s), {connected} sur le projet en ce moment"
+
+msgid "This project cannot be shared"
+msgstr "Ce projet ne peut pas être partagé"
+
+msgid "This project cannot be shared."
+msgstr "Ce projet ne peut pas être partagé."
+
+msgid "Its owner may share this project"
+msgstr "Son propriétaire peut partager ce projet"
+
+msgid "Its owner may not share this project"
+msgstr "Son propriétaire ne peut pas partager ce projet"
+
+msgid "Select the projects shown"
+msgstr "Sélectionner les projets affichés"
+
+msgid "{n} project(s) selected"
+msgstr "{n} projet(s) sélectionné(s)"
+
+msgid "({n} outside the rows shown)"
+msgstr "({n} hors des lignes affichées)"
+
+msgid "Allow sharing"
+msgstr "Autoriser le partage"
+
+msgid "Forbid sharing"
+msgstr "Interdire le partage"
+
+msgid "Default sharing"
+msgstr "Partage par défaut"
+
+msgid "The owners of the selected projects may share them"
+msgstr "Les propriétaires des projets sélectionnés peuvent les partager"
+
+msgid "The owners of the selected projects may not share them; a sharing in progress ends"
+msgstr "Les propriétaires des projets sélectionnés ne peuvent pas les partager ; un partage en cours prend fin"
+
+msgid "The selected projects follow the default of the site again"
+msgstr "Les projets sélectionnés suivent de nouveau le réglage par défaut du site"
+
+msgid "{n} project(s) changed"
+msgstr "{n} projet(s) modifié(s)"
+
+msgid "{n} on a host that cannot share"
+msgstr "{n} sur une machine qui ne permet pas le partage"
+
+msgid "{n} could not be closed"
+msgstr "{n} n'ont pas pu être fermés"
+
+msgid "May its owner share it?"
+msgstr "Son propriétaire peut-il le partager ?"
+
+msgid "Default of the site"
+msgstr "Réglage par défaut du site"
+
+msgid "(allowed)"
+msgstr "(autorisé)"
+
+msgid "(not allowed)"
+msgstr "(non autorisé)"
+
+msgid "Allowed"
+msgstr "Autorisé"
+
+msgid "Forbidden"
+msgstr "Interdit"
+
+msgid "(ends the sharing in progress)"
+msgstr "(met fin au partage en cours)"
+
+msgid "Shared with {audience}."
+msgstr "Partagé avec {audience}."
+
+msgid "Close projects"
+msgstr "Fermer des projets"
+
+msgid "Close {n} project(s)"
+msgstr "Fermer {n} projet(s)"
+
+msgid "Their machines will be stopped, after the last evaluation of the labs that ask for one:"
+msgstr "Leurs machines seront arrêtées, après la dernière évaluation des TP qui en demandent une :"

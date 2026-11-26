@@ -42,6 +42,9 @@ EVENT_REMOVED = 'removed'
 EVENT_TERMINALS = 'terminals'
 EVENT_EVALUATED = 'evaluated'   # a new archived evaluation (periodic, the student's, an instructor's)
 EVENT_EXAM = 'exam'             # the exam of the project ended, was changed or removed (``exam.py``)
+#: A self-evaluation one of the students of a shared project ran, pushed to the pages of the
+#: others (the owner, the participants) with its table.
+EVENT_SELF_EVALUATION = 'self_evaluation'
 
 LOG_CHUNK = 1 << 18          # bytes of operations.log read per tick at most
 STATE_WRITE_INTERVAL = 60.0  # seconds between two writes of the state file of a project

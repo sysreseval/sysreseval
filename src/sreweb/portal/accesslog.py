@@ -138,11 +138,27 @@ EVENTS = {
     ('POST', '/api/saves/{owner}/{id}/restore'): 'start',
     ('PUT', '/api/saves/{owner}/{id}'): 'save_share',
     ('DELETE', '/api/saves/{owner}/{id}'): 'save_delete',
+    # the shared projects: the owner shares a project (``audience``) or stops (``count`` of
+    # participants out; ``owner`` when an instructor did it), a participant taken out or leaving
+    # (``member``, ``reason`` = removed / left), a student asking to join (``owner``, ``request``),
+    # the owner's answer (``member``, ``request``), a request taken back; the project calls of a
+    # participant keep their own events, with ``participant=1``
+    ('PUT', '/api/projects/{host}/{rln}/sharing'): 'share_start',
+    ('DELETE', '/api/projects/{host}/{rln}/sharing'): 'share_stop',
+    ('DELETE', '/api/projects/{host}/{rln}/sharing/participants/{login}'): 'share_remove',
+    ('POST', '/api/projects/{host}/{rln}/sharing/requests'): 'share_request',
+    ('POST', '/api/projects/{host}/{rln}/sharing/requests/{id}/accept'): 'share_accept',
+    ('POST', '/api/projects/{host}/{rln}/sharing/requests/{id}/decline'): 'share_decline',
+    ('DELETE', '/api/projects/{host}/{rln}/sharing/requests/{id}'): 'share_cancel',
+    # ... and the Watch page: the sharing of projects allowed, forbidden or back to the default
+    # (``policy``, ``count`` changed of ``selected``), projects closed in one go (``count``)
+    ('POST', '/api/watch/sharing'): 'share_policy',
+    ('POST', '/api/watch/close'): 'bulk_close',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
 PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', 'stop', 'eval', 'state',
-                            'present_start', 'present_open', 'focus_start', 'save'})
+                            'present_start', 'present_open', 'focus_start', 'save', 'share_start'})
 #: The polls of the browser: they keep the session alive but are not counted as requests.
 KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', '/api/watch/clients'),
                        ('GET', '/api/pool'),
@@ -155,7 +171,9 @@ KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', 
                        ('GET', '/api/focus/{id}/ws'), ('GET', '/api/archives/options'),
                        ('GET', '/api/groups/people'),
                        ('GET', '/api/exam'), ('GET', '/api/exams'), ('GET', '/api/exams/{id}'),
-                       ('GET', '/api/webconfs'), ('GET', '/api/webconfs/{id}')})
+                       ('GET', '/api/webconfs'), ('GET', '/api/webconfs/{id}'),
+                       ('GET', '/api/projects/{host}/{rln}/sharing'), ('GET', '/api/shares'),
+                       ('GET', '/api/watch/close')})
 #: Routes that neither touch the session nor count ('' = no route: 404 / 405).  The presence
 #: socket every page keeps open is one of them: the session expiry stays what it was; the page
 #: the BBB client lands on after *Leave meeting* (inside the iframe) too.

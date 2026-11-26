@@ -21,9 +21,19 @@
   <span class="swatch row-errors"></span> {{ _("errors in the last evaluation") }}
   <span class="hint">· {% if groups %}{{ _("click a row for its last evaluation, a lab for the summary of the lab, a group for that summary restricted to the group") }}{% else %}{{ _("click a row for its last evaluation, a lab for the summary of the lab") }}{% endif %}</span>
 </div>
-<table id="watch" class="grid watch striped" data-groups="{{ 'true' if groups else 'false' }}" data-group-sources="{{ 'true' if group_sources else 'false' }}">
+<div id="watch-selection" class="selection-bar">
+  <span id="watch-selected" class="muted"></span>
+  {% if sharing %}
+  <button type="button" data-action="allowed" disabled title="{{ _("The owners of the selected projects may share them") }}">{{ _("Allow sharing") }}</button>
+  <button type="button" data-action="forbidden" disabled title="{{ _("The owners of the selected projects may not share them; a sharing in progress ends") }}">{{ _("Forbid sharing") }}</button>
+  <button type="button" data-action="default" disabled title="{{ _("The selected projects follow the default of the site again") }}">{{ _("Default sharing") }}</button>
+  {% endif %}
+  <button type="button" data-action="close" disabled class="danger">{{ _("Close projects…") }}</button>
+</div>
+<table id="watch" class="grid watch striped" data-groups="{{ 'true' if groups else 'false' }}" data-group-sources="{{ 'true' if group_sources else 'false' }}" data-sharing="{{ 'true' if sharing else 'false' }}">
   <thead>
     <tr>
+      <th class="select"><input type="checkbox" id="watch-select-all" title="{{ _("Select the projects shown") }}"></th>
       <th class="sortable" data-sort="host">{{ _("Host") }}</th>
       <th class="sortable" data-sort="owner">{{ _("Owner") }}</th>
       <th class="sortable" data-sort="fullname">{{ _("Name") }}</th>
@@ -38,11 +48,12 @@
       <th class="sortable" data-sort="auto_eval_count" title="{{ _("The number of self-evaluations the student has run") }}">{{ _("Self-evaluations") }}</th>
       <th class="sortable" data-sort="terminals">{{ _("Terminals") }}</th>
       <th class="sortable" data-sort="clients" title="{{ _("The clients of the owner on the project: their browsers showing its page, and their local GUI on the host") }}">{{ _("Clients") }}</th>
+      <th class="sortable" data-sort="sharing" title="{{ _("Whether the owner may share the project with other students, and how many take part in it; click a cell to see them and to decide") }}"{% if not sharing %} hidden{% endif %}>{{ _("Sharing") }}</th>
       <th class="sortable" data-sort="managed">{{ _("Mode") }}</th>
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="16" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="18" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 </div>
 <div id="watch-clients" class="watch-clients" hidden>

@@ -32,6 +32,7 @@ from .manager import PoolManager
 from .pool import Pool, PoolError
 from .presentation import Presence, Presentations
 from .focus import Focuses
+from .sharing import Sharing, state_file_beside as sharing_file_beside
 from .bbb import BbbClient
 from .webconf import Webconfs
 from .relay import Relay
@@ -148,12 +149,22 @@ class Portal:
                                     origin=self.exam_store.origin() if self.exam_store is not None else '')
         self.exams.on_tick.append(self.exam_hosts.reconcile)
         self.pool.exam_hold = self.exam_hosts.held
+        # the shared projects: who shares what with whom, kept beside the state file of the pool;
+        # the statuses of the hosts tell it which projects still run, the exams whom they bind
+        self.sharing = Sharing(self.presence, default=self.cfg.sharing.allowed,
+                               bound=lambda login, group: self.exams.for_login(login, group) is not None,
+                               statuses=lambda: self.pool.status,
+                               state_file=sharing_file_beside(self.cfg.admin.state_file),
+                               request_timeout=self.cfg.sharing.request_timeout,
+                               max_participants=self.cfg.sharing.max_participants)
+        if self.cfg.sharing_available and not self.sharing.state_file:
+            log.info("shared projects: not kept across a restart ([admin] state_file is not set)")
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
                              access=self.access, presentations=self.presentations, roles=self.roles,
                              focuses=self.focuses, archives=self.archives, archive_files=self.archive_files,
                              memberships=self.memberships,
                              exams=self.exams, exam_projects=self.exam_projects, exam_hosts=self.exam_hosts,
-                             webconfs=self.webconfs)
+                             webconfs=self.webconfs, sharing=self.sharing)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -223,6 +234,7 @@ class Portal:
         if self.bbb is not None:
             self.bbb.open()      # its own plain session: the one above presents the client certificate of [pool]
         self.webconfs.start_loop()
+        self.sharing.start_loop()
         await self.exams.load()          # the exams of the database (tried again by the tick when it fails)
         self.exams.start_loop()
         if self.memberships.available:
@@ -250,6 +262,10 @@ class Portal:
         await self.presentations.shutdown()
         await self.focuses.stop_loop()
         await self.focuses.shutdown()
+        # the shared projects stay as they are (their state file): the pages of the participants
+        # reconnect to the next portal; the bulk closes in flight are cancelled (the stops sent go on)
+        await self.sharing.stop_loop()
+        await self.routes.bulk_close.shutdown()
         if self.exam_projects is not None:
             await self.exam_projects.shutdown()   # the running close jobs cancelled (the stops sent go on)
         if self.exam_hosts is not None:

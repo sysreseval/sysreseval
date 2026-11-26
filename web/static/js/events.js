@@ -126,8 +126,10 @@ export class ReconnectingSocket {
 
 export class ProjectEvents extends ReconnectingSocket {
   // onEvent(obj): a decoded frame; onReconnect(): the socket is open again after a drop;
-  // onOpen(): the socket is open, the first time too (the activity frame it could not take)
-  constructor(path, {onEvent, onReconnect, onOpen = null}) {
-    super(path, {onMessage: onEvent, onReconnect, onOpen});
+  // onOpen(): the socket is open, the first time too (the activity frame it could not take);
+  // onClose(ev): the socket closed (false = no reconnection: the page of a participant whose
+  // sharing ended)
+  constructor(path, {onEvent, onReconnect, onOpen = null, onClose = null}) {
+    super(path, {onMessage: onEvent, onReconnect, onOpen, onClose});
   }
 }

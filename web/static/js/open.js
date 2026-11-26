@@ -8,17 +8,20 @@
 // The Lab costs button of the instructors (not pressed at first, and never remembered) shows
 // beside each lab what one of its projects is counted for on a host (GET /api/pool/costs, asked
 // while they are shown; lab_costs.js); the Costs table… button next to it opens the table of
-// every lab the pool heard of, in a dialog (lab_costs_dialog.js).
+// every lab the pool heard of, in a dialog (lab_costs_dialog.js).  The Open a shared lab… button
+// of the students opens the dialog of the running projects other students share with them
+// (shared_labs.js), which names each lab by its title of the tree.
 
 import './base.js';
 import * as api from './api.js';
 import * as i18n from './i18n.js';
-import {_} from './i18n.js';
+import {_, resolveText} from './i18n.js';
 import {el, clear} from './ui.js';
 import {buildTree} from './tree.js';
 import {ProgressBox, runCreation, projectUrl, flavorDialog} from './creation.js';
 import {costColumns, costCells, costNote, costRowOf, NOTE_SEPARATOR} from './lab_costs.js';
 import {createCostsDialog} from './lab_costs_dialog.js';
+import {createSharedLabsDialog} from './shared_labs.js';
 
 const treeElement = document.getElementById('labs');
 const readmeElement = document.getElementById('lab-readme');
@@ -29,6 +32,8 @@ const progress = new ProgressBox(document.getElementById('progress'));
 const costsToggle = document.getElementById('costs-toggle');
 const costsNoteElement = document.getElementById('lab-costs-note');
 const costsTableButton = document.getElementById('costs-table');
+const sharedButton = document.getElementById('open-shared');    // a student's page, on a site with the shared projects
+const labTitles = new Map();    // lab name -> its title, as the last list gave them (the shared labs dialog)
 
 let selectedLab = null;
 let starting = false;
@@ -235,6 +240,18 @@ function setupCosts() {
   });
 }
 
+// The Open a shared lab… button of the students: the dialog names a lab by its title of the tree
+// (a running lab name writes the path of the lab with @).
+function setupShared() {
+  if (!sharedButton) {
+    return;
+  }
+  const shared = createSharedLabsDialog({
+    titleOf: (labName) => labTitles.get(String(labName || '').replaceAll('@', '/')) || '',
+  });
+  sharedButton.addEventListener('click', () => shared.open());
+}
+
 // The lab tree: the student catalog, or every lab of the host (the exam-only and draft ones too)
 // in debug mode; the lab selected stays selected when the new list holds it.
 async function loadLabs() {
@@ -253,6 +270,12 @@ async function loadLabs() {
   }
   if (request !== labsRequest) {
     return;   // a newer list is on its way
+  }
+  labTitles.clear();
+  for (const lab of labs) {
+    if (lab.name && lab.kind !== 'dir') {
+      labTitles.set(lab.name, resolveText(lab.title) || '');
+    }
   }
   if (selectedLab && !labs.some((lab) => lab.name === selectedLab)) {
     selectedLab = null;
@@ -286,6 +309,7 @@ async function main() {
   await i18n.init();
   fillHosts();
   setupCosts();
+  setupShared();
   startButton.addEventListener('click', () => {
     if (selectedLab) {
       start(selectedLab);

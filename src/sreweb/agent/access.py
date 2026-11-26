@@ -40,10 +40,33 @@ def owner_of(rln: str) -> str:
     return params.get_username_from_running_lab_name(rln)
 
 
-def check_owner(rln: str, identity: Identity):
-    """The project belongs to the user, or the user is an instructor."""
-    if owner_of(rln) != identity.login and identity.role != ROLE_INSTRUCTOR:
-        raise AccessError(403, "not your project")
+def check_owner(rln: str, identity: Identity, *, participants: bool = False):
+    """The project belongs to the user, or the user is an instructor; with *participants*, a
+    student the portal says the owner shares the project with is let in too (the routes that
+    stay the owner's — the close, the save — never pass it)."""
+    if owner_of(rln) == identity.login or identity.role == ROLE_INSTRUCTOR:
+        return
+    if participants and identity.participant:
+        return
+    raise AccessError(403, "not your project")
+
+
+def is_participant(rln: str, identity: Identity) -> bool:
+    """A student on a project somebody else shares with them (the portal's word: the
+    ``participant`` flag of the identity); never the owner, never an instructor."""
+    return identity.participant and identity.role != ROLE_INSTRUCTOR and owner_of(rln) != identity.login
+
+
+def check_shareable(info: dict, *, managed: bool, exam: bool):
+    """What a participant is never let into, whatever the portal says: an exam project, a
+    project the agent did not start (the Qt GUI's), and a debug or instructor-mode project
+    (they open every device and every state, and hold the instructor texts)."""
+    if exam:
+        raise AccessError(403, "an exam project is never shared")
+    if not managed:
+        raise AccessError(403, "this project was not started from the web site")
+    if info.get('debug_project') or info.get('instructor_mode'):
+        raise AccessError(403, "a debug or instructor-mode project is never shared")
 
 
 def is_privileged_caller(rln: str, identity: Identity) -> bool:

@@ -11,6 +11,10 @@
 // one), from the pre-start instant of the countdown or as soon as the exam binds a student who
 // logs in later; when the exam starts (or once the single exam project is created during it,
 // or when time added after the end resumes the exam) the page opens it.
+//
+// A student also gets a card per project of another student they take part in (the shared
+// projects: GET /api/shares, its `joined` list): Open, and Leave instead of Close — the project
+// is its owner's.  Never part of GET /api/projects: those are the user's own.
 
 import './base.js';
 import * as api from './api.js';
@@ -19,6 +23,7 @@ import {_, format, resolveText} from './i18n.js';
 import {el, clear, toast, formatTimestamp} from './ui.js';
 import {projectUrl, ProgressBox, runCreation, flavorDialog} from './creation.js';
 import {currentExam, isBound, serverNow} from './exam.js';
+import {personName} from './sharing_model.js';
 
 const REFRESH_INTERVAL = 5000;
 const START_RETRY = 15;         // s before a failed automatic start is tried again (without retry_after)
@@ -30,8 +35,12 @@ const examNote = document.getElementById('exam-note');
 const examProgress = new ProgressBox(document.getElementById('exam-progress'));
 const closing = new Set();   // running lab names whose close is in progress
 const isInstructor = document.body.dataset.instructor === 'true';
+// the shared projects: a student's page on a site that has them
+const sharingEnabled = document.body.dataset.sharing === 'true' && !isInstructor;
+const login = document.body.dataset.login || '';
 
 let projects = [];           // the rows of the last GET /api/projects
+let joined = [];             // the projects of others the user takes part in (GET /api/shares)
 let exam = null;             // the exam binding the student (the `exam` of exam.js's state), or null
 let starting = false;        // an automatic start is in progress
 let nextTry = 0;             // ms: no automatic start before this time
@@ -118,14 +127,41 @@ function card(project) {
     actions);
 }
 
+// the card of a project of another student, which they share with the user
+function sharedCard(share) {
+  const leave = el('button', {type: 'button'}, _('Leave'));
+  leave.addEventListener('click', async () => {
+    leave.disabled = true;
+    try {
+      await api.del(`/api/projects/${encodeURIComponent(share.host)}/${encodeURIComponent(share.rln)}`
+                    + `/sharing/participants/${encodeURIComponent(login)}`);
+    } catch (e) {
+      toast(e.message, {error: true});
+    }
+    refresh();
+  });
+  return el('div', {class: 'card shared', dataset: {rln: share.rln}},
+    el('h2', {title: share.rln}, share.title || share.lab_name || ''),
+    el('div', {class: 'meta'},
+       el('div', {class: 'shared-by'}, format(_('Shared by {name}'), {name: personName(share.owner)})),
+       el('div', {}, _('Lab: ') + (share.lab_name || '')),
+       el('div', {}, _('Host: ') + share.host),
+       el('div', {}, _('Started: ') + formatTimestamp(share.project_started_at))),
+    el('div', {class: 'actions'},
+       el('a', {class: 'button primary', href: projectUrl(share.host, share.rln)}, _('Open')), leave));
+}
+
 function render() {
   clear(list);
   const bound = isBound(exam);
-  const empty = !projects.length;
+  const empty = !projects.length && !joined.length;
   logo.hidden = !empty || bound;
   list.hidden = empty;
   for (const project of projects) {
     list.append(card(project));
+  }
+  for (const share of joined) {
+    list.append(sharedCard(share));
   }
   renderNote();
 }
@@ -168,6 +204,14 @@ async function refresh() {
     return;
   }
   projects = Array.isArray(projects) ? projects : [];
+  if (sharingEnabled) {
+    try {
+      const shares = await api.get('/api/shares');
+      joined = shares && Array.isArray(shares.joined) ? shares.joined : [];
+    } catch (e) {
+      joined = [];           // the cards of the user's own projects are what matters
+    }
+  }
   render();
   autoOpen();
   autoStart();
@@ -311,6 +355,10 @@ function applyExam(state) {
 async function main() {
   await i18n.init();
   document.addEventListener('sre-exam', (ev) => applyExam(ev.detail));
+  if (sharingEnabled) {
+    // accepted on a project, or out of one: the cards follow at once (sharing.js)
+    document.addEventListener('sre-share', () => refresh());
+  }
   const known = currentExam();
   if (known) {
     exam = isBound(known.exam) ? known.exam : null;

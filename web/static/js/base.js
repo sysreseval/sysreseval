@@ -27,9 +27,12 @@
 // webconf_dialog.js is the Webconf button of the instructors.  And the invitation of an
 // instructor to a private conversation ({"t": "webconf-invite", "id", "from", "to"} / {...,
 // "ended": true, "reason"}): webconf_invite.js shows the banner of the one invited.  Nothing of
-// this runs inside the presentation iframe.  The Logout button asks about the running projects
+// this runs inside the presentation iframe.  The same socket carries the shared projects: a
+// student asking to join a project of this user ({"t": "share-request", ...}, answered in the
+// banner of sharing.js) and the end of a participation of theirs ({"t": "share", ...}).  The
+// Logout button asks about the running projects
 // before the form is submitted (logout.js).  No _() here: base.js loads no catalog (exam.js,
-// webconf.js and webconf_invite.js load their own).
+// webconf.js, webconf_invite.js and sharing.js load their own).
 
 import * as api from './api.js';
 import {appPath, siteUrl} from './base_path.js';
@@ -39,6 +42,7 @@ import {setupLogout} from './logout.js';
 import {setupExam} from './exam.js';
 import * as webconf from './webconf.js';
 import * as webconfInvite from './webconf_invite.js';
+import * as sharing from './sharing.js';
 import {setupWebconfDialog} from './webconf_dialog.js';
 
 const select = document.getElementById('language-select');
@@ -210,6 +214,10 @@ function onPresence(message) {
   }
   if (message.t === 'webconf-invite') {
     webconfInvite.onPush(message);
+    return;
+  }
+  if (message.t === 'share-request' || message.t === 'share') {
+    sharing.onPush(message);
     return;
   }
   if (message.t !== 'presentation') {

@@ -43,6 +43,7 @@ function closeMessage(code) {
     case 4404: return _('The project is gone.');
     case 4409: return _('Too many terminals are open.');
     case 4410: return _('This connection fell behind the terminal output.');
+    case 4413: return _('This project is no longer shared with you.');
     case 4502: return _('The host does not answer.');
     default: return '';
   }

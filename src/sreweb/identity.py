@@ -34,6 +34,13 @@ HEADER_VIEW = 'X-SRE-View'
 HEADER_ANONYMOUS = 'X-SRE-Anonymous'
 HEADER_GROUP = 'X-SRE-Group'
 HEADER_ADMINISTRATOR = 'X-SRE-Administrator'
+#: Set by the portal alone, on the requests about one project: the caller is a student the
+#: owner of that project let in (a shared project, ``sreweb/portal/sharing.py``).
+HEADER_PARTICIPANT = 'X-SRE-Participant'
+#: The key of the agent's ``/v1/status`` listing its running lab names.  An agent that sends it
+#: knows the participants (an older one refuses them: its projects are not offered for sharing),
+#: and the portal learns from it that a shared project is gone.
+STATUS_PROJECT_NAMES = 'project_names'
 
 #: Same as SRE.access._VALID_USERNAME (checked by tests/test_web_identity.py).
 VALID_LOGIN = re.compile(r'^[a-zA-Z0-9._-]+$')
@@ -109,6 +116,10 @@ class Identity:
     # an instructor who may browse the connection log (the History page of the portal): never
     # true for a student, whatever the configuration says (with_administrator applies the rule)
     administrator: bool = False
+    # a student taking part in the project of the request, which its owner shares with them:
+    # said by the portal request by request (never kept in a session), read by the agent,
+    # which then serves them as it serves the owner but for the close and the save
+    participant: bool = False
 
     def __post_init__(self):
         if not is_valid_login(self.login):
@@ -121,6 +132,8 @@ class Identity:
             raise IdentityError("the instructor view needs the instructor role")
         if self.administrator and self.role != ROLE_INSTRUCTOR:
             raise IdentityError("an administrator must be an instructor")
+        if self.participant and self.role == ROLE_INSTRUCTOR:
+            raise IdentityError("an instructor is never a participant")
         if not _LANGUAGE.match(self.language or ''):
             raise IdentityError(f"invalid language {self.language!r}")
 
@@ -134,6 +147,10 @@ class Identity:
 
     def with_view(self, view: str) -> 'Identity':
         return replace(self, view=view)
+
+    def as_participant(self) -> 'Identity':
+        """The identity on a request about a project shared with this user."""
+        return replace(self, participant=True)
 
     def with_administrator(self, granted: bool) -> 'Identity':
         """The identity with the administrator flag when *granted* and the user is an instructor
@@ -152,6 +169,7 @@ class Identity:
             HEADER_ANONYMOUS: '1' if self.anonymous else '0',
             HEADER_GROUP: encode_header_text(self.group),
             HEADER_ADMINISTRATOR: '1' if self.administrator else '0',
+            HEADER_PARTICIPANT: '1' if self.participant else '0',
         }
 
     @classmethod
@@ -171,10 +189,12 @@ class Identity:
             view=headers.get(HEADER_VIEW, VIEW_STUDENT) or VIEW_STUDENT,
             group=decode_header_text(headers.get(HEADER_GROUP, '')),
             administrator=headers.get(HEADER_ADMINISTRATOR, '0') == '1',
+            participant=headers.get(HEADER_PARTICIPANT, '0') == '1',
         )
 
     def to_dict(self) -> dict:
-        """What the browser is told about itself (``GET /api/me``)."""
+        """What the browser is told about itself (``GET /api/me``), and what the session cookie
+        keeps: never ``participant``, which belongs to one request."""
         return {'login': self.login, 'fullname': self.fullname, 'email': self.email, 'role': self.role,
                 'language': self.language, 'anonymous': self.anonymous, 'group': self.group,
                 'administrator': self.administrator}

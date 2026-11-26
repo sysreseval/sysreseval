@@ -83,6 +83,9 @@ export function createTerminalsTab(ctx) {
   // an instructor on somebody else's project (project.js): joins the owner's terminals, opens
   // private ones
   const helper = Boolean(ctx.helper);
+  // a student on a project its owner shares with them (project.js): joins the terminals of the
+  // others, opens shared ones like the owner
+  const participant = Boolean(ctx.participant);
   let resumed = false;          // the page's own sessions joined again (the first list of the project)
 
   // -- the layout of the terminals across the pages of this browser: where each session was
@@ -677,14 +680,16 @@ export function createTerminalsTab(ctx) {
     return entry ? {session: entry.session, box: entry.box, win: entry.win, private: isPrivate(entry)} : null;
   }
 
-  // a helping instructor: the owner's live sessions not yet on this page
+  // a helping instructor: the owner's live sessions not yet on this page; a participant of a
+  // shared project: those of everybody else on it (their own come back through resumeOwn)
   function autoJoin() {
-    if (!helper || !shown) {
+    if (!(helper || participant) || !shown) {
       return;
     }
     const attached = attachedIds();
     for (const r of remote) {
-      if (r.created_by === ctx.owner && !attached.has(r.id) && !dismissed.has(r.id)) {
+      const theirs = helper ? r.created_by === ctx.owner : (r.created_by !== ctx.login && !r.private);
+      if (theirs && !attached.has(r.id) && !dismissed.has(r.id)) {
         join(r);
       }
     }
@@ -729,8 +734,8 @@ export function createTerminalsTab(ctx) {
       } else if (spectator) {
         // the presenter's view says what is open: nothing by itself
       } else if (sessions.size === 0) {
-        if (helper) {
-          autoJoin();   // the student's terminals; nothing when there is none
+        if (helper || participant) {
+          autoJoin();   // the terminals of the others; nothing when there is none
         } else if (autoOpen) {
           // the first open device, as the first terminal tab of the Qt view starts when shown
           const first = devices.find(canOpen);

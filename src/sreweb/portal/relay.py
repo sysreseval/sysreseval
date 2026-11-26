@@ -11,6 +11,7 @@ from aiohttp import web, WSMsgType
 
 from .accesslog import WS_KEY
 from .pool import Pool, PoolError
+from .sharing import WS_SHARE_ENDED
 from ..config import HostConfig
 from ..identity import Identity, request_key
 
@@ -116,11 +117,14 @@ class Relay:
 
     async def websocket(self, request: web.Request, host: HostConfig, identity: Identity, path: str, *,
                         protocols=(), params=None, heartbeat: float = 30.0,
-                        upstream: bool = True) -> web.WebSocketResponse:
+                        upstream: bool = True, grant=None) -> web.WebSocketResponse:
         """Pipe a WebSocket of the browser to the same path on the agent, frame by frame.  The
         socket is kept in ``request[WS_KEY]`` for the connection log (the handler is cancelled
         when the browser leaves).  With *upstream* false the frames of the browser are discarded
-        (a spectator of a presentation: nothing of theirs reaches the agent)."""
+        (a spectator of a presentation: nothing of theirs reaches the agent).  *grant*: the
+        access of a participant of a shared project (``sharing.Grant``), held for as long as
+        the socket is open; when it is revoked — the participant removed, the sharing over —
+        the browser side is closed with ``WS_SHARE_ENDED``."""
         ws = web.WebSocketResponse(protocols=protocols, heartbeat=heartbeat, max_msg_size=1 << 20)
         request[WS_KEY] = ws
         try:
@@ -133,6 +137,12 @@ class Relay:
             log.warning("ws to %s failed: %s", host.name, e)
             return ws
         await ws.prepare(request)
+        if grant is not None and not grant.hold():
+            # the participation ended while the two handshakes were made: nothing is piped
+            with contextlib.suppress(Exception):
+                await agent_ws.close()
+            await ws.close(code=WS_SHARE_ENDED, message=b'the sharing has ended')
+            return ws
 
         async def pump(src, dst, close_code_default=1000, forward=True):
             try:
@@ -153,9 +163,18 @@ class Relay:
 
         down = asyncio.ensure_future(pump(agent_ws, ws))
         up = asyncio.ensure_future(pump(ws, agent_ws, forward=upstream))
+        cut = asyncio.ensure_future(grant.revoked.wait()) if grant is not None else None
         try:
-            await asyncio.wait({down, up}, return_when=asyncio.FIRST_COMPLETED)
+            await asyncio.wait({down, up} | ({cut} if cut is not None else set()), return_when=asyncio.FIRST_COMPLETED)
+            if cut is not None and cut.done() and not cut.cancelled():
+                # the browser side first, with the code that tells the page why: a pump ending
+                # would close it with the code of the agent's side
+                with contextlib.suppress(Exception):
+                    await ws.close(code=WS_SHARE_ENDED, message=b'the sharing has ended')
         finally:
+            if cut is not None:
+                cut.cancel()
+                grant.release()
             for task in (down, up):
                 if not task.done():
                     task.cancel()

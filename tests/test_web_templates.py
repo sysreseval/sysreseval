@@ -315,7 +315,21 @@ class TestTemplates:
         for key in ('host', 'owner', 'fullname', 'group', 'title', 'started_at', 'last_action', 'last_eval', 'grade', 'mark',
                     'errors', 'auto_eval_count', 'terminals', 'clients', 'managed'):
             assert f'data-sort="{key}"' in html, key
-        assert 'data-sort="fullname">Name</th>' in html and 'colspan="16"' in html   # the full name as a column
+        assert 'data-sort="fullname">Name</th>' in html and 'colspan="18"' in html   # the full name as a column
+        # the selection: a checkbox column first, the one of the header for the rows shown, and
+        # the bar acting on it; without the shared projects on the site (here) the bar only
+        # closes, and the Sharing column, between the clients and the mode, is hidden
+        assert html.index('<th class="select"><input type="checkbox" id="watch-select-all"') < html.index('data-sort="host"')
+        bar = html.split('<div id="watch-selection" class="selection-bar">')[1].split('</div>')[0]
+        assert re.findall(r'data-action="([\w-]+)"', bar) == ['close'] and 'id="watch-selected"' in bar
+        assert 'class="danger">Close projects…</button>' in bar and bar.count(' disabled') == 1
+        assert html.index('data-sort="clients"') < html.index('data-sort="sharing"') < html.index('data-sort="managed"')
+        assert 'data-sharing="false"' in html and re.search(r'data-sort="sharing" title="[^"]+" hidden>Sharing</th>', html)
+        shared = render('watch.html', instructor=True, sharing=True)
+        bar = shared.split('<div id="watch-selection" class="selection-bar">')[1].split('</div>')[0]
+        assert re.findall(r'data-action="([\w-]+)"', bar) == ['allowed', 'forbidden', 'default', 'close']
+        assert bar.count(' disabled') == 4                       # nothing is selected at first
+        assert 'data-sharing="true"' in shared and re.search(r'data-sort="sharing" title="[^"]+">Sharing</th>', shared)
         # the clients of the owner on the project, between the terminals and the mode
         assert html.index('data-sort="terminals"') < html.index('data-sort="clients"') < html.index('data-sort="managed"')
         assert 'their browsers showing its page, and their local GUI on the host">Clients</th>' in html
@@ -2123,15 +2137,18 @@ class TestActivityTracker:
         assert out['stopped'] == {'before': 1, 'timers': 0, 'listeners': 0, 'frames': 1}
 
     def test_wiring(self):
-        """The page of the owner alone reports (never a spectator's, in the owner's name when
-        the owner presents, nor a helping instructor's), on the events socket, and again when
-        the socket opens; the Watch page shows the age the agent computed."""
+        """The pages of the students of the project report — its owner, the participants of a
+        shared project — (never a spectator's, in the owner's name when the owner presents, nor
+        a helping instructor's), on the events socket, and again when the socket opens; the
+        Watch page shows the age the agent computed."""
         project = (JS / 'project.js').read_text(encoding='utf-8')
         assert "import {createActivityTracker} from './activity.js';" in project
-        assert 'isOwner && !spectator ? createActivityTracker({send: (frame) => events.send(frame)}) : null' in project
+        assert 'const student = isOwner || participant;' in project
+        assert 'const participant = !isOwner && !isInstructor && !spectator;' in project
+        assert 'student && !spectator ? createActivityTracker({send: (frame) => events.send(frame)}) : null' in project
         assert 'activity.resend()' in project and 'activity.stop()' in project
         events = (JS / 'events.js').read_text(encoding='utf-8')
-        assert 'super(path, {onMessage: onEvent, onReconnect, onOpen});' in events
+        assert 'super(path, {onMessage: onEvent, onReconnect, onOpen, onClose});' in events
         watch = (JS / 'watch.js').read_text(encoding='utf-8')
         assert "case 'last_action': return actionAge(row) === null ? -Infinity : -actionAge(row);" in watch
         assert "actionAge(row) === null ? '' : ageText(actionAge(row))" in watch
@@ -2969,3 +2986,132 @@ class TestSavesModel:
         assert out['quotas'] == ['3 of 5 saved projects', '2 saved project(s)', '']
         assert out['nothing'] == [[], {'mine': [], 'shared': [], 'others': []}, False, True]
 
+
+
+# the pure helpers of the shared projects (sharing_model.js)
+SHARING_MODEL_RUNNER = """\
+import {personName, shortName, audienceText, usersOf, connectedCount, shareLabel, shareButtonShown,
+        watchSharingText, watchSharingRank, watchSharingTitle, projectKey} from './sharing_model.js';
+
+const input = JSON.parse(process.argv[2]);
+process.stdout.write(JSON.stringify({
+  names: input.people.map((p) => [personName(p), shortName(p)]),
+  audiences: input.audiences.map(audienceText),
+  users: input.states.map((s) => usersOf(s).map((u) => [u.login, u.connected, u.owner])),
+  connected: input.states.map(connectedCount),
+  labels: input.states.map(shareLabel),
+  shown: input.states.map((s) => [shareButtonShown(s, {isOwner: true}), shareButtonShown(s, {participant: true}),
+                                  shareButtonShown(s, {})]),
+  watch: input.rows.map((r) => [watchSharingText(r), watchSharingRank(r), watchSharingTitle(r)]),
+  keys: input.projects.map(projectKey),
+}));
+"""
+
+
+class TestSharedProjects:
+    """The shared projects in the pages: the Share button of a project and the banner of the end
+    of a sharing, the Open a shared lab button of the students, the selection bar and the Sharing
+    column of the Watch page (``test_watch_page``), the modules behind them, and the pure
+    helpers of sharing_model.js under the ``js`` runtime."""
+
+    def test_project_page(self):
+        # a site without the shared projects (the anonymous mode): nothing of them
+        html = render('project.html', host='a01', rln=RLN, api_base=API_BASE)
+        assert 'share-project' not in html and 'data-sharing="false"' in html
+        html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, sharing=True, saves=True)
+        assert 'data-sharing="true"' in html
+        # hidden until the page knows the sharing of the project (share_dialog.js), before Save and Close
+        assert re.search(r'<button type="button" id="share-project" class="toggle" aria-pressed="false" hidden '
+                         r'title="[^"]+">Share</button>', html)
+        assert html.index('id="share-project"') < html.index('id="save-project"') < html.index('id="close-project"')
+        assert '<div id="share-ended-banner" class="banner" hidden>' in html
+        assert 'This project is no longer shared with you. <a href="/projects">Back to the projects</a>' in html
+        # never on the page of a presentation: a spectator shares nothing and links nowhere
+        shown = render('project.html', host='a01', rln=RLN, api_base=API_BASE, sharing=True,
+                       presentation={'id': 'x', 'presenter': 'P'})
+        assert 'share-project' not in shown and 'share-ended-banner' not in shown
+
+    def test_open_and_projects_pages(self):
+        assert 'open-shared' not in render('open.html')                        # no sharing on the site
+        html = render('open.html', sharing=True)
+        assert re.search(r'<button type="button" id="open-shared" title="[^"]+">Open a shared lab…</button>', html)
+        assert html.index('<h1>') < html.index('id="open-shared"') < html.index('Back to the projects')
+        # an instructor opens any project from the Watch page: no such button
+        assert 'open-shared' not in render('open.html', sharing=True, instructor=True)
+        # the cards of the projects shared with the user are drawn by projects.js, in the list of their own
+        assert 'data-sharing="true"' in render('projects.html', sharing=True)
+
+    def test_wiring(self):
+        """What the modules rely on in each other and in the pages."""
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        assert "import {createSharing, WS_SHARE_ENDED} from './share_dialog.js';" in project
+        assert "if (participant) body.classList.add('participating');" in project
+        # the page of a presentation says so on every call (a participant in its audience is a spectator there)
+        assert 'presentation: presentationId || undefined' in project
+        assert "case 'self_evaluation':" in project and 'tabs.evaluation.pushed(ev)' in project
+        assert 'if (ev.code === WS_SHARE_ENDED) {' in project and "document.addEventListener('sre-share'" in project
+        assert (JS / 'share_dialog.js').read_text(encoding='utf-8').count('export const WS_SHARE_ENDED = 4413;') == 1
+        from sreweb.portal.sharing import WS_SHARE_ENDED
+        assert WS_SHARE_ENDED == 4413
+        assert "case 4413: return _('This project is no longer shared with you.');" in \
+            (JS / 'terminal.js').read_text(encoding='utf-8')
+        base = (JS / 'base.js').read_text(encoding='utf-8')
+        assert "if (message.t === 'share-request' || message.t === 'share') {" in base
+        assert base.index("message.t === 'share-request'") < base.index("if (message.t !== 'presentation') {")
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        assert 'if (helper || participant) {' in terminals and 'if (!(helper || participant) || !shown) {' in terminals
+        watch = (JS / 'watch.js').read_text(encoding='utf-8')
+        assert "case 'sharing': return watchSharingRank(row.sharing);" in watch
+        assert "event.target.closest('a, button, input, td.select, td.lab, td.group, td.sharing')" in watch
+        # one definition of what a sharing reads as: no page words it by itself
+        for name in ('watch.js', 'watch_sharing.js', 'share_dialog.js', 'shared_labs.js', 'projects.js'):
+            assert "from './sharing_model.js'" in (JS / name).read_text(encoding='utf-8'), name
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        assert '--shared-bg:' in css and 'body.participating .topbar' in css and '.share-requests {' in css
+        # the dialogs of the shared projects come after dialog.modal, whose width they replace
+        for rule in ('dialog.share-dialog {', 'dialog.shared-labs {', 'dialog.watch-close {'):
+            assert css.index('dialog.modal {') < css.index(rule), rule
+
+    def test_model(self, tmp_path, js):
+        runner = js_project(tmp_path, SHARING_MODEL_RUNNER, 'sharing_model.js', 'i18n.js')
+        shared = {'available': True, 'allowed': True, 'policy': 'default', 'shared': True,
+                  'owner': {'login': 'alice', 'fullname': 'Alice A', 'connected': True},
+                  'participants': [{'login': 'bob', 'fullname': 'Bob B', 'connected': True},
+                                   {'login': 'dave', 'fullname': '', 'connected': False}]}
+        out = json.loads(js.run(tmp_path, runner, json.dumps({
+            'people': [{'login': 'alice', 'fullname': 'Alice A'}, {'login': 'bob', 'fullname': ''},
+                       {'login': 'carol', 'fullname': 'carol'}, None, {'login': 5}],
+            'audiences': ['all', 'department:INFO1', 'custom:TP: lundi', 'INFO2', '', None,
+                          {'key': 'all', 'kind': 'all', 'name': ''}, {'key': 'custom:TP A', 'kind': 'custom', 'name': 'TP A'}],
+            'states': [None, {'available': True, 'allowed': False, 'shared': False},
+                       {'available': False, 'allowed': True, 'shared': False}, shared,
+                       {**shared, 'participants': [], 'owner': {'login': 'alice', 'fullname': '', 'connected': False}}],
+            'rows': [None, {'available': False, 'allowed': True, 'policy': 'default', 'shared': False},
+                     {'available': True, 'allowed': False, 'policy': 'default', 'shared': False},
+                     {'available': True, 'allowed': True, 'policy': 'default', 'shared': False},
+                     {'available': True, 'allowed': True, 'policy': 'allowed', 'shared': False},
+                     {'available': True, 'allowed': False, 'policy': 'forbidden', 'shared': False},
+                     {'available': True, 'allowed': True, 'policy': 'default', 'shared': True, 'audience': 'department:INFO1',
+                      'participants': 3, 'connected': 2},
+                     {'available': True, 'allowed': True, 'policy': 'allowed', 'shared': True, 'audience': 'all',
+                      'participants': 0, 'connected': 0}],
+            'projects': [{'host': 'a01', 'running_lab_name': 'x@@@l@@@alice'}, {'host': 'a02', 'rln': 'y@@@l@@@bob'}]})))
+        assert out['names'] == [['Alice A (alice)', 'Alice A'], ['bob', 'bob'], ['carol', 'carol'], ['', ''], ['', '']]
+        assert out['audiences'] == ['everybody', 'INFO1', 'TP: lundi', 'INFO2', '', '', 'everybody', 'TP A']
+        assert out['users'] == [[], [], [], [['alice', True, True], ['bob', True, False], ['dave', False, False]],
+                                [['alice', False, True]]]
+        assert out['connected'] == [0, 0, 0, 2, 0]
+        assert out['labels'] == ['Share', 'Share', 'Share', 'Shared · 2', 'Shared · 0']
+        # the owner when the project can be shared at all, a participant always, an instructor while it is
+        assert out['shown'] == [[False, False, False], [True, True, False], [False, True, False],
+                                [True, True, True], [True, True, True]]
+        texts = [row[0] for row in out['watch']]
+        assert texts == ['', '', 'not allowed (default)', 'allowed (default)', 'allowed', 'forbidden',
+                         'shared · 3', 'shared · 0']
+        # the column sorts the shared ones first by their participants, then what may be, what may not, what cannot
+        ranks = [row[1] for row in out['watch']]
+        assert ranks == [-3, -2, -1, 0, 0, -1, 4, 1]
+        assert out['watch'][6][2] == 'Shared with INFO1: 3 participant(s), 2 on the project now'
+        assert out['watch'][1][2] == 'This project cannot be shared' and out['watch'][0][2] == ''
+        assert out['watch'][2][2] == 'Its owner may not share this project'
+        assert out['keys'] == ['a01\nx@@@l@@@alice', 'a02\ny@@@l@@@bob']

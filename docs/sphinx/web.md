@@ -224,6 +224,7 @@ merges other files into this one, as for `web.toml` below.
 | `[archives]` | | the archives of the evaluations of the pool hosts in a second table of that database (*The archives of the evaluations* below; on iff `[access_log.database]` is set): `table` (`archives`, created when missing), `keep` (`0` = the rows are kept forever; else days of rows kept, purged daily), `poll_interval` (`30s` between two collections from the agents), `directory` (not set; the absolute path of a directory of this host holding the archive files themselves, looked up by name at any depth, for the *Archive file* view of the Archives page: *The archive files* below) |
 | `[groups]` | | the user groups of the Groups page (*User groups* below): `table` (`user_groups`: the custom groups the instructors create, in the database of `[access_log.database]`, their members in `<table>_members`; both created when missing), `directory_ttl` (`10m`: how long the people and groups read from the directory are kept), `refresh_interval` (`10s`: the least time between two reads forced by the *Refresh* button of the page; the clicks arriving during a read share it, `0` = none) |
 | `[exams]` | | the exams of the Exams page (*Exams* below; on iff `[access_log.database]` is set): the defaults of a new exam, each adjustable per exam — `lead` (`10m`: how long before the start the other projects of the students are hidden and the countdown shown), `pre_start` (`5m`: how long before the start their exam projects are started in the background), `eval_interval` (`60s`: the period of the evaluations the agents run during the exam) —, `close_after` (`1h`: how long after the end of a student's exam their exam projects are closed; `0` = never, an instructor closes them), `table` (`exams`, with `<table>_members`, both created when missing), `keep` (`0` = the past exams are kept forever; else days, purged daily); for the machines of the pool an exam lists, two more defaults per exam: `host_lead` (`10m`: how long before the start their agents write `exam.json`, which locks them) and `host_release` (`10m`: how long after the end-before time the file is removed and the exam projects of the machine closed; `0` = at the end) |
+| `[sharing]` | | the shared projects (*Shared projects* below): `allowed` (`"no-by-default"`: the owner of a running project may share it with other students only once an instructor allowed it on the Watch page; `"yes-by-default"`: unless an instructor forbade it there), `request_timeout` (`2m`: how long a request to join waits for the owner's answer), `max_participants` (`4`: the students a project takes beside its owner); nothing is shared in anonymous mode |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
 | `[bbb]` | none | the BigBlueButton server behind the **Webconf** button of the instructors (*Web conference* below): `url` (the server, or its `bigbluebutton/` / `bigbluebutton/api/` path) and `secret` (the shared secret of its API, `bbb-conf --secret`; both or none), `checksum` (`sha1`; `sha256` or `sha512` when the server is restricted to them), `welcome` (the welcome message of the client: a string, or one per language; the server's message by default), `record` (`false`), `mute_on_start` (`false`), `duration` (`0` = unlimited; a duration, `"2h"`: the server ends the meeting after it), `max_participants` (`0` = unlimited), `poll_interval` (`10s`: how often the participants and the ended meetings are read from the server), `[bbb.userdata]` (the `bbb_*` client settings sent with every join, e.g. `bbb_skip_check_audio = true`), `private_rooms` (`true`: the **Talk privately** button of an instructor on a student's project, *Private conversations* below; `false` removes it), `[bbb.private_userdata]` (the `bbb_*` client settings of the joins of a private conversation, over `[bbb.userdata]` and the portal's own) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*); `priority` (`"group:order"`, two integers from -9999 to 9999, `"0:0"`): a new project goes to the lowest group that has an available host and, in it, to the lowest order among the hosts without project; the lowest host is woken first, see *Priorities*; `total_usable_capacity` (`100`): the share of the memory and of the processors of the host its projects may fill, a percentage (an integer from 1 to 100), counted with `capacity = "resources"` only (*The load of a host*) |
@@ -461,6 +462,10 @@ session and the request following a logout opens another one. The other events:
   instructor joining a room), `webconf_stop`, and `webconf_join` (a join URL served to a
   participant: their `login`, `webconf`, `role`, status 302); the listing of the rooms is a
   keepalive, the page the client comes back to after *Leave meeting* is not logged;
+- the shared projects (*Shared projects* below): `share_start`, `share_stop`, `share_request`,
+  `share_accept`, `share_decline`, `share_cancel`, `share_remove`, the decisions of the
+  instructors `share_policy` and the bulk close of the Watch page `bulk_close`; the state of a
+  sharing and the lists a page polls are keepalives;
 - the private conversations (*Private conversations* below): `webconf_invite` (the instructor's
   `login`, the `student` asked, the `host` and `rln` of the project they asked from, the
   `invitation`; status 409 when the student is not connected or busy), `webconf_accept` (the
@@ -1008,6 +1013,80 @@ pullable when the images change. It restores on a host of the same architecture.
 **Access log**: `save` (`save` = `<login>/<id>`, `lab`, `size`), `start` with `restore` =
 `<login>/<id>` for a restore (counted with the other starts), `save_share` (`groups`),
 `save_delete`.
+
+### Shared projects
+
+The owner of a running project may **share** it: the students they accept work in it with them,
+each from their own browser — the same terminals, the same questions, the same evaluation. It is
+what two students at one workstation do, without the workstation. A student shares one project
+with everybody or with one group of theirs; nobody enters without the owner saying yes; an
+instructor sees who works where and may allow, forbid or end a sharing at any time.
+
+```toml
+[sharing]
+allowed = "no-by-default"     # or "yes-by-default"
+# request_timeout = "2m"
+# max_participants = 4
+```
+
+**Which projects.** `allowed` says what holds for a project nobody decided about:
+`"no-by-default"` (the default: a site that sets nothing behaves as before) — no project can be
+shared until an instructor allows it on the Watch page; `"yes-by-default"` — every project can,
+unless an instructor forbids it there. The decision of an instructor is about one running
+project and lasts as long as it runs. Never shared, whatever is decided: an exam project, a
+project started on the Qt GUI, a debug or instructor-mode project (they open every machine and
+hold the instructor texts); and nothing at all in anonymous mode, where a pseudonym names nobody
+an owner could accept. A student bound by an exam neither shares nor joins, and what they shared
+or joined ends when the exam binds them.
+
+**Who does what.** The owner shares the project from its page (the *Share* button) with
+*Everybody* or with one of their groups (their department, their groups of the directory, the
+custom groups an instructor put them in: *User groups* above). A student of that audience finds
+it under *Open a shared lab…* of the Open page and asks to join; the owner is asked on whatever
+page they are and answers; an accepted student is a **participant** until the owner or an
+instructor takes them out, they leave, the sharing stops, or the project closes — they need not
+ask again when they come back. `max_participants` (4) bounds the participants of a project, and
+`request_timeout` (2 minutes) how long a request waits for the owner, who must be connected.
+
+A participant does what the owner does: they type in the terminals (the same shells, every
+keystroke seen by all), open new ones, answer the questions, apply the states, use the virtual
+desktop, and run the self-evaluation — the owner's: it counts on the cooldown and the counter of
+the owner, and its result is shown to everybody on the project. The answers file stays the
+owner's, with the owner's name. Two things stay the owner's alone: **closing** the project and
+**saving** it. Nobody sees anybody's mouse pointer: this is not the *Focus* of an instructor.
+
+**What the agents do.** A participant reaches the agent under their own login, with a mark the
+portal alone sets (`X-SRE-Participant`), and is served as the owner is: `sre --user` runs as the
+owner, with the restrictions of a student. The agent opens to them the routes of what they may
+do and no other. Both sides need the version that knows participants: a pool host whose agent is
+older refuses them, and the portal offers no sharing for its projects (restart the agents after
+the update, `sre-web-tool restart --all`).
+
+**When it ends.** The sockets a participant has open (terminals, desktop, the page itself) are
+closed at once when they are taken out, when the sharing stops or is forbidden, and their page
+says so; the terminals they opened stay for the others. An evaluation or a state already
+running finishes. A project that closes ends its sharing: at once when it is closed through the
+web site, within half a minute otherwise (the portal reads the list of the running projects in
+the status of the agents).
+
+**Kept across a restart.** The decisions of the instructors and the sharings with their
+participants are written to `sharing.json` beside the state file of the pool (`[admin]
+state_file`: *Restarting the portal* below), read back when the portal starts: a project an
+instructor forbade stays forbidden. Without a state file nothing is kept (the portal says so
+when it starts). The requests still waiting for an answer are not kept.
+
+**Limits.** The decision of an instructor follows the running project: with
+`"yes-by-default"`, a student whose project was forbidden can close it and start the lab
+again. The terminal limits of the agent (`terminals_per_device`, `terminals_per_project`, eight
+viewers typing in one shell) are those of the project, shared by everybody on it. The open page
+of a participant keeps the project alive like any open page. The card of a joined project shows
+its title in the owner's language.
+
+**Access log**: `share_start` (`audience`), `share_stop` (`count` of participants out, `owner`
+when an instructor did it), `share_request` (`owner`, `request`), `share_accept` / `share_decline`
+(`member`, `request`), `share_cancel`, `share_remove` (`member`, `reason` = `removed` / `left`),
+`share_policy` (`policy`, `count` changed of `selected`), `bulk_close` (`count`); the calls of a
+participant on the project keep their own events, marked `participant=1`.
 
 ### Exams
 
@@ -2063,6 +2142,23 @@ default): a shorter value lets the machines empty sooner.
   projects the user keeps and may keep; at the limit, the save dialog lists them to delete one.
   Nothing is available during an exam of the user, and the save of an exam project is never
   made by its student.
+- **Shared projects** (when the site has them: *Shared projects* above). On the page of a project,
+  the **Share** button: its dialog lets the owner choose whom the project is shared with
+  (*Everybody*, or one of their groups) and share it; from then on the button counts who is on
+  the project (*Shared · 2*: the owner and the participants whose browser shows its page now,
+  never an instructor) and the dialog lists them, with **Remove** beside each participant and
+  **Stop sharing**; while an instructor has not allowed the sharing of the project, or has
+  forbidden it, the dialog says so instead. On the Open page, **Open a shared lab…** lists the
+  running projects the others share with the user: its lab, its owner, since when, how many are
+  in it. **Ask to join** sends the request; the owner gets a banner across the top of whatever
+  page they are on, with a short sound, one line per student asking — **Accept** / **Refuse** —;
+  accepted, the project opens in the browser of the student who asked. Their page is the
+  owner's page without the *Close Project* and *Save Project* buttons, in its own colour
+  (green), the owner named in the title; the terminals already open are joined when the
+  Terminals tab is shown, and a self-evaluation run by one shows its result, and the wait that
+  follows, on the pages of all. The project then has a card on the participant's Projects page
+  (*Shared by …*, **Open** and **Leave**). When the participation ends — taken out, the sharing
+  stopped, the project closed — the page says so and stops; the project goes on for the others.
 - **A presentation**: when an instructor presents a project to the class (*Present* below), the
   page of every chosen student is covered by that project, read-only: every tab is there but
   nothing can be done on it, and the tab shown, the terminals open (the instructor's shells, in
@@ -2206,6 +2302,23 @@ What an instructor gets:
     tells the portal when it is left and when it is shown again. The **Address** column (the
     address of the client, as the connection log records it) is shown to the
     **administrators** only: the portal does not send the addresses to the other instructors.
+- **Sharing on the Watch page** (when the site has the shared projects): the **Sharing** column
+  says, for each project that can be shared, what holds for it — *allowed* / *forbidden* (an
+  instructor decided), *allowed (default)* / *not allowed (default)* (the `[sharing] allowed` of
+  the site), or *shared · n* with the number of its participants (the tooltip: with whom, and how
+  many are on the project now); the column sorts the shared projects first. A click on the cell
+  opens the dialog of the project: the decision for it (default of the site, allowed, forbidden —
+  forbidding ends a sharing in progress), and while it is shared its owner and its participants,
+  those on the project now marked, **Remove** beside each participant (the others go on) and
+  **Stop sharing**.
+- **The selection of the Watch page**: a checkbox per row and the one of the header (the rows
+  shown, so after a filter or a group: a whole class at once) fill a selection the polls keep;
+  the bar above the table acts on it. **Allow sharing**, **Forbid sharing**, **Default
+  sharing**: the decision for every selected project at once. **Close projects…**: after a
+  confirmation listing them, the selected projects are closed by the portal in the background,
+  eight at a time, each as its *Close* button does (the last evaluation when the lab asks for
+  it, then the stop); their rows are greyed meanwhile, the page may be left, and a message says
+  how many were closed, and why one was not.
 - **Archives** (the link in the header, `/archives`): the evaluations collected into the
   database (*The archives of the evaluations* above; without `[access_log.database]` the page
   says so), the closed projects included. The **Evaluations** view lists them newest first, one
@@ -2647,6 +2760,17 @@ once.
   save: export the volume to the pool hosts only, and keep the containers away from the file
   server (a `DOCKER-USER` rule dropping their traffic to it). Each save carries its size and its
   SHA-256, checked before the last piece of it is handed to `sre restore`.
+- **The shared projects.** A participant is a student the owner accepted, one by one, on a
+  project an instructor has not forbidden (or has allowed, by default of the site): the portal
+  keeps who is in what and checks it on every request and when a socket opens, and closes the
+  open sockets of a participation that ends. A participant keeps their own identity (the
+  connection log names them, their terminals carry their login) and is given, on both sides,
+  an explicit list of what they may do: closing and saving the project, the log and the last
+  archived evaluation are not on it, and a new route is closed to them until it is put there.
+  They reach the machines the owner reaches, never those a privileged call opens. A project that
+  is not shared and one shared with others answer a student the same: nothing tells what the
+  others run. What a participant typed in a terminal keeps running after they are taken out,
+  as the owner's own commands do.
 - The agent refuses every request without its bearer token
   and the identity headers the portal adds (`X-SRE-Login`, `X-SRE-Fullname`, `X-SRE-Group`, …); the browser never talks to it.
   With mutual TLS (above) only the holder of a client certificate of the CA reaches the token
@@ -2820,7 +2944,7 @@ the whole site works without Docker. The catalogs are `locale/fr/LC_MESSAGES/sre
 is added by hand to both).
 
 The pure JavaScript modules (the lab tree of the Open page, the lab costs, the group keys, the
-exam form, the floating terminal windows) are tested under `node` or `bun`; on a machine with neither, `make
+exam form, the floating terminal windows, the texts of a shared project) are tested under `node` or `bun`; on a machine with neither, `make
 tests` runs them under bun in a throwaway container of the `oven/bun` image instead
 (`SRE_TEST_JS=docker`, what the Makefile passes then: the image is pulled once, the tests skip
 without a reachable Docker daemon, root or the `docker` group; `SRE_TEST_JS=docker:<image>` names

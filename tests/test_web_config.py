@@ -603,6 +603,33 @@ class TestWebConfig:
             with pytest.raises(ConfigError, match='capacity must be one of projects, resources'):
                 web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'capacity': bad}})
 
+    def test_sharing(self):
+        """``[sharing]``: whether the students may share their running projects; without the
+        key nothing is shareable until an instructor allows a project (a web.toml of before
+        gives the site of before), and the anonymous pseudonyms never share."""
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST]})
+        assert (cfg.sharing.allowed, cfg.sharing.request_timeout, cfg.sharing.max_participants) == \
+            ('no-by-default', 120.0, 4)
+        assert config.SHARING_MODES == ('no-by-default', 'yes-by-default')
+        assert cfg.auth.mode == 'anonymous' and not cfg.sharing_available
+        ldap = {'mode': 'ldap', 'ldap': {'uri': 'ldaps://ldap.example', 'search_base': 'ou=people,dc=x'}}
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'auth': ldap,
+                                    'sharing': {'allowed': 'yes-by-default', 'request_timeout': '45s',
+                                                'max_participants': 2}})
+        assert (cfg.sharing.allowed, cfg.sharing.request_timeout, cfg.sharing.max_participants) == \
+            ('yes-by-default', 45.0, 2)
+        assert cfg.sharing_available
+        for bad in ('yes', 'no', 'Yes-by-default', '', True, None, 1):
+            with pytest.raises(ConfigError, match='sharing.allowed must be one of no-by-default, yes-by-default'):
+                web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'sharing': {'allowed': bad}})
+        for bad in (0, -1, True, 1.5, 'many'):
+            with pytest.raises(ConfigError, match='sharing.max_participants must be an integer, 1 or more'):
+                web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'sharing': {'max_participants': bad}})
+        with pytest.raises(ConfigError, match='request_timeout must be a positive duration'):
+            web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'sharing': {'request_timeout': 0}})
+        with pytest.raises(ConfigError, match='sharing'):
+            web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'sharing': {'enabled': True}})   # unknown key
+
     def test_active_hours(self):
         from sreweb.config import parse_active_hours, in_active_hours
         assert parse_active_hours('') is None and in_active_hours(None, 0)

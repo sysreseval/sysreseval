@@ -20,7 +20,16 @@
 // are one lab), a click on its group cell the summary of that lab for the whole group (every project
 // of the pool whose owner has that group, whatever the filter; watch_summary.js); all follow
 // the polls.  The Clients column counts the clients of the owner on the project: their
-// browsers showing its page and their local GUI on its host (blank for an older portal).
+// browsers showing its page and their local GUI on its host (blank for an older portal).  The
+// Sharing column says whether the owner may share the project with other students and how many
+// take part in it (the shared projects: `sharing` of the rows, sharing_model.js); a click on the
+// cell opens the dialog of the project (watch_sharing.js: who is in it, Remove, Stop sharing, and
+// the decision of the instructors for it).  A checkbox per row and the one of the header (the
+// rows shown) fill a selection, which the bar above the table acts on: the sharing of the
+// selected projects allowed, forbidden or back to the default of the site (POST
+// /api/watch/sharing), and Close projects… (POST /api/watch/close after a confirmation listing
+// them: a job of the portal closes them in the background, its rows greyed meanwhile, its
+// outcome told by a toast when it ends — GET /api/watch/close).
 //
 // Two views, chosen by the Projects / Clients buttons of the toolbar (the buttons of the
 // History page): the projects, where the page always lands, and the clients (?view=clients,
@@ -38,6 +47,8 @@ import {createDetailDialog} from './watch_detail.js';
 import {createSummaryDialog} from './watch_summary.js';
 import {createClientsView} from './watch_clients.js';
 import {labKey} from './lab_key.js';
+import {createSharingDialog, confirmClose} from './watch_sharing.js';
+import {watchSharingText, watchSharingRank, watchSharingTitle, projectKey, POLICY_DEFAULT} from './sharing_model.js';
 import {KINDS, KIND_DEPARTMENT, groupKey, parseKey, normalizeKey, rowGroupKeys, rowMatchesGroup, sortGroups,
         kindsLabel} from './groups_model.js';
 
@@ -59,6 +70,14 @@ const groupsEnabled = table.dataset.groups === 'true';   // a department source 
 const groupSourcesEnabled = table.dataset.groupSources === 'true';   // any group source: the select shown
 const countElement = document.getElementById('watch-count');
 const closing = new Set();     // running lab names whose close is in progress
+// the selection: the keys (projectKey) of the rows ticked, the bar acting on them
+const selected = new Set();
+const selectAll = document.getElementById('watch-select-all');
+const selectionBar = document.getElementById('watch-selection');
+const selectedElement = document.getElementById('watch-selected');
+const bulkButtons = selectionBar ? Array.from(selectionBar.querySelectorAll('button[data-action]')) : [];
+const sharingEnabled = table.dataset.sharing === 'true';   // the site has the shared projects: the Sharing column shown
+let closeJob = false;          // a bulk close of this instructor is running: its outcome is asked at each poll
 
 // group: null = every group, '' = the rows without department, else the key of one group; shown:
 // the rows after the filters, in the order of the table; view: the view shown
@@ -118,6 +137,7 @@ function actionTime(row) {
 
 const detail = createDetailDialog({projectUrl: (row) => projectUrl(row.host, row.running_lab_name), projectApi, title});
 const summary = createSummaryDialog();
+const sharingDialog = createSharingDialog({title, onChanged: () => refresh()});
 
 // the value a column sorts on
 function sortValue(row, key) {
@@ -137,6 +157,7 @@ function sortValue(row, key) {
     case 'auto_eval_count': return typeof row.auto_eval_count === 'number' ? row.auto_eval_count : -1;
     case 'terminals': return Number(row.terminals) || 0;
     case 'clients': return typeof row.clients === 'number' ? row.clients : -1;
+    case 'sharing': return watchSharingRank(row.sharing);
     case 'managed': return row.managed ? 1 : 0;
     default: return '';
   }
@@ -353,18 +374,136 @@ function render() {
   if (!rows.length) {
     body.append(el('tr', {}, el('td', {colspan: columnCount(), class: 'muted'},
                                 state.rows.length ? _('No project matches the filter.') : _('No project on the pool.'))));
+    renderSelection();
     return;
   }
   for (const row of rows) {
     body.append(renderRow(row));
   }
+  renderSelection();
+}
+
+// -- the selection and the bar acting on it ---------------------------------------------------------
+
+// the checkbox of a row
+function selectBox(row) {
+  const key = projectKey(row);
+  const box = el('input', {type: 'checkbox', 'aria-label': row.running_lab_name});
+  box.checked = selected.has(key);
+  box.addEventListener('change', () => {
+    if (box.checked) {
+      selected.add(key);
+    } else {
+      selected.delete(key);
+    }
+    renderSelection();
+  });
+  return box;
+}
+
+// the rows of the selection (those still running)
+function selectedRows() {
+  return state.rows.filter((row) => selected.has(projectKey(row)));
+}
+
+// what an action of the bar applies to: the close to every selected project not being closed,
+// a decision about the sharing to those that can be shared at all
+function targets(action) {
+  const rows = selectedRows();
+  if (action === 'close') {
+    return rows.filter((row) => !row.closing && !closing.has(row.running_lab_name));
+  }
+  return rows.filter((row) => row.sharing && (row.sharing.available || row.sharing.shared || action === POLICY_DEFAULT));
+}
+
+// the header checkbox (the rows shown: all, some or none of them selected) and the bar: the
+// count, and each button enabled when its action applies to a selected project
+function renderSelection() {
+  if (!selectAll || !selectionBar) {
+    return;
+  }
+  const shown = state.shown;
+  const shownSelected = shown.filter((row) => selected.has(projectKey(row))).length;
+  const count = selectedRows().length;
+  let text = format(_('{n} project(s) selected'), {n: count});
+  if (count > shownSelected) {
+    text += ' ' + format(_('({n} outside the rows shown)'), {n: count - shownSelected});
+  }
+  selectedElement.textContent = text;
+  selectAll.disabled = !shown.length;
+  selectAll.checked = shown.length > 0 && shownSelected === shown.length;
+  selectAll.indeterminate = shownSelected > 0 && shownSelected < shown.length;
+  for (const button of bulkButtons) {
+    const n = targets(button.dataset.action).length;
+    button.disabled = !n || (button.dataset.action === 'close' && closeJob);
+    button.dataset.count = String(n);
+  }
+}
+
+function selectionOf(rows) {
+  return rows.map((row) => ({host: row.host, rln: row.running_lab_name}));
+}
+
+// one action of the bar on the selected projects
+async function actMany(action) {
+  const rows = targets(action);
+  if (!rows.length) {
+    return;
+  }
+  if (action === 'close') {
+    if (!await confirmClose(rows, {title})) {
+      return;
+    }
+    try {
+      await api.post('/api/watch/close', {projects: selectionOf(rows)});
+      closeJob = true;
+    } catch (e) {
+      toast(e.message, {error: true});
+    }
+    refresh();
+    return;
+  }
+  try {
+    const answer = await api.post('/api/watch/sharing', {projects: selectionOf(rows), policy: action});
+    let text = format(_('{n} project(s) changed'), {n: answer.changed || 0});
+    if (answer.skipped) {
+      text += ' — ' + format(_('{n} on a host that cannot share'), {n: answer.skipped});
+    }
+    toast(text);
+  } catch (e) {
+    toast(e.message, {error: true});
+  }
+  refresh();
+}
+
+// the bulk close of this instructor, while it runs: its outcome when it ends
+async function followCloseJob() {
+  let job;
+  try {
+    job = (await api.get('/api/watch/close')).job;
+  } catch (e) {
+    return;
+  }
+  if (job && job.running) {
+    closeJob = true;
+    return;
+  }
+  if (closeJob && job) {
+    let text = format(_('{n} project(s) closed'), {n: job.closed || 0});
+    if (job.failed) {
+      const first = (job.errors || [])[0];
+      text += ' — ' + format(_('{n} could not be closed'), {n: job.failed}) + (first ? `: ${first.error}` : '');
+    }
+    toast(text, {error: Boolean(job.failed)});
+  }
+  closeJob = false;
 }
 
 function renderRow(row) {
   const last = row.last_eval;
   const rln = row.running_lab_name;
   const closeButton = el('button', {type: 'button', class: 'danger'}, _('Close'));
-  if (closing.has(rln)) {
+  if (closing.has(rln) || row.closing) {
     closeButton.disabled = true;
     closeButton.textContent = _('closing in progress...');
   }
@@ -385,7 +524,9 @@ function renderRow(row) {
     refresh();
   });
   const errorsText = last ? (last.warnings ? `${last.errors} (${last.warnings} ~)` : String(last.errors)) : '';
-  const tr = el('tr', {class: rowClass(row), dataset: {rln}},
+  const shares = row.sharing && (row.sharing.available || row.sharing.shared);
+  const tr = el('tr', {class: rowClass(row) + (row.closing ? ' row-closing' : ''), dataset: {rln}},
+    el('td', {class: 'select'}, selectBox(row)),
     el('td', {}, row.host || ''),
     el('td', {}, row.owner || ''),
     el('td', {}, row.fullname || ''),
@@ -413,6 +554,12 @@ function renderRow(row) {
       ? el('td', {class: 'num', title: row.client_local ? _('The local GUI of the owner is one of them') : null},
            typeof row.clients === 'number' ? String(row.clients) : '')
       : null,
+    // blank for a project that cannot be shared, and for the row of a portal older than the key;
+    // the cell of the others opens the dialog of the sharing of the project
+    el('td', {class: shares ? 'sharing' : null, hidden: !sharingEnabled, title: watchSharingTitle(row.sharing),
+              dataset: {policy: row.sharing ? row.sharing.policy : ''},
+              onclick: shares ? () => sharingDialog.open(row) : null},
+       watchSharingText(row.sharing)),
     el('td', {}, row.managed ? _('web') : _('local')),
     el('td', {class: 'actions'},
       el('a', {class: 'button primary', href: projectUrl(row.host, rln)}, _('Open')),
@@ -420,7 +567,7 @@ function renderRow(row) {
   // the row itself: the last evaluation of the project (its buttons, its lab cell and its
   // group cell apart)
   tr.addEventListener('click', (event) => {
-    if (!event.target.closest('a, button, td.lab, td.group')) {
+    if (!event.target.closest('a, button, input, td.select, td.lab, td.group, td.sharing')) {
       detail.open(row);
     }
   });
@@ -455,9 +602,21 @@ async function refresh() {
     return;
   }
   state.rows = Array.isArray(answer) ? answer : [];
+  // a project closed since is out of the selection
+  const running = new Set(state.rows.map(projectKey));
+  for (const key of [...selected]) {
+    if (!running.has(key)) {
+      selected.delete(key);
+    }
+  }
   render();
   detail.update(state.rows);
   summary.update();
+  sharingDialog.update(state.rows);
+  if (closeJob || state.rows.some((row) => row.closing)) {
+    await followCloseJob();
+    renderSelection();
+  }
 }
 
 function setupControls() {
@@ -469,7 +628,7 @@ function setupControls() {
       } else {
         state.sortKey = key;
         state.sortAsc = !['last_action', 'last_eval', 'grade', 'mark', 'errors', 'auto_eval_count', 'terminals',
-                          'clients', 'started_at'].includes(key);
+                          'clients', 'sharing', 'started_at'].includes(key);
       }
       render();
     });
@@ -494,6 +653,22 @@ function setupControls() {
     state.filter = filterInput.value.trim().toLowerCase();
     render();
   });
+  if (selectAll) {
+    // the rows shown, all of them in or out of the selection
+    selectAll.addEventListener('change', () => {
+      for (const row of state.shown) {
+        if (selectAll.checked) {
+          selected.add(projectKey(row));
+        } else {
+          selected.delete(projectKey(row));
+        }
+      }
+      render();
+    });
+  }
+  for (const button of bulkButtons) {
+    button.addEventListener('click', () => actMany(button.dataset.action));
+  }
   if (groupSourcesEnabled) {
     state.group = groupFromUrl();
     if (state.group === null) {

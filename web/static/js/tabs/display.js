@@ -39,6 +39,12 @@ export function createDisplayTab(ctx) {
   const fitBox = el('input', {type: 'checkbox'});
   const resizeBox = el('input', {type: 'checkbox'});
   resizeBox.checked = true;
+  if (ctx.participant) {
+    // one desktop for everybody on a shared project: its size is the owner's to set
+    resizeBox.checked = false;
+    resizeBox.disabled = true;
+    resizeBox.title = _('The owner of the project sets the size of the desktop');
+  }
   const clipboard = el('textarea', {class: 'display-clipboard', rows: '1',
     title: ctx.isOwner ? _('Text to paste into the X desktop, or received from it') : _('Text to paste into the X desktop')});
   const sendButton = el('button', {type: 'button'}, _('Send to the X clipboard'));

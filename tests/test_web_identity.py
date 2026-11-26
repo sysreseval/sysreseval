@@ -35,6 +35,23 @@ class TestIdentity:
                                 'language': 'en', 'anonymous': True, 'group': '', 'administrator': False}
         assert not me.is_instructor and not me.instructor_view and not me.administrator
 
+    def test_participant(self):
+        """The flag of a student on a project somebody shares with them: the portal's word to
+        the agent, request by request; never told to the browser nor kept in the cookie."""
+        bob = Identity(login='bob', fullname='Bob B', group='INFO1')
+        assert bob.participant is False and bob.headers()[ident.HEADER_PARTICIPANT] == '0'
+        partner = bob.as_participant()
+        assert partner.participant is True and partner.login == 'bob' and partner != bob
+        assert partner.headers()[ident.HEADER_PARTICIPANT] == '1'
+        assert Identity.from_headers(partner.headers()) == partner
+        assert Identity.from_headers(bob.headers()) == bob
+        # a portal older than the flag sends no header: not a participant
+        older = {k: v for k, v in partner.headers().items() if k != ident.HEADER_PARTICIPANT}
+        assert Identity.from_headers(older) == bob
+        assert 'participant' not in partner.to_dict() and partner.to_dict() == bob.to_dict()
+        with pytest.raises(IdentityError, match='never a participant'):
+            Identity(login='prof', role='instructor').as_participant()
+
     def test_clean_group(self):
         assert ident.clean_group(' INFO1 ') == 'INFO1' and ident.clean_group(None) == ''
         assert ident.clean_group('a\x00b\x7fc\x85 ') == 'abc'
@@ -50,6 +67,7 @@ class TestIdentity:
         dict(login=''), dict(login='../x'), dict(login='a b'), dict(login='x' * 65), dict(login='é'),
         dict(login='ok', role='root'), dict(login='ok', view='instructor'),   # student with the instructor view
         dict(login='ok', administrator=True),                                  # a student administrator
+        dict(login='ok', role='instructor', participant=True),                 # an instructor is never a participant
         dict(login='ok', language='french!'),
     ])
     def test_refused(self, kwargs):

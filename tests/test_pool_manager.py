@@ -725,6 +725,31 @@ class TestStatusCoercion:
             assert not pool.status['a'].reachable and set(pool.gui_users()) == {'c'}
         run(go())
 
+    def test_project_names(self):
+        """The running lab names of a status (the shared projects learn from them that one is
+        gone): running lab names only, each once, a bounded list; no list = an agent older than
+        the key; never in the rows of the pool."""
+        from sreweb.portal.pool import status_from_json, project_name_fields, MAX_PROJECT_NAMES
+        first, second = '20261126100000@@@sre@dhcp.py@@@alice', '20261126100100@@@s4@tp.py@@@bob'
+        assert status_from_json(up()).project_names is None and HostStatus().project_names is None
+        assert status_from_json(up(project_names=[])).project_names == []
+        st = status_from_json(up(project_names=[first, second, first, 'x', '../etc@@@a@@@b', 5, None, [first],
+                                                '1@@@' + 'y' * 400 + '@@@carol']))
+        assert st.project_names == [first, second]
+        for odd in ('names', {first: 1}, 3, True):
+            assert project_name_fields(odd) is None, odd
+        many = [f'2026112610{n:04d}@@@sre@dhcp.py@@@alice' for n in range(MAX_PROJECT_NAMES + 20)]
+        assert project_name_fields(many) == many[:MAX_PROJECT_NAMES]
+        session = FakeSession()
+        session.answers['http://a'] = up(project_names=[first])
+        pool = Pool([HostConfig('a', 'http://a', TOKEN, 10)], session)
+
+        async def go():
+            await pool.refresh()
+            assert pool.status['a'].project_names == [first]
+            assert all('project_names' not in row for row in pool.summary())
+        run(go())
+
     def test_one_odd_agent_does_not_break_the_placement(self):
         hosts = [HostConfig('a', 'http://a', TOKEN, 10), HostConfig('b', 'http://b', TOKEN, 10)]
         session = FakeSession()

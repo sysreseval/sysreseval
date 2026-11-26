@@ -10,7 +10,9 @@
 // the presenter's page as it is (setTable: header, rows, caption), whichever of the two it is:
 // the presenter's page calls ctx.onEvaluated() after each change of its table (present.js
 // publishes getTable()).  The spectators follow the presenter's scroll (scroll.js), applied
-// again once the table arrives.
+// again once the table arrives.  On a shared project a self-evaluation spends the cooldown of
+// everybody: the agent pushes the one somebody else ran (the `self_evaluation` event) and the tab
+// shows it as its own, naming who ran it (pushed).
 
 import * as api from '../api.js';
 import {el, clear, toast} from '../ui.js';
@@ -162,6 +164,22 @@ export function createEvaluationTab(ctx) {
       lastLoaded = false;
       if (shown) {
         loadLast();
+      }
+    },
+    // a shared project: the self-evaluation the owner or another participant just ran, as the
+    // agent pushes it (the answer of POST eval in this page's language, and who ran it); the
+    // cooldown that follows is the same for everybody
+    pushed(ev) {
+      const result = ev.result || {};
+      const by = ev.by || {};
+      if (result.grades !== null && result.grades !== undefined) {
+        showTable(ev.header || [], ev.rows || [],
+                  format(_('Evaluation run by {name}'), {name: by.fullname || by.login || ''}));
+        published();
+      }
+      const delay = Number(ev.delay_before_self_grade || 0);
+      if (delay > 0) {
+        setDelay(delay);
       }
     },
     // the presenter's page: the table shown, or null before any (published by present.js)

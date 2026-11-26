@@ -16,6 +16,14 @@
 // and the question shared both ways with the student's own page, which follows through the same
 // module).
 //
+// A fourth one: a student on a project its owner shares with them (sharing.js, share_dialog.js:
+// a participant, `ctx.participant`).  They do what the owner does — the terminals of the
+// others joined, the answers, the states, the evaluation — but neither close nor save the
+// project; the Share button of the bar counts who is on the project and opens the dialog
+// where the owner chooses whom to share with, answers the requests and takes somebody out.
+// When the sharing ends for them (the push of the portal, the close code 4413 of their
+// sockets, a 403) the page shuts down with a banner.
+//
 // During an exam (exam.js: the `sre-exam` event, currentExam()) a student's page of an exam
 // project has no Close button, and is shut down when the exam ends (the overlay of exam.js
 // covers it; the agent's {"t": "exam", "ended": true} event on the events socket ends it too);
@@ -48,6 +56,7 @@ import {createLogTab} from './tabs/log.js';
 import {createWebconfTab} from './tabs/webconf.js';
 import {setTabHost as setWebconfTabHost} from './webconf.js';
 import {openSaveDialog} from './save_dialog.js';
+import {createSharing, WS_SHARE_ENDED} from './share_dialog.js';
 
 const TOUCH_INTERVAL = 60000;   // ms
 
@@ -71,6 +80,10 @@ const groupSourcesEnabled = body.dataset.groupSources === 'true';   // any user 
 // the student of their own project.
 const helper = isInstructor && !isOwner && !spectator;
 if (helper) body.classList.add('helping');
+// a student on somebody else's project: only a participant of a shared project gets this page
+// (the portal refuses anybody else); the top bars take the sharing colour (sre.css)
+const participant = !isOwner && !isInstructor && !spectator;
+if (participant) body.classList.add('participating');
 
 const tabBar = document.getElementById('tabbar');
 const panes = document.getElementById('panes');
@@ -84,6 +97,8 @@ const closeButton = document.getElementById('close-project');
 // Save Project: only on a site with the saved projects ([saves] of web.toml), never on a presentation
 const saveButton = document.getElementById('save-project');
 const closedBanner = document.getElementById('closed-banner');
+const shareButton = document.getElementById('share-project');         // a site with the shared projects
+const shareEndedBanner = document.getElementById('share-ended-banner');
 const endedBanner = document.getElementById('ended-banner');          // a spectator's page
 const leaveButton = document.getElementById('leave-presentation');    // a spectator's page, of an instructor
 const presentButton = document.getElementById('present');             // an instructor's page
@@ -96,6 +111,7 @@ let focus = null;          // the focus side (focus.js): the instructor's button
 let talk = null;           // an instructor on a student's project: the Talk privately button (talk.js)
 let pointerTracker = null; // an instructor's page: the mouse and the selection published while presenting or focusing (pointer.js)
 let pointerView = null;    // a spectator's page: the presenter's pointer and selection drawn (pointer.js; focus.js keeps its own)
+let sharing = null;        // the Share button and its dialog (share_dialog.js)
 
 const state = {
   project: null,
@@ -116,8 +132,12 @@ const ctx = {
   login,
   spectator,
   helper,
+  participant,
+  // the page of a presentation says so on every call: a participant of the project who is also
+  // in the audience is a spectator there (the portal tells the two pages apart by it)
   url(suffix, params) {
-    return api.withQuery(apiBase + suffix, {...(params || {}), view: state.instructorView ? 'instructor' : undefined});
+    return api.withQuery(apiBase + suffix, {...(params || {}), view: state.instructorView ? 'instructor' : undefined,
+                                            presentation: presentationId || undefined});
   },
   // a spectator of a presentation reads the answers; an instructor on a student's project
   // writes them like the student (the agent keeps the student's metadata)
@@ -346,8 +366,12 @@ function applyProject(project) {
     updateSchemaPdfLink();
   }
   if (saveButton) {
-    // the lab allows it and the host has the saved projects (the agent says so in the project)
+    // the lab allows it and the host has the saved projects (the agent says so in the project:
+    // never to a participant of a shared project, the save is the owner's)
     saveButton.hidden = spectator || !project.can_save;
+  }
+  if (participant) {
+    closeButton.hidden = true;     // ... and so is the close
   }
   if (presentButton && presenter && !presenter.isPresenting()) {
     presentButton.hidden = false;
@@ -527,6 +551,9 @@ function shutDown() {
   if (pointerView) {
     pointerView.destroy();
   }
+  if (sharing) {
+    sharing.stop();
+  }
   setWebconfTabHost(null);      // the conference goes on in a window over the page
   tabBar.hidden = true;
   panes.hidden = true;
@@ -549,6 +576,17 @@ function projectClosed() {
   }
   shutDown();
   closedBanner.hidden = false;
+}
+
+// A participant: the project is no longer shared with them (the owner stopped, they were taken
+// out or left, an instructor forbade it).  The project itself goes on: the page ends here.
+function sharingEnded() {
+  if (!participant || !shutDown()) {
+    return;
+  }
+  if (shareEndedBanner) {
+    shareEndedBanner.hidden = false;
+  }
 }
 
 // A spectator: the presentation is over (the presenter stopped it, or left); the parent page
@@ -672,6 +710,13 @@ function onEvent(ev) {
         tabs.evaluation.reload();
       }
       break;
+    case 'self_evaluation':
+      // a shared project: the self-evaluation somebody else on it just ran, and the wait that
+      // follows for everybody
+      if (!spectator && !helper && tab('evaluation')) {
+        tabs.evaluation.pushed(ev);
+      }
+      break;
     case 'removed':
       projectClosed();
       break;
@@ -701,6 +746,10 @@ function applyExam(examState) {
   }
   const exam = examState.exam;
   if (!isBound(exam)) {
+    return;
+  }
+  if (participant) {
+    window.location.assign(siteUrl('/projects'));     // no shared project during an exam
     return;
   }
   const lab = labOfRunningLabName(body.dataset.rln || '');
@@ -736,11 +785,31 @@ const events = new ProjectEvents(ctx.url('/events'), {
       activity.resend();        // the gesture made while the socket was down
     }
   },
+  // a participant: the portal closes their sockets with this code when the sharing ends for
+  // them; a socket dropped for another reason asks whether they are still in (a 403 says no:
+  // the reconnection would be refused for ever)
+  onClose: (ev) => {
+    if (!participant || state.closed) {
+      return true;
+    }
+    if (ev.code === WS_SHARE_ENDED) {
+      sharingEnded();
+      return false;
+    }
+    api.get(ctx.url('')).catch((e) => {
+      if (e.status === 403) {
+        sharingEnded();
+      }
+    });
+    return true;
+  },
 });
 
-// the owner's own gestures on the page (a spectator's page is in the owner's name when the owner
-// presents: never that one; an instructor helping is not the student)
-const activity = isOwner && !spectator ? createActivityTracker({send: (frame) => events.send(frame)}) : null;
+// the gestures of the students of the project on the page: its owner, the participants of a
+// shared project (a spectator's page is in the owner's name when the owner presents: never that
+// one; an instructor helping is not the student)
+const student = isOwner || participant;
+const activity = student && !spectator ? createActivityTracker({send: (frame) => events.send(frame)}) : null;
 
 let touchTimer = null;
 
@@ -863,6 +932,12 @@ if (!spectator && focusLabel && (isOwner || (isInstructor && focusButton))) {
   });
 }
 
+if (!spectator && shareButton) {
+  // the Share button: who is on the project, and for the owner whom it is shared with
+  sharing = createSharing({apiBase, button: shareButton, isOwner, participant, isInstructor,
+                           onEnded: sharingEnded, onLeft: () => window.location.assign(siteUrl('/projects'))});
+}
+
 if (helper && talkButton) {
   // an instructor on a student's project may ask the student to talk alone (a private room of
   // the web conference); the button is shown once the project is loaded
@@ -899,11 +974,23 @@ async function main() {
     });
     presentationSocket.connect();
   }
+  // the portal told this user their participation ended (sharing.js, on the presence socket)
+  document.addEventListener('sre-share', (ev) => {
+    const message = ev.detail || {};
+    if (message.t === 'share' && message.ended && message.host === body.dataset.host
+        && message.rln === body.dataset.rln) {
+      sharingEnded();
+    }
+  });
   try {
     await load();
   } catch (e) {
     if (e.status === 404) {
       projectClosed();
+      return;
+    }
+    if (participant && e.status === 403) {
+      sharingEnded();
       return;
     }
     tabBar.hidden = true;
@@ -917,6 +1004,9 @@ async function main() {
   touchTimer = window.setInterval(() => {
     api.post(ctx.url('/touch')).catch(() => {});
   }, TOUCH_INTERVAL);
+  if (sharing) {
+    sharing.start();
+  }
   if (presenter) {
     presenter.resume();       // a reloaded page goes on presenting
   }

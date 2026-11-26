@@ -36,7 +36,8 @@ STORAGE_KEY = 'sreweb.watch'
 
 # -- what the page shows, as JavaScript expressions ---------------------------------------------
 
-OWNERS = "[...document.querySelectorAll('#watch tbody tr td:nth-child(2)')].map((td) => td.textContent)"
+# (the first cell of a row is its checkbox: the owner is the third)
+OWNERS = "[...document.querySelectorAll('#watch tbody tr td:nth-child(3)')].map((td) => td.textContent)"
 COUNT = "(document.getElementById('watch-count') || {textContent: ''}).textContent"
 RENDERED = f"{COUNT} !== ''"                                  # the table rendered (the count is set by render())
 MESSAGE = "(document.querySelector('#watch tbody td.muted') || {textContent: ''}).textContent"
@@ -166,7 +167,7 @@ class TestWatchGroupFilter:
 
 # the cell of the first row (the 7th column, after Started): its text and its tooltip
 LAST_ACTION = """(() => {
-  const td = document.querySelector('#watch tbody tr td:nth-child(7)');
+  const td = document.querySelector('#watch tbody tr td:nth-child(8)');
   return td ? {text: td.textContent, title: td.title} : null;
 })()"""
 TABS = "[...document.querySelectorAll('#tabbar [role=tab]')].map((b) => b.dataset.tab)"
@@ -255,7 +256,7 @@ SECTIONS = ("({projects: !document.getElementById('watch-projects').hidden, "
 TITLE = "document.getElementById('watch-title').textContent"
 # the Clients cell of the first project (the 14th column, after Terminals): its text and its tooltip
 CLIENTS_CELL = """(() => {
-  const td = document.querySelector('#watch tbody tr td:nth-child(14)');
+  const td = document.querySelector('#watch tbody tr td:nth-child(15)');
   return td ? {text: td.textContent, title: td.title} : null;
 })()"""
 ADDRESS_HIDDEN = "document.querySelector('#watch-web th[data-sort=addr]').hidden"

@@ -22,7 +22,7 @@ from ..agent.usage import (STATUS_CPUS, STATUS_MEM_TOTAL, STATUS_CPU_BUSY, STATU
 from ..config import (HostConfig, Priority, host_config_from_dict, host_entry, check_priority,
                       check_usable_capacity, ConfigError, CAPACITY_PROJECTS, CAPACITY_RESOURCES,
                       DEFAULT_USABLE_CAPACITY, USABLE_CAPACITY_KEY)
-from ..identity import Identity, is_valid_login, ROLE_INSTRUCTOR
+from ..identity import Identity, is_valid_login, running_lab_name_owner, ROLE_INSTRUCTOR, STATUS_PROJECT_NAMES
 from ..savestore import STATUS_SAVES, STATUS_SAVES_CONFIGURED, STATUS_SAVES_ERROR
 from .costs import (Cost, CostBook, HostLoad, Usage, host_capacity, host_load, lab_key, figure, DEFAULT_MEMORY_MB,
                     DEFAULT_CPU, MAX_NAME)
@@ -215,6 +215,10 @@ class HostStatus:
     # `sre-web-tool list` (``poolctl.saves_unusable()``)
     saves_configured: bool = False
     saves_error: str = ''
+    # the running lab names of the host (``project_name_fields``): what tells the shared projects
+    # (``sharing.py``) that one is gone; ``None`` = an agent older than the key, which does not
+    # know the participants of a shared project either: nothing of it is offered for sharing
+    project_names: list | None = None
     hostname: str = ''
     sre_version: str = ''
     error: str = ''
@@ -227,6 +231,7 @@ MAX_STATUS_TEXT = 200
 MAX_OCCUPIED_BY = 100
 MAX_GUI_USERS = 64
 MAX_USAGE = 256             # the projects kept from the ``usage`` of a status
+MAX_PROJECT_NAMES = 512     # the running lab names kept from a status
 
 
 def _number(value) -> float | None:
@@ -270,6 +275,21 @@ def gui_user_fields(value) -> list:
         if len(users) >= MAX_GUI_USERS:
             break
     return list(users.values())
+
+
+def project_name_fields(value) -> list | None:
+    """The ``project_names`` of a status as the portal keeps them: the entries that are running
+    lab names, each once, at most ``MAX_PROJECT_NAMES``; ``None`` when the agent sends no list
+    (an older one)."""
+    if not isinstance(value, list):
+        return None
+    names = {}
+    for entry in value:
+        if isinstance(entry, str) and len(entry) <= MAX_NAME and running_lab_name_owner(entry) is not None:
+            names[entry] = True
+            if len(names) >= MAX_PROJECT_NAMES:
+                break
+    return list(names)
 
 
 def usage_fields(value, cpus: int | None, mem_total_mb: int | None) -> list:
@@ -400,6 +420,7 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       saves=data.get(STATUS_SAVES) is True,
                       saves_configured=data.get(STATUS_SAVES_CONFIGURED) is True,
                       saves_error=_text(data.get(STATUS_SAVES_ERROR)),
+                      project_names=project_name_fields(data.get(STATUS_PROJECT_NAMES)),
                       **preload_fields(data.get('preload')),
                       **local_drain_fields(data.get('local_drain')))
 
@@ -1086,8 +1107,10 @@ class Pool:
                 'cpu_room': self.cpu_room(h.name, reference),
                 **self._load_fields(h.name),
                 # the users in the Qt GUI are for the Watch page (``gui_users()``), the usage of
-                # each project for the costs of the labs (``costs_view()``): not for the pool
-                **{k: v for k, v in vars(st).items() if k not in ('updated', 'polled_at', 'gui_users', 'usage')},
+                # each project for the costs of the labs (``costs_view()``), the names of the projects
+                # for the shared ones (``sharing.py``): not for the pool
+                **{k: v for k, v in vars(st).items()
+                   if k not in ('updated', 'polled_at', 'gui_users', 'usage', 'project_names')},
             })
         return rows
 

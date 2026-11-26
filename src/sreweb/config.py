@@ -581,6 +581,39 @@ def _check_web_saves(cfg: WebSavesConfig, auth_mode: str, path: str):
         raise ConfigError(f"{where}enabled needs users who log in (auth.mode is {AUTH_ANONYMOUS!r})")
 
 
+#: ``[sharing] allowed``: whether a student may share a running project of theirs with other
+#: students (``sreweb/portal/sharing.py``).  "no-by-default": no project can be shared unless an
+#: instructor allows it on the Watch page; "yes-by-default": every project can, unless an
+#: instructor forbids it there.
+SHARING_NO = 'no-by-default'
+SHARING_YES = 'yes-by-default'
+SHARING_MODES = (SHARING_NO, SHARING_YES)
+
+
+@dataclass
+class SharingConfig:
+    """``[sharing]``: the shared projects (``sreweb/portal/sharing.py``).  The owner of a running
+    project lets other students work in it with them — everybody, or one group of theirs —, each
+    newcomer asking and the owner accepting; an instructor allows or forbids it project by
+    project on the Watch page, ``allowed`` being what holds for the projects nobody decided
+    about.  ``request_timeout``: how long a request to join waits for the owner's answer;
+    ``max_participants``: the students a project takes beside its owner (the terminal limits of
+    the agents are those of the project, shared by everybody on it)."""
+    allowed: str = SHARING_NO
+    request_timeout: float = 120.0      # seconds
+    max_participants: int = 4
+
+
+def _check_sharing(cfg: SharingConfig, path: str):
+    where = f"{path}: sharing."
+    if cfg.allowed not in SHARING_MODES:
+        raise ConfigError(f"{where}allowed must be one of {', '.join(SHARING_MODES)}")
+    if cfg.request_timeout <= 0:
+        raise ConfigError(f"{where}request_timeout must be a positive duration")
+    if isinstance(cfg.max_participants, bool) or not isinstance(cfg.max_participants, int) or cfg.max_participants < 1:
+        raise ConfigError(f"{where}max_participants must be an integer, 1 or more")
+
+
 @dataclass
 class GroupsConfig:
     """``[groups]``: the user groups of the Groups page (``sreweb/portal/groups.py``): the table
@@ -886,6 +919,7 @@ class WebConfig:
     site: SiteConfig = field(default_factory=SiteConfig)
     bbb: BbbConfig = field(default_factory=BbbConfig)
     saves: WebSavesConfig = field(default_factory=WebSavesConfig)
+    sharing: SharingConfig = field(default_factory=SharingConfig)
     hosts: list = field(default_factory=list)
 
     @property
@@ -921,6 +955,13 @@ class WebConfig:
         """Whether an instructor on a student's project may invite the student to a private
         conversation (a two-person room): ``[bbb] private_rooms``, on by default."""
         return self.bbb.enabled and self.bbb.private_rooms
+
+    @property
+    def sharing_available(self) -> bool:
+        """Whether the students may share their running projects at all (``[sharing]`` then says
+        which ones): never with the anonymous pseudonyms, which name nobody the owner of a
+        project could accept."""
+        return self.auth.mode != AUTH_ANONYMOUS
 
     @property
     def group_directory_reason(self) -> str | None:
@@ -1171,6 +1212,11 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
                    **({'cache_ttl': parse_duration(saves_data['cache_ttl'], 'saves.cache_ttl')}
                       if 'cache_ttl' in saves_data else {}))
     _check_web_saves(saves, auth.mode, path)
+    sharing_data = _section(data, 'sharing', path)
+    sharing = _build(SharingConfig, sharing_data, f"{path}: [sharing]",
+                     **({'request_timeout': parse_duration(sharing_data['request_timeout'], 'sharing.request_timeout')}
+                        if 'request_timeout' in sharing_data else {}))
+    _check_sharing(sharing, path)
     site = _build(SiteConfig, _section(data, 'site', path), f"{path}: [site]")
     _check_site(site, path)
     bbb_data = _section(data, 'bbb', path)
@@ -1191,9 +1237,10 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
         raise ConfigError(f"{path}: host names must be unique")
     top = {k: v for k, v in data.items()
            if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'archives', 'groups', 'exams', 'site', 'bbb',
-                        'saves', 'hosts')}
+                        'saves', 'sharing', 'hosts')}
     cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, access_log=access_log,
-                 archives=archives, groups=groups, exams=exams, site=site, bbb=bbb, saves=saves, hosts=hosts,
+                 archives=archives, groups=groups, exams=exams, site=site, bbb=bbb, saves=saves, sharing=sharing,
+                 hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
                  base_path=parse_base_path(top.get('base_path', ''), f'{path}: base_path'),
                  trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))

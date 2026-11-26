@@ -363,6 +363,19 @@ enabled = false
 # max_per_instructor = 0
 # cache_ttl = "30s"
 
+# The shared projects: the owner of a running project lets other students work in it with them
+# (the Share button of its page; "Open a shared lab…" of the Open page for the others; the owner
+# accepts each of them).  allowed: what holds for the projects no instructor decided about on the
+# Watch page — "no-by-default": none can be shared until an instructor allows it (what a site
+# that sets nothing gets); "yes-by-default": all can, unless an instructor forbids it.
+# request_timeout: how long a request to join waits for the owner; max_participants: the students
+# a project takes beside its owner.  Never in anonymous mode.  The pool hosts need an agent of
+# the same version.
+[sharing]
+allowed = "no-by-default"
+# request_timeout = "2m"
+# max_participants = 4
+
 [limits]
 eval_interval = 10        # seconds between two self-evaluations of one user
 start_interval = 30       # seconds between two starts of one user

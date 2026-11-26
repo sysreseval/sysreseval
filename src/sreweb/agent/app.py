@@ -43,7 +43,8 @@ from .exam import (parse_exam, check_flavor_preset, view as exam_view, end_epoch
                    KEY_ENDED_AT, KEY_FINAL_EVAL_AT, SKEW_WARNING)
 from .localdrain import LocalDrain
 from .preload import Preloader
-from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVALUATED, EVENT_EXAM
+from .registry import (Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVALUATED, EVENT_EXAM,
+                       EVENT_SELF_EVALUATION)
 from .results import ArchiveIndex
 from .rfb_filter import RfbInputFilter, RfbProtocolError
 from .saves import SaveStore, SaveRefused, sweep_tmp_dir
@@ -56,7 +57,7 @@ from .terminals import (TerminalSession, MAX_CLIENTS_PER_SESSION, MAX_READONLY_C
                         PROBE_DELAY)  # noqa: F401  (PROBE_DELAY: the tests)
 from .. import savestore
 from ..config import AgentConfig
-from ..identity import Identity, IdentityError, IDENTITY_KEY
+from ..identity import Identity, IdentityError, IDENTITY_KEY, STATUS_PROJECT_NAMES
 from ..i18n import translator
 from ..projectview import sanitise, schema_svg, schema_pdf, lang_priority
 
@@ -297,24 +298,32 @@ class Agent:
         return sanitise(project.info, identity,
                         exam_mode=self.exam_mode() or (project.exam is not None and not privileged),
                         display_enabled=self.displays.offered(project), privileged=privileged,
-                        exam=exam_view(project.exam), can_save=self._can_save(project, privileged))
+                        exam=exam_view(project.exam),
+                        can_save=self._can_save(project, privileged, access.is_participant(project.rln, identity)))
 
-    def _can_save(self, project: Project, privileged: bool) -> bool:
+    def _can_save(self, project: Project, privileged: bool, participant: bool = False) -> bool:
         """Whether the page of the project shows its Save button: what ``project_save`` checks
-        that does not change from one minute to the next."""
-        return bool(self.saves.enabled and self.saves.available and project.managed
+        that does not change from one minute to the next.  Never for a participant of a shared
+        project: the save is the owner's."""
+        return bool(not participant and self.saves.enabled and self.saves.available and project.managed
                     and project.info.get('allow_save_restore', False) and not self.exam_mode()
                     and (project.exam is None or privileged))
 
-    def _project(self, request, *, touch: bool = True) -> Project:
+    def _project(self, request, *, touch: bool = True, participants: bool = False) -> Project:
         """The project of the request, checked (a known running lab name the caller may access);
         its idle clock is reset unless *touch* is false (an instructor reading the results of a
         student is not the student's activity), nor by the owner of an exam project once the
-        exam ended (its idle timeout counts from the end)."""
+        exam ended (its idle timeout counts from the end).  With *participants*, a student the
+        owner shares the project with is let in as well (the portal says who, the
+        ``participant`` flag of the identity): the handlers of what a participant does pass it,
+        the others — the close, the save, the log, the exam — stay the owner's and the
+        instructors'."""
         rln = access.check_running_lab_name(request.match_info.get('rln', ''))
         project = self.registry.require(rln)
         identity = request[IDENTITY_KEY]
-        access.check_owner(rln, identity)
+        access.check_owner(rln, identity, participants=participants)
+        if access.is_participant(rln, identity):
+            access.check_shareable(project.info, managed=project.managed, exam=project.exam is not None)
         if touch and not (project.exam_over and identity.login == project.owner):
             project.touch()
         return project
@@ -324,8 +333,10 @@ class Agent:
         """An action of the owner on their project, *ago* seconds ago (the Last action column of
         the Watch page): typing in a terminal, answering, evaluating, applying a state, or a
         gesture their page reports.  Not the idle clock of ``_project``, which any open page
-        resets; what an instructor does on a student's project is not the student's action."""
-        if identity.login == project.owner:
+        resets; what an instructor does on a student's project is not the student's action.
+        What a participant of a shared project does counts: the column is the activity of the
+        students on the project."""
+        if identity.login == project.owner or access.is_participant(project.rln, identity):
             project.acted(ago)
 
     async def _run_list(self, login: str, args: list, *, privileged: bool = False) -> list:
@@ -603,6 +614,9 @@ class Agent:
             'hostname': self.hostname, 'sre_version': params.sre_version,
             'projects': self.registry.count(), 'managed_projects': managed,
             'local_projects': self.registry.count() - managed,
+            # the running lab names: how the portal learns that a project is gone (its shared
+            # projects, ``portal/sharing.py``), and that this agent knows the participants
+            STATUS_PROJECT_NAMES: sorted(self.registry.projects),
             'terminals': sum(p.terminal_count() for p in self.registry.projects.values()),
             'displays': self.displays.running_count(),
             'exam_mode': self.exam_mode(),
@@ -956,7 +970,7 @@ class Agent:
         """The project page: the sanitised view, the answers, the owner's login and full name
         (``fullname``, the answers metadata, ``''`` when unknown: an instructor's page of a
         student's project names the student) and the live terminals."""
-        project = self._project(request)
+        project = self._project(request, participants=True)
         identity = request[IDENTITY_KEY]
         # the owner's page: the answers metadata (full name, group) written again when stale, so
         # that a project created by an older agent or by the Qt GUI is named on the Watch page;
@@ -976,6 +990,8 @@ class Agent:
             'fullname': str(answers.get(params.fullname_keyword, '') or ''),
             'terminals': project.terminal_list(identity),
             'running_lab_name': project.rln, 'host': self.hostname,
+            # a student the owner shares the project with (the portal's word)
+            'participant': access.is_participant(project.rln, identity),
         })
 
     async def project_close(self, request):
@@ -988,7 +1004,7 @@ class Agent:
         return web.json_response({'ok': True})
 
     async def touch(self, request):
-        self._project(request)
+        self._project(request, participants=True)
         return web.Response(status=204)
 
     # -- saved projects -------------------------------------------------------------------------
@@ -1146,7 +1162,7 @@ class Agent:
                 self.displays.release(reservation)
 
     async def schema(self, request):
-        project = self._project(request)
+        project = self._project(request, participants=True)
         try:
             svg = schema_svg(project.info, request[IDENTITY_KEY], request.query)
         except ValueError as e:
@@ -1157,7 +1173,7 @@ class Agent:
         """The Export Schema to PDF button: the drawing of the Schema tab rendered here by
         graphviz, like the GUI does in its own process (no ``sre`` call), as a download named
         ``<lab>_schema.pdf``; refused by the lab's ``export_schema_pdf`` flag."""
-        project = self._project(request)
+        project = self._project(request, participants=True)
         access.check_schema_pdf(project.info)
         try:
             pdf = await asyncio.to_thread(schema_pdf, project.info, request[IDENTITY_KEY], request.query)
@@ -1232,10 +1248,10 @@ class Agent:
     # -- answers, evaluation, states --------------------------------------------------------------
 
     async def answers_put(self, request):
-        """The answers of the page: the owner's, or those an instructor types on a student's
-        project (the student's file, the student's metadata kept; a non-owner is an instructor,
-        ``_project`` lets nobody else in)."""
-        project = self._project(request)
+        """The answers of the page: the owner's, or those an instructor or a participant of the
+        shared project types (the owner's file, the owner's metadata kept: a non-owner never
+        writes their own name there)."""
+        project = self._project(request, participants=True)
         access.check_exam_action(project.exam, privileged=access.is_privileged_caller(project.rln, request[IDENTITY_KEY]))
         body = await self._read_json(request)
         patch = body.get('answers', body)
@@ -1249,8 +1265,11 @@ class Agent:
     async def eval_post(self, request):
         """The student's self-evaluation (``sre --user eval --auto-eval``, cooldown and counters
         of the lab), or, for an instructor on somebody else's project, a privileged ``sre eval``
-        (exo-eval marks, no cooldown, nothing counted on the student's side)."""
-        project = self._project(request)
+        (exo-eval marks, no cooldown, nothing counted on the student's side).  A participant of a
+        shared project runs the owner's self-evaluation — the owner's cooldown and counter —, so
+        its result is pushed to the pages of the owner and of the other participants
+        (``_self_evaluation_event``): everybody sees the grades and the wait that follows."""
+        project = self._project(request, participants=True)
         identity = request[IDENTITY_KEY]
         privileged = access.is_privileged_caller(project.rln, identity)
         if not privileged:
@@ -1273,6 +1292,14 @@ class Agent:
             raise CommandError(0, "sre eval gave no JSON", result.stderr)
         if data.get('grades') is not None:   # a self-evaluation refused by the cooldown wrote no archive
             await self._evaluated(project)
+        if not privileged:
+            await self.registry.broadcast(
+                project, lambda other, p=project, d=data, by=identity: self._self_evaluation_event(p, d, by, other),
+                only=lambda other, p=project, by=identity: self._student_of(p, other) and other.login != by.login)
+        return web.json_response(self._evaluation_answer(project, data, identity, privileged=privileged))
+
+    def _evaluation_answer(self, project: Project, data: dict, identity: Identity, *, privileged: bool) -> dict:
+        """What ``sre eval`` printed, with its table in the language of *identity*."""
         rows, header = [], []
         if data.get('grades') is not None:
             translate = translator(identity.language, self.localedirs)
@@ -1282,11 +1309,22 @@ class Agent:
                 maximum_mark=data.get('maximum_mark'), debug=debug,
                 lang_priority=lang_priority(identity, project.info), translate=translate))
             header = header_labels(debug=debug, translate=translate)
-        return web.json_response({'result': data, 'rows': rows, 'header': header,
-                                  'delay_before_self_grade': 0 if privileged else data.get('delay_before_self_grade', 0)})
+        return {'result': data, 'rows': rows, 'header': header,
+                'delay_before_self_grade': 0 if privileged else data.get('delay_before_self_grade', 0)}
+
+    @staticmethod
+    def _student_of(project: Project, identity: Identity) -> bool:
+        """The owner of the project or a participant of it: never an instructor helping."""
+        return identity.login == project.owner or access.is_participant(project.rln, identity)
+
+    def _self_evaluation_event(self, project: Project, data: dict, by: Identity, identity: Identity) -> dict:
+        """The ``self_evaluation`` event: the self-evaluation *by* just ran, as the page of
+        *identity* shows it (the answer of ``POST eval`` in their language, and who ran it)."""
+        return {'t': EVENT_SELF_EVALUATION, 'by': {'login': by.login, 'fullname': by.fullname},
+                **self._evaluation_answer(project, data, identity, privileged=False)}
 
     async def state_post(self, request):
-        project = self._project(request)
+        project = self._project(request, participants=True)
         identity = request[IDENTITY_KEY]
         state = request.match_info.get('state', '')
         access.check_state(project.info, state, identity)
@@ -1309,7 +1347,11 @@ class Agent:
     async def _exam_changed(self, project: Project):
         """After a change of the exam of a project (set, moved, ended, removed): the periodic
         evaluation planned again, the state file and the answers metadata (the exam fields)
-        written, the open pages told (the ``exam`` event, then ``info``: the tabs changed)."""
+        written, the open pages told (the ``exam`` event, then ``info``: the tabs changed).  An
+        exam project is never shared: the terminals of the participants are closed (the portal
+        ends the sharing itself; this is the agent's own guard)."""
+        if project.exam is not None:
+            await self._drop_participants(project)
         self.schedulers.arm(project)
         self.registry.write_state(project, force=True)
         try:
@@ -1319,6 +1361,14 @@ class Agent:
         await self.registry.broadcast(project, {'t': EVENT_EXAM, 'ended': project.exam_over,
                                                 'exam': exam_view(project.exam)})
         await self.registry.broadcast(project, lambda identity, p=project: self._info_event(p, identity))
+
+    async def _drop_participants(self, project: Project):
+        """The terminal clients of the participants of a shared project closed."""
+        for session in list(project.terminals.values()):
+            for client in list(session.clients.values()):
+                if access.is_participant(project.rln, client.identity):
+                    with contextlib.suppress(Exception):
+                        await client.close(WS_FORBIDDEN, "an exam project is never shared")
 
     async def _exam_ended(self, project: Project):
         """The schedulers ended the exam of a project: the display clients are cut, the pages told."""
@@ -1635,7 +1685,7 @@ class Agent:
         """The events of a project pushed to an open page.  The page sends one kind of frame:
         ``{"t": "activity", "ago": <seconds>}`` when its user pressed a key, clicked or scrolled
         (``activity_ago``), which is an action of the owner when the page is the owner's."""
-        project = self._project(request)
+        project = self._project(request, participants=True)
         identity = request[IDENTITY_KEY]
         ws = web.WebSocketResponse(heartbeat=WS_HEARTBEAT)
         await ws.prepare(request)
@@ -1670,7 +1720,7 @@ class Agent:
         once when nobody else types in it; a socket that just goes away (a page closed, reloaded
         or cut) leaves the session lingering for ``terminals_linger`` seconds, for a page to join
         it again.  At a cap, the lingering session that has waited longest gives way."""
-        project = self._project(request)
+        project = self._project(request, participants=True)
         identity = request[IDENTITY_KEY]
         device = request.match_info.get('device', '')
         q = request.query
@@ -1780,7 +1830,9 @@ class Agent:
                         project.touch()
                         self._acted(project, identity)
                     elif isinstance(obj, dict) and obj.get('t') == 'close':
-                        ended = True
+                        # a participant of a shared project ends the terminals they opened; on
+                        # somebody else's they only leave (the session lingers for its owner)
+                        ended = session.created_by == identity.login or not access.is_participant(project.rln, identity)
                         break
         finally:
             pump.cancel()
@@ -1832,13 +1884,13 @@ class Agent:
     # -- the virtual desktop ---------------------------------------------------------------------
 
     async def display_get(self, request):
-        project = self._project(request)
+        project = self._project(request, participants=True)
         return web.json_response(self.displays.status(project, access.display_available(project.info,
                                                                                          request[IDENTITY_KEY])))
 
     async def display_post(self, request):
         """The X server of the project, started (again) if needed."""
-        project = self._project(request)
+        project = self._project(request, participants=True)
         identity = request[IDENTITY_KEY]
         access.check_display(project.info, identity)
         access.check_not_exam(self.pub_dir)
@@ -1858,7 +1910,7 @@ class Agent:
         presentation): the client messages go through ``RfbInputFilter`` (the handshake and the
         update requests pass, the input and the desktop changes are dropped, anything else
         closes the socket with 4403)."""
-        project = self._project(request)
+        project = self._project(request, participants=True)
         identity = request[IDENTITY_KEY]
         readonly = request.query.get('readonly', '') in ('1', 'true')
         rfb_filter = RfbInputFilter() if readonly else None

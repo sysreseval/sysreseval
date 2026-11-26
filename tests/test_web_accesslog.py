@@ -146,7 +146,25 @@ class TestEventFor:
                                                                             'webconf_join', 'webconf_invite',
                                                                             'webconf_accept', 'webconf_decline',
                                                                             'webconf_cancel', 'webconf_leave',
-                                                                            'save_share', 'save_delete'}
+                                                                            'save_share', 'save_delete',
+                                                                            'share_stop', 'share_remove',
+                                                                            'share_request', 'share_accept',
+                                                                            'share_decline', 'share_cancel',
+                                                                            'share_policy', 'bulk_close'}
+        # the shared projects: a project shared names it (a project of the session), the state of
+        # a sharing, the lists of a student and the bulk close read back are polls
+        base = '/api/projects/{host}/{rln}/sharing'
+        assert 'share_start' in A.PROJECT_EVENTS and A.EVENTS[('PUT', base)] == 'share_start'
+        assert A.EVENTS[('DELETE', base)] == 'share_stop'
+        assert A.EVENTS[('DELETE', base + '/participants/{login}')] == 'share_remove'
+        assert A.EVENTS[('POST', base + '/requests')] == 'share_request'
+        assert A.EVENTS[('POST', base + '/requests/{id}/accept')] == 'share_accept'
+        assert A.EVENTS[('POST', base + '/requests/{id}/decline')] == 'share_decline'
+        assert A.EVENTS[('DELETE', base + '/requests/{id}')] == 'share_cancel'
+        assert A.EVENTS[('POST', '/api/watch/sharing')] == 'share_policy'
+        assert A.EVENTS[('POST', '/api/watch/close')] == 'bulk_close'
+        assert {('GET', base), ('GET', '/api/shares'), ('GET', '/api/watch/close')} <= A.KEEPALIVE
+        assert {'share_start', 'share_accept', 'bulk_close'} <= set(A.ALL_EVENTS)
         # the saved projects: a save names its project, a restore is a start like another
         assert 'save' in A.PROJECT_EVENTS and A.EVENTS[('POST', '/api/saves/{owner}/{id}/restore')] == 'start'
         # the web conferences: the listings are keepalives, the page of the iframe after Leave is ignored

@@ -43,6 +43,9 @@ from .pool import LAB_KIND_LAB, LAB_SORT_NAME
 from .ratelimit import RateLimiter
 from .relay import Relay, RELAYED_KEY
 from .saves import SaveRoutes
+from .sharing import Sharing, PARTICIPANT_KEY
+from .sharingroutes import SharingRoutes
+from .bulkclose import BulkClose
 from .roles import complete_owners
 from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_CREATED
 from ..config import (WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, check_priority,
@@ -87,6 +90,28 @@ SPECTATOR_ROUTES = frozenset({
     ('GET', '/api/projects/{host}/{rln}/log'),
     ('GET', '/api/projects/{host}/{rln}/terminals/{device}'),
     ('GET', '/api/projects/{host}/{rln}/display'),
+    ('GET', '/api/projects/{host}/{rln}/display/ws'),
+    ('POST', '/api/projects/{host}/{rln}/touch'),
+})
+
+
+#: ``(method, canonical route)`` of what a participant of a shared project may do (``sharing.py``):
+#: everything its owner does on it but what stays the owner's — the close and the save are not
+#: here, nor the log (debug projects, never shared) and the last archived evaluation (the
+#: instructors').  A participant is relayed under their own identity, flagged ``participant``;
+#: the agent keeps its own list of what it opens to them.
+PARTICIPANT_ROUTES = frozenset({
+    ('GET', '/projects/{host}/{rln}'),
+    ('GET', '/api/projects/{host}/{rln}'),
+    ('GET', '/api/projects/{host}/{rln}/events'),
+    ('GET', '/api/projects/{host}/{rln}/schema.svg'),
+    ('GET', '/api/projects/{host}/{rln}/schema.pdf'),
+    ('PUT', '/api/projects/{host}/{rln}/answers'),
+    ('POST', '/api/projects/{host}/{rln}/eval'),
+    ('POST', '/api/projects/{host}/{rln}/states/{state}'),
+    ('GET', '/api/projects/{host}/{rln}/terminals/{device}'),
+    ('GET', '/api/projects/{host}/{rln}/display'),
+    ('POST', '/api/projects/{host}/{rln}/display'),
     ('GET', '/api/projects/{host}/{rln}/display/ws'),
     ('POST', '/api/projects/{host}/{rln}/touch'),
 })
@@ -145,7 +170,7 @@ class Routes:
                  archives: ArchiveStore | None = None, memberships: Memberships | None = None,
                  exams: Exams | None = None, exam_projects: ExamProjects | None = None,
                  exam_hosts: ExamHosts | None = None, webconfs: Webconfs | None = None,
-                 archive_files: ArchiveFileStore | None = None):
+                 archive_files: ArchiveFileStore | None = None, sharing: Sharing | None = None):
         self.cfg = cfg
         self.csp, self.csp_framed = security_policies(cfg)
         self.pool = pool
@@ -176,6 +201,14 @@ class Routes:
         self.ldap = LdapAuthenticator(cfg.auth.ldap) if cfg.auth.mode == AUTH_LDAP else None
         # the saved projects ([saves]: their page and API, saves.SaveRoutes; every route 404 when off)
         self.saves = SaveRoutes(self)
+        # the shared projects (sharing.Sharing: who shares what with whom; their API, and the bulk
+        # close of the Watch page that came with them)
+        self.sharing = sharing if sharing is not None else Sharing(
+            self.presence, default=cfg.sharing.allowed, request_timeout=cfg.sharing.request_timeout,
+            max_participants=cfg.sharing.max_participants,
+            bound=lambda login, group: self.exams.for_login(login, group) is not None)
+        self.bulk_close = BulkClose(pool, relay, on_closed=self.sharing.project_closed)
+        self.shares = SharingRoutes(self)
 
     def register(self, app: web.Application):
         r = app.router
@@ -262,6 +295,7 @@ class Routes:
         r.add_get('/api/projects/{host}/{rln}/log', self.api_log)
         r.add_post('/api/projects/{host}/{rln}/touch', self.api_touch)
         self.saves.register(r)
+        self.shares.register(r)
         # presentations: an instructor's project shown read-only on the students' browsers
         r.add_get('/present/{id}', self.present_page)
         r.add_get('/api/presence/ws', self.api_presence_ws)
@@ -337,6 +371,7 @@ class Routes:
             'webconf': self.cfg.webconf_available,    # the Webconf button of the instructors ([bbb])
             'webconf_private': self.cfg.webconf_private,   # ... and Talk privately on a student's project
             'saves': self.saves.shown_to(identity),        # the Saved projects link, the Save button of a project
+            'sharing': self.cfg.sharing_available,         # the shared projects: their buttons, the Watch column
             'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
             'site': self._site(language),
             # the sub-path of the site ('' at the root): before every href / src / action of the
@@ -374,9 +409,15 @@ class Routes:
 
     def _target(self, request) -> tuple:
         """The host and running lab name of a project URL, after the ownership check.  A
+        participant of the project, which its owner shares with them (``sharing.py``), is let
+        through under their own identity flagged ``participant`` on ``PARTICIPANT_ROUTES``;
+        ``request[PARTICIPANT_KEY]`` then holds their grant.  A
         spectator of a presentation of that project gets the presenter's identity (their own
         language) on the read-only routes of ``SPECTATOR_ROUTES``, the instructor view following
-        the presenter's; ``request[SPECTATOR_KEY]`` then holds the presentation."""
+        the presenter's; ``request[SPECTATOR_KEY]`` then holds the presentation.  The page of a
+        presentation says which it is (``?presentation=<id>`` on its calls): a participant who is
+        also in the audience of a presentation of the same project is a spectator there, and a
+        participant on their own page."""
         identity = self._require_identity(request)
         host = self.pool.host(request.match_info['host'])
         rln = request.match_info['rln']
@@ -384,9 +425,17 @@ class Routes:
         if owner is None:
             raise PoolError(404, "unknown project")
         if owner != identity.login and identity.role != ROLE_INSTRUCTOR:
-            presentation = self.presentations.spectator_of(identity, host.name, rln)
             canonical = route_pattern(request, self.cfg.base_path)
             method = 'GET' if request.method == 'HEAD' else request.method
+            if (method, canonical) in PARTICIPANT_ROUTES and not request.query.get('presentation'):
+                grant = self.sharing.grant(identity, host.name, rln)
+                if grant is not None:
+                    request[PARTICIPANT_KEY] = grant
+                    logged = request.get(ACCESS_KEY)
+                    if logged is not None:
+                        logged['participant'] = True
+                    return host, rln, identity.as_participant()
+            presentation = self.presentations.spectator_of(identity, host.name, rln)
             if presentation is None or (method, canonical) not in SPECTATOR_ROUTES:
                 raise PoolError(403, "not your project")
             request[SPECTATOR_KEY] = presentation
@@ -399,6 +448,8 @@ class Routes:
             return host, rln, presenter
         if identity.role != ROLE_INSTRUCTOR:
             self._exam_check(request, identity, rln=rln)     # a student in an exam: its projects only
+        if owner == identity.login:
+            self.sharing.seen_owner(identity, host.name, rln)
         view = request.query.get('view', '')
         if view == VIEW_INSTRUCTOR and identity.role == ROLE_INSTRUCTOR:
             identity = identity.with_view(VIEW_INSTRUCTOR)
@@ -621,6 +672,13 @@ class Routes:
             host, rln, identity = self._target(request)
         except ExamRefusal:
             raise web.HTTPFound(self._url('/projects'))      # the exam bar of the Projects page says why
+        except PoolError as e:
+            # a student who took part in the project until a moment ago (removed, the sharing
+            # stopped): back to their projects rather than "not your project"
+            match = request.match_info
+            if e.status == 403 and self.sharing.recently_out(request[IDENTITY_KEY].login, match['host'], match['rln']):
+                raise web.HTTPFound(self._url('/projects'))
+            raise
         return aiohttp_jinja2.render_template('project.html', request, self._page_context(
             request, host=host.name, rln=rln, api_base=f"/api/projects/{host.name}/{urllib.parse.quote(rln)}"))
 
@@ -864,12 +922,15 @@ class Routes:
         it is readable, the group of the owners the agents know none for and the full name of
         the owners of the Qt GUI projects (``roles.complete_owners``); ``clients`` = the clients
         of the owner on the project, their browsers showing its page and their Qt GUI on its
-        host (``clients.annotate_projects``)."""
+        host (``clients.annotate_projects``); ``sharing`` = whether it may be shared, is, and
+        with how many students, and ``closing`` while a bulk close stops it
+        (``SharingRoutes.annotate``)."""
         identity = self._require_instructor(request)
         rows = await self.pool.projects_of(identity, all_projects=True)
         if self.roles is not None:
             await complete_owners(rows, self.roles)
         annotate_projects(rows, self.presence.sockets(), self.pool.gui_users())
+        self.shares.annotate(rows)
         await self.memberships.refresh()
         return web.json_response(self.memberships.annotate(rows))
 
@@ -1681,7 +1742,12 @@ class Routes:
             binding = self._exam_binding(identity)
             if binding is not None and lab_of_rln(request.match_info['rln']) in binding[0].lab_names(identity.login):
                 raise ExamRefusal("an exam project cannot be closed during the exam")
-        return await self._relay_json(request, 'DELETE', timeout=900)
+        response = await self._relay_json(request, 'DELETE', timeout=900)
+        if response.status < 300:
+            # closed: its sharing ends now (the participants are told), what an instructor
+            # decided about it is forgotten
+            await self.sharing.project_closed(request.match_info['host'], request.match_info['rln'])
+        return response
 
     async def api_touch(self, request):
         return await self._relay_json(request, 'POST', '/touch')
@@ -1719,7 +1785,11 @@ class Routes:
 
     async def api_eval(self, request):
         identity = self._require_identity(request)
-        wait = self.limiter.allow_every('eval', self._limit_key(request, identity), self.cfg.limits.eval_interval)
+        key = self._limit_key(request, identity)
+        owner = running_lab_name_owner(request.match_info['rln'])
+        if owner and owner != identity.login and not identity.is_instructor:
+            key = owner      # a participant of a shared project evaluates on the owner's budget, as the owner would
+        wait = self.limiter.allow_every('eval', key, self.cfg.limits.eval_interval)
         if wait:
             return json_error(429, "please wait before evaluating again", retry_after=round(wait))
         return await self._relay_json(request, 'POST', '/eval', timeout=900)
@@ -1731,7 +1801,8 @@ class Routes:
     async def api_events(self, request):
         host, rln, identity = self._target(request)
         return await self.relay.websocket(request, host, identity, self._path(rln, '/events'),
-                                          upstream=request.get(SPECTATOR_KEY) is None)
+                                          upstream=request.get(SPECTATOR_KEY) is None,
+                                          grant=request.get(PARTICIPANT_KEY))
 
     async def api_display(self, request):
         return await self._relay_json(request, 'GET', '/display')
@@ -1745,7 +1816,8 @@ class Routes:
         # requests must still reach it, so the frames of the browser are forwarded)
         params = {'readonly': '1'} if request.get(SPECTATOR_KEY) is not None else None
         return await self.relay.websocket(request, host, identity, self._path(rln, '/display/ws'),
-                                          protocols=(DISPLAY_SUBPROTOCOL,), params=params)
+                                          protocols=(DISPLAY_SUBPROTOCOL,), params=params,
+                                          grant=request.get(PARTICIPANT_KEY))
 
     async def api_terminal(self, request):
         host, rln, identity = self._target(request)
@@ -1761,7 +1833,8 @@ class Routes:
             params['readonly'] = '1'
         return await self.relay.websocket(request, host, identity,
                                           self._path(rln, f"/terminals/{urllib.parse.quote(device, safe='')}"),
-                                          protocols=(TERMINAL_SUBPROTOCOL,), params=params, upstream=not spectator)
+                                          protocols=(TERMINAL_SUBPROTOCOL,), params=params, upstream=not spectator,
+                                          grant=request.get(PARTICIPANT_KEY))
 
     # -- exams ------------------------------------------------------------------------------------
     # The state lives in ``exams.py`` (the database behind it in ``examstore.py``, the agents
@@ -2137,6 +2210,7 @@ class Routes:
             await self.exams.resync({identity.login})            # an exam binding them already
             await self.webconfs.tell(identity.login, watcher)    # the web conference their other pages show
             await self.webconfs.resync({identity.login})         # ... or one they were not told of yet
+            await self.sharing.tell(identity, watcher)           # the students waiting to join a project of theirs
             async for msg in ws:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
