@@ -1006,8 +1006,8 @@ distincte de la précédente, a `rate {lo}mbit` et `ceil {R}mbit`), `shape_fq_co
 destination {pa} vise une classe feuille autre que la classe par défaut), puis, sur le miroir,
 deux flux simultanés de `m1` vers `m2` (ports {pa} et {gp}) et un `ping` : `shape_mesure_total`
 (1 : total entre 60 % et 110 % de {R} Mbit/s), `shape_mesure_partage` (1 : le flux du port {pa}
-atteint 60 % de {R} Mbit/s, l'autre ne dépasse pas 30 %) et `shape_mesure_latence` (1 : RTT
-moyen sous charge inférieur à 50 ms).
+atteint 60 % de {R} Mbit/s, l'autre ne dépasse pas 30 %) et `shape_mesure_latence` (1 : avec le
+htb à la racine, RTT moyen sous charge inférieur à 50 ms).
 """).format(dev=dev_shape, pa=PORT_A, pb=PORT_B, gp=GRADE_PORT_DEFAULT, tbf=d.tbf_rate_mbit,
             burst=TBF_BURST, latency=TBF_LATENCY, R=R, hi=R_hi, lo=R_lo)),
         )
@@ -1082,7 +1082,9 @@ paquet qui la traverse y attend jusqu'à la durée fixée par `latency {latency}
         )
         self.add_grade_element(
             title=no_tr("shape_mesure_latence"), max_grade=1, grade_part=part3,
-            grade=int(bool(shape_hi.get('bps')) and (ping_shape.get('received') or 0) >= 4
+            # with the htb in place: on an unshaped link the RTT under load depends on the speed of
+            # the link alone (low on a fast one, whatever the student did)
+            grade=int(shape_htb and bool(shape_hi.get('bps')) and (ping_shape.get('received') or 0) >= 4
                       and ping_shape.get('avg') is not None and ping_shape['avg'] < 50),
             description=tr("miroir : RTT vers m2 sous charge < 50 ms (fq_codel)"),
         )
@@ -2260,8 +2262,8 @@ distincte de la précédente, a `rate {lo}mbit` et `ceil {R}mbit`), `shape_fq_co
 destination {pa} vise une classe feuille autre que la classe par défaut), puis, sur le miroir,
 deux flux simultanés de `m1` vers `m2` (ports {pa} et {gp}) et un `ping` : `shape_mesure_total`
 (1 : total entre 60 % et 110 % de {R} Mbit/s), `shape_mesure_partage` (1 : le flux du port {pa}
-atteint 60 % de {R} Mbit/s, l'autre ne dépasse pas 30 %) et `shape_mesure_latence` (1 : RTT
-moyen sous charge inférieur à 50 ms).
+atteint 60 % de {R} Mbit/s, l'autre ne dépasse pas 30 %) et `shape_mesure_latence` (1 : avec le
+htb à la racine, RTT moyen sous charge inférieur à 50 ms).
 """: """
 **Solution.** Step 1, on `r2`:
 
@@ -2305,8 +2307,8 @@ distinct from the previous one, has `rate {lo}mbit` and `ceil {R}mbit`), `shape_
 {pa} targets a leaf class other than the default class), then, on the mirror, two simultaneous
 flows from `m1` to `m2` (ports {pa} and {gp}) and a `ping`: `shape_mesure_total`
 (1: a total between 60% and 110% of {R} Mbit/s), `shape_mesure_partage` (1: the flow of port {pa}
-reaches 60% of {R} Mbit/s, the other one does not exceed 30%) and `shape_mesure_latence` (1: an
-average RTT under load below 50 ms).
+reaches 60% of {R} Mbit/s, the other one does not exceed 30%) and `shape_mesure_latence` (1: with
+the htb at the root, an average RTT under load below 50 ms).
 """,
     "Mesures de shaping": "Shaping measurements",
     """
