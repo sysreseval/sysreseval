@@ -1,3 +1,35 @@
+sysreseval (0.20.0-1) unstable; urgency=medium
+
+  * sre-web portal: shared projects. The owner of a running project shares it
+    with everybody or with one of their groups; a student asks to join from
+    "Open a shared lab…" of the Open page and the owner accepts; a participant
+    works in the same terminals, answers, states, virtual desktop and
+    self-evaluation (closing and saving stay the owner's). [sharing] of
+    web.toml, "no-by-default" by default: nothing is shared until an instructor
+    allows the project. Exam, GUI, debug and instructor-mode projects are never
+    shared. The portal and every agent must be restarted together: an older
+    agent refuses participants
+  * sre-web portal: the Watch page gets a Sharing column and a selection with
+    bulk actions (allow, forbid or default sharing, close projects)
+  * sre-web portal: saved projects work again after a reboot of the pool hosts
+    (the check now mounts the automounted volume; every host but one was flagged
+    "saves unusable")
+  * make-web-hosts.sh: ROOM_PRIORITIES and ROOM_USABLE_CAPACITIES accept a
+    single machine as well as a room (ROOM_PRIORITIES="a=50 a3=35 b=10")
+  * Docker images 1.36 (proxy13 and devops13 1.37): the images built on Debian
+    13 take a 13 suffix and are merged by machine role, 16 → 11: netdev13 (FRR,
+    multicast, lldpd, stayrtr, Open vSwitch / OS-Ken, chrony), identity13 (LDAP,
+    mail, FreeRADIUS, 802.1X, Kerberos), devops13 (docker-ce 29, Vagrant,
+    Ansible, k3s), proxy13 (+ Squid 6, squidGuard), new nsm13 (Zeek 9.0, Cowrie
+    3.1.8). A lab naming a former image still starts (its last tag, 1.35)
+  * init12 / init13 images: the systemd of a privileged machine no longer acts
+    on the host (udev replay of every host device, kernel.core_pattern, getty on
+    tty1, power keys), seen as crashes of the camera service of a logged-in user
+    at the start of the dhcp lab
+  * changes in drafts labs
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Fri, 27 Nov 2026 08:59:21 +0100
+
 sysreseval (0.19.1-1) unstable; urgency=medium
 
   * sre-web portal: saved projects. A user saves a running project (labs with
