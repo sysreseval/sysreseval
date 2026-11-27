@@ -13,7 +13,7 @@ from pathlib import Path
 from ..utils import error_quit, set_all_variables_for_action, user_not_allowed_in_exam_mode, exam_mode_is_on, \
     resolve_running_lab_name, dedup_preserve_order
 from ..utils_privileges import drop_privileges_permanently_if_not_needed, drop_privileges_permanently, \
-    drop_privileges_temporarily, gain_privileges_if_needed, gain_privileges, set_sudo_uid_for_username
+    drop_privileges_temporarily, gain_privileges_if_needed, gain_privileges, root_needed, set_sudo_uid_for_username
 from ..files_transfert import copy_state_files
 from .. import params
 from ..params import SRE
@@ -57,7 +57,12 @@ def action_eval():
 
 def do_eval(running_lab_name, multiples_evals=False, print_result=False):
     module_rvlab, net_scheme = set_all_variables_for_action(running_lab_name=running_lab_name)
-    if not multiples_evals:
+    # A lab with privileged machines on an engine that needs no root: root stays in reserve (the
+    # effective uid is the sre user's) for the bookkeeping below only (a cooldown file left by
+    # root when the host ran another engine), and is dropped for good before the grade of the lab
+    # is built and its tests run.
+    drop_before_the_grade = not multiples_evals and net_scheme.has_privileged_machines() and not root_needed(net_scheme)
+    if not multiples_evals and not drop_before_the_grade:
         drop_privileges_permanently_if_not_needed(net_scheme)
     else:
         drop_privileges_temporarily()
@@ -129,6 +134,8 @@ def do_eval(running_lab_name, multiples_evals=False, print_result=False):
         log_path = Path(params.auto_eval_log_filename(net_scheme.running_lab_name))
         auto_eval_count = _read_auto_eval_count(log_path)
 
+        if drop_before_the_grade:
+            drop_privileges_permanently_if_not_needed(net_scheme)
         grade = module_rvlab.Grade(net_scheme=net_scheme)
         grade._default_language = getattr(module_rvlab, 'default_language', 'en')
         grade.archive_dirs = dedup_preserve_order(

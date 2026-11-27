@@ -2,7 +2,8 @@
 ``params.sre_user``, linked by VDE hubs and switches that this module runs itself.
 
 This is the only module of SRE that runs ``podman``, ``systemd-run``, ``nsenter`` or the VDE
-programs.  The host is prepared once, as root, by ``scripts/podman-setup.sh``.
+programs.  The host is prepared once, as root, by ``scripts/podman-setup.sh`` (``make
+podman-setup`` on a checkout, ``sysreseval-podman-setup`` of the Debian package).
 
 **Save and restore** use the archive of the Kathara fork (``save_format``): a file saved on a
 Docker host restores here and the reverse.  What a machine changed in its image is found by
@@ -359,6 +360,8 @@ class PodmanContainer:
 
 
 class PodmanEngine(Engine):
+    # every command of this engine becomes the account by itself, whatever the machine
+    needs_root = False
 
     def __init__(self):
         self._pull_handler = None
@@ -423,8 +426,7 @@ class PodmanEngine(Engine):
                 # starts from either state.
                 return subprocess.run(argv, env=env, cwd=params.podman_dir, **self._identity(lowered=True), **kwargs)
         except OSError as e:
-            raise EngineError(f"cannot run {argv[0]}: {e.strerror or e} (the Podman engine is set up on a host "
-                              f"by scripts/podman-setup.sh)") from None
+            raise EngineError(f"cannot run {argv[0]}: {e.strerror or e} ({params.podman_setup_hint})") from None
 
     def _namespace_alive(self) -> bool:
         """Whether the user namespace of the account exists: its pause process runs."""
@@ -452,7 +454,7 @@ class PodmanEngine(Engine):
             if result.returncode != 0 or not self._namespace_alive():
                 raise EngineError("cannot make the user namespace of Podman for "
                                   f"{params.sre_user}: {_message(result.stderr) or f'exit status {result.returncode}'} "
-                                  "(is the host set up? scripts/podman-setup.sh)")
+                                  f"({params.podman_setup_hint})")
 
     def podman(self, arguments: list[str], **kwargs) -> subprocess.CompletedProcess:
         self._ensure_namespace()
@@ -475,7 +477,7 @@ class PodmanEngine(Engine):
     def _require_setup(self):
         if not os.path.exists(f"{self._runtime_dir}/bus") or not os.path.isdir(params.podman_dir):
             raise EngineError(f"the Podman engine is not set up on this host (no user manager of {params.sre_user} "
-                              f"or no {params.podman_dir}): run scripts/podman-setup.sh as root")
+                              f"or no {params.podman_dir}): {params.podman_setup_hint}")
 
     # ---- names ------------------------------------------------------------------------------
 
@@ -527,8 +529,8 @@ class PodmanEngine(Engine):
         program = params.vde_switch_program
         if not (os.path.isfile(program) and os.access(program, os.X_OK)):
             raise SwitchModesUnsupported(
-                f"mode '{mode}' needs the switch program of SRE, which is not built ({program}): run "
-                f"`make vde-switch` (vde_switch_program of params.py may name another vde_switch; the "
+                f"mode '{mode}' needs the switch program of SRE, which is not there ({program}): "
+                f"{params.vde_switch_hint} (vde_switch_program of params.py may name another vde_switch; the "
                 f"one of Debian loses the frames above 1518 bytes)")
         lab.network_modes[network] = mode
 
@@ -633,8 +635,8 @@ class PodmanEngine(Engine):
             raise EngineError(f"machine '{bridged[0]}': its outside interface needs pasta (the package passt)")
         if not self._host_has(params.sre_host_ip):
             raise EngineError(f"machine '{bridged[0]}': its outside interface needs the address {params.sre_host_ip} "
-                              f"on this host, which no interface has (the bridge of Docker has it where Docker is "
-                              f"installed)")
+                              f"on this host, which no interface has (the bridge of Docker has it where Docker "
+                              f"runs; on a host without Docker: {params.podman_setup_hint})")
 
     @staticmethod
     def _host_has(address: str) -> bool:
@@ -687,7 +689,7 @@ class PodmanEngine(Engine):
         self._podman_checked(["init", name])
         pids = self._podman_checked(["inspect", "--format", "{{.State.ConmonPid}} {{.State.Pid}}", name]).stdout.split()
         if machine.saved is not None:
-            self._put_back(machine, int(pids[1]))
+            self._put_back(lab, machine, int(pids[1]))
         # the user namespace of Podman (its monitor process is in it) and the network namespace
         # of the machine: there, this account is root over the interfaces of the machine
         enter = ["nsenter", f"--user=/proc/{int(pids[0])}/ns/user", f"--net=/proc/{int(pids[1])}/ns/net"]
@@ -905,6 +907,21 @@ class PodmanEngine(Engine):
         shutil.rmtree(self._network_dir(lab_hash), ignore_errors=True)
         return removed
 
+    def remove_files_of_machines(self, paths):
+        """What a machine wrote belongs to a subordinate uid of the account, in directories the
+        account itself may not enter: in its user namespace the account is their root.  Only
+        directories of SRE are given to that `rm`."""
+        bases = [os.path.realpath(base) + os.sep for base in (params.sre_user_public_dir, params.sre_projects_dir)]
+        allowed = []
+        for path in paths:
+            real = os.path.realpath(str(path))
+            if not real.startswith(tuple(bases)):
+                raise EngineError(f"{path}: not a directory of a project")
+            if os.path.lexists(real):
+                allowed.append(real)
+        if allowed:
+            self.podman(["unshare", "rm", "-rf", "--"] + allowed)
+
     def undeploy(self, lab_hash):
         errors: list[str] = []
         self._remove(lab_hash, errors, run_hooks=True)
@@ -1018,7 +1035,10 @@ class PodmanEngine(Engine):
         """Write the diff tar of a machine: ``(machine, its image, the paths it deleted)``."""
         machine = container["Labels"].get("name", "")
         changes = self._changes(container)
-        paths, deletions = save_format.paths_to_save(changes["changed"], changes["added"], changes["deleted"])
+        # where a directory of the host is mounted is not a file of the machine: the directory
+        # Podman made there to mount it would come back as one of the host's own at a restore
+        paths, deletions = save_format.paths_to_save(changes["changed"], changes["added"], changes["deleted"],
+                                                     mounts=save_format.mount_points(container.get("Mounts")))
         if not paths:
             save_format.write_empty_diff(diff_path)
         else:
@@ -1051,11 +1071,29 @@ class PodmanEngine(Engine):
                 except OSError:
                     pass
 
-    def _put_back(self, machine, pid: int):
+    @staticmethod
+    def _mount_points(lab, machine) -> list[str]:
+        """Where directories of the host are mounted in *machine*: the shared directory of the
+        project and the volumes of the lab."""
+        destinations = ["/shared"] if lab.shared_path else []
+        for volume in (machine.options.get("volumes") or ()):
+            fields = str(volume).split("|")
+            if len(fields) > 1:
+                destinations.append(fields[1])
+        return save_format.mount_points(destinations)
+
+    def _put_back(self, lab, machine, pid: int):
         """Put the saved files of *machine* back in its container, which has its filesystem and
         no process yet (*pid* is the one Podman will start): from inside its namespaces, where
-        this account is its root, `/` is its own, and nothing of the host is in reach."""
+        this account is its root, `/` is its own, and nothing of the host is in reach.
+
+        But the directories of the host mounted in it (the shared directory, the volumes): they
+        are the new project's, restored apart.  A save of this engine holds nothing of them; one
+        of the fork, or of an earlier version, may hold the directory they are mounted on, which
+        the root of the machine can neither date nor own."""
         deletions, diff_path = machine.saved
+        mounts = self._mount_points(lab, machine)
+        deletions = [path for path in deletions if not save_format.under_a_mount(path, mounts)]
         inside = ["nsenter", "--target", str(pid)] + _ALL_NAMESPACES
 
         def run(command, what, **kwargs):
@@ -1069,7 +1107,8 @@ class PodmanEngine(Engine):
                 input=b"".join(path.encode("utf-8") + b"\0" for path in deletions))
         if diff_path is None:
             return
-        others, directories = save_format.diff_members(diff_path)
+        others, directories = ([path for path in paths if not save_format.under_a_mount(path, mounts)]
+                               for paths in save_format.diff_members(diff_path))
         if others:
             run(_MAKE_ROOM_FOR_FILES, "its saved files could not be put back", input=b"\0".join(others) + b"\0")
         if directories:
@@ -1077,8 +1116,14 @@ class PodmanEngine(Engine):
                 input=b"\0".join(directories) + b"\0")
         # a directory the archive only implies is made by tar: with the mode it had in a machine
         # (the one Docker gives it too), whatever the mask of whoever runs sre
+        extract = list(_TAR_EXTRACT)
+        if mounts:
+            # the members at or below a mount point are skipped: names taken as they are, from
+            # the start of a member's name (which a diff writes without `./`, tar itself with)
+            skipped = [f"--exclude={prefix}{point[1:]}" for point in mounts for prefix in ("", "./")]
+            extract[-4:-4] = ["--anchored", "--no-wildcards"] + skipped
         with open(diff_path, "rb") as archive:
-            run(_TAR_EXTRACT, "its saved files could not be put back", stdin=archive, umask=0o022)
+            run(extract, "its saved files could not be put back", stdin=archive, umask=0o022)
 
     def restore(self, archive_path, lab, temp_dir):
         mode, saved = save_format.read_archive(archive_path)

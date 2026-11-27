@@ -6,6 +6,7 @@ Build-Depends: debhelper-compat (= 13),
                dh-python,
                python3,
                gcc,
+               cmake,
                gettext,
                qt6-l10n-tools,
                bash-completion,
@@ -48,8 +49,8 @@ Depends: ${shlibs:Depends},
          ${misc:Depends},
          ${python3:Depends},
          adduser,
-         docker.io | docker-ce,
-         docker-cli | docker-ce-cli,
+         docker.io | docker-ce | podman | sysreseval-podman,
+         docker-cli | docker-ce-cli | podman | sysreseval-podman,
          fonts-dejavu-core,
          fonts-dejavu-extra,
          fonts-dejavu-mono,
@@ -58,10 +59,10 @@ Depends: ${shlibs:Depends},
          libx11-6,
          procps,
          python3-cryptography,
-         python3-docker,
+         python3-docker | podman | sysreseval-podman,
          python3-fpdf (>= 2.8.0),
          python3-graphviz,
-         python3-kathara,
+         python3-kathara | podman | sysreseval-podman,
          python3-markdown,
          python3-msgpack,
          python3-netaddr,
@@ -83,17 +84,47 @@ Recommends: asciinema,
             libxtst6,
             mate-terminal | x-terminal-emulator,
             qt6-translations-l10n
-Suggests: git, sysreseval-doc
-Description: network and system administration labs on Docker machines
- SysResEval (sre) runs teaching labs made of Docker machines wired by the
- Kathara framework: a lab file describes the machines, the networks, the
- initial configuration and the automatic evaluation of what the students did.
+Suggests: git, sysreseval-doc, sysreseval-podman
+Description: network and system administration labs on container machines
+ SysResEval (sre) runs teaching labs made of container machines wired
+ together: a lab file describes the machines, the networks, the initial
+ configuration and the automatic evaluation of what the students did.
  The students work in the sysreseval graphical interface (terminals on the
  machines, course text, questions, evaluations); the instructors write the
  labs, run exams and collect the evaluation archives with the sre command.
  .
+ The machines are Docker containers wired by the Kathara framework (the
+ default: this package then brings Docker), or rootless Podman containers
+ of the sre user (the package sysreseval-podman, which needs no Docker).
+ .
  The labs of the project are in /usr/share/sysreseval/lab, the site's own
  labs go in /var/lib/sre/lab; the site parameters are in /etc/sysreseval.
+
+Package: sysreseval-podman
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         sysreseval (= ${binary:Version}),
+         catatonit,
+         dbus-user-session,
+         iproute2,
+         passt,
+         podman,
+         python3,
+         systemd,
+         uidmap,
+         vdeplug
+Description: rootless Podman engine of SysResEval
+ What SysResEval needs to run the machines of its labs as rootless Podman
+ containers of the sre user, without Docker and without a daemon running as
+ root: the switch of the networks (a vde_switch that carries large frames),
+ and sysreseval-podman-setup, which prepares the host (the subordinate ids
+ and the user manager of the sre user, the image store, the address of the
+ host on a host without Docker).  The setup is run when the package is
+ installed.
+ .
+ The engine is then chosen with container_engine = "podman" in
+ /etc/sysreseval/params.py (or host by host: container_engine_by_host).
 
 Package: sysreseval-web
 Architecture: all
@@ -114,7 +145,7 @@ Description: web site of SysResEval
  The users log in with an LDAP directory (the portal itself, or an Apache
  reverse proxy in front of it), or everybody is anonymous.
  .
- This host needs neither Docker nor the labs.  Configuration:
+ This host needs neither a container engine nor the labs.  Configuration:
  /etc/sysreseval/web.toml (see /usr/share/doc/sysreseval-web/examples/).
 
 Package: sysreseval-agent

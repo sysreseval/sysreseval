@@ -10,6 +10,7 @@ SUDO_UID for Kathara's owner label instead of a permanent drop:
 The effective uid is raised to 0 before the Kathara query and lowered back to sre
 once the save file has been written.
 """
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -87,6 +88,45 @@ def _run_save(privileged, monkeypatch, snapshot, tmp_pub_dir):
 
     import io
     save_cmd.do_action_save(net_scheme.running_lab_name, out_fileobj=io.BytesIO())
+
+
+@pytest.mark.parametrize('privileged', [True, False])
+class TestSaveWithAnEngineThatNeedsNoRoot:
+    """The Podman engine: root is raised for the files only (to open the output, then to read
+    the project into the payload).  The `save` state of the lab, which is code of the lab, and
+    the engine run with the effective uid of the sre user, whatever the lab."""
+
+    def run(self, privileged, monkeypatch, snapshot):
+        engine = SimpleNamespace(
+            needs_root=False, require_save_restore=lambda full_images=False: None,
+            save=lambda path, lab_hash, filesystem_diff, temp_dir: (snapshot('engine_save'), open(path, 'wb').close()))
+        monkeypatch.setattr(save_cmd, 'get_engine', lambda: engine)
+        opened = save_cmd._open_output
+        monkeypatch.setattr(save_cmd, '_open_output', lambda *a: (snapshot('open_output'), opened(*a))[1])
+        _run_save(privileged, monkeypatch, snapshot, None)
+
+    def test_the_lab_and_the_engine_never_run_as_root(self, privilege_simulator, monkeypatch, tmp_pub_dir, privileged):
+        state, snap = privilege_simulator
+        self.run(privileged, monkeypatch, snap)
+        log = dict(state['log'])
+        for stage in ('get_lab_from_kathara', 'do_action_state', 'engine_save'):
+            assert log[stage]['euid'] == 1100, f"euid is {log[stage]['euid']} at {stage}"
+
+    def test_root_for_the_files(self, privilege_simulator, monkeypatch, tmp_pub_dir, privileged):
+        state, snap = privilege_simulator
+        self.run(privileged, monkeypatch, snap)
+        log = dict(state['log'])
+        for stage in ('open_output', 'write_header', 'write_payload'):
+            assert log[stage]['euid'] == 0, f"euid is {log[stage]['euid']} at {stage}"
+
+    def test_the_order(self, privilege_simulator, monkeypatch, tmp_pub_dir, privileged):
+        state, snap = privilege_simulator
+        self.run(privileged, monkeypatch, snap)
+        stages = [name for name, _ in state['log']]
+        assert stages == ['set_sudo_uid', 'gain_privileges', 'open_output', 'drop_temp', 'get_lab_from_kathara',
+                          'do_action_state', 'engine_save', 'gain_privileges', 'write_header', 'write_payload',
+                          'drop_temp']
+        assert all(s['uid'] == 0 for _, s in state['log']), "the real uid stays root's for the whole save"
 
 
 @pytest.mark.parametrize('privileged', [True, False])

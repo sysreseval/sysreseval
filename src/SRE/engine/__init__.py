@@ -24,7 +24,11 @@ def _new_engine() -> Engine:
     if name == params.container_engine_podman:
         from .podman_engine import PodmanEngine
         return PodmanEngine()
-    from .kathara_engine import KatharaEngine
+    try:
+        from .kathara_engine import KatharaEngine
+    except ImportError as e:    # a host installed for the other engine: neither Kathara nor the Docker SDK
+        raise EngineError(f"the container engine of this host is Kathara (container_engine of params.py) and it is "
+                          f"not installed ({e}): {params.kathara_missing_hint}") from None
     return KatharaEngine()
 
 

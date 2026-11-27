@@ -244,6 +244,16 @@ class TestManagedSwitches:
         assert engine.is_network_plugin_error(RuntimeError('DockerPluginError')) is False
 
 
+class TestRoot:
+    def test_kathara_needs_root_for_privileged_machines(self, engine):
+        assert engine.needs_root is True
+
+    def test_what_its_machines_wrote_is_left_to_the_commands(self, engine, kathara):
+        """They wrote as root: only a command that is root itself removes it."""
+        assert engine.remove_files_of_machines(['/var/lib/sre/projects/x']) is None
+        assert kathara.mock_calls == []
+
+
 class TestSaveAndRestore:
     def test_save(self, engine, kathara, tmp_path):
         before = tempfile.tempdir

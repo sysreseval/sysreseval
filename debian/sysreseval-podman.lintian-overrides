@@ -1,0 +1,6 @@
+# no manual page yet: `sysreseval-podman-setup --help` and the documentation of sysreseval-doc
+# describe the command
+sysreseval-podman: no-manual-page [usr/sbin/sysreseval-podman-setup]
+# the unit stopped by the postrm is written into /etc by sysreseval-podman-setup with the address
+# of the site, not shipped by the package: deb-systemd-invoke knows nothing of it
+sysreseval-podman: maintainer-script-calls-systemctl [postrm:*]

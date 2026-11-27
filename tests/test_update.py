@@ -9,6 +9,7 @@ import email.message
 import io
 import json
 import os
+import re
 import stat
 import tarfile
 import urllib.error
@@ -121,6 +122,7 @@ UPSTREAM_FILES = {
     'lib/new.py': 'n = 1\n',
     'sbin/sre': '#!/bin/sh\n',
     'scripts/etc/sudoers.d-sre': 'new rule\n',
+    'scripts/vde-switch-build.sh': ': "${VDE_COMMIT:=new}"\n',
     'docs/html/index.html': '<html/>\n',
 }
 EXECUTABLE = {'sbin/sre'}
@@ -147,6 +149,8 @@ INSTALLED_FILES = {
     'build/exetests/x': 'build',
     'graphics/fonts/DejaVuSans.ttf': 'font',
     'bin/sre-wrapper': 'binary',
+    'bin/sre-vde-switch': 'switch',
+    'scripts/vde-switch-build.sh': ': "${VDE_COMMIT:=old}"\n',
     'docs/html/index.html': '<html/>\n',
 }
 # what a previous update installed (or the git index): names the files upstream dropped since
@@ -408,6 +412,7 @@ class TestPlan:
         ('Makefile', True), ('docs/html/x.html', True), ('venv/bin/python', False), ('build/x', False),
         ('.git/HEAD', False), ('graphics/fonts/DejaVuSans.ttf', False), ('graphics/machine.svg', True),
         ('bin/sre-wrapper', False), ('bin/sysreseval', True), ('src/SRE/params.py.bak.20260101-000000', False),
+        ('bin/sre-vde-switch', False), ('scripts/vde-switch-build.sh', True),
         ('.sre-update.json', False), ('.sre-update.lock', False), ('.sre-update-abc/tree/x', False),
     ])
     def test_include_member(self, rel, included):
@@ -423,7 +428,7 @@ class TestPlan:
         assert 'src/SRE/params.py' not in plan.to_install
         assert plan.new == ['lab/sre/sub/y.py', 'lib/new.py', 'src/SRE/command/newcmd.py']
         assert plan.changed == ['Makefile', 'README.md', 'lab/sre/x.py', 'lib/a.py', 'sbin/sre',
-                                'scripts/etc/sudoers.d-sre', 'src/sre.py']
+                                'scripts/vde-switch-build.sh', 'scripts/etc/sudoers.d-sre', 'src/sre.py']
         assert plan.unchanged == ['docs/html/index.html', 'src/SRE/__init__.py', 'src/SRE/command/__init__.py']
         assert plan.skipped == ['lab/other/z.py']
         assert plan.to_delete == ['lab/sre/old.py', 'lib/dropped.py', 'src/SRE/command/oldcmd.py']
@@ -649,6 +654,40 @@ class TestInstall:
         real = (Path(__file__).parent.parent / 'Makefile').read_text()
         assert 'kathara @ git+' in upd.makefile_venv_blocks(real) and 'def declare_namespace' in upd.makefile_venv_blocks(real)
 
+    def test_vde_switch_recipe(self):
+        """The pinned source, its checksum, the frame size and the commands of the build; not the
+        comments nor the messages."""
+        real = (Path(__file__).parent.parent / 'scripts' / 'vde-switch-build.sh').read_text()
+        recipe = upd.vde_switch_recipe(real)
+        lines = recipe.splitlines()
+        assert re.fullmatch(r'VDE_COMMIT=[0-9a-f]{40}', lines[0]) and re.fullmatch(r'VDE_SHA256=[0-9a-f]{64}', lines[1])
+        assert lines[2] == 'VDE_FRAME_DATA=16384'
+        assert any('-DENABLE_CRYPTCAB=OFF' in line for line in lines) and any('--target vde_switch' in line for line in lines)
+        assert any('-DENABLE_PCAP=OFF' in line for line in lines) and any('-std=gnu17' in line for line in lines)
+        assert not any(line.startswith('#') or 'the build failed' in line for line in lines)
+        assert upd.vde_switch_recipe(real.replace('# Build the vde_switch', '# Builds the switch')) == recipe
+        assert upd.vde_switch_recipe(real.replace('already built:', 'built already:')) == recipe
+        assert upd.vde_switch_recipe(real.replace('VDE_FRAME_DATA:=16384', 'VDE_FRAME_DATA:=9000')) != recipe
+        assert upd.vde_switch_recipe(real.replace('-DENABLE_PCAP=OFF', '-DENABLE_PCAP=ON')) != recipe
+        assert upd.vde_switch_recipe(real.replace('-std=gnu17', '-std=gnu23')) != recipe
+        assert upd.vde_switch_recipe(real.replace('the build failed', 'it failed')) == recipe
+        assert upd.vde_switch_recipe(real.replace('# the plugin', '# the same')) == recipe
+
+    def test_vde_switch_recipe_changed(self, tmp_path):
+        old, new = tmp_path / 'installed', tmp_path / 'tree'
+        script = ': "${VDE_COMMIT:=aaa}"\n: "${VDE_SHA256:=bbb}"\nmkdir "$src/build"\ncmake --build .\nbuilt=x\n'
+        for base in (old, new):
+            (base / 'scripts').mkdir(parents=True)
+            (base / upd.VDE_SWITCH_SCRIPT_REL_PATH).write_text(script)
+        assert upd.vde_switch_recipe_changed(old, new) is False      # no program built here: nothing to say
+        (old / 'bin').mkdir()
+        (old / upd.VDE_SWITCH_REL_PATH).write_text('program')
+        assert upd.vde_switch_recipe_changed(old, new) is False
+        (new / upd.VDE_SWITCH_SCRIPT_REL_PATH).write_text(script.replace('aaa', 'ccc'))
+        assert upd.vde_switch_recipe_changed(old, new) is True
+        (old / upd.VDE_SWITCH_SCRIPT_REL_PATH).unlink()                # built by a version that had another script
+        assert upd.vde_switch_recipe_changed(old, new) is True
+
     def test_changed_system_templates(self, upstream_tree, installed):
         plan = upd.plan_install(upstream_tree, installed, None)
         assert upd.changed_system_templates(plan) == ['scripts/etc/sudoers.d-sre']
@@ -866,6 +905,7 @@ class TestActionUpdate:
         assert (root / 'lab' / 'em' / 'mine.py').exists() and (root / 'lib' / 'local.py').exists()
         assert not (root / 'lab' / 'other').exists()
         assert (root / 'venv' / 'bin' / 'python').exists() and (root / 'bin' / 'sre-wrapper').exists()
+        assert (root / 'bin' / 'sre-vde-switch').read_text() == 'switch'      # built here: kept
         assert (root / 'graphics' / 'fonts' / 'DejaVuSans.ttf').exists()
         assert not (root / 'src' / 'SRE' / '__pycache__').exists()
         assert not list(root.glob(f'{params.update_tmp_prefix}*'))
@@ -892,6 +932,7 @@ class TestActionUpdate:
         assert 'kept     max_docker_concurrency = 16  (new value: 32)' in out
         assert 'added    new_param = 7' in out and 'dropped  old_param' in out
         assert 'the venv recipe of the Makefile changed' in out
+        assert "the recipe of the switch of the Podman engine changed: run 'make vde-switch FORCE=1'" in out
         assert 'scripts/etc/sudoers.d-sre' in out
         assert f'to go back: sre update --ref {OLD_SHA}' in out
         assert 'a .git directory is present' in out

@@ -3,6 +3,8 @@
 # /usr/lib/sysreseval, the labs in /usr/share/sysreseval/lab, the C wrapper in /usr/bin, the site
 # parameters in /etc/sysreseval/params.py (see README.Debian).  The top-level Makefile is the
 # developer's (venv, docs, Docker images): it is not used here.
+# sysreseval-podman: the switch of the Podman engine, built from the archive of vde-2 that
+# scripts/build-deb.sh puts in the sources (vendor/vde-2.tar.gz: a package build has no network).
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 include /usr/share/dpkg/buildflags.mk
 
@@ -10,6 +12,8 @@ BUILD = debian/build
 PKG = debian/sysreseval
 LIBDIR = $(PKG)/usr/lib/sysreseval
 PARAMS = $(LIBDIR)/SRE/params.py
+PODMAN = debian/sysreseval-podman
+VDE_ARCHIVE = vendor/vde-2.tar.gz
 UPSTREAM_VERSION = $(shell dpkg-parsechangelog -S Version | sed 's/-[^-]*$$//')
 
 %:
@@ -20,6 +24,11 @@ override_dh_auto_configure:
 override_dh_auto_build:
 	mkdir -p $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $(BUILD)/sre-wrapper src/sre-wrapper/sre-wrapper.c
+	# the switch of the Podman engine (what `make vde-switch` builds on a checkout), with the
+	# flags of the distribution; dh_strip strips it
+	test -f $(VDE_ARCHIVE) || { echo "$(VDE_ARCHIVE) is missing: scripts/build-deb.sh puts it in the sources (scripts/vde-switch-build.sh --fetch)"; exit 1; }
+	FORCE=1 VDE_ARCHIVE=$(CURDIR)/$(VDE_ARCHIVE) VDE_SWITCH_OUT=$(CURDIR)/$(BUILD)/sre-vde-switch VDE_KEEP_SYMBOLS=1 \
+		CFLAGS="$(CFLAGS) $(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" scripts/vde-switch-build.sh
 	# the catalogs of the interface languages (TRANSLATION_LANGS of the Makefile)
 	for l in fr de; do \
 		mkdir -p $(BUILD)/$$l && \
@@ -53,6 +62,8 @@ execute_after_dh_install:
 	install -D -m 0644 graphics/logo_sre.svg $(PKG)/usr/share/icons/hicolor/scalable/apps/sysreseval.svg
 	install -D -m 0440 debian/sysreseval.sudoers $(PKG)/etc/sudoers.d/sysreseval
 	install -D -m 0644 debian/site-params.py $(PKG)/etc/sysreseval/params.py
+	install -D -m 0755 scripts/podman-setup.sh $(PODMAN)/usr/sbin/sysreseval-podman-setup
+	install -D -m 0644 scripts/etc/sre-podman.conf $(PODMAN)/usr/lib/sysctl.d/60-sysreseval-podman.conf
 	# the installed copy of params.py is the fhs layout, the ids come from the accounts, the version
 	# from this changelog
 	debian/set-param $(PARAMS) install_layout '"fhs"'

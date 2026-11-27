@@ -354,6 +354,57 @@ class TestEval:
 # Tests: stop removes project
 # ---------------------------------------------------------------------------
 
+class TestEvalDropsRootBeforeTheCodeOfTheLab:
+    """`sre eval` of a lab with privileged machines.  An engine that needs root for them
+    (Kathara) keeps it through the tests.  One that needs none (Podman): root stays in reserve
+    for the bookkeeping of the command only, and is dropped for good before the grade of the lab,
+    which is code of the lab, is built and run."""
+    FOR_GOOD, LOWERED, RAISED, LAB = 'for good unless needed', 'lowered', 'raised if needed', 'the code of the lab'
+
+    def steps(self, started_lab, monkeypatch, privileged, needs_root):
+        import SRE.command.eval as eval_cmd
+        from SRE.lib_sre import NetScheme0
+        events = []
+        monkeypatch.setattr(eval_cmd, 'drop_privileges_permanently_if_not_needed',
+                            lambda net_scheme: events.append(self.FOR_GOOD))
+        monkeypatch.setattr(eval_cmd, 'drop_privileges_temporarily', lambda: events.append(self.LOWERED))
+        monkeypatch.setattr(eval_cmd, 'gain_privileges_if_needed', lambda net_scheme=None: events.append(self.RAISED))
+        monkeypatch.setattr(eval_cmd, 'root_needed', lambda net_scheme: privileged and needs_root)
+        monkeypatch.setattr(NetScheme0, 'has_privileged_machines', lambda self: privileged)
+        load = eval_cmd.set_all_variables_for_action
+
+        def loaded(**kwargs):
+            module, net_scheme = load(**kwargs)
+            lab_grade = module.Grade
+
+            class Recorded(lab_grade):
+                def __init__(self, *args, **kw):
+                    events.append(TestEvalDropsRootBeforeTheCodeOfTheLab.LAB)
+                    super().__init__(*args, **kw)
+            module.Grade = Recorded
+            return module, net_scheme
+        monkeypatch.setattr(eval_cmd, 'set_all_variables_for_action', loaded)
+        with patch.object(Grade0, 'run_tests_on_machine', side_effect=_fake_run_tests_on_machine):
+            do_eval(running_lab_name=started_lab, print_result=False)
+        return events
+
+    def test_an_engine_that_needs_no_root(self, started_lab, monkeypatch):
+        events = self.steps(started_lab, monkeypatch, privileged=True, needs_root=False)
+        assert events[0] == self.LOWERED, "root is kept in reserve for the bookkeeping of the command"
+        assert events.index(self.FOR_GOOD) < events.index(self.LAB), "root must be gone before the code of the lab"
+
+    def test_an_engine_that_needs_root(self, started_lab, monkeypatch):
+        """As before: the drop of the start does nothing for such a lab, root is raised for the tests."""
+        events = self.steps(started_lab, monkeypatch, privileged=True, needs_root=True)
+        assert events[0] == self.FOR_GOOD
+        assert events.index(self.LAB) < events.index(self.RAISED)
+
+    @pytest.mark.parametrize('needs_root', [True, False])
+    def test_a_plain_lab_drops_at_once(self, started_lab, monkeypatch, needs_root):
+        events = self.steps(started_lab, monkeypatch, privileged=False, needs_root=needs_root)
+        assert events[0] == self.FOR_GOOD and events.index(self.FOR_GOOD) < events.index(self.LAB)
+
+
 class TestArchiveDirCreation:
     def test_dir_created_meanwhile_by_another_evaluation(self, started_lab, monkeypatch):
         """Evaluations running at once (`sre eval-all`) may all find the archive directory

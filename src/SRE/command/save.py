@@ -85,12 +85,18 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
         # Owner alignment (same reason as in state.py): privileged labs are labelled with the
         # owner's uid (Kathara reads SUDO_UID when the real uid is 0), non-privileged ones with
         # sre.  The real uid stays 0 and the effective uid is raised so that root can read the
-        # root-owned files the containers wrote into shared/ and mnt/.
+        # files the containers wrote into shared/ and mnt/ (root's, or with an engine that needs
+        # no root those of the uids of the machines).  With such an engine root is only raised
+        # for the files: to open the output, then to read the project, and neither the `save`
+        # state of the lab nor the engine runs with it.
         set_sudo_uid_for_username(owner if net_scheme.has_privileged_machines() else params.sre_user)
+        root_throughout = get_engine().needs_root
         gain_privileges()
         out = None
         try:
             out = _open_output(output, out_fileobj)
+            if not root_throughout:
+                drop_privileges_temporarily()
             lab = net_scheme.get_lab_from_kathara()
             if not lab.machines:
                 error_quit("no running machine found for this project")
@@ -100,6 +106,8 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
             # the engine's own temporary files (the filesystem diffs of the devices) go to tmp too
             get_engine().save(kathara_tar, lab_hash=net_scheme.get_lab_hash(),
                               filesystem_diff=not full_images, temp_dir=tmp)
+            if not root_throughout:
+                gain_privileges()
 
             meta = SaveMeta(
                 lab_name=params.get_lab_name_from_running_lab_name(running_lab_name),

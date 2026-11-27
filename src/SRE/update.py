@@ -44,9 +44,12 @@ LAB_DIR_NAME = "lab"
 LIB_DIR_NAME = "lib"
 PRIVATE_TOP_DIRS = (LAB_DIR_NAME, LIB_DIR_NAME)   # owned by the sre user, not readable by the students
 # Built or written on the target, never in the repository: never installed nor deleted, whatever a
-# manifest says (venv, build, downloaded fonts, compiled wrapper, git checkout, params.py backups)
+# manifest says (venv, build, downloaded fonts, compiled wrapper, the switch of the Podman engine,
+# git checkout, params.py backups)
+VDE_SWITCH_REL_PATH = "bin/sre-vde-switch"
+VDE_SWITCH_SCRIPT_REL_PATH = "scripts/vde-switch-build.sh"      # its recipe (`make vde-switch`)
 PROTECTED_DIRS = ("venv", "build", ".git", "graphics/fonts")
-PROTECTED_FILES = ("bin/sre-wrapper",)
+PROTECTED_FILES = ("bin/sre-wrapper", VDE_SWITCH_REL_PATH)
 # Packaging sources of the repository (Debian): not runtime files, never installed
 PACKAGING_DIRS = ("debian", "packaging")
 PYCACHE_SUBDIRS = ("src", LIB_DIR_NAME) + tuple(f"{LAB_DIR_NAME}/{d}" for d in params.update_lab_subdirs)
@@ -770,6 +773,39 @@ def makefile_venv_blocks(text: str) -> str:
             continue
         i += 1
     return '\n'.join(out)
+
+
+def vde_switch_recipe(text: str) -> str:
+    """What the switch of the Podman engine is built from, in the text of its build script: the
+    pinned source, its checksum, the size of a frame, and the commands of the build (the lines
+    from the making of the build directory to the search of the program built; neither the
+    comments nor what reports a failure).  A program built with another recipe has to be built
+    again (`make vde-switch FORCE=1`)."""
+    pinned = re.findall(r'^: "\$\{(VDE_COMMIT|VDE_SHA256|VDE_FRAME_DATA):=([^}]*)\}"', text, re.M)
+    build, inside = [], False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('mkdir "$src/build"'):
+            inside = True
+        elif inside and stripped.startswith('built='):
+            break
+        elif inside and stripped and not stripped.startswith(('#', '||')):
+            build.append(stripped)
+    return '\n'.join([f'{name}={value}' for name, value in pinned] + build)
+
+
+def vde_switch_recipe_changed(main_dir: Path, tree: Path) -> bool:
+    """Whether the installed switch program (when there is one) was built by another recipe than
+    the one of the new tree."""
+    if not (main_dir / VDE_SWITCH_REL_PATH).is_file():
+        return False
+
+    def recipe(base: Path) -> str:
+        try:
+            return vde_switch_recipe((base / VDE_SWITCH_SCRIPT_REL_PATH).read_text(encoding='utf-8'))
+        except OSError:
+            return ''
+    return recipe(main_dir) != recipe(tree)
 
 
 def changed_system_templates(plan: InstallPlan) -> list[str]:

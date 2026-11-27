@@ -7,7 +7,11 @@
 [Unit]
 Description=SysResEval web agent of this pool host
 Documentation=https://github.com/sysreseval/sysreseval
-Requires=docker.service
+# Wants, not Requires: on a host whose container engine is Podman there is no Docker, and the
+# unit must start all the same.  Where Docker is installed it is still started with the agent
+# and before it; a Docker stopped or restarted no longer stops the agent (its sre commands fail
+# while Docker is down).
+Wants=docker.service
 # Units are stopped in the reverse order of their start.  When the machine halts the agent
 # closes the web projects by running sre (close_projects_on_stop), and sre archives their last
 # evaluation: after remote-fs.target, the unit is stopped before the network file systems are
@@ -44,7 +48,8 @@ RestartPreventExitStatus=78
 KillMode=mixed
 TimeoutStopSec=300
 ProtectSystem=full
-ReadWritePaths=/var/lib/sre /home/sre /var/run/docker.sock
+# the leading dash: the socket of Docker is not there on a host that runs Podman
+ReadWritePaths=/var/lib/sre /home/sre -/var/run/docker.sock
 # /run/sre-agent: the RFB sockets and X authority files of the virtual desktops ([display])
 RuntimeDirectory=sre-agent
 RuntimeDirectoryMode=0755

@@ -15,6 +15,7 @@ by the first start) and a writable directory listed in `params.authorized_src_di
 labs are written there).  Excluded from `make tests`; run with `make podman-tests`.
 """
 import io
+import ipaddress
 import json
 import os
 import pty
@@ -83,6 +84,46 @@ SAVED_PRIVILEGED_LAB = PRIVILEGED_LAB.replace('title = "docker lifecycle test (p
                                               'title = "podman lifecycle test (privileged, saved)"\n'
                                               'allow_save_restore = True')
 assert 'deliberate failure' in FAILING_LAB and 'no-such-image' in MISSING_IMAGE_LAB and 'exec_commands' in OPTIONS_LAB
+
+# A lab with a systemd machine whose own code tells who runs it: its states and its `save` hook
+# write the ids of the `sre` process into a machine, its grade gives its point when the process
+# is not root.  With this engine the code of a lab never runs with the rights of root.
+WHO_RUNS_THE_LAB = PRIVILEGED_LAB.replace(
+    'from SRE.lib_sre import Data0, NetScheme0, Grade0\n',
+    'import os\nfrom SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state\n').replace(
+    'title = "docker lifecycle test (privileged)"',
+    'title = "podman lifecycle test (who runs the code of the lab)"\nallow_save_restore = True\n'
+    'allow_user_states = True').replace(
+    'class Grade(Grade0):',
+    """    def _ids(self, name):
+        self.cmd('client', f"echo '{os.getresuid()} {os.getresgid()}' > /root/ids_{name}")
+
+    @sre_state()
+    def initial(self):
+        self._ids('initial')
+
+    @sre_state(user_allowed=True)
+    def broken(self):
+        self._ids('broken')
+
+    @sre_state(user_allowed=False)
+    def save(self):
+        self._ids('save')
+
+
+class Grade(Grade0):""").replace(
+    "        self.add_grade_element(title='dummy', grade=0, max_grade=1)",
+    "        self.add_grade_element(title='not_root', grade=int(0 not in os.getresuid()), max_grade=1)\n"
+    "        self.add_grade_element(title='effective', grade=int(os.geteuid() != 0), max_grade=1)")
+assert 'def _ids' in WHO_RUNS_THE_LAB and "title='not_root'" in WHO_RUNS_THE_LAB and 'import os' in WHO_RUNS_THE_LAB
+# its initial state fails after a machine wrote, in the shared directory and in a volume, into
+# directories the sre account cannot enter
+FAILING_SHARED_LAB = SHARED_LAB.replace(
+    "        self.cmd('router', 'echo from-initial > /root/from_initial')",
+    "        self.cmd('router', 'mkdir -p /shared/left/deep /data/left && echo x > /shared/left/deep/f && '\n"
+    "                           'echo x > /data/left/f && chmod 700 /shared/left /shared/left/deep /data/left')\n"
+    "        raise RuntimeError('deliberate failure after deploy')")
+assert 'deliberate failure' in FAILING_SHARED_LAB and 'shared_path = True' in FAILING_SHARED_LAB
 assert 'allow_save_restore = True' in SAVED_PRIVILEGED_LAB
 
 # gw has one lab interface (eth0), so its outside interface is eth1, and a port published in a
@@ -184,7 +225,8 @@ def labs_dir():
                        ('missing_image.py', MISSING_IMAGE_LAB), ('options.py', OPTIONS_LAB),
                        ('outside.py', OUTSIDE_LAB), ('failing_privileged.py', FAILING_PRIVILEGED_LAB),
                        ('instructor_privileged.py', PRIVILEGED_INSTRUCTOR_LAB), ('keyed.py', KEYED_LAB),
-                       ('privileged_saved.py', SAVED_PRIVILEGED_LAB)):
+                       ('privileged_saved.py', SAVED_PRIVILEGED_LAB), ('who_runs.py', WHO_RUNS_THE_LAB),
+                       ('failing_shared.py', FAILING_SHARED_LAB)):
         (d / name).write_text(text)
     shutil.copy(SWITCH_LAB, d / 'switch_modes.py')
     for f in d.iterdir():
@@ -244,6 +286,14 @@ def _restore(projects, save_file, *options):
     running_lab_name = new.pop()
     projects.append((running_lab_name, _lab_hash(running_lab_name)))
     return running_lab_name, _lab_hash(running_lab_name)
+
+
+def _inner_archive(save_file) -> bytes:
+    """The archive of the filesystems of the machines that a save file (not encrypted) holds."""
+    with open(save_file, 'rb') as f:
+        f.readline(), f.readline()
+        with tarfile.open(fileobj=f, mode='r|') as payload:
+            return next(payload.extractfile(m).read() for m in payload if m.name == params.save_kathara_name)
 
 
 def _images():
@@ -591,6 +641,18 @@ class TestSharedDirectories:
         _stop(running_lab_name, lab_hash)
         assert not user_public_dir.exists(), "user public dir left after sre stop"
 
+    def test_a_failed_start_removes_what_a_machine_left(self, labs_dir):
+        """The start has dropped root for good when its initial state fails.  What a machine
+        wrote in shared/ and in a volume belongs to a uid of the machine, in directories the sre
+        user may not enter: the engine removes it from inside the user namespace of the account."""
+        before, projects_before = _everything(), _project_dirs()
+        public_before = sorted(p.name for p in Path(params.sre_user_public_dir).iterdir())
+        r = _sre('start', '-p', str(labs_dir / 'failing_shared.py'), timeout=START_TIMEOUT)
+        assert r.returncode != 0 and 'deliberate failure after deploy' in r.stderr, r.stderr[-3000:]
+        assert _everything() == before and _project_dirs() == projects_before
+        assert sorted(p.name for p in Path(params.sre_user_public_dir).iterdir()) == public_before, \
+            "the public directory of the failed project was left"
+
     def test_wipe(self, labs_dir, projects):
         """`sre wipe` removes every project of the host: the test only runs when there is none."""
         others = _project_dirs() | set(_containers())
@@ -790,7 +852,9 @@ class TestOutsideInterface:
             'ls -d /sys/class/net/eth* | tr "\\n" " "; echo', 'echo "resolv.conf: $(wc -c < /etc/resolv.conf)"',
             'grep -c " /etc/resolv.conf \\| /etc/hosts " /proc/self/mountinfo', 'tail -1 /etc/hosts']))
         assert out.splitlines() == [
-            'eth1 inet 172.17.0.2/16', f'default via {host} dev eth1 ', '1500', '1', '/sys/class/net/eth0 /sys/class/net/eth1 ',
+            # the address after the host's: Docker's bridge, or an interface of the host's own
+            f'eth1 inet {ipaddress.IPv4Address(host) + 1}/16', f'default via {host} dev eth1 ', '1500', '1',
+            '/sys/class/net/eth0 /sys/class/net/eth1 ',
             'resolv.conf: 0', '0', '127.0.1.1 gw'], out
         # what the labs do on a gateway: the route exists already, as under Docker
         rc, out = _run(running_lab_name, 'gw', f'ip route add 0.0.0.0/0 via {host} 2>&1')
@@ -889,6 +953,34 @@ class TestPrivilegedMachines:
         for evaluate in (_sre, _sre_user):
             r = evaluate('eval', running_lab_name)
             assert r.returncode == 0 and 'Traceback' not in r.stderr, r.stderr
+
+    def test_the_code_of_a_lab_never_runs_as_root(self, labs_dir, projects, tmp_path, no_exam):
+        """A lab with a privileged machine is handled like any other with this engine: its
+        states and its grade run in a process that has dropped root for good, as the sre user
+        with the group of the command.  The `save` state runs with root kept aside for the files
+        of the project (the real uid), never as the effective uid."""
+        if not params.allow_privileged_machines:
+            pytest.skip("params.allow_privileged_machines is False")
+        dropped = f"({params.sre_uid}, {params.sre_uid}, {params.sre_uid}) " \
+                  f"({params.docker_gid}, {params.docker_gid}, {params.docker_gid})\n"
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'who_runs.py')
+        assert _run(running_lab_name, 'client', 'cat /root/ids_initial') == (0, dropped)
+        for state in (_sre, _sre_user):
+            assert _run(running_lab_name, 'client', 'rm -f /root/ids_broken')[0] == 0
+            r = state('state', running_lab_name, 'broken')
+            assert r.returncode == 0, r.stderr
+            assert _run(running_lab_name, 'client', 'cat /root/ids_broken') == (0, dropped)
+        r = _sre('eval', running_lab_name)
+        assert r.returncode == 0, r.stderr[-3000:]
+        assert {g['title']: g['grade'] for g in json.loads(r.stdout)['grades']} == {'not_root': 1, 'effective': 1}
+        # the machines are reached all the same: a terminal command and a save
+        assert _run(running_lab_name, 'srv', 'systemctl is-system-running')[1].strip() in ('running', 'degraded')
+        _save(running_lab_name, tmp_path / 'p.sre')
+        rc, out = _run(running_lab_name, 'client', 'cat /root/ids_save')
+        real, effective, saved = (int(n) for n in re.findall(r'\d+', out)[:3])
+        assert effective == params.sre_uid, out
+        _stop(running_lab_name, lab_hash)
+        assert _left_running() == []
 
     def test_eval_all_with_two_privileged_projects(self, labs_dir, projects):
         """The evaluations of several projects run in threads, each raising and lowering the
@@ -1164,6 +1256,55 @@ class TestSaveRestore:
         assert out.split() == ['one', 'changed', 'from-initial', 'restored', '1'], out
         _stop(restored, restored_hash)
         _stop(running_lab_name, lab_hash)
+
+    def test_a_lab_with_a_shared_directory_and_a_volume(self, labs_dir, projects, tmp_path, no_exam):
+        """What a machine wrote in its shared directory and in a volume comes back with the
+        project, apart from the files of the machine, whose archive holds nothing of them.  (The
+        directory Podman makes to mount a volume was saved as a file of the machine: tar then
+        could not set its time in the new one, and the restore failed.)"""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'shared.py')
+        write = ' && '.join(f'echo in-{d} > /{d}/kept && mkdir -p /{d}/dir && echo deep > /{d}/dir/f'
+                            for d in ('shared', 'data'))
+        assert _run(running_lab_name, 'router', write + ' && echo mine > /root/mine')[0] == 0
+        _save(running_lab_name, tmp_path / 'p.sre')
+        inner = _inner_archive(tmp_path / 'p.sre')
+        with tarfile.open(fileobj=io.BytesIO(inner)) as archive:
+            diff = archive.extractfile('images/router.diff.tar').read()
+        with tarfile.open(fileobj=io.BytesIO(diff)) as files:
+            names = files.getnames()
+        assert 'root/mine' in names
+        assert not [name for name in names if name.split('/')[0] in ('data', 'shared')], names
+        _stop(running_lab_name, lab_hash)
+        read = 'cat /shared/kept /shared/dir/f /data/kept /data/dir/f /root/mine'
+        expected = (0, 'in-shared\ndeep\nin-data\ndeep\nmine\n')
+        restored, restored_hash = _restore(projects, tmp_path / 'p.sre')
+        assert _run(restored, 'router', read) == expected
+        # the machine still writes in both
+        assert _run(restored, 'router', 'echo again > /shared/new && echo again > /data/new')[0] == 0
+        _stop(restored, restored_hash)
+
+        # a save file whose archive holds the mount point, as this engine wrote it before: the
+        # directory `data` with the owner and the time it had in the machine
+        with_mount_point = io.BytesIO()
+        with tarfile.open(fileobj=io.BytesIO(inner)) as source, tarfile.open(fileobj=with_mount_point, mode='w') as target:
+            for member in source.getmembers():
+                content = source.extractfile(member).read()
+                if member.name == 'images/router.diff.tar':
+                    changed = io.BytesIO()
+                    with tarfile.open(fileobj=io.BytesIO(content)) as old, tarfile.open(fileobj=changed, mode='w') as new:
+                        directory = tarfile.TarInfo('data')
+                        directory.type, directory.mode, directory.mtime = tarfile.DIRTYPE, 0o755, 1_700_000_000
+                        new.addfile(directory)
+                        for entry in old.getmembers():
+                            new.addfile(entry, old.extractfile(entry) if entry.isfile() else None)
+                    content = changed.getvalue()
+                    member.size = len(content)
+                target.addfile(member, io.BytesIO(content))
+        _with_inner_archive(tmp_path / 'p.sre', with_mount_point.getvalue(), tmp_path / 'older.sre')
+        restored, restored_hash = _restore(projects, tmp_path / 'older.sre')
+        assert _run(restored, 'router', read) == expected
+        _stop(restored, restored_hash)
+        assert _left_running() == []
 
     def test_the_archive_the_docker_tests_restore(self, labs_dir, projects, tmp_path):
         """`tests/data/kathara_save_podman.tar.gz`, which the Docker tests restore, is what this

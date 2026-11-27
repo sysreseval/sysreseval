@@ -274,6 +274,22 @@ class TestGetEngine:
         with pytest.raises(EngineError, match="container_engine = 'lxc'"):
             engine_package.get_engine()
 
+    def test_kathara_chosen_and_not_installed(self, monkeypatch):
+        """A host installed for the Podman engine (no Kathara, no Docker SDK) whose parameters
+        still say Kathara: one line naming what to install or to set, not a traceback."""
+        monkeypatch.setitem(sys.modules, 'SRE.engine.kathara_engine', None)     # its import fails
+        with pytest.raises(EngineError) as error:
+            engine_package.get_engine()
+        assert str(error.value).startswith(
+            "the container engine of this host is Kathara (container_engine of params.py) and it is not installed (")
+        assert str(error.value).endswith(params.kathara_missing_hint)
+        assert 'container_engine = "podman"' in params.kathara_missing_hint
+
+    def test_the_podman_engine_is_not_asked_whether_kathara_is_there(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, 'SRE.engine.kathara_engine', None)
+        monkeypatch.setattr(params, 'container_engine', params.container_engine_podman)
+        assert isinstance(engine_package.get_engine(), PodmanEngine)
+
     def test_the_podman_engine_implements_the_whole_contract(self):
         assert PodmanEngine.__abstractmethods__ == frozenset() and issubclass(PodmanEngine, Engine)
 
@@ -502,14 +518,14 @@ class TestRun:
 
     def test_a_command_that_cannot_be_run(self, subprocess_run):
         subprocess_run.side_effect = FileNotFoundError(2, 'No such file or directory', 'podman')
-        with pytest.raises(EngineError, match="cannot run podman: No such file or directory .*podman-setup.sh"):
+        with pytest.raises(EngineError, match="cannot run podman: No such file or directory .*`make podman-setup`"):
             PodmanEngine().run(['podman', 'info'])
 
     def test_a_host_that_is_not_set_up(self, tmp_path, monkeypatch, runtime_dir):
         monkeypatch.setattr(params, 'podman_dir', str(tmp_path / 'absent'))
         engine = PodmanEngine()
         engine.run = Recorder()
-        with pytest.raises(EngineError, match="not set up on this host .* run scripts/podman-setup.sh as root"):
+        with pytest.raises(EngineError, match="not set up on this host .* with `make podman-setup` in .*, as root"):
             engine.deploy(engine.new_lab(RUNNING_LAB))
         assert engine.run.calls == []
 
@@ -642,8 +658,8 @@ class TestDescription:
         lab = engine.new_lab(RUNNING_LAB)
         with pytest.raises(SwitchModesUnsupported) as error:
             engine.set_network_mode(lab, 'lan', mode)
-        assert str(error.value).startswith(f"mode '{mode}' needs the switch program of SRE, which is not built "
-                                           f"({tmp_path}/absent): run `make vde-switch`")
+        assert str(error.value).startswith(f"mode '{mode}' needs the switch program of SRE, which is not there "
+                                           f"({tmp_path}/absent): build it with `make vde-switch` in ")
         assert lab.network_modes == {}
 
     def test_a_program_that_cannot_be_run_is_no_program(self, engine, monkeypatch, tmp_path):
@@ -900,6 +916,60 @@ class TestDeploy:
         engine.run.reply('podman', 'ps', returncode=125, stderr=b'Error: no store\n')
         with pytest.raises(EngineError, match="^podman ps: Error: no store$"):
             engine.deploy(two_machines(engine))
+
+
+class TestFilesOfTheMachines:
+    """What a machine wrote in a directory of the host belongs to a subordinate uid: the account
+    removes it from inside its user namespace, where it is the root of those uids."""
+
+    @pytest.fixture
+    def directories(self, tmp_path, monkeypatch):
+        public, projects = tmp_path / 'home', tmp_path / 'projects'
+        (public / 'lab_1' / 'shared').mkdir(parents=True)
+        (projects / RUNNING_LAB / '.private' / 'mnt').mkdir(parents=True)
+        monkeypatch.setattr(params, 'sre_user_public_dir', str(public))
+        monkeypatch.setattr(params, 'sre_projects_dir', str(projects))
+        return public, projects
+
+    def test_no_root_is_needed_by_this_engine(self, engine):
+        assert engine.needs_root is False
+
+    def test_removed_in_the_user_namespace_of_the_account(self, engine, directories):
+        public, projects = directories
+        engine.remove_files_of_machines([str(public / 'lab_1'), str(projects / RUNNING_LAB)])
+        assert engine.run.commands == [['podman', 'unshare', 'rm', '-rf', '--',
+                                        os.path.realpath(public / 'lab_1'), os.path.realpath(projects / RUNNING_LAB)]]
+
+    def test_what_is_not_there_is_not_named(self, engine, directories):
+        public, projects = directories
+        engine.remove_files_of_machines([str(public / 'gone'), str(projects / RUNNING_LAB)])
+        assert engine.run.commands[0][5:] == [os.path.realpath(projects / RUNNING_LAB)]
+        engine.run.calls.clear()
+        engine.remove_files_of_machines([str(public / 'gone')])
+        engine.remove_files_of_machines([])
+        assert engine.run.calls == []
+
+    @pytest.mark.parametrize('path', ['/', '/etc', '/var/lib/sre', '/home/student', 'relative/path'])
+    def test_only_a_directory_of_a_project(self, engine, directories, path):
+        with pytest.raises(EngineError, match="not a directory of a project"):
+            engine.remove_files_of_machines([path])
+        assert engine.run.calls == []
+
+    def test_neither_the_directory_of_every_project_nor_what_a_link_points_to(self, engine, directories, tmp_path):
+        public, projects = directories
+        outside = tmp_path / 'outside'
+        outside.mkdir()
+        os.symlink(outside, public / 'lab_2')
+        for path in (public, projects, public / 'lab_2', public / 'lab_1' / '..' / '..'):
+            with pytest.raises(EngineError, match="not a directory of a project"):
+                engine.remove_files_of_machines([str(path)])
+        assert engine.run.calls == []
+
+    def test_one_bad_path_and_nothing_is_removed(self, engine, directories):
+        public, _ = directories
+        with pytest.raises(EngineError):
+            engine.remove_files_of_machines([str(public / 'lab_1'), '/etc'])
+        assert engine.run.calls == []
 
 
 class TestSlice:
@@ -1651,6 +1721,23 @@ class TestSave:
             assert json.loads(tar.extractfile('manifest.json').read())['lab']['hash'] == HASH
         assert sorted(p.name for p in work.iterdir()) == ['kathara.tar']
 
+    def test_what_is_mounted_in_a_machine_is_not_saved(self, engine, work):
+        """Podman lists where something is mounted in a machine (`Mounts` of `podman ps`): the
+        shared directory, a volume of the lab, a volume of the image.  The directory made in
+        the machine to mount it is reported as added; it is not a file of the machine."""
+        containers = json.loads(listing(('pc1', 'running', 0)))
+        containers[0]['Mounts'] = ['/data', '/shared', '/hosthome']
+        engine.run.reply('podman', 'ps', stdout=json.dumps(containers).encode())
+        answer_changes(engine, pc1={'changed': ['/etc', '/etc/issue'], 'added': ['/data', '/root/new', '/database'],
+                                    'deleted': ['/data/old', '/etc/issue.net']})
+        answer_tar(engine)
+        archive = str(work / 'kathara.tar')
+        engine.save(archive, HASH, True, str(work))
+        (tar,) = engine.run.starting_with('podman', 'exec', '--interactive')
+        assert tar.kwargs['input'] == b'database\0etc/issue\0root/new\0'
+        _, saved = save_format.read_archive(archive)
+        assert saved['pc1'].deletions == ['/etc/issue.net']
+
     def test_the_program_that_compares_is_there(self):
         assert Path(podman_engine._TREE_CHANGES) == SRC / 'SRE' / 'engine' / 'tree_changes.py'
         assert Path(podman_engine._TREE_CHANGES).is_file()
@@ -1877,6 +1964,38 @@ class TestRestore:
         # nothing is kept
         assert all(machine.saved is None for machine in lab.machines.values())
         assert sorted(p.name for p in work.iterdir()) == ['kathara.tar']
+
+    def test_the_directories_of_the_host_are_left_alone(self, engine, work):
+        """The shared directory and the volumes of the new machine are the new project's.  A
+        save of the fork, or of this engine before it left them out, may hold the directory a
+        volume is mounted on (and deletions there): the root of the machine can neither date
+        nor own a directory of the host, and the restore stopped on it."""
+        archive = saved_project(
+            work, pc1=(IMAGE, ['/data/old', '/etc/issue.net'],
+                       [('data', 'dir'), ('data/f', 'file'), ('shared/x', 'file'), ('srv/site', 'dir'),
+                        ('srv/site/index.html', 'file'), ('root/a', 'file'), ('database', 'dir')]))
+        given = self.unpacked(engine)
+        lab = two_machines(engine)
+        lab.shared_path = '/home/sre/project/shared'
+        lab.machines['pc1'].options['volumes'] = ['/var/lib/sre/projects/p/.private/mnt/data|/data|rw',
+                                                  '/var/lib/sre/projects/p/.private/mnt/site|/srv/site/|rw']
+        engine.restore(archive, lab, str(work))
+        remove, files, directories, unpack = engine.run.starting_with(*self.INSIDE)
+        assert remove.kwargs['input'] == b'/etc/issue.net\0'
+        assert files.kwargs['input'] == b'/root/a\0'
+        assert directories.kwargs['input'] == b'/database\0/root\0/srv\0'
+        # tar skips the members at or below a mount point, named as they are, from the start of
+        # a member's name; the whole archive is still what it reads
+        assert unpack.argv == self.INSIDE + TAR_EXTRACT[:-4] + [
+            '--anchored', '--no-wildcards', '--exclude=data', '--exclude=./data', '--exclude=shared',
+            '--exclude=./shared', '--exclude=srv/site', '--exclude=./srv/site', '-f', '-', '-C', '/']
+        with tarfile.open(fileobj=io.BytesIO(given[0])) as tar:
+            assert 'data/f' in tar.getnames()
+
+    def test_a_machine_without_volume_is_unpacked_as_before(self, engine, archive, work):
+        self.unpacked(engine)
+        engine.restore(archive, two_machines(engine), str(work))
+        assert engine.run.starting_with(*self.INSIDE)[-1].argv == self.INSIDE + TAR_EXTRACT
 
     def test_a_machine_of_the_lab_that_was_not_saved(self, engine, work):
         archive = saved_project(work, pc1=(IMAGE, [], [('root/a', 'file')]))

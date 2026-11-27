@@ -47,10 +47,26 @@ class SwitchCommandError(EngineError):
 class Engine(ABC):
     """A container engine (see the module documentation)."""
 
+    @property
+    @abstractmethod
+    def needs_root(self) -> bool:
+        """Whether the commands must stay root for the engine: it refuses a privileged machine to
+        anyone else, and its machines write on the host as root.  With an engine that says no,
+        a lab with privileged machines is handled like any other: root is dropped for good
+        before the code of the lab runs."""
+
     @abstractmethod
     def capture_root_privileges(self):
         """Called once at start-up while the process is still root, before it lowers its
         effective uid: the engine notes that it may raise it again."""
+
+    @abstractmethod
+    def remove_files_of_machines(self, paths: list[str]):
+        """Remove the directories *paths* of the host (the public directory and the directory of
+        a project) as far as the engine can without root: what its machines wrote there
+        included.  Nothing for an engine whose machines write as root: the commands remove
+        those directories while they are root themselves.  What is left is the caller's to
+        remove, or to report."""
 
     # ---- description of a project -------------------------------------------------------
 

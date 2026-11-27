@@ -66,13 +66,36 @@ def docker_image_name(image: str) -> str:
     return image
 
 
-def paths_to_save(changed, added, deleted) -> tuple[list[str], list[str]]:
+def mount_points(destinations) -> list[str]:
+    """The places of a machine where something of the host is mounted (its shared directory, its
+    volumes), as normalised absolute paths.  They are not files of the machine: the save file
+    carries the directories of the host apart, and the new machine gets its own."""
+    points = set()
+    for destination in destinations or ():
+        if isinstance(destination, str) and destination.startswith("/") and "\0" not in destination:
+            point = posixpath.normpath(destination)
+            if point not in ("/", "//"):
+                points.add(point)
+    return sorted(points)
+
+
+def under_a_mount(path, points) -> bool:
+    """Whether *path* (text or bytes, from `/`) is one of the mount *points* or lies below one."""
+    if isinstance(path, bytes):
+        return any(path == point.encode() or path.startswith(point.encode() + b"/") for point in points)
+    return any(path == point or path.startswith(point + "/") for point in points)
+
+
+def paths_to_save(changed, added, deleted, mounts=()) -> tuple[list[str], list[str]]:
     """What the diff of a machine holds, from the paths its engine reports as changed, added and
     deleted since its image: `(the paths to archive, the deletions)`, both sorted.
 
     A path is archived when no reported path lies below it (a directory whose content changed is
     not an entry: its content is), whatever that other path is — a deleted or a left-out one
-    counts, as in the fork."""
+    counts, as in the fork.  The mount points *mounts* of the machine and what lies below them
+    are left out like the paths the format excludes."""
+    def left_out(path):
+        return is_excluded(path) or under_a_mount(path, mounts)
     there = {path for path in (*changed, *added) if _is_a_path(path)}
     gone = {path for path in deleted if _is_a_path(path)}
     above = set()
@@ -81,8 +104,8 @@ def paths_to_save(changed, added, deleted) -> tuple[list[str], list[str]]:
         while parent not in above and parent not in ("", "/"):
             above.add(parent)
             parent = posixpath.dirname(parent)
-    archived = sorted(path for path in there if path not in above and not is_excluded(path))
-    deletions = sorted(path for path in gone if _is_text(path) and not is_excluded(path))
+    archived = sorted(path for path in there if path not in above and not left_out(path))
+    deletions = sorted(path for path in gone if _is_text(path) and not left_out(path))
     return archived, deletions
 
 

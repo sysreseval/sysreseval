@@ -310,6 +310,11 @@ class TestCheckoutDefaults:
         assert p.self_update_allowed is True and p.site_params_file is None
         assert p.check_project_owner is True
         assert 'make network-plugin' in p.network_plugin_hint and 'make venv' in p.kathara_hint
+        # the Podman engine: the commands of a checkout
+        assert f'`make podman-setup` in {root}, as root' in p.podman_setup_hint
+        assert p.vde_switch_hint == f'build it with `make vde-switch` in {root}'
+        assert f'`make venv` in {root}' in p.kathara_missing_hint and '`make podman-setup`' in p.kathara_missing_hint
+        assert p.vde_switch_program == root + '/bin/sre-vde-switch' and p.podman_dir == '/var/lib/sre/podman'
         assert p.web_dir == root + '/web' and p.web_config_file == '/etc/sreweb/web.toml'
         assert p.agent_config_file == '/etc/sreweb/agent.toml'
 
@@ -355,6 +360,13 @@ class TestFhsLayout:
         assert p.exetests_path == '/usr/lib/sysreseval/lib/exetests.py'
         assert p.self_update_allowed is False
         assert 'sysreseval-network-plugin' in p.network_plugin_hint and 'python3-kathara' in p.kathara_hint
+        # the Podman engine: the commands and the paths of the package sysreseval-podman
+        assert '`sysreseval-podman-setup`, as root' in p.podman_setup_hint and 'make' not in p.podman_setup_hint
+        assert p.vde_switch_hint == 'install the package sysreseval-podman'
+        assert 'python3-kathara and docker.io' in p.kathara_missing_hint
+        assert 'sysreseval-podman' in p.kathara_missing_hint and '/etc/sysreseval/params.py' in p.kathara_missing_hint
+        assert p.vde_switch_program == '/usr/lib/sysreseval/bin/sre-vde-switch'
+        assert p.podman_dir == '/var/lib/sre/podman'
         assert p.web_dir == '/usr/share/sysreseval/web' and p.web_config_file == '/etc/sysreseval/web.toml'
         assert p.agent_config_file == '/etc/sysreseval/agent.toml'
 

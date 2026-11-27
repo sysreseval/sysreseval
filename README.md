@@ -18,6 +18,7 @@
 
 **SysResEval** (*Système Réseaux Évaluation*, shortened to **SRE**) is an open-source software suite for teaching and managing exercise sessions and evaluations in network and system administration courses.
 Each "lab" or project is a small virtual network of Linux machines, orchestrated through the [Kathara framework](https://github.com/KatharaFramework/Kathara) on top of Docker and VDE. 
+The machines can also be rootless [Podman](https://podman.io) containers of an unprivileged account, on a host that needs no Docker (see the installation guide). 
 Students work through guided exercises in a GUI; 
 instructors monitor sessions and run time-limited exams with automatic, reproducible grading.
 
@@ -84,7 +85,7 @@ See **[docs/sphinx/installation.md](docs/sphinx/installation.md)** for the post-
 - sharing archive directories for live monitoring,
 - pre-loading Docker images to avoid a network meltdown when an exam starts.
 
-Full step-by-step setup, manual install, and post-install steps are documented in **[docs/sphinx/installation.md](docs/sphinx/installation.md)**.
+Full step-by-step setup, manual install, post-install steps and the choice of the container engine (Docker through Kathara, or rootless Podman: the installer asks, and the Debian package `sysreseval-podman` installs SRE without Docker) are documented in **[docs/sphinx/installation.md](docs/sphinx/installation.md)**.
 
 
 ## Documentation

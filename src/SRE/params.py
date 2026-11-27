@@ -65,11 +65,14 @@ docker_socket_path = "/var/run/docker.sock"   # absent: no Docker daemon on this
 self_update_allowed = None   # None: True (checkout), False (fhs: the package is updated with apt); `sre update`
 network_plugin_hint = None   # None: how to install the network plugin with the switch types, by layout
 kathara_hint = None          # None: how to get a Kathara with the switch modes, by layout
-container_engine = "kathara"   # what runs the machines: "kathara" (Docker through Kathara) or "podman" (rootless Podman under sre_user, set up by `make podman-setup`; no save / restore yet)
+kathara_missing_hint = None  # None: what to do on a host whose engine is Kathara and that has no Kathara, by layout
+podman_setup_hint = None     # None: how to prepare a host for the Podman engine, by layout
+vde_switch_hint = None       # None: how to get the switch program of the Podman engine, by layout
+container_engine = "kathara"   # what runs the machines: "kathara" (Docker through Kathara) or "podman" (rootless Podman under sre_user, on a host prepared by `make podman-setup` or by the package sysreseval-podman)
 container_engine_by_host = {}  # host name -> engine, for the hosts that differ from container_engine: {"s17": "podman"}
 podman_dir = None            # None: sre_pub_dir/podman: configuration and image store of the Podman engine (a local disk, never NFS)
 podman_uid_ranges = 32       # Podman engine: each project runs in a uid range of its own, so this is how many projects a host runs at once (1: they all share one range)
-vde_switch_program = None    # None: main_sre_dir/bin/sre-vde-switch: the switch of the Podman engine for 'switch' and 'managed' networks, built by `make vde-switch`; the vde_switch of Debian ("/usr/bin/vde_switch") loses the frames above 1518 bytes
+vde_switch_program = None    # None: main_sre_dir/bin/sre-vde-switch: the switch of the Podman engine for 'switch' and 'managed' networks, built by `make vde-switch` (checkout) or shipped by the package sysreseval-podman (fhs); the vde_switch of Debian ("/usr/bin/vde_switch") loses the frames above 1518 bytes
 web_dir = None              # None: main_sre_dir/web (checkout), /usr/share/sysreseval/web (fhs): templates and static files of sre-web
 web_config_file = None       # None: /etc/sreweb/web.toml (checkout), /etc/sysreseval/web.toml (fhs): configuration of sre-web
 agent_config_file = None     # None: /etc/sreweb/agent.toml (checkout), /etc/sysreseval/agent.toml (fhs): configuration of sre-agent
@@ -309,6 +312,19 @@ if network_plugin_hint is None:
                            else f"Install it with `make network-plugin` in {main_sre_dir} (see the installation guide).")
 if kathara_hint is None:
     kathara_hint = "upgrade the python3-kathara package" if _fhs else "install it again with `make venv`"
+if kathara_missing_hint is None:
+    kathara_missing_hint = (
+        'install the packages python3-kathara and docker.io, or choose the Podman engine: the package '
+        'sysreseval-podman and container_engine = "podman" in /etc/sysreseval/params.py' if _fhs
+        else f'install it with `make venv` in {main_sre_dir}, or choose the Podman engine: '
+             f'container_engine = "podman" in params.py and `make podman-setup`')
+if podman_setup_hint is None:
+    podman_setup_hint = ("prepare this host for the Podman engine with `sysreseval-podman-setup`, as root "
+                         "(package sysreseval-podman)" if _fhs
+                         else f"prepare this host for the Podman engine with `make podman-setup` in {main_sre_dir}, as root")
+if vde_switch_hint is None:
+    vde_switch_hint = ("install the package sysreseval-podman" if _fhs
+                       else f"build it with `make vde-switch` in {main_sre_dir}")
 if podman_dir is None:
     podman_dir = sre_pub_dir + "/podman"
 if vde_switch_program is None:

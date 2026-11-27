@@ -383,6 +383,15 @@ def rollback_project(setup: ProjectSetup, multi_project: bool = False):
             leftover_errors.append(str(e))
         for error in leftover_errors:
             log_error(f"rollback: cannot remove {error}")
+    # Root may be gone for good by now (a lab the engine needs no root for): what the machines
+    # left is removed by the engine, which can do it without root when its machines are not root.
+    try:
+        get_engine().remove_files_of_machines(
+            [str(path) for path in (setup.user_public_dir,
+                                    params.public_lab_dir(setup.running_lab_name) if setup.public_lab_dir_created
+                                    else None) if path is not None])
+    except Exception as e:
+        log_error(f"rollback: {e}")
     gain_privileges()
     try:
         if setup.user_public_dir is not None:

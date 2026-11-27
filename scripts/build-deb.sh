@@ -6,10 +6,13 @@
 #   scripts/build-deb.sh --dist forky --local                         # the working tree of this checkout
 #
 # Packages built, in build/deb/<dist>/ (--out): python3-kathara (the SysResEval fork of Kathara,
-# packaging/kathara/), sysreseval and sysreseval-doc (debian/), and on forky python3-fs rebuilt
-# from the trixie source package (packaging/python-fs/).  The sources are fetched on this host
-# (git or GitHub), the build runs in debian:<dist> (apt-get only), lintian checks the result and
-# --test-install installs everything in a fresh debian:<dist> and exercises sre.
+# packaging/kathara/), sysreseval, sysreseval-podman, the web packages and sysreseval-doc
+# (debian/), and on forky python3-fs rebuilt from the trixie source package
+# (packaging/python-fs/).  The sources are fetched on this host (git or GitHub; the archive of
+# the switch of the Podman engine is added to them), the build runs in debian:<dist> (apt-get
+# only), lintian checks the result and --test-install installs the packages in fresh
+# debian:<dist> containers and exercises sre: once as a Docker host, once as a host without
+# Docker (sysreseval-podman, no Docker package).
 #
 # Options: --dist trixie|forky (required)   --ref <tag> | --local   --arch amd64|arm64 (the host's)
 #          --out <dir>   --test-install   --no-lintian   --no-check (skip the unit tests)
@@ -34,9 +37,9 @@ while [ $# -gt 0 ]; do
         --skip-kathara) SKIP_KATHARA=1; shift;;
         --skip-fs) SKIP_FS=1; shift;;
         --keep) KEEP=1; shift;;
-        --stage) STAGE="$2"; shift 2;;                 # internal: build | test, run inside the container
+        --stage) STAGE="$2"; shift 2;;                 # internal: build | test | test-podman, run inside the container
         --upstream-version) UPSTREAM_VERSION="$2"; shift 2;;   # internal
-        -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+        -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
         *) die "unknown option $1 (see --help)";;
     esac
 done
@@ -114,13 +117,17 @@ with tarfile.open(out, "w:gz") as tar:
     # vendor them into the orig tarball, where debian/sysreseval-web.install expects web/static/vendor/
     log "xterm.js of the web front-end"
     make -C "$REPO_DIR" xterm novnc >/dev/null || die "make xterm novnc failed"
+    # the switch of the Podman engine is built from the archive of vde-2 that `make vde-switch`
+    # downloads on a checkout: vendor/vde-2.tar.gz of the orig tarball, where debian/rules expects it
+    log "vde-2 (the switch of the Podman engine)"
+    "$REPO_DIR/scripts/vde-switch-build.sh" --fetch "$sources/vde-2.tar.gz" || die "cannot fetch the archive of vde-2"
     python3 -I -c '
 import io, os, sys, tarfile
-tarball, prefix, vendor = sys.argv[1:4]
+tarball, prefix, vendor, vde = sys.argv[1:5]
 tmp = tarball + ".tmp"
 with tarfile.open(tarball, "r:gz") as src, tarfile.open(tmp, "w:gz") as dst:
     for member in src:
-        if member.name.startswith(f"{prefix}/web/static/vendor/"):
+        if member.name.startswith((f"{prefix}/web/static/vendor/", f"{prefix}/vendor/")):
             continue
         dst.addfile(member, src.extractfile(member) if member.isfile() else None)
     for root, dirs, files in os.walk(vendor):
@@ -128,9 +135,11 @@ with tarfile.open(tarball, "r:gz") as src, tarfile.open(tmp, "w:gz") as dst:
             path = os.path.join(root, name)
             arcname = f"{prefix}/web/static/vendor/{os.path.relpath(path, vendor)}"
             dst.add(path, arcname=arcname, recursive=False)
+    dst.add(vde, arcname=f"{prefix}/vendor/vde-2.tar.gz", recursive=False)
 os.replace(tmp, tarball)
 ' "$sources/${SRC_PACKAGE}_${UPSTREAM_VERSION}.orig.tar.gz" "${SRC_PACKAGE}-${UPSTREAM_VERSION}" \
-        "$REPO_DIR/web/static/vendor" || die "cannot add the vendored files to the sources"
+        "$REPO_DIR/web/static/vendor" "$sources/vde-2.tar.gz" || die "cannot add the vendored files to the sources"
+    rm -f "$sources/vde-2.tar.gz"
     if [ "$SKIP_KATHARA" = 0 ]; then
         log "sources of kathara ($KATHARA_VERSION)"
         local kurl="https://codeload.github.com/$KATHARA_REPOSITORY/tar.gz/$KATHARA_COMMIT"
@@ -159,6 +168,12 @@ os.replace(tmp, tarball)
             bash /src/scripts/build-deb.sh --stage test --dist "$DIST" --upstream-version "$UPSTREAM_VERSION" \
             2>&1 | tee "$dist_out/test-install.log"
         [ "${PIPESTATUS[0]}" = 0 ] || die "the installation test failed (see $dist_out/test-install.log)"
+        log "installation test without Docker (the Podman engine) in a fresh debian:$DIST ($ARCH)"
+        docker run --rm --platform "linux/$ARCH" -e DEBIAN_FRONTEND=noninteractive --cap-add SYS_PTRACE \
+            -v "$REPO_DIR:/src:ro" -v "$OUT:/out" "debian:$DIST" \
+            bash /src/scripts/build-deb.sh --stage test-podman --dist "$DIST" --upstream-version "$UPSTREAM_VERSION" \
+            2>&1 | tee "$dist_out/test-install-podman.log"
+        [ "${PIPESTATUS[0]}" = 0 ] || die "the installation test without Docker failed (see $dist_out/test-install-podman.log)"
     fi
     log "done: $dist_out"
     find "$dist_out" -name '*.deb' | sort
@@ -317,6 +332,8 @@ test_main() {
     log "checks"
     export LOGNAME=root     # what a login shell sets: the username of a command run by root
     check "the sre user exists" id sre
+    check "Docker is what a plain install brings" sh -c 'dpkg -s docker.io >/dev/null 2>&1 || dpkg -s docker-ce >/dev/null 2>&1'
+    check "no Podman on a plain install" sh -c '! command -v podman'
     check "sre is in the docker group" sh -c 'id -nG sre | tr " " "\n" | grep -qx docker'
     check "/var/lib/sre/lab/sre links the shipped labs" test -L /var/lib/sre/lab/sre
     check "/var/lib/sre/home exists" test -d /var/lib/sre/home
@@ -370,9 +387,79 @@ assert '/usr/share/sysreseval/lab' in p.authorized_src_dir
     fi
 }
 
+# ---------------------------------------------------------------------------------------------
+# inside the second test container: a host without Docker, the Podman engine
+# ---------------------------------------------------------------------------------------------
+test_podman_main() {
+    log "installation of sysreseval-podman, without the packages of Docker and Kathara"
+    apt-get update
+    apt_install ca-certificates
+    local debs=()
+    for f in "/out/$DIST/python-fs/"python3-fs_*.deb "/out/$DIST/sysreseval/"sysreseval_*.deb \
+             "/out/$DIST/sysreseval/"sysreseval-podman_*.deb; do
+        [ -f "$f" ] && debs+=("$f")
+    done
+    apt_install "${debs[@]}" 2>&1 | tee /tmp/install.log
+
+    log "checks"
+    export LOGNAME=root
+    local docker_package
+    for docker_package in docker.io docker-ce docker-cli docker-ce-cli python3-docker python3-kathara containerd runc-docker; do
+        check "$docker_package is not installed" sh -c "! dpkg -s $docker_package >/dev/null 2>&1"
+    done
+    check "no docker command, no docker group" sh -c '! command -v docker && ! command -v dockerd && ! getent group docker'
+    check "podman, the plugs, pasta and newuidmap are installed" sh -c 'command -v podman && command -v vde_plug && command -v pasta && command -v newuidmap'
+    check "the sre user exists" id sre
+    check "the switch program is installed" test -x /usr/lib/sysreseval/bin/sre-vde-switch
+    check "the switch program is the vde_switch of SRE" sh -c '/usr/lib/sysreseval/bin/sre-vde-switch --version 2>&1 | grep -q "VDE 2\."'
+    check "the key quota file is installed" grep -q "^kernel.keys.maxkeys" /usr/lib/sysctl.d/60-sysreseval-podman.conf
+    check "the setup command is installed" sh -c 'sysreseval-podman-setup --help | grep -q "Podman engine of SRE"'
+    check "the postinst said to run the setup later (no systemd here)" grep -q "run sysreseval-podman-setup as root once the host has booted" /tmp/install.log
+    check "the default engine is not installed: one line says so" sh -c '
+        ! sre list >/tmp/list.out 2>/tmp/list.err
+        test "$(wc -l < /tmp/list.err)" = 1 && grep -q "Kathara .* is not installed" /tmp/list.err && grep -q "sysreseval-podman" /tmp/list.err'
+    echo 'container_engine = "podman"' >> /etc/sysreseval/params.py
+    check "params: the Podman engine, the group of sre, the paths of the package" python3 -c "
+import sys, pwd; sys.path.insert(0, '/usr/lib/sysreseval')
+import SRE.params as p
+assert p.host_container_engine() == 'podman'
+assert p.docker_gid == pwd.getpwnam('sre').pw_gid, p.docker_gid
+assert p.vde_switch_program == '/usr/lib/sysreseval/bin/sre-vde-switch' and p.podman_dir == '/var/lib/sre/podman'
+assert 'sysreseval-podman-setup' in p.podman_setup_hint
+from SRE.engine import get_engine
+assert type(get_engine()).__name__ == 'PodmanEngine'
+assert 'Kathara' not in sys.modules and 'docker' not in sys.modules
+"
+    check "sre list shows the shipped labs" sh -c 'sre list | grep -q "sre/dhcp.py"'
+    check "sre check of a shipped lab" sre check /var/lib/sre/lab/sre/dhcp.py
+    check "a student runs sre through sre-wrapper" sh -c 'id student >/dev/null 2>&1 || useradd -m student; su student -c "sre-wrapper list" | grep -q "sre/dhcp.py"'
+    check "sre start names the setup command (the host is not set up)" sh -c '
+        ! sre start sre/latency.py >/tmp/start.out 2>/tmp/start.err
+        grep -q "sysreseval-podman-setup" /tmp/start.err && ! grep -q Traceback /tmp/start.err'
+    check "sre status works" sh -c 'sre status >/dev/null'
+    check "the setup command refuses a host without systemd in one line, and changes nothing" sh -c '
+        ! sysreseval-podman-setup >/tmp/setup.out 2>/tmp/setup.err
+        test "$(wc -l < /tmp/setup.err)" = 1 && grep -q "^ERROR: systemd is not running here" /tmp/setup.err \
+            && ! grep -q "^sre:" /etc/subuid && ! test -e /var/lib/sre/podman'
+
+    log "removal"
+    check "apt purge sysreseval-podman" apt-get purge -y sysreseval-podman
+    check "the switch program is gone" sh -c '! test -e /usr/lib/sysreseval/bin/sre-vde-switch'
+    check "sysreseval stays installed" dpkg -s sysreseval
+
+    echo
+    if [ "$failures" = 0 ]; then
+        echo "installation test without Docker: every check passed"
+    else
+        echo "installation test without Docker: $failures check(s) failed"
+        exit 1
+    fi
+}
+
 case "$STAGE" in
     "") host_main;;
     build) build_main;;
     test) test_main;;
+    test-podman) test_podman_main;;
     *) die "unknown stage $STAGE";;
 esac

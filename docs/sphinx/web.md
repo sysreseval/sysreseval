@@ -127,6 +127,14 @@ systemd units `sre-agent.service` and `sre-web.service` (disabled) and the examp
 files `agent.toml` and `web.toml` in `/etc/sreweb/` (`params.agent_config_file` /
 `params.web_config_file`; `--config` names another file).
 
+A pool host may run either container engine, and a pool may mix them. The unit of the agent
+*wants* `docker.service` and is ordered after it, without requiring it: on a host whose engine is
+Podman and that has no Docker it starts all the same (run the setup of the Podman engine after
+installing the unit: it orders the agent after the user manager of the `sre` account, so that at
+a shutdown the agent closes the projects while their machines still run). On a Docker host, a
+Docker that is stopped or restarted no longer stops the agent with it; the `sre` commands the
+agent runs fail while Docker is down.
+
 On every pool host: write `/etc/sreweb/agent.toml` (root, mode 0600) with a long random token
 (the example file listens on every interface, `0.0.0.0:8451`: `allowed_clients` and the mutual
 TLS below keep the port to the portal), then `systemctl enable --now sre-agent`.

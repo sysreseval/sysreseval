@@ -132,15 +132,39 @@ for tool in sed grep stat getent useradd groupadd usermod install; do
     command -v "$tool" >/dev/null 2>&1 || die "Required tool not found in PATH: $tool"
 done
 
+# ── container engine ──────────────────────────────────────────────────────────
+
+# What runs the machines of the labs on this host.  Asked first: the packages, the group of
+# the sre command and the last steps of this script depend on it.
+hr "Container engine"
+echo "kathara: Docker containers wired by Kathara (the default; needs the Docker daemon)."
+echo "podman:  rootless Podman containers of the sre user (no Docker needed on this host)."
+# the default is what params.py says already (this script run again), Kathara on a first run
+current_engine=$(sed -n 's/^container_engine = "\([a-z]*\)".*/\1/p' "$PARAMS")
+[[ $current_engine == podman ]] || current_engine=kathara
+engine=$(prompt_choice "container engine of this host" "$current_engine" "kathara" "podman")
+
 # Executables that may be missing on a fresh host. Map: executable → Debian/Ubuntu package.
 declare -A APT_PKG=(
-    [docker]=docker.io
     [asciinema]=asciinema
     [make]=make
     [gcc]=gcc
     [dot]=graphviz                 # provides dot/neato/etc., used at runtime by the python `graphviz` package via .pipe()
     [python3.13]=python3.13
 )
+if [[ $engine == podman ]]; then
+    # the engine (podman, the user namespace tools, the plugs of the networks, the outside
+    # interface, the pause process of the rootless namespace) and what builds its switch
+    APT_PKG+=([podman]=podman [newuidmap]=uidmap [vde_plug]=vdeplug [pasta]=passt [catatonit]=catatonit
+              [cmake]=cmake [curl]=curl)
+else
+    APT_PKG+=([docker]=docker.io)
+fi
+# The bus of the systemd user manager of sre (the Podman engine starts its networks there):
+# a package without a command of its own.
+dbus_user_session_ok() {
+    [[ $engine != podman ]] || [[ -e /usr/lib/systemd/user/dbus.socket || -e /lib/systemd/user/dbus.socket ]]
+}
 
 # Debian-family Python is split into multiple packages; python3.13 alone has
 # no `ensurepip`, so `python3.13 -m venv` produces a venv with a broken `pip`.
@@ -180,11 +204,17 @@ check_executables() {
         need_py_extra=1
         pkgs+=("${PY_EXTRA_PKGS[@]}")
     fi
-    [[ ${#missing[@]} -eq 0 && $need_py_extra -eq 0 ]] && return 0
+    local need_dbus=0
+    if ! dbus_user_session_ok; then
+        need_dbus=1
+        pkgs+=(dbus-user-session)
+    fi
+    [[ ${#missing[@]} -eq 0 && $need_py_extra -eq 0 && $need_dbus -eq 0 ]] && return 0
 
     echo
     [[ ${#missing[@]} -gt 0 ]] && warn "Missing executables: ${missing[*]}"
     [[ $need_py_extra -eq 1 ]] && warn "python3.13 is installed but lacks ensurepip — need: ${PY_EXTRA_PKGS[*]}"
+    [[ $need_dbus -eq 1 ]] && warn "the user session bus is not installed — need: dbus-user-session"
 
     if is_debian_like && command -v apt-get >/dev/null 2>&1; then
         echo "Detected Debian/Ubuntu — the following packages would provide them:"
@@ -198,6 +228,7 @@ check_executables() {
                 command -v "$t" >/dev/null 2>&1 || still+=("$t")
             done
             py_venv_ok || still+=("python3.13-venv")
+            dbus_user_session_ok || still+=("dbus-user-session")
             [[ ${#still[@]} -eq 0 ]] && return 0
             warn "Still missing after install: ${still[*]}"
             for t in "${still[@]}"; do
@@ -216,11 +247,18 @@ check_executables() {
 }
 check_executables
 
-DOCKER_SOCKET=/var/run/docker.sock
-[[ -S $DOCKER_SOCKET ]] || die "Docker socket $DOCKER_SOCKET not found. Is the Docker daemon running? Try: systemctl start docker"
+if [[ $engine == kathara ]]; then
+    DOCKER_SOCKET=/var/run/docker.sock
+    [[ -S $DOCKER_SOCKET ]] || die "Docker socket $DOCKER_SOCKET not found. Is the Docker daemon running? Try: systemctl start docker"
 
-docker_gid=$(stat -c '%g' "$DOCKER_SOCKET")
-echo "Detected Docker socket GID: $docker_gid"
+    docker_gid=$(stat -c '%g' "$DOCKER_SOCKET")
+    echo "Detected Docker socket GID: $docker_gid"
+else
+    # the Podman engine has no daemon: the sre command runs with the group of the sre user
+    # (set below, once the group exists)
+    docker_gid=""
+    [[ -d /run/systemd/system ]] || die "systemd is not running on this host: the Podman engine needs the systemd user manager of the sre user."
+fi
 
 # ── interactive prompts ────────────────────────────────────────────────────────
 
@@ -249,6 +287,7 @@ fi
 hr "SRE user configuration"
 sre_uid=$(prompt_int "sre UID" 1100)
 sre_gid=$(prompt_int "sre GID" 1100)
+[[ -n $docker_gid ]] || docker_gid="$sre_gid"
 
 hr "Directories"
 sre_pub_dir=$(prompt_str "sre_pub_dir" "/var/lib/sre")
@@ -329,6 +368,7 @@ fi
 
 hr "Configuration summary"
 printf '  %-28s = %s\n' \
+    container_engine            "$engine"                      \
     main_sre_dir                "$main_sre_dir"                \
     sre_uid                     "$sre_uid"                     \
     sre_gid                     "$sre_gid"                     \
@@ -355,6 +395,9 @@ update_param 'main_sre_dir = '              "main_sre_dir = \"${main_sre_dir}\""
 update_param 'sre_uid = '                   "sre_uid = ${sre_uid}"
 update_param 'sre_gid = '                   "sre_gid = ${sre_gid}"
 update_param 'docker_gid = '                "docker_gid = ${docker_gid}"
+# the comment of the line is kept: only the value changes
+sed -i "s|^container_engine = \"[a-z]*\"|container_engine = \"${engine}\"|" "$PARAMS"
+grep -q "^container_engine = \"${engine}\"" "$PARAMS" || die "Failed to apply update: container_engine = \"${engine}\""
 update_param 'sre_pub_dir = '               "sre_pub_dir = \"${sre_pub_dir}\""
 update_param 'sre_user_public_dir = '       "sre_user_public_dir = \"${sre_user_public_dir}\""
 update_param 'allow_privileged_machines = ' "allow_privileged_machines = ${allow_privileged_machines}"
@@ -448,13 +491,24 @@ for d in lab lib; do
     chmod -R u=rwX,g=rX,o= "$main_sre_dir/$d"
 done
 
-# Add sre to docker group (membership by GID).
-docker_group=$(getent group "$docker_gid" | cut -d: -f1 || true)
-if [[ -n $docker_group ]]; then
-    echo "Adding sre to Docker group '$docker_group' …"
-    usermod -aG "$docker_group" sre
+if [[ $engine == kathara ]]; then
+    # Add sre to docker group (membership by GID).
+    docker_group=$(getent group "$docker_gid" | cut -d: -f1 || true)
+    if [[ -n $docker_group ]]; then
+        echo "Adding sre to Docker group '$docker_group' …"
+        usermod -aG "$docker_group" sre
+    else
+        warn "No group found for Docker GID $docker_gid; skipping usermod."
+    fi
 else
-    warn "No group found for Docker GID $docker_gid; skipping usermod."
+    # The sre command runs with the group of the sre user: the real one, when a group named sre
+    # existed already with another GID than the one asked above.
+    actual_gid=$(id -g sre)
+    if [[ $actual_gid != "$docker_gid" ]]; then
+        docker_gid="$actual_gid"
+        update_param 'docker_gid = ' "docker_gid = ${docker_gid}"
+        echo "docker_gid = ${docker_gid} (the group of the sre user)."
+    fi
 fi
 
 # ── optional system files ─────────────────────────────────────────────────────
@@ -583,19 +637,31 @@ make venv
 hr "Running make install"
 make install
 
-# ── network plugin with the switch types ───────────────────────────────────────
+if [[ $engine == kathara ]]; then
+    # ── network plugin with the switch types ───────────────────────────────────
 
-# Labs may declare networks that are switches or managed switches (VLANs, console)
-# instead of hubs.  Those need the VDE network plugin of the Kathara fork, built
-# here and installed in place of the stock plugin (which only knows hubs and is
-# what Kathara downloads by itself).  Labs with hubs only work either way.
-hr "Kathara network plugin (switch types)"
-echo "Labs with 'switch' or 'managed' networks need the network plugin of the"
-echo "Kathara fork; it replaces the stock kathara/katharanp_vde plugin.  It is"
-echo "downloaded from Docker Hub, or built here (a few minutes) when it is not"
-echo "published.  Run 'make network-plugin' later otherwise."
-if confirm "Build and install it now?" "Y"; then
-    make network-plugin || warn "the network plugin was not installed — run 'make network-plugin' in $REPO_DIR once fixed."
+    # Labs may declare networks that are switches or managed switches (VLANs, console)
+    # instead of hubs.  Those need the VDE network plugin of the Kathara fork, built
+    # here and installed in place of the stock plugin (which only knows hubs and is
+    # what Kathara downloads by itself).  Labs with hubs only work either way.
+    hr "Kathara network plugin (switch types)"
+    echo "Labs with 'switch' or 'managed' networks need the network plugin of the"
+    echo "Kathara fork; it replaces the stock kathara/katharanp_vde plugin.  It is"
+    echo "downloaded from Docker Hub, or built here (a few minutes) when it is not"
+    echo "published.  Run 'make network-plugin' later otherwise."
+    if confirm "Build and install it now?" "Y"; then
+        make network-plugin || warn "the network plugin was not installed — run 'make network-plugin' in $REPO_DIR once fixed."
+    fi
+else
+    # ── the Podman engine ──────────────────────────────────────────────────────
+
+    # The switch of the networks of mode 'switch' and 'managed' (a vde_switch that carries
+    # large frames, built here in a few seconds), then the host itself: the subordinate ids
+    # and the user manager of sre, the directory of the engine, the order of the units
+    # installed above, and the address of the host where there is no Docker.
+    hr "Podman engine"
+    make vde-switch || warn "the switch program was not built — run 'make vde-switch' in $REPO_DIR once fixed (labs with a switch are refused until then)."
+    make podman-setup || warn "the host is not ready for the Podman engine — run 'make podman-setup' in $REPO_DIR once what is reported above is fixed."
 fi
 
 # ── symlinks in /usr/local/{bin,sbin} ──────────────────────────────────────────

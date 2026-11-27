@@ -12,9 +12,33 @@ The packages of the GitHub releases are served, signed, by the apt repository of
       https://sysreseval.github.io/sysreseval/apt/sysreseval-<dist>.sources
   sudo apt update && sudo apt install sysreseval
 
+A host without Docker: the Podman engine
+----------------------------------------
+The machines of the labs are Docker containers by default.  They can be rootless Podman
+containers of the sre user instead, with no Docker and no daemon running as root:
+
+  sudo apt install sysreseval-podman
+
+On a host that has no Docker this installs none (in sysreseval, Docker, python3-kathara and
+python3-docker are each an alternative to this package); a host that has Docker keeps it, and
+each host uses one engine.  Then
+set in /etc/sysreseval/params.py:
+
+  container_engine = "podman"
+
+The package runs sysreseval-podman-setup when it is installed: the subordinate ids and the
+user manager of the sre user, /var/lib/sre/podman (the configuration and the images of the
+engine: a local disk, never NFS), the key quota of the machines that run systemd, and on a host
+without Docker the unit sre-host-address.service, which gives the host the address the machines
+reach it at (172.17.0.1, the one of the bridge of Docker).  The command changes nothing when
+run again and says what the engine would refuse on the host; run it yourself after changing
+podman_dir or podman_uid_ranges, and on a host where systemd was not running when the package
+was installed (an image build).  The switch of the networks is /usr/lib/sysreseval/bin/sre-vde-switch.
+Do not change the engine of a host while it runs projects: stop them first (sre wipe).
+
 The web site
 ------------
-sysreseval-web (the portal, on any host: no Docker needed) and sysreseval-agent (on every pool
+sysreseval-web (the portal, on any host: no container engine needed) and sysreseval-agent (on every pool
 host, next to sysreseval) make the web site of the project: the students work from a browser on
 projects running on the pool.  Both units are disabled by default; copy and edit the examples
 of /usr/share/doc/sysreseval-web/examples/web.toml (root:sre-web 0640, like the web.d/*.toml
@@ -49,7 +73,7 @@ Layout of the package
   /etc/sudoers.d/sysreseval              the rule that lets every user run `sre --user` as root:
                                          restrict it to the students' group on a shared host
   /usr/lib/systemd/system/sysreseval-preload-images.service
-                                         pre-pulls the Docker images at boot; disabled by default
+                                         pre-pulls the images of the labs at boot; disabled by default
 
 Site parameters
 ---------------
@@ -61,7 +85,8 @@ itself: it is replaced at every upgrade.
 
 The sre user
 ------------
-The package creates the system user `sre` (dynamic uid) and adds it to the `docker` group.  When
+The package creates the system user `sre` (dynamic uid) and adds it to the `docker` group when
+there is one (a host with Docker).  When
 /var/lib/sre or the archives are shared over NFS between hosts, create the user yourself before
 installing the package, with the same uid everywhere; the package keeps an existing user.
 
@@ -69,7 +94,8 @@ After the installation
 ----------------------
 1. Labs with 'switch' or 'managed' networks need the Kathara network plugin that knows the
    switch types: run `sysreseval-network-plugin` once per Docker host (as root, with the Docker
-   daemon running and network access).
+   daemon running and network access).  Not needed with the Podman engine: its switch is in
+   the package sysreseval-podman.
 2. The machines of the labs display their graphical programs on the X server of the host, which
    must accept TCP connections on port 6000 (GDM: DisallowTCP=false, LightDM:
    xserver-allow-tcp=true); see the installation guide of sysreseval-doc.

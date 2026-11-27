@@ -242,6 +242,7 @@ def action_update():
         venv_hint = (upd.makefile_venv_blocks(old_makefile.read_text() if old_makefile.is_file() else '')
                      != upd.makefile_venv_blocks(new_makefile.read_text() if new_makefile.is_file() else ''))
         templates = upd.changed_system_templates(plan)
+        switch_hint = upd.vde_switch_recipe_changed(main_dir, tree)
         _print_summary(plan, manifest_source, params_report, venv_hint, templates)
         if not args.yes and not upd.ask_yes_no("Continue?", False):
             raise upd.UpdateError("aborted")
@@ -272,6 +273,8 @@ def action_update():
             print(f"  to go back: sre update --ref {installed_commit}")
         if venv_hint and not args.venv:
             print("  the venv recipe of the Makefile changed: run 'make venv' (or sre update --venv --force)")
+        if switch_hint:
+            print("  the recipe of the switch of the Podman engine changed: run 'make vde-switch FORCE=1'")
         if templates:
             print("  system templates changed, reinstall the corresponding files by hand (see scripts/install.sh):")
             print(_listed(templates, '    '), end='')

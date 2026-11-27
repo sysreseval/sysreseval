@@ -1,0 +1,25 @@
+#!/bin/sh
+# postinst of sysreseval-podman: prepare the host for the Podman engine (the subordinate ids and
+# the user manager of the sre user, the directory of the engine, the key quota of the machines
+# running systemd, the address of the host where there is no Docker).  The work is done by
+# sysreseval-podman-setup, which changes nothing when run again: an upgrade runs it too.
+# A host it cannot prepare now (no systemd running: the build of an image, a container) is
+# prepared by running the command once the host has booted.
+set -e
+
+case "$1" in
+    configure)
+        sysctl -q -p /usr/lib/sysctl.d/60-sysreseval-podman.conf >/dev/null 2>&1 || true
+        if [ -d /run/systemd/system ]; then
+            if ! sysreseval-podman-setup; then
+                echo "sysreseval-podman: this host is not ready for the Podman engine: fix what is reported above, then run sysreseval-podman-setup" >&2
+            fi
+        else
+            echo "sysreseval-podman: systemd is not running here: run sysreseval-podman-setup as root once the host has booted" >&2
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

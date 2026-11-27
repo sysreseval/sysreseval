@@ -177,12 +177,148 @@ class TestFiles:
         assert changelog.startswith(f'kathara (3.8.3+git{date}.{sha}-1)')
 
     @pytest.mark.parametrize('script', ['scripts/build-deb.sh', 'scripts/network-plugin.sh', 'scripts/podman-setup.sh',
-                                        'scripts/vde-switch-build.sh',
+                                        'scripts/vde-switch-build.sh', 'scripts/install.sh',
                                         'scripts/release.sh',
                                         'scripts/apt-repo.sh', 'debian/sysreseval.postinst', 'debian/sysreseval-agent.postinst',
-                                        'debian/sysreseval.postrm', 'debian/set-param'])
+                                        'debian/sysreseval.postrm', 'debian/sysreseval-podman.postinst',
+                                        'debian/sysreseval-podman.postrm', 'debian/set-param'])
     def test_shell_syntax(self, script):
         subprocess.run(['bash', '-n', str(ROOT / script)], check=True)
+
+
+class TestHostWithoutDocker:
+    """A host may run the Podman engine and have no Docker at all: the units start there, the
+    package sysreseval-podman brings what the engine needs without bringing Docker, and the
+    setup script works from a checkout and from the package."""
+    SETUP = (ROOT / 'scripts' / 'podman-setup.sh').read_text()
+    RULES = (DEBIAN / 'rules').read_text()
+
+    @pytest.mark.parametrize('unit', ['scripts/etc/sre-agent.service', 'debian/sysreseval-agent.sysreseval-agent.service',
+                                      'debian/sysreseval.sysreseval-preload-images.service'])
+    def test_units_want_docker_and_do_not_require_it(self, unit):
+        """Requires= would keep the unit from starting where docker.service does not exist; the
+        order after Docker stays for the hosts that have it."""
+        text = (ROOT / unit).read_text()
+        lines = [line for line in text.splitlines() if not line.startswith('#')]
+        assert 'Wants=docker.service' in lines
+        assert not any(line.startswith(('Requires=', 'BindsTo=')) and 'docker' in line for line in lines)
+        assert 'docker.service' in re.search(r'^After=(.*)$', text, re.M).group(1).split()
+
+    @pytest.mark.parametrize('unit', ['scripts/etc/sre-agent.service', 'debian/sysreseval-agent.sysreseval-agent.service'])
+    def test_the_socket_of_docker_is_optional_for_the_agent(self, unit):
+        """A path of ReadWritePaths= that does not exist stops the start of the unit, unless it
+        has a leading dash."""
+        paths = re.search(r'^ReadWritePaths=(.*)$', (ROOT / unit).read_text(), re.M).group(1).split()
+        assert '-/var/run/docker.sock' in paths and '/var/run/docker.sock' not in paths
+
+    def test_docker_and_kathara_are_alternatives_to_podman(self):
+        """A plain `apt install sysreseval` still brings Docker (the first alternative); with
+        sysreseval-podman none of them is installed.  The package itself is named among the
+        alternatives, not only podman, which it depends on: the apt of trixie resolves the
+        dependencies of the first package named before it looks at those of the next one, and
+        installed Docker beside sysreseval-podman when sysreseval came first (forky's did not).
+        A package named on the command line is marked before any dependency is resolved."""
+        stanza = _stanza('sysreseval')
+        for line in ('docker.io | docker-ce | podman | sysreseval-podman,',
+                     'docker-cli | docker-ce-cli | podman | sysreseval-podman,',
+                     'python3-docker | podman | sysreseval-podman,', 'python3-kathara | podman | sysreseval-podman,'):
+            assert f'\n         {line}\n' in stanza, line
+        # the unfavourable order is the one the installation test uses
+        scenario = (ROOT / 'scripts' / 'build-deb.sh').read_text().split('test_podman_main() {', 1)[1]
+        assert scenario.index('sysreseval_*.deb') < scenario.index('sysreseval-podman_*.deb')
+
+    def test_the_podman_package(self):
+        stanza = _stanza('sysreseval-podman')
+        assert stanza.startswith('Architecture: any\n')        # it ships a compiled program
+        depends = [d.strip() for d in stanza.split('Depends:', 1)[1].split('\nDescription:', 1)[0].split(',')]
+        assert {'podman', 'uidmap', 'vdeplug', 'passt', 'catatonit', 'dbus-user-session',
+                'sysreseval (= ${binary:Version})', '${shlibs:Depends}'} <= set(depends)
+        assert not any('docker' in d or 'kathara' in d for d in depends)
+
+    def test_the_switch_is_built_from_the_vendored_archive(self):
+        """A package build has no network: scripts/build-deb.sh fetches the archive on the host
+        and puts it in the sources, debian/rules builds from it (still checked against the
+        SHA-256 pinned in the build script of the switch)."""
+        build_deb = (ROOT / 'scripts' / 'build-deb.sh').read_text()
+        assert 'scripts/vde-switch-build.sh" --fetch "$sources/vde-2.tar.gz"' in build_deb
+        assert 'arcname=f"{prefix}/vendor/vde-2.tar.gz"' in build_deb
+        assert 'VDE_ARCHIVE = vendor/vde-2.tar.gz' in self.RULES
+        assert 'VDE_ARCHIVE=$(CURDIR)/$(VDE_ARCHIVE)' in self.RULES and 'scripts/vde-switch-build.sh' in self.RULES
+        assert re.search(r'^\s+cmake,$', CONTROL.split('\nPackage: ', 1)[0], re.M)
+        script = (ROOT / 'scripts' / 'vde-switch-build.sh').read_text()
+        assert 'checked "$VDE_ARCHIVE"' in script and re.search(r'VDE_SHA256:=[0-9a-f]{64}\}', script)
+
+    def test_the_package_puts_the_files_where_the_code_expects_them(self):
+        assert (DEBIAN / 'sysreseval-podman.install').read_text() == 'debian/build/sre-vde-switch usr/lib/sysreseval/bin/\n'
+        assert 'scripts/podman-setup.sh $(PODMAN)/usr/sbin/sysreseval-podman-setup' in self.RULES
+        assert 'scripts/etc/sre-podman.conf $(PODMAN)/usr/lib/sysctl.d/60-sysreseval-podman.conf' in self.RULES
+        # the setup script reads the sysctl file of the package, the parameters name its command
+        assert 'keys_conf=/usr/lib/sysctl.d/60-sysreseval-podman.conf' in self.SETUP
+        source = (ROOT / 'src' / 'SRE' / 'params.py').read_text()
+        assert '`sysreseval-podman-setup`' in source and 'vde_switch_program = main_sre_dir + "/bin/sre-vde-switch"' in source
+        assert '[usr/sbin/sysreseval-podman-setup]' in (DEBIAN / 'sysreseval-podman.lintian-overrides').read_text()
+
+    def test_the_setup_script_knows_both_layouts(self):
+        assert '[ -f "$ROOT/src/SRE/params.py" ]' in self.SETUP and '/usr/lib/sysreseval' in self.SETUP
+        result = subprocess.run([str(ROOT / 'scripts' / 'podman-setup.sh'), '--help'], capture_output=True, text=True)
+        assert result.returncode == 0 and 'sysreseval-podman-setup' in result.stdout and 'make podman-setup' in result.stdout
+        assert result.stdout.rstrip().endswith('usage: podman-setup.sh') and 'set -e' not in result.stdout
+
+    def test_the_setup_script_changes_nothing_where_systemd_does_not_run(self):
+        """The postinst of the package runs it in image builds and containers too: it must say
+        so in one line before it gives the account its subordinate ids or writes a file."""
+        check = self.SETUP.index('[ -d /run/systemd/system ] || fail "systemd is not running here')
+        for change in ('usermod --add-subuids', 'write_if_changed "/etc/systemd', 'loginctl enable-linger "$user"', 'install -d -m 700'):
+            assert check < self.SETUP.index(change), change
+
+    def test_what_the_setup_script_writes_is_removed_with_the_package(self):
+        """The unit of the host address and the drop-ins are written into /etc by the setup
+        script, not shipped: the postrm removes them by the names the script uses."""
+        postrm = (DEBIAN / 'sysreseval-podman.postrm').read_text()
+        unit = re.search(r'^ADDRESS_UNIT=(\S+)$', self.SETUP, re.M).group(1)
+        assert unit == 'sre-host-address.service' and f'/etc/systemd/system/{unit}' in postrm
+        assert self.SETUP.count('.d/10-sre-podman.conf') >= 2 and '/etc/systemd/system/*.d/10-sre-podman.conf' in postrm
+        postinst = (DEBIAN / 'sysreseval-podman.postinst').read_text()
+        assert 'sysreseval-podman-setup' in postinst and '/run/systemd/system' in postinst
+
+    def test_the_host_address_unit(self):
+        """Written only where Docker is not installed (its bridge has the address), and the unit
+        itself does nothing when another interface has the address by the time it starts."""
+        assert 'auto) if docker_installed; then address=no; else address=yes; fi;;' in self.SETUP
+        start = re.search(r'"ExecStart=(.*)" \\$', self.SETUP, re.M).group(1)
+        assert 'then exit 0; fi' in start and 'type dummy' in start and 'ip addr replace $host_ip/32' in start
+        assert "'After=docker.service'" in self.SETUP
+
+    def test_the_installer_of_a_checkout_asks_for_the_engine(self):
+        """scripts/install.sh: Docker (its package, its socket, its group, the network plugin)
+        for Kathara only; for Podman the packages of the engine, the group of sre for the sre
+        command, the switch and the setup of the host."""
+        install = (ROOT / 'scripts' / 'install.sh').read_text()
+        assert install.index('prompt_choice "container engine of this host"') < install.index('\ncheck_executables\n')
+        base = install.split('declare -A APT_PKG=(', 1)[1].split(')', 1)[0]
+        assert '[docker]' not in base, "Docker must not be asked of a host that runs Podman"
+        podman, kathara = re.search(r'if \[\[ \$engine == podman \]\]; then\n(.*?)\nelse\n(.*?)\nfi', install, re.S).groups()
+        for command, package in (('podman', 'podman'), ('newuidmap', 'uidmap'), ('vde_plug', 'vdeplug'),
+                                 ('pasta', 'passt'), ('catatonit', 'catatonit'), ('cmake', 'cmake')):
+            assert f'[{command}]={package}' in podman, command
+        assert '[docker]=docker.io' in kathara and 'dbus-user-session' in install
+        socket_check = install.split('if [[ $engine == kathara ]]; then\n    DOCKER_SOCKET=', 1)[1].split('\nfi\n', 1)[0]
+        assert 'die "Docker socket' in socket_check and 'docker_gid=""' in socket_check.split('\nelse\n', 1)[1]
+        assert 'sed -i "s|^container_engine = \\"[a-z]*\\"|container_engine = \\"${engine}\\"|" "$PARAMS"' in install
+        last = install.split('hr "Running make install"', 1)[1]
+        assert last.index('make network-plugin') < last.index('\nelse\n') < last.index('make vde-switch') \
+            < last.index('make podman-setup')
+        # the line the installer rewrites exists once in params.py, with a value it matches
+        source = (ROOT / 'src' / 'SRE' / 'params.py').read_text()
+        assert len(re.findall(r'^container_engine = "[a-z]*"', source, re.M)) == 1
+
+    def test_the_install_test_has_a_scenario_without_docker(self):
+        build_deb = (ROOT / 'scripts' / 'build-deb.sh').read_text()
+        assert '--stage test-podman' in build_deb and 'test-podman) test_podman_main;;' in build_deb
+        scenario = build_deb.split('test_podman_main() {', 1)[1].split('\n}\n', 1)[0]
+        assert 'python3-kathara_' not in scenario and 'sysreseval-podman_*.deb' in scenario
+        for package in ('docker.io', 'docker-ce', 'python3-docker', 'python3-kathara'):
+            assert f' {package} ' in scenario.split('for docker_package in', 1)[1].split(';', 1)[0] + ' '
 
 
 class TestRelease:

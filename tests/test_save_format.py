@@ -399,3 +399,45 @@ class TestAnArchiveOfTheFork:
         # nothing a diff leaves out, and no directory with its content
         assert not [name for name in names if save_format.is_excluded('/' + name)]
         assert 'root' not in names and 'etc' not in names
+
+
+class TestMountPoints:
+    """Where a directory of the host is mounted in a machine (its shared directory, a volume):
+    not a file of the machine, so neither saved nor touched by a restore."""
+
+    def test_normalised_absolute_paths(self):
+        assert save_format.mount_points(['/data/', '/shared', '/srv//www/./x', '/data']) == ['/data', '/shared', '/srv/www/x']
+
+    @pytest.mark.parametrize('destinations', [None, [], ['/'], ['relative/path', '', 7, None, '/a\0b']])
+    def test_what_is_no_mount_point(self, destinations):
+        assert save_format.mount_points(destinations) == []
+
+    @pytest.mark.parametrize('path, under', [
+        ('/data', True), ('/data/f', True), ('/data/sub/f', True), ('/database', False), ('/dat', False),
+        ('/etc/data', False), ('/', False), ('/srv/www', True), ('/srv', False), ('/srv/www2/x', False),
+    ])
+    def test_under_a_mount(self, path, under):
+        points = ['/data', '/srv/www']
+        assert save_format.under_a_mount(path, points) is under
+        assert save_format.under_a_mount(path.encode(), points) is under      # the paths of a diff are bytes
+        assert save_format.under_a_mount(path, []) is False
+
+    def test_a_mount_point_is_not_saved(self):
+        """Podman makes the directory a volume is mounted on in the layer of the machine: the
+        comparison with the image reports it as added.  Seen from the machine it is a directory
+        of the host."""
+        paths, deletions = save_format.paths_to_save(
+            changed=['/etc', '/etc/issue'], added=['/data', '/root/new', '/database'], deleted=['/data/old', '/etc/motd'],
+            mounts=['/data'])
+        assert paths == ['/database', '/etc/issue', '/root/new'] and deletions == ['/etc/motd']
+
+    def test_nor_the_directories_made_to_reach_it(self):
+        """A volume on `/srv/www/site`: `/srv/www` was made for it too, and holds nothing else."""
+        paths, deletions = save_format.paths_to_save([], ['/srv/www', '/srv/www/site', '/opt/x'], [],
+                                                     mounts=['/srv/www/site'])
+        assert paths == ['/opt/x'] and deletions == []
+
+    def test_without_mount_points_nothing_changes(self):
+        arguments = (['/etc', '/etc/issue'], ['/data', '/root/new'], ['/etc/motd'])
+        assert save_format.paths_to_save(*arguments) == save_format.paths_to_save(*arguments, mounts=[])
+        assert '/data' in save_format.paths_to_save(*arguments)[0]

@@ -4,6 +4,7 @@ import sys
 
 from . import params
 from . import lib_sre
+from .engine import get_engine
 
 
 def set_sudo_uid_for_username(username: str) -> None:
@@ -38,9 +39,16 @@ def _drop_permanently():
         sys.exit(f"sre: fatal: cannot drop uid to {params.sre_uid}: {e}")
 
 
+def root_needed(net_scheme: lib_sre.NetScheme0) -> bool:
+    """Whether the commands keep root for this lab: it has privileged machines, and the engine
+    of the host needs root for them (Kathara does; the Podman engine becomes its account by
+    itself, so that with it every lab is handled like one without privileged machine and the
+    code of a lab never runs with the rights of root)."""
+    return net_scheme.has_privileged_machines() and get_engine().needs_root
+
+
 def drop_privileges_permanently_if_not_needed(net_scheme: lib_sre.NetScheme0):
-    _privileged = net_scheme.has_privileged_machines()
-    if not _privileged and os.getuid() == 0:
+    if not root_needed(net_scheme) and os.getuid() == 0:
         _drop_permanently()
 
 
@@ -50,8 +58,7 @@ def drop_privileges_permanently():
 
 
 def gain_privileges_if_needed(net_scheme: lib_sre.NetScheme0):
-    _privileged = net_scheme.has_privileged_machines()
-    if _privileged and os.getuid() == 0:
+    if root_needed(net_scheme) and os.getuid() == 0:
         os.seteuid(0)
         os.setegid(0)
 

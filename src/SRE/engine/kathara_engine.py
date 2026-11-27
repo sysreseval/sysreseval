@@ -65,6 +65,9 @@ def _temp_dir(directory: str):
 
 
 class KatharaEngine(Engine):
+    # Kathara refuses a privileged machine unless the real uid is 0, and the root of a machine is
+    # root on the host
+    needs_root = True
 
     def __init__(self):
         # Kathara sets Docker connection pool size = cpu_count(), but SRE runs up to
@@ -212,6 +215,9 @@ class KatharaEngine(Engine):
         return type(error).__name__ == _NETWORK_PLUGIN_ERROR
 
     # ---- save and restore ---------------------------------------------------------------
+
+    def remove_files_of_machines(self, paths):
+        pass    # root's files: removed by the commands, as root
 
     def require_save_restore(self, full_images=False):
         pass

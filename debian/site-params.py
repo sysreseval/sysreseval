@@ -21,3 +21,11 @@
 # terminal_cmd_prefix = ["/usr/bin/mate-terminal", "--"]   # external terminal of the GUI (the choices are in params.py)
 # terminal_title_opt = "--title"
 # debug_mode = False
+#
+# The container engine: what runs the machines of the projects.
+#
+# container_engine = "kathara"                # "kathara": Docker through Kathara; "podman": rootless Podman
+#                                             #   containers of the sre user (the package sysreseval-podman)
+# container_engine_by_host = {}               # the hosts that differ, by host name: {"pc12": "podman"}
+# podman_dir = "/var/lib/sre/podman"          # Podman engine: its configuration and its images (a local disk)
+# podman_uid_ranges = 32                      # Podman engine: projects running at once, each in its own uid range
