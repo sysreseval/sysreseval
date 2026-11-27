@@ -1,23 +1,33 @@
 """The Podman engine: the machines of a project are rootless Podman containers of the account
-``params.sre_user``, linked by VDE hubs that this module runs itself.
+``params.sre_user``, linked by VDE hubs and switches that this module runs itself.
 
 This is the only module of SRE that runs ``podman``, ``systemd-run``, ``nsenter`` or the VDE
 programs.  The host is prepared once, as root, by ``scripts/podman-setup.sh``.
 
-**Limits for now**: non-privileged machines on hub networks.  A privileged machine, an outside
-interface (``bridged``), a published port, a switch or managed network, the switch console and
-save / restore are refused with an :class:`EngineError`.
+**Limit for now**: save / restore is refused with an :class:`EngineError`.
 
 **How a project is deployed**
 
-* a network is a hub: one ``vde_plug null:// hub://<dir>/ctl`` (the hub of vdeplug4, which
-  carries frames of up to 9 kB; ``vde_switch`` of Debian loses those above 1500 bytes), in a
-  directory of its own under the runtime directory of the account;
+* a network has a directory of its own under the runtime directory of the account.  A hub is one
+  ``vde_plug null:// hub://<dir>/ctl`` (the hub of vdeplug4).  A switch or a managed switch is one
+  ``vde_switch``, the program of the Kathara network plugin (``params.vde_switch_program``, built
+  by ``make vde-switch``: the one of Debian loses the frames above 1518 bytes); a managed switch
+  also has a management socket, ``<dir>/mgmt``, whose console ``vde_console`` speaks;
+* the ports of a managed switch are created, and the VLANs the lab declares applied, before any
+  machine exists: a machine is plugged into its own port and never runs in a wrong VLAN;
 * a machine is created without any network (``podman create --network none``) and stopped right
   before its first process (``podman init``); each of its interfaces is then a tap created in its
-  network namespace, with its MAC address, and a ``vde_plug`` joins the tap to its hub; the machine
-  is started only then, so the interfaces are there before anything runs;
-* hubs and plugs are transient units of the account's systemd user manager: they outlive the
+  network namespace, with its MAC address, and a ``vde_plug`` joins the tap to its network; the
+  machine is started only then, so the interfaces are there before anything runs;
+* a machine with an outside interface (``bridged``) is created on Podman's pasta network instead:
+  the interface after its lab interfaces, the address and the default route Docker's bridge
+  gives, the host at ``params.sre_host_ip`` (its services bound to its loopback only are not
+  reachable); its published ports are pasta's;
+* a privileged machine is the same rootless container with every capability, all of them bounded
+  by its user namespace, a writable ``/proc/sys`` and, when its entrypoint is an init, Podman's
+  systemd mode: nothing of the host is given to it.  The engine then waits for systemd before the
+  start-up commands;
+* networks and plugs are transient units of the account's systemd user manager: they outlive the
   ``sre`` command that started them, whatever started that command (a student's session, the web
   agent), and those of a project are stopped together;
 * every project runs in a uid range of its own (``params.podman_uid_ranges``): the root of a
@@ -40,12 +50,14 @@ which runs with the login identity of the account.
 import base64
 import fcntl
 import hashlib
+import ipaddress
 import json
 import os
 import re
 import select
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -53,6 +65,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from .. import params
+from . import vde_console
 from .base import Engine, EngineError, SwitchModesUnsupported
 
 # What Kathara gives a non-privileged machine, and the two capabilities of Docker's default set
@@ -65,7 +78,14 @@ _NETWORKS_DIR = "sre-net"  # under the runtime directory of the account: <hash>/
 _DEFAULT_SHELL = "/bin/bash"
 _TUN_DEVICE = "/dev/net/tun"   # a machine cannot create it (no mknod without root on the host)
 _PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-_HUB_START_TIMEOUT = 10   # seconds a hub has to open its socket (it takes some 20 ms)
+_HUB_START_TIMEOUT = 10   # seconds a network has to open its sockets (some 20 ms for a hub, 90 for a switch)
+_SWITCH_PORTS = 65535     # ports of a switch: what the Kathara network plugin asks for
+_NETWORKS_FILE = "networks.json"   # in the directory of a project: its switches, for the commands to come
+_OUTSIDE_PREFIX = 16      # the outside network is Docker's bridge: sre_host_ip/16, the machine at the next address
+_OUTSIDE_MTU = 1500
+_INIT_PROGRAMS = ("init", "systemd")   # an entrypoint that is one of them makes a systemd machine
+_SYSTEMD_BOOT_TIMEOUT = 60             # seconds: a machine not up by then gets its start-up commands anyway
+_SYSTEMD_UP = ("running", "degraded", "maintenance")
 # Exit status of podman when podman itself failed (125) or could not reach the container (255).
 # A command may return them too: Podman's own failure ends with a message of its own on stderr.
 _PODMAN_FAILED = 125
@@ -195,6 +215,10 @@ class PodmanLab:
         self.hash = lab_hash
         self.shared_path = None
         self.machines: dict[str, PodmanMachine] = {}
+        self.network_modes: dict[str, str] = {}   # the networks that are not hubs: their mode
+        # the ports of each managed switch, in the order of the lab: (machine, interface number,
+        # untagged VLAN or None, tagged VLANs); the port of the n-th one is n + 1
+        self.ports: dict[str, list[tuple]] = {}
 
 
 class PodmanMachine:
@@ -298,19 +322,17 @@ class PodmanEngine(Engine):
         }
 
     @staticmethod
-    def _identity() -> dict:
+    def _identity(lowered: bool = False) -> dict:
         """The arguments of `subprocess` that make a command run as the account with the group
         ``params.docker_gid``, whatever this process is: root (the other groups are dropped),
-        root with its effective ids lowered to those (`sre eval-all`: making them the real ones
-        needs no privilege, and nothing of root is left to the command), or the account already."""
+        root with its effective ids lowered to those (making them the real ones needs no
+        privilege, and nothing of root is left to the command), or the account already.
+        *lowered*: the second form whatever the effective uid is now; it also works for root."""
         uid, gid = params.sre_uid, params.docker_gid
         if os.getuid() == 0:
-            if os.geteuid() == 0:
+            if os.geteuid() == 0 and not lowered:
                 return {"user": uid, "group": gid, "extra_groups": []}
-            if (os.geteuid(), os.getegid()) == (uid, gid):
-                return {"user": uid, "group": gid}
-            raise EngineError(f"the Podman engine runs as {params.sre_user} with the group {gid} (docker_gid): "
-                              f"not as {os.geteuid()}:{os.getegid()}")
+            return {"user": uid, "group": gid}
         if os.getuid() != uid:
             raise EngineError(f"the Podman engine runs as {params.sre_user}: sre must be run by that user or by root")
         if os.getgid() != gid:
@@ -326,9 +348,20 @@ class PodmanEngine(Engine):
             kwargs.setdefault("stdin", subprocess.DEVNULL)
         kwargs.setdefault("stdout", subprocess.PIPE)
         kwargs.setdefault("stderr", subprocess.PIPE)
+        env = {**self._environment(), **(environment or {})}
+        identity = self._identity()
         try:
-            return subprocess.run(argv, env={**self._environment(), **(environment or {})}, cwd=params.podman_dir,
-                                  **self._identity(), **kwargs)
+            try:
+                return subprocess.run(argv, env=env, cwd=params.podman_dir, **identity, **kwargs)
+            except PermissionError:
+                if "extra_groups" not in identity:
+                    raise
+                # The evaluations of several projects run in threads, and those of a lab with
+                # privileged machines raise and lower the effective uid of the whole process:
+                # it was lowered between the choice above and the start of the command, which
+                # could then not drop the groups of root.  Nothing was run; the other form
+                # starts from either state.
+                return subprocess.run(argv, env=env, cwd=params.podman_dir, **self._identity(lowered=True), **kwargs)
         except OSError as e:
             raise EngineError(f"cannot run {argv[0]}: {e.strerror or e} (the Podman engine is set up on a host "
                               f"by scripts/podman-setup.sh)") from None
@@ -422,21 +455,28 @@ class PodmanEngine(Engine):
         return lab_hash_of(name)
 
     def set_network_mode(self, lab, network, mode):
-        raise SwitchModesUnsupported(f"mode '{mode}' is not available with the Podman engine yet (hubs only)")
+        if mode == params.network_mode_hub:
+            return
+        if mode not in (params.network_mode_switch, params.network_mode_managed):
+            raise SwitchModesUnsupported(f"mode '{mode}' is not one the Podman engine knows")
+        program = params.vde_switch_program
+        if not (os.path.isfile(program) and os.access(program, os.X_OK)):
+            raise SwitchModesUnsupported(
+                f"mode '{mode}' needs the switch program of SRE, which is not built ({program}): run "
+                f"`make vde-switch` (vde_switch_program of params.py may name another vde_switch; the "
+                f"one of Debian loses the frames above 1518 bytes)")
+        lab.network_modes[network] = mode
 
     def add_machine(self, lab, name, **options):
-        if options.get("privileged"):
-            raise EngineError("a privileged machine is not available with the Podman engine yet")
-        if options.get("bridged"):
-            raise EngineError("an outside interface ('bridged') is not available with the Podman engine yet")
-        if options.get("ports"):
-            raise EngineError("published ports are not available with the Podman engine yet")
         lab.machines[name] = PodmanMachine(name, options)
 
     def connect_machine(self, lab, machine, network, interface, mac, vlan=None, tagged_vlans=None):
-        if vlan is not None or tagged_vlans:
-            raise EngineError("VLANs are not available with the Podman engine yet (hubs only)")
+        managed = lab.network_modes.get(network) == params.network_mode_managed
+        if (vlan is not None or tagged_vlans) and not managed:
+            raise EngineError(f"network '{network}': VLANs need a managed switch")
         lab.machines[machine].interfaces[interface] = (network, mac)
+        if managed:
+            lab.ports.setdefault(network, []).append((machine, interface, vlan, list(tagged_vlans or ())))
 
     # ---- life of a project ----------------------------------------------------------------------
 
@@ -478,12 +518,81 @@ class PodmanEngine(Engine):
         raise EngineError(f"{ranges} projects already run on this host, each in a uid range of its own "
                           f"(podman_uid_ranges = {ranges} in params.py): close one first")
 
+    @staticmethod
+    def _outside_interface(machine) -> str | None:
+        """The name of the outside interface of *machine* (the one after its lab interfaces, as
+        Kathara numbers it), ``None`` when it has none."""
+        if not machine.options.get("bridged"):
+            return None
+        return f"eth{max(machine.interfaces) + 1 if machine.interfaces else 0}"
+
+    @staticmethod
+    def _port_of(lab, network: str, machine: str, number: int) -> int | None:
+        """The port of a managed switch made for an interface (``None`` on a hub or a plain switch)."""
+        for port, (name, interface, _, _) in enumerate(lab.ports.get(network, ()), start=1):
+            if (name, interface) == (machine, number):
+                return port
+        return None
+
+    @staticmethod
+    def _is_systemd(machine) -> bool:
+        """Whether the first process of *machine* is an init."""
+        words = shlex.split(machine.options.get("entrypoint") or "")
+        return bool(words) and os.path.basename(words[0]) in _INIT_PROGRAMS
+
+    def _network_arguments(self, machine) -> list[str]:
+        """No network of Podman's for a machine that only has lab interfaces.  With an outside
+        interface: pasta, set to look like Docker's bridge from inside (IPv4 only, the address
+        after the host's, the host as the default gateway, the MTU of a bridge) and to give the
+        host as little as Docker's does: Podman itself keeps the gateway address from meaning the
+        loopback of the host, and no other address is made to mean the host.  No resolv.conf of
+        Podman's: the file stays the image's, as after Kathara's unmount."""
+        outside = self._outside_interface(machine)
+        if outside is None:
+            return ["--network", "none"]
+        host = ipaddress.IPv4Address(params.sre_host_ip)
+        pasta = ["-I", outside, "-4", "-a", str(host + 1), "-n", str(_OUTSIDE_PREFIX), "-g", str(host),
+                 "-m", str(_OUTSIDE_MTU), "--no-dhcp", "--map-guest-addr", "none"]
+        arguments = ["--network", "pasta:" + ",".join(pasta), "--dns", "none"]
+        for port in (machine.options.get("ports") or ()):
+            arguments += ["--publish", str(port)]
+        return arguments
+
+    def _require_outside(self, lab):
+        """A machine with an outside interface reaches the host at ``params.sre_host_ip`` only
+        when that address is one of the host's (it is the bridge of Docker where Docker is)."""
+        bridged = [m.name for m in lab.machines.values() if m.options.get("bridged")]
+        if not bridged:
+            return
+        if shutil.which("pasta", path=_PATH) is None:
+            raise EngineError(f"machine '{bridged[0]}': its outside interface needs pasta (the package passt)")
+        if not self._host_has(params.sre_host_ip):
+            raise EngineError(f"machine '{bridged[0]}': its outside interface needs the address {params.sre_host_ip} "
+                              f"on this host, which no interface has (the bridge of Docker has it where Docker is "
+                              f"installed)")
+
+    @staticmethod
+    def _host_has(address: str) -> bool:
+        """Whether *address* is one of this host's: a socket can be bound to it."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.bind((address, 0))
+            return True
+        except OSError:
+            return False
+
     def _create(self, lab, machine, uid_range: int):
         """Create the container of *machine*, not started."""
         options = machine.options
         arguments = ["create", "--name", self._container_name(lab.hash, machine.name), "--hostname", machine.name,
-                     "--network", "none", "--no-hosts", "--tty", "--interactive", "--pull", "never",
-                     "--pids-limit", "-1", "--cap-add", ",".join(_CAPABILITIES)]
+                     *self._network_arguments(machine), "--no-hosts", "--tty", "--interactive", "--pull", "never",
+                     "--pids-limit", "-1"]
+        if options.get("privileged"):
+            arguments += ["--cap-add", "all", "--security-opt", "unmask=/proc/sys"]
+            if self._is_systemd(machine):
+                arguments += ["--systemd", "always"]
+        else:
+            arguments += ["--cap-add", ",".join(_CAPABILITIES)]
         if os.path.exists(_TUN_DEVICE):
             arguments += ["--device", _TUN_DEVICE]
         sysctls, _ = machine_sysctls(bool(options.get("ipv6")), options.get("sysctls"))
@@ -506,7 +615,7 @@ class PodmanEngine(Engine):
             arguments += ["--entrypoint", json.dumps(shlex.split(options["entrypoint"]))]
         self._podman_checked(arguments + [qualified_image(options["image"])], environment=podman_environment)
 
-    def _start_machine(self, lab, machine, switch_dirs: dict):
+    def _start_machine(self, lab, machine, networks: dict):
         """From a created container to a running machine: its interfaces, then its first process,
         then the start-up work."""
         name = self._container_name(lab.hash, machine.name)
@@ -525,6 +634,9 @@ class PodmanEngine(Engine):
             script.append(f"ip link set dev {interface} up")
             for key, value in by_interface.get(interface, {}).items():
                 script.append(f"sysctl -q -w {shlex.quote(f'{key}={value}')}")
+        # the outside interface exists since `init`: the sysctls the lab gives it
+        for key, value in by_interface.get(self._outside_interface(machine), {}).items():
+            script.append(f"sysctl -q -w {shlex.quote(f'{key}={value}')}")
         if len(script) > 1:
             result = self.run(enter + ["sh", "-c", "\n".join(script)])
             if result.returncode != 0:
@@ -532,13 +644,19 @@ class PodmanEngine(Engine):
         plugs = []
         for number, (network, _) in sorted(machine.interfaces.items()):
             plugs.append(self._unit(lab.hash, "p", machine.name, number))
+            url = f"vde://{networks[network]}/ctl"
+            port = self._port_of(lab, network, machine.name, number)
+            if port is not None:    # a managed switch: the port made for this interface
+                url += f"[{port}]"
             self._start_unit(plugs[-1], [],
-                             enter + ["vde_plug", "-D", f"kathara {machine.name}:eth{number}",
-                                      f"tap://eth{number}", f"vde://{switch_dirs[network]}/ctl"])
+                             enter + ["vde_plug", "-D", f"{vde_console.ENDPOINT_PREFIX}{machine.name}:eth{number}",
+                                      f"tap://eth{number}", url])
         self._podman_checked(["start", name])
         # a plug that could not join its hub has ended by now: its interface would stay dead
         if plugs and self.run(["systemctl", "--user", "--quiet", "is-active"] + plugs).returncode != 0:
             raise EngineError(f"machine '{machine.name}': an interface could not be plugged into its network")
+        if self._is_systemd(machine):
+            self._wait_for_systemd(name)
         commands = []
         for command in (machine.options.get("exec_commands") or ()):
             commands += [f"echo {shlex.quote('++ ' + command)} >> /var/log/startup.log 2>&1", command]
@@ -548,6 +666,20 @@ class PodmanEngine(Engine):
         machine.api_object = PodmanContainer(self, name)
         self._report(self._deploy_handler, "update", item=(machine.name,))
 
+    def _wait_for_systemd(self, name: str):
+        """Wait until the systemd of a machine is up.  Until then `systemctl` finds no bus: the
+        start-up commands and the `initial` state of a lab, which follow at once, would fail.  A
+        machine that takes too long is left to boot: the deployment goes on, as under Docker."""
+        deadline = time.monotonic() + _SYSTEMD_BOOT_TIMEOUT
+        while time.monotonic() < deadline:
+            result = self.podman(["exec", name, "systemctl", "is-system-running"])
+            if result.returncode in (_PODMAN_FAILED, _PODMAN_NO_CONTAINER) and _message(result.stderr).startswith(
+                    _PODMAN_MESSAGE):
+                return      # the machine is gone: its start will say so
+            if (result.stdout or b"").decode(errors="replace").strip() in _SYSTEMD_UP:
+                return
+            time.sleep(0.2)
+
     def _start_unit(self, unit: str, properties: list[str], command: list[str]):
         arguments = ["systemd-run", "--user", "--quiet", "--collect", "--unit", unit]
         for prop in properties:
@@ -556,35 +688,106 @@ class PodmanEngine(Engine):
         if result.returncode != 0:
             raise EngineError(f"cannot start {unit}: {_message(result.stderr) or f'exit status {result.returncode}'}")
 
-    def _start_hubs(self, lab) -> dict:
-        """One hub per network a machine is plugged into, in the order of the lab:
-        ``{network: its directory}``, each hub ready for its plugs."""
+    def _start_networks(self, lab) -> dict:
+        """One hub or switch per network a machine is plugged into, in the order of the lab:
+        ``{network: its directory}``, each ready for its plugs, the ports and the VLANs of the
+        managed switches in place."""
         networks = list(dict.fromkeys(network for machine in lab.machines.values()
                                       for _, (network, _) in sorted(machine.interfaces.items())))
-        directories = {}
+        directories, sockets = {}, []
         for index, network in enumerate(networks):
             directory = directories[network] = self._network_dir(lab.hash, index)
             result = self.run(["mkdir", "-p", "-m", "700", directory])   # as the account, whoever calls
             if result.returncode != 0:
                 raise EngineError(f"network '{network}': {_message(result.stderr)}")
-            # the hub makes <directory>/ctl and its socket itself; `null://`: nothing else is plugged here
-            self._start_unit(self._unit(lab.hash, "sw", index), [], ["vde_plug", "null://", f"hub://{directory}/ctl"])
-        # a plug started before the socket of its hub exists ends at once
+            mode = lab.network_modes.get(network)
+            sockets.append((network, f"{directory}/ctl/ctl"))
+            if mode is None:
+                # the hub makes <directory>/ctl and its socket itself; `null://`: nothing else is plugged here
+                self._start_unit(self._unit(lab.hash, "sw", index), [],
+                                 ["vde_plug", "null://", f"hub://{directory}/ctl"])
+                continue
+            # the command line of the Kathara network plugin; `-d`: the switch leaves its terminal
+            command = [params.vde_switch_program, "-n", str(_SWITCH_PORTS), "-d", "-s", f"{directory}/ctl",
+                       "-p", f"{directory}/pid"]
+            if mode == params.network_mode_managed:
+                command += ["-M", f"{directory}/mgmt"]
+                sockets.append((network, f"{directory}/mgmt"))
+            self._start_unit(self._unit(lab.hash, "sw", index), ["Type=forking", f"PIDFile={directory}/pid"], command)
+        # a plug started before the socket of its network exists ends at once
         deadline = time.monotonic() + _HUB_START_TIMEOUT
-        for network, directory in directories.items():
-            while not os.path.exists(f"{directory}/ctl/ctl"):
+        for network, path in sockets:
+            while not os.path.exists(path):
                 if time.monotonic() > deadline:
-                    raise EngineError(f"network '{network}': its hub did not start")
+                    raise EngineError(f"network '{network}': its "
+                                      f"{'switch' if network in lab.network_modes else 'hub'} did not start")
                 time.sleep(0.01)
+        for network, ports in lab.ports.items():
+            self._configure_switch(network, f"{directories[network]}/mgmt", ports)
+        if lab.network_modes:
+            self._write_networks(lab, directories)
         return directories
+
+    def _console(self, path: str):
+        """A connection to the management socket *path* of a managed switch of this engine."""
+        return vde_console.Console(path, owner_uid=params.sre_uid)
+
+    def _configure_switch(self, network: str, socket_path: str, ports: list):
+        """Create the ports of a managed switch, one per interface in the order of the lab, and
+        apply the VLANs the lab declares: the commands of the Kathara network plugin, sent before
+        anything is plugged."""
+        command = ""
+        try:
+            with self._console(socket_path) as console:
+                made = set()
+                for number, (_, _, vlan, tagged) in enumerate(ports, start=1):
+                    command = f"port/create {number}"
+                    console.exec(command)
+                    for vlan_id in ([] if vlan is None else [vlan]) + list(tagged):
+                        if vlan_id not in made:
+                            made.add(vlan_id)
+                            command = f"vlan/create {vlan_id}"
+                            console.exec(command)
+                    if vlan is not None:
+                        command = f"port/setvlan {number} {vlan}"
+                        console.exec(command)
+                    for vlan_id in tagged:
+                        command = f"vlan/addport {vlan_id} {number}"
+                        console.exec(command)
+        except EngineError as e:
+            raise EngineError(f"network '{network}': {command or 'its console'}: {e}") from None
+
+    def _write_networks(self, lab, directories: dict):
+        """Leave, for the commands to come, the switches of the project: their mode and directory
+        by network name.  Written as the account, whoever calls: the `initial` state of a lab reads
+        it once the command has dropped root."""
+        content = {network: {"mode": mode, "directory": directories[network]}
+                   for network, mode in lab.network_modes.items() if network in directories}
+        path = f"{self._network_dir(lab.hash)}/{_NETWORKS_FILE}"
+        result = self.run(["sh", "-c", 'umask 022 && cat > "$1.tmp" && mv "$1.tmp" "$1"', "sh", path],
+                          input=json.dumps(content).encode())
+        if result.returncode != 0:
+            raise EngineError(f"cannot write {path}: {_message(result.stderr)}")
+
+    def _managed_socket(self, lab_hash: str, network: str) -> str:
+        """The management socket of the managed switch *network* of a running project."""
+        try:
+            with open(f"{self._network_dir(lab_hash)}/{_NETWORKS_FILE}", encoding="utf-8") as f:
+                entry = json.load(f).get(network)
+        except (OSError, ValueError):
+            entry = None
+        if not entry or entry.get("mode") != params.network_mode_managed:
+            raise EngineError(f"network '{network}' is not a managed switch of this project")
+        return f"{entry['directory']}/mgmt"
 
     def deploy(self, lab):
         self._require_setup()
         machines = list(lab.machines.values())
         workers = max(1, min(params.max_docker_concurrency, len(machines)))
         try:
+            self._require_outside(lab)
             self._ensure_images(list(dict.fromkeys(qualified_image(m.options["image"]) for m in machines)))
-            switch_dirs = self._start_hubs(lab)
+            networks = self._start_networks(lab)
             # The ranges stay locked until every container of the project exists with its label:
             # another `sre start` then sees the range as held.
             lock = os.open(params.podman_dir, os.O_RDONLY)
@@ -597,7 +800,7 @@ class PodmanEngine(Engine):
                 os.close(lock)
             self._report(self._deploy_handler, "started", items=[m.name for m in machines])
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                list(pool.map(lambda m: self._start_machine(lab, m, switch_dirs), machines))
+                list(pool.map(lambda m: self._start_machine(lab, m, networks), machines))
             self._report(self._deploy_handler, "ended")
         except BaseException:
             # the caller only undeploys a deployment that returned: undo this one here
@@ -697,13 +900,15 @@ class PodmanEngine(Engine):
     # ---- managed switches -------------------------------------------------------------------------
 
     def require_switch_console(self):
-        raise RuntimeError("the Podman engine has no switch console yet")
+        pass    # every managed switch of this engine has its console
 
     def switch_exec(self, lab_hash, network, command):
-        raise EngineError("the Podman engine has no switch console yet")
+        with self._console(self._managed_socket(lab_hash, network)) as console:
+            return console.exec(command)
 
     def switch_ports(self, lab_hash, network):
-        raise EngineError("the Podman engine has no switch console yet")
+        with self._console(self._managed_socket(lab_hash, network)) as console:
+            return vde_console.parse_ports(console.exec("port/allprint"), console.exec("vlan/allprint"))
 
     def is_network_plugin_error(self, error):
         return False

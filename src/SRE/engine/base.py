@@ -34,6 +34,16 @@ class SwitchModesUnsupported(EngineError):
     """The engine cannot make a network anything but a hub; the message says what is missing."""
 
 
+class SwitchCommandError(EngineError):
+    """A command the console of a managed switch refused: ``code`` is 1000 + the error number of
+    the switch (1017: the VLAN exists already), ``message`` what the switch said."""
+
+    def __init__(self, code: int, message: str):
+        super().__init__(f"{code} {message}")
+        self.code = code
+        self.message = message
+
+
 class Engine(ABC):
     """A container engine (see the module documentation)."""
 
@@ -57,14 +67,18 @@ class Engine(ABC):
     @abstractmethod
     def set_network_mode(self, lab, network: str, mode: str):
         """Make *network* a switch or a managed switch (``params.network_mode_*``); a network
-        nothing is said about is a hub.  Raises :class:`SwitchModesUnsupported`."""
+        nothing is said about is a hub.  Called before the machines are added and connected.
+        Raises :class:`SwitchModesUnsupported`."""
 
     @abstractmethod
     def add_machine(self, lab, name: str, **options):
         """Add the machine *name* to *lab*.  *options*: ``image``, ``privileged``, ``bridged``,
         ``ports``, ``envs``, ``sysctls``, ``ulimits``, ``volumes``, ``entrypoint``, ``shell``,
-        ``exec_commands`` and, when the lab says so, ``ipv6``.  Raises :class:`EngineError` for
-        an option the engine cannot honour."""
+        ``exec_commands`` and, when the lab says so, ``ipv6``.  ``bridged``: one more interface,
+        numbered after those of the lab, towards the host (at ``params.sre_host_ip``) and beyond;
+        ``ports``: ``"<host port>:<machine port>/<protocol>"`` strings published through it;
+        ``privileged``: every privilege the engine can give inside the machine.  Raises
+        :class:`EngineError` for an option the engine cannot honour."""
 
     @abstractmethod
     def connect_machine(self, lab, machine: str, network: str, interface: int, mac: str | None,
@@ -77,7 +91,8 @@ class Engine(ABC):
 
     @abstractmethod
     def deploy(self, lab):
-        """Create the networks and start the machines of *lab*."""
+        """Create the networks and start the machines of *lab*.  A machine whose first process
+        is an init may be waited for until its services can be asked for."""
 
     @abstractmethod
     def undeploy(self, lab_hash: str):
@@ -128,8 +143,10 @@ class Engine(ABC):
     @abstractmethod
     def switch_exec(self, lab_hash: str, network: str, command: str) -> str:
         """Run one command on the console of the managed switch *network* and return what it
-        printed.  A command the switch refuses raises an exception with a ``code`` (1000 + the
-        error number of the switch) and a ``message``."""
+        printed.  A command the switch refuses, or that an engine never passes to a switch
+        (stopping it, loading a file), raises an exception with a ``code`` (1000 + the error
+        number of the switch) and a ``message``: :class:`SwitchCommandError` or the engine's
+        own."""
 
     @abstractmethod
     def switch_ports(self, lab_hash: str, network: str) -> dict:

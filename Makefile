@@ -2,7 +2,7 @@
 SHELL:=/bin/bash
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-.PHONY: venv fonts network-plugin podman-setup deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests web-tests test functional-tests exam-tests web-exam-tests docker-tests podman-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
+.PHONY: venv fonts network-plugin podman-setup vde-switch deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests web-tests test functional-tests exam-tests web-exam-tests docker-tests podman-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
 # The images with their own version (the `VERSION_<image> := <version>` lines of images/Makefile), as
@@ -131,6 +131,14 @@ network-plugin:
 # directory of the engine, the user namespace.  As root, once; the recipe is scripts/podman-setup.sh.
 podman-setup:
 	@$(ROOT_DIR)/scripts/podman-setup.sh
+
+# The vde_switch of the Podman engine for the networks of mode 'switch' and 'managed'
+# (bin/sre-vde-switch, params.vde_switch_program): the switch of the Kathara network plugin, vde-2
+# at the commit the plugin pins with its frame buffer raised, so that a switch carries the large
+# frames a hub carries.  The archive is checked against its SHA-256; needs curl, cmake and a C
+# compiler; nothing is done when the program is there (FORCE=1 builds it again).  Not committed.
+vde-switch:
+	@FORCE="$(FORCE)" $(ROOT_DIR)/scripts/vde-switch-build.sh
 
 # Debian packages (python3-kathara, sysreseval, sysreseval-doc, and python3-fs on forky) built in
 # a debian:$(DIST) container by scripts/build-deb.sh and checked by an installation in a second
@@ -348,8 +356,7 @@ docker-tests:
 
 # The same with the Podman engine, on a host that chose it (container_engine or
 # container_engine_by_host of params.py, after `make podman-setup`; as root, skipped otherwise):
-# the life of a project checked on Podman itself, then the lab files of lab/sre/ as above, a lab
-# the engine cannot run yet (privileged machine, switch...) being skipped with its reason.
+# the life of a project checked on Podman itself, then the lab files of lab/sre/ as above.
 podman-tests:
 	$(PYTEST) $(PODMAN_TESTS) ${ROOT_DIR}/tests/test_docker_labs.py
 

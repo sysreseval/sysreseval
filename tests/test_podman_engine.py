@@ -22,6 +22,7 @@ import SRE.engine as engine_package
 from SRE import lib_sre, params
 from SRE.command import restore as restore_cmd, save as save_cmd
 from SRE.engine import Engine, EngineError, SwitchModesUnsupported, podman_engine
+from SRE.engine.base import SwitchCommandError
 from SRE.engine.kathara_engine import KatharaEngine
 from SRE.engine.podman_engine import (PodmanContainer, PodmanEngine, environment_arguments, lab_hash_of,
                                       machine_sysctls, qualified_image)
@@ -83,9 +84,11 @@ def runtime_dir(tmp_path, monkeypatch):
 @pytest.fixture
 def engine(tmp_path, monkeypatch, runtime_dir):
     """A Podman engine whose commands go to a recorder (`engine.run`), on a host that is set
-    up and where Podman already has its user namespace, without `/dev/net/tun`, starting its
-    machines one at a time (the order of the commands is then the order of the lab).  A hub
-    that is started opens its socket, as the real one does."""
+    up (the switch program built, pasta installed, the host address there) and where Podman
+    already has its user namespace, without `/dev/net/tun`, starting its machines one at a time
+    (the order of the commands is then the order of the lab).  A hub or a switch that is started
+    opens its sockets, as the real ones do; the consoles of the managed switches are
+    `engine._console`, a recorder too."""
     podman_dir = tmp_path / 'podman'
     podman_dir.mkdir()
     monkeypatch.setattr(params, 'podman_dir', str(podman_dir))
@@ -93,22 +96,88 @@ def engine(tmp_path, monkeypatch, runtime_dir):
     monkeypatch.setattr(params, 'max_docker_concurrency', 1)
     monkeypatch.setattr(podman_engine, '_TUN_DEVICE', str(tmp_path / 'no-tun'))
     (runtime_dir / 'bus').touch()
+    switch = tmp_path / 'sre-vde-switch'
+    switch.write_text('#!/bin/sh\n')
+    switch.chmod(0o755)
+    monkeypatch.setattr(params, 'vde_switch_program', str(switch))
+    monkeypatch.setattr(params, 'sre_host_ip', '172.17.0.1')
+    monkeypatch.setattr(podman_engine.shutil, 'which', lambda program, path=None: f'/usr/bin/{program}')
+    monkeypatch.setattr(PodmanEngine, '_host_has', staticmethod(lambda address: True))
     monkeypatch.setattr(PodmanEngine, '_namespace_alive', lambda self: True)
     engine = PodmanEngine()
     engine.run = Recorder()
     engine.run.reply('podman', 'ps', stdout=b'[]')
     engine.run.reply('podman', 'inspect', stdout=b'111 222\n')
     engine.run.reply('systemd-run', function=open_hub_socket)
+    engine._console = Consoles(engine.run)
     return engine
 
 
 def open_hub_socket(argv):
-    """What a unit running `vde_plug null:// hub://<dir>/ctl` does: <dir>/ctl/ctl appears."""
-    for word in argv:
+    """What a network that is started does: the hub of `vde_plug null:// hub://<dir>/ctl` and the
+    switch of `... -s <dir>/ctl [-M <dir>/mgmt]` make <dir>/ctl/ctl, a managed switch its
+    management socket too."""
+    for position, word in enumerate(argv):
         if word.startswith('hub://'):
             os.makedirs(word[len('hub://'):], exist_ok=True)
             open(word[len('hub://'):] + '/ctl', 'w').close()
+        elif word == '-s' and 'vde_plug' not in argv:
+            os.makedirs(argv[position + 1], exist_ok=True)
+            open(argv[position + 1] + '/ctl', 'w').close()
+        elif word == '-M':
+            open(argv[position + 1], 'w').close()
     return completed()
+
+
+class Consoles:
+    """Stands for `PodmanEngine._console`: keeps what is sent to each management socket
+    (`commands`: `[(socket path, command)]`), prints `outputs[command]`, refuses the commands of
+    `refused` (`{command: SwitchCommandError}`)."""
+
+    def __init__(self, recorder=None):
+        self.commands = []
+        self.outputs = {}
+        self.refused = {}
+        self.opened = []
+        self.commands_run_before = []    # how many commands the engine had run when each console was opened
+        self._recorder = recorder
+
+    def __call__(self, path):
+        self.opened.append(path)
+        self.commands_run_before.append(len(self._recorder.calls) if self._recorder else 0)
+        consoles = self
+
+        class Console:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                pass
+
+            def exec(self, command):
+                consoles.commands.append((path, command))
+                if command in consoles.refused:
+                    raise consoles.refused[command]
+                return consoles.outputs.get(command, '')
+
+        return Console()
+
+
+def switch_lab(engine):
+    """`lan` managed (pc1 in VLAN 10, pc2 in 20, r1 a trunk of both), `dmz` a switch (r1, srv),
+    `old` a hub (srv): the networks in that order."""
+    lab = engine.new_lab(RUNNING_LAB)
+    engine.set_network_mode(lab, 'lan', params.network_mode_managed)
+    engine.set_network_mode(lab, 'dmz', params.network_mode_switch)
+    for name in ('pc1', 'pc2', 'r1', 'srv'):
+        engine.add_machine(lab, name, image=IMAGE)
+    engine.connect_machine(lab, 'pc1', 'lan', interface=0, mac=None, vlan=10, tagged_vlans=[])
+    engine.connect_machine(lab, 'pc2', 'lan', interface=0, mac=None, vlan=20, tagged_vlans=[])
+    engine.connect_machine(lab, 'r1', 'lan', interface=0, mac=None, vlan=None, tagged_vlans=[10, 20])
+    engine.connect_machine(lab, 'r1', 'dmz', interface=1, mac=None, vlan=None, tagged_vlans=[])
+    engine.connect_machine(lab, 'srv', 'dmz', interface=0, mac=None)
+    engine.connect_machine(lab, 'srv', 'old', interface=1, mac=None)
+    return lab
 
 
 def two_machines(engine):
@@ -333,14 +402,62 @@ class TestIdentity:
     @pytest.mark.parametrize('current, said', [
         ((1100, 1100, 988, 988), "with the group 1100 (docker_gid): not with the group 988"),
         ((1000, 1000, 1000, 1000), "must be run by that user or by root"),
-        ((0, 1000, 0, 1100), "not as 1000:1100"),
-        ((0, 1100, 0, 988), "not as 1100:988"),
     ])
     def test_any_other_identity_is_refused(self, ids, current, said):
         ids(*current)
         with pytest.raises(EngineError) as error:
             PodmanEngine._identity()
         assert said in str(error.value)
+
+    def test_the_form_that_starts_from_either_state(self, ids):
+        """Asked for when the effective uid moved under the engine's feet (below)."""
+        ids(0, 0, 0, 0)
+        assert PodmanEngine._identity(lowered=True) == {'user': 1100, 'group': 1100}
+
+
+class TestEffectiveUidChangedByAnotherThread:
+    """`sre eval-all` and the exam evaluations run projects in threads, and a lab with privileged
+    machines raises and lowers the effective uid of the whole process around its engine calls.
+    Between the engine's choice (root: drop the groups too) and the start of the command, the
+    effective uid may have been lowered: dropping the groups is then refused and nothing runs."""
+
+    @pytest.fixture
+    def as_root(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(params, 'podman_dir', str(tmp_path))
+        monkeypatch.setattr(params, 'sre_uid', 1100)
+        monkeypatch.setattr(params, 'docker_gid', 988)
+        for name in ('getuid', 'geteuid', 'getgid', 'getegid'):
+            monkeypatch.setattr(os, name, lambda: 0)
+
+    def test_the_command_is_started_again_in_the_other_form(self, as_root):
+        starts = []
+
+        def run(argv, **kwargs):
+            starts.append(kwargs)
+            if 'extra_groups' in kwargs:
+                raise PermissionError(1, 'Operation not permitted')
+            return completed(0, b'out')
+
+        with patch.object(podman_engine.subprocess, 'run', side_effect=run):
+            result = PodmanEngine().run(['podman', 'exec', 'c', 'true'], input=b'data')
+        assert result.stdout == b'out' and len(starts) == 2
+        assert (starts[0]['user'], starts[0]['group'], starts[0]['extra_groups']) == (1100, 988, [])
+        assert (starts[1]['user'], starts[1]['group']) == (1100, 988) and 'extra_groups' not in starts[1]
+        assert starts[1]['input'] == b'data' and starts[1]['env'] == starts[0]['env']
+
+    def test_a_refusal_in_the_other_form_is_an_error(self, as_root):
+        with patch.object(podman_engine.subprocess, 'run', side_effect=PermissionError(1, 'Operation not permitted')) as run:
+            with pytest.raises(EngineError, match="cannot run podman: Operation not permitted"):
+                PodmanEngine().run(['podman', 'info'])
+        assert run.call_count == 2
+
+    def test_no_second_start_for_the_account_itself(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(params, 'podman_dir', str(tmp_path))
+        monkeypatch.setattr(PodmanEngine, '_identity', staticmethod(lambda lowered=False: {}))
+        with patch.object(podman_engine.subprocess, 'run', side_effect=PermissionError(13, 'Permission denied')) as run:
+            with pytest.raises(EngineError, match="cannot run podman: Permission denied"):
+                PodmanEngine().run(['podman', 'info'])
+        assert run.call_count == 1
 
 
 class TestRun:
@@ -492,32 +609,61 @@ class TestDescription:
         assert lab.hash == HASH and lab.shared_path is None and list(lab.machines) == ['pc1', 'r']
         assert lab.machines['r'].interfaces == {0: ('lan', None), 1: ('wan', '02:00:00:00:00:0a')}
 
-    @pytest.mark.parametrize('option, said', [
-        ({'privileged': True}, "a privileged machine is not available with the Podman engine yet"),
-        ({'bridged': True}, "an outside interface ('bridged') is not available with the Podman engine yet"),
-        ({'ports': ['8080:80/tcp']}, "published ports are not available with the Podman engine yet"),
-    ])
-    def test_a_machine_the_engine_cannot_run(self, engine, option, said):
+    @pytest.mark.parametrize('option', [{'privileged': True}, {'bridged': True},
+                                        {'bridged': True, 'ports': ['8080:80/tcp']}])
+    def test_every_kind_of_machine_is_accepted(self, engine, option):
         lab = engine.new_lab(RUNNING_LAB)
-        with pytest.raises(EngineError) as error:
-            engine.add_machine(lab, 'srv', image=IMAGE, **option)
-        assert str(error.value) == said and lab.machines == {}
+        engine.add_machine(lab, 'srv', image=IMAGE, **option)
+        assert lab.machines['srv'].options == {'image': IMAGE, **option} and engine.run.calls == []
+
+    def test_the_modes_and_the_ports_of_the_networks(self, engine):
+        lab = switch_lab(engine)
+        assert lab.network_modes == {'lan': 'managed', 'dmz': 'switch'}
+        # a managed switch: one port per interface, in the order of the lab
+        assert lab.ports == {'lan': [('pc1', 0, 10, []), ('pc2', 0, 20, []), ('r1', 0, None, [10, 20])]}
+        assert [engine._port_of(lab, 'lan', machine, 0) for machine in ('pc1', 'pc2', 'r1')] == [1, 2, 3]
+        assert engine._port_of(lab, 'dmz', 'r1', 1) is None and engine._port_of(lab, 'old', 'srv', 1) is None
+        assert engine.run.calls == [] and engine._console.opened == []
+
+    def test_a_hub_said_to_be_one(self, engine):
+        lab = engine.new_lab(RUNNING_LAB)
+        engine.set_network_mode(lab, 'lan', params.network_mode_hub)
+        assert lab.network_modes == {}
 
     @pytest.mark.parametrize('mode', [params.network_mode_switch, params.network_mode_managed])
-    def test_a_network_that_is_not_a_hub(self, engine, mode):
-        with pytest.raises(SwitchModesUnsupported) as error:
-            engine.set_network_mode(engine.new_lab(RUNNING_LAB), 'lan', mode)
-        assert str(error.value) == f"mode '{mode}' is not available with the Podman engine yet (hubs only)"
-
-    @pytest.mark.parametrize('vlans', [{'vlan': 0}, {'tagged_vlans': [10]}])
-    def test_a_vlan(self, engine, vlans):
+    def test_a_switch_needs_the_switch_program(self, engine, monkeypatch, tmp_path, mode):
+        """No silent use of another vde_switch: the one of Debian loses the large frames."""
+        monkeypatch.setattr(params, 'vde_switch_program', str(tmp_path / 'absent'))
         lab = engine.new_lab(RUNNING_LAB)
+        with pytest.raises(SwitchModesUnsupported) as error:
+            engine.set_network_mode(lab, 'lan', mode)
+        assert str(error.value).startswith(f"mode '{mode}' needs the switch program of SRE, which is not built "
+                                           f"({tmp_path}/absent): run `make vde-switch`")
+        assert lab.network_modes == {}
+
+    def test_a_program_that_cannot_be_run_is_no_program(self, engine, monkeypatch, tmp_path):
+        (tmp_path / 'plain-file').write_text('x')
+        monkeypatch.setattr(params, 'vde_switch_program', str(tmp_path / 'plain-file'))
+        with pytest.raises(SwitchModesUnsupported, match="make vde-switch"):
+            engine.set_network_mode(engine.new_lab(RUNNING_LAB), 'lan', params.network_mode_switch)
+
+    def test_an_unknown_mode(self, engine):
+        with pytest.raises(SwitchModesUnsupported, match="mode 'router' is not one the Podman engine knows"):
+            engine.set_network_mode(engine.new_lab(RUNNING_LAB), 'lan', 'router')
+
+    @pytest.mark.parametrize('mode', [None, params.network_mode_switch])
+    @pytest.mark.parametrize('vlans', [{'vlan': 10}, {'tagged_vlans': [10]}])
+    def test_vlans_need_a_managed_switch(self, engine, mode, vlans):
+        lab = engine.new_lab(RUNNING_LAB)
+        if mode:
+            engine.set_network_mode(lab, 'lan', mode)
         engine.add_machine(lab, 'pc1', image=IMAGE)
-        with pytest.raises(EngineError, match="VLANs are not available"):
+        with pytest.raises(EngineError, match="^network 'lan': VLANs need a managed switch$"):
             engine.connect_machine(lab, 'pc1', 'lan', interface=0, mac=None, **vlans)
 
     def test_the_cli_says_which_machine(self, engine, monkeypatch):
-        """`sre start` ends with one line, before anything is deployed."""
+        """What an engine refuses of a machine ends `sre start` with one line, before anything is
+        deployed."""
         class Scheme(NetScheme0):
             _machine_specs = {'pc1': {}, 'srv': {'privileged': True}}
             _topology = {'lan': ['pc1', 'srv']}
@@ -525,13 +671,36 @@ class TestDescription:
         class Data(Data0):
             pass
 
+        accept = engine.add_machine
+
+        def add_machine(lab, name, **options):
+            if options.get('privileged'):
+                raise EngineError("no privileged machine with this engine")
+            accept(lab, name, **options)
+
+        monkeypatch.setattr(engine, 'add_machine', add_machine)
         monkeypatch.setattr(lib_sre, 'get_engine', lambda: engine)
         with patch.object(lib_sre, 'error_quit', side_effect=SystemExit) as error_quit:
             with pytest.raises(SystemExit):
                 Scheme(data=Data(), running_lab_name=RUNNING_LAB).get_new_lab_from_scheme()
-        error_quit.assert_called_once_with(
-            "machine 'srv': a privileged machine is not available with the Podman engine yet")
+        error_quit.assert_called_once_with("machine 'srv': no privileged machine with this engine")
         assert engine.run.calls == []
+
+    def test_the_cli_says_which_network(self, engine, monkeypatch, tmp_path):
+        class Scheme(NetScheme0):
+            _machine_specs = {'pc1': {}, 'pc2': {}}
+            _network_specs = {'lan': {'mode': 'switch'}}
+            _topology = {'lan': ['pc1', 'pc2']}
+
+        class Data(Data0):
+            pass
+
+        monkeypatch.setattr(params, 'vde_switch_program', str(tmp_path / 'absent'))
+        monkeypatch.setattr(lib_sre, 'get_engine', lambda: engine)
+        with patch.object(lib_sre, 'error_quit', side_effect=SystemExit) as error_quit:
+            with pytest.raises(SystemExit):
+                Scheme(data=Data(), running_lab_name=RUNNING_LAB).get_new_lab_from_scheme()
+        assert error_quit.call_args.args[0].startswith("network 'lan': mode 'switch' needs the switch program of SRE")
 
 
 # ---------------------------------------------------------------------------
@@ -1034,17 +1203,347 @@ class TestContainer:
 
 
 # ---------------------------------------------------------------------------
+# Switches and managed switches
+# ---------------------------------------------------------------------------
+
+class TestSwitches:
+    def test_the_networks_of_a_lab(self, engine, runtime_dir):
+        lab = switch_lab(engine)
+        engine.deploy(lab)
+        net = f'{runtime_dir}/sre-net/{HASH}'
+        lan, dmz, old = f'{net}/0', f'{net}/1', f'{net}/2'
+        switch = params.vde_switch_program
+        unit = ['systemd-run', '--user', '--quiet', '--collect', '--unit']
+        # the command line of the Kathara network plugin for a switch; a hub stays vdeplug4's
+        assert [c.argv for c in engine.run.starting_with('systemd-run') if '-sw-' in c.argv[5]] == [
+            [*unit, f'srelab-{HASH}-sw-0', '-p', 'Type=forking', '-p', f'PIDFile={lan}/pid',
+             switch, '-n', '65535', '-d', '-s', f'{lan}/ctl', '-p', f'{lan}/pid', '-M', f'{lan}/mgmt'],
+            [*unit, f'srelab-{HASH}-sw-1', '-p', 'Type=forking', '-p', f'PIDFile={dmz}/pid',
+             switch, '-n', '65535', '-d', '-s', f'{dmz}/ctl', '-p', f'{dmz}/pid'],
+            [*unit, f'srelab-{HASH}-sw-2', 'vde_plug', 'null://', f'hub://{old}/ctl'],
+        ]
+        # the ports of the managed switch and their VLANs: one connection, each VLAN made once
+        assert engine._console.opened == [f'{lan}/mgmt']
+        assert [command for _, command in engine._console.commands] == [
+            'port/create 1', 'vlan/create 10', 'port/setvlan 1 10',
+            'port/create 2', 'vlan/create 20', 'port/setvlan 2 20',
+            'port/create 3', 'vlan/addport 10 3', 'vlan/addport 20 3']
+        # ... before any machine exists: none ever runs in a wrong VLAN
+        before = engine.run.calls[:engine._console.commands_run_before[0]]
+        assert [c.argv[:2] for c in before if c.argv[0] == 'podman'] == [['podman', 'image']]
+        # each interface in the port made for it; a plain switch and a hub give the first free one
+        plugs = {c.argv[5]: c.argv[-4:] for c in engine.run.starting_with('systemd-run') if '-p-' in c.argv[5]}
+        assert plugs == {
+            f'srelab-{HASH}-p-pc1-0': ['-D', 'kathara pc1:eth0', 'tap://eth0', f'vde://{lan}/ctl[1]'],
+            f'srelab-{HASH}-p-pc2-0': ['-D', 'kathara pc2:eth0', 'tap://eth0', f'vde://{lan}/ctl[2]'],
+            f'srelab-{HASH}-p-r1-0': ['-D', 'kathara r1:eth0', 'tap://eth0', f'vde://{lan}/ctl[3]'],
+            f'srelab-{HASH}-p-r1-1': ['-D', 'kathara r1:eth1', 'tap://eth1', f'vde://{dmz}/ctl'],
+            f'srelab-{HASH}-p-srv-0': ['-D', 'kathara srv:eth0', 'tap://eth0', f'vde://{dmz}/ctl'],
+            f'srelab-{HASH}-p-srv-1': ['-D', 'kathara srv:eth1', 'tap://eth1', f'vde://{old}/ctl'],
+        }
+
+    def test_the_switches_are_left_for_the_commands_to_come(self, engine, runtime_dir):
+        """Written as the account whoever calls: the `initial` state of a lab with privileged
+        machines reads it once the command has dropped root."""
+        engine.deploy(switch_lab(engine))
+        net = f'{runtime_dir}/sre-net/{HASH}'
+        (write,) = engine.run.starting_with('sh', '-c')
+        assert write.argv == ['sh', '-c', 'umask 022 && cat > "$1.tmp" && mv "$1.tmp" "$1"', 'sh', f'{net}/networks.json']
+        assert json.loads(write.kwargs['input']) == {'lan': {'mode': 'managed', 'directory': f'{net}/0'},
+                                                     'dmz': {'mode': 'switch', 'directory': f'{net}/1'}}
+        assert engine.run.commands.index(write.argv) < engine.run.commands.index(engine.run.starting_with('podman', 'ps')[0].argv)
+
+    def test_a_lab_of_hubs_is_deployed_as_before(self, engine):
+        engine.deploy(two_machines(engine))
+        assert engine._console.opened == [] and engine.run.starting_with('sh') == []
+        assert not [c for c in engine.run.starting_with('systemd-run') if 'Type=forking' in c.argv]
+
+    def test_a_managed_switch_without_vlan(self, engine):
+        """Its ports are made all the same: an interface keeps the port the lab order gives it."""
+        lab = engine.new_lab(RUNNING_LAB)
+        engine.set_network_mode(lab, 'lan', params.network_mode_managed)
+        for name in ('a', 'b'):
+            engine.add_machine(lab, name, image=IMAGE)
+            engine.connect_machine(lab, name, 'lan', interface=0, mac=None, vlan=None, tagged_vlans=[])
+        engine.deploy(lab)
+        assert [command for _, command in engine._console.commands] == ['port/create 1', 'port/create 2']
+
+    def test_the_management_socket_is_waited_for(self, engine, monkeypatch):
+        """`systemd-run` returns when the switch has forked, a little before its sockets exist."""
+        def no_management_socket(argv):
+            for position, word in enumerate(argv):
+                if word == '-s':
+                    os.makedirs(argv[position + 1], exist_ok=True)
+                    open(argv[position + 1] + '/ctl', 'w').close()
+            return open_hub_socket(argv) if 'hub://' in ' '.join(argv) else completed()
+
+        engine.run.reply('systemd-run', function=no_management_socket)
+        monkeypatch.setattr(podman_engine, '_HUB_START_TIMEOUT', 0.05)
+        with pytest.raises(EngineError, match="^network 'lan': its switch did not start$"):
+            engine.deploy(switch_lab(engine))
+        assert engine._console.opened == [] and engine.run.starting_with('podman', 'create') == []
+        assert engine.run.commands[-1] == ['systemctl', '--user', 'stop', f'srelab-{HASH}-*']
+
+    def test_a_command_the_switch_refuses_stops_the_deployment(self, engine, runtime_dir):
+        engine._console.refused['port/setvlan 2 20'] = SwitchCommandError(1006, 'No such device or address')
+        with pytest.raises(EngineError) as error:
+            engine.deploy(switch_lab(engine))
+        assert str(error.value) == "network 'lan': port/setvlan 2 20: 1006 No such device or address"
+        assert engine.run.starting_with('podman', 'create') == []
+        assert not (runtime_dir / 'sre-net' / HASH).exists()
+
+    def test_a_console_that_cannot_be_reached(self, engine):
+        def unreachable(path):
+            raise EngineError(f"the console of the switch cannot be reached ({path}): Connection refused")
+
+        engine._console = unreachable
+        with pytest.raises(EngineError, match="^network 'lan': its console: the console of the switch cannot be reached"):
+            engine.deploy(switch_lab(engine))
+
+
+class TestSwitchConsole:
+    """`sre exec <switch>`, the `switch_cmd()` of a state, the `test_switch()` of a grade: later
+    commands, which find the switch of a running project by the name of its network."""
+
+    @pytest.fixture
+    def running(self, engine, runtime_dir):
+        net = runtime_dir / 'sre-net' / HASH
+        net.mkdir(parents=True)
+        (net / 'networks.json').write_text(json.dumps({'lan': {'mode': 'managed', 'directory': f'{net}/0'},
+                                                       'dmz': {'mode': 'switch', 'directory': f'{net}/1'}}))
+        return f'{net}/0/mgmt'
+
+    def test_the_engine_has_a_console(self, engine):
+        assert engine.require_switch_console() is None
+
+    def test_one_command(self, engine, running):
+        engine._console.outputs['vlan/print'] = 'VLAN 0010\n -- Port 0001 tagged=0'
+        assert engine.switch_exec(HASH, 'lan', 'vlan/print') == 'VLAN 0010\n -- Port 0001 tagged=0'
+        assert engine._console.commands == [(running, 'vlan/print')] and engine.run.calls == []
+
+    def test_a_refused_command_keeps_its_code(self, engine, running):
+        engine._console.refused['vlan/create 10'] = SwitchCommandError(1017, 'File exists')
+        with pytest.raises(SwitchCommandError) as error:
+            engine.switch_exec(HASH, 'lan', 'vlan/create 10')
+        assert (error.value.code, error.value.message) == (1017, 'File exists')
+
+    def test_the_ports(self, engine, running):
+        engine._console.outputs['port/allprint'] = (
+            "Port 0001 untagged_vlan=0010 ACTIVE - NOT Unnamed Allocatable\n"
+            "  -- endpoint ID 0003 module unix prog   : kathara pc1:eth0 user=root pid=592759\n"
+            "Port 0003 untagged_vlan=0000 ACTIVE - NOT Unnamed Allocatable\n"
+            "  -- endpoint ID 0012 module unix prog   : kathara r1:eth0 user=root pid=593272\n")
+        engine._console.outputs['vlan/allprint'] = "VLAN 0010\n -- Port 0001 tagged=0\n -- Port 0003 tagged=1\n"
+        assert engine.switch_ports(HASH, 'lan') == {
+            1: {'vlan': 10, 'tagged_vlans': [], 'active': True, 'endpoints': ['pc1:eth0']},
+            3: {'vlan': 0, 'tagged_vlans': [10], 'active': True, 'endpoints': ['r1:eth0']}}
+        assert engine._console.opened == [running]       # both tables through one connection
+
+    def test_as_the_commands_of_sre_use_it(self, engine, running, monkeypatch):
+        """Through `SwitchConsole`: the code of the switch minus 1000, and `@machine` replaced
+        by the port of the machine."""
+        from SRE import switch_console
+        monkeypatch.setattr(switch_console, 'get_engine', lambda: engine)
+        adapter = SimpleNamespace(switch_port_label=lambda: 'r1:eth0')
+        scheme = SimpleNamespace(get_lab_hash=lambda: HASH, get_machine=lambda name: name,
+                                 get_network=lambda name: SimpleNamespace(net_adapters={'r1': adapter}))
+        engine._console.outputs['port/allprint'] = ("Port 0003 untagged_vlan=0000 ACTIVE\n"
+                                                    "  -- endpoint ID 0012 module unix prog   : kathara r1:eth0 user=root pid=1\n")
+        engine._console.refused['vlan/create 10'] = SwitchCommandError(1017, 'File exists')
+        console = switch_console.SwitchConsole(scheme)
+        assert console.run('lan', 'vlan/create 10') == ('File exists', 17)
+        assert console.run('lan', 'port/setvlan @r1 20') == ('', 0)
+        assert engine._console.commands[-1] == (running, 'port/setvlan 3 20')
+        assert console.run('dmz', 'vlan/print') == ("network 'dmz' is not a managed switch of this project", -2)
+
+    @pytest.mark.parametrize('network', ['dmz', 'old', 'nowhere'])
+    def test_a_network_without_console(self, engine, running, network):
+        for call in (lambda: engine.switch_exec(HASH, network, 'vlan/print'), lambda: engine.switch_ports(HASH, network)):
+            with pytest.raises(EngineError, match=f"^network '{network}' is not a managed switch of this project$"):
+                call()
+        assert engine._console.opened == []
+
+    def test_a_project_of_hubs(self, engine):
+        with pytest.raises(EngineError, match="is not a managed switch of this project"):
+            engine.switch_exec(HASH, 'lan', 'vlan/print')
+
+    def test_the_real_console_only_opens_a_socket_of_the_account(self, monkeypatch):
+        """The process may be root; the socket is in a directory of an unprivileged account."""
+        from test_vde_console import FakeSwitch
+        fake = FakeSwitch({'vlan/create 10': "1000 Success\n"})
+        try:
+            monkeypatch.setattr(params, 'sre_uid', os.getuid())
+            with PodmanEngine()._console(fake.path) as console:
+                assert console.exec('vlan/create 10') == ''
+            monkeypatch.setattr(params, 'sre_uid', os.getuid() + 1)
+            with pytest.raises(EngineError, match="is not the management socket of a switch"):
+                PodmanEngine()._console(fake.path)
+        finally:
+            fake.close()
+
+
+# ---------------------------------------------------------------------------
+# The outside interface
+# ---------------------------------------------------------------------------
+
+def outside_lab(engine, **gateway):
+    """`gw` with an outside interface, `pc1` behind it on `lan`."""
+    lab = engine.new_lab(RUNNING_LAB)
+    engine.add_machine(lab, 'gw', image=IMAGE, bridged=True, **gateway)
+    engine.connect_machine(lab, 'gw', 'lan', interface=0, mac=None)
+    engine.add_machine(lab, 'pc1', image=IMAGE, bridged=False, ports=[])
+    engine.connect_machine(lab, 'pc1', 'lan', interface=0, mac=None)
+    return lab
+
+
+class TestOutsideInterface:
+    PASTA = 'pasta:-I,eth1,-4,-a,172.17.0.2,-n,16,-g,172.17.0.1,-m,1500,--no-dhcp,--map-guest-addr,none'
+
+    def create(self, engine, machine):
+        return next(c.argv for c in engine.run.starting_with('podman', 'create') if c.argv[3].endswith(f'_{machine}'))
+
+    def test_pasta_in_place_of_no_network(self, engine):
+        """The interface after those of the lab, the address and the default route Docker's
+        bridge gives, IPv4 only, no other address meaning the host, no resolv.conf of Podman's."""
+        engine.deploy(outside_lab(engine, ports=['8042:80/tcp', '5353:53/udp']))
+        argv = self.create(engine, 'gw')
+        assert argv[6:16] == ['--network', self.PASTA, '--dns', 'none', '--publish', '8042:80/tcp',
+                              '--publish', '5353:53/udp', '--no-hosts', '--tty']
+        plain = self.create(engine, 'pc1')
+        assert plain[6:9] == ['--network', 'none', '--no-hosts'] and '--dns' not in plain and '--publish' not in plain
+
+    def test_the_outside_interface_is_numbered_after_the_lab_interfaces(self, engine):
+        lab = engine.new_lab(RUNNING_LAB)
+        engine.add_machine(lab, 'alone', image=IMAGE, bridged=True)
+        engine.add_machine(lab, 'gw', image=IMAGE, bridged=True)
+        engine.connect_machine(lab, 'gw', 'a', interface=0, mac=None)
+        engine.connect_machine(lab, 'gw', 'b', interface=2, mac=None)
+        engine.deploy(lab)
+        assert self.create(engine, 'alone')[7].startswith('pasta:-I,eth0,')
+        assert self.create(engine, 'gw')[7].startswith('pasta:-I,eth3,')
+
+    def test_the_host_address_of_the_site(self, engine, monkeypatch):
+        monkeypatch.setattr(params, 'sre_host_ip', '10.200.0.1')
+        engine.deploy(outside_lab(engine))
+        assert ',-a,10.200.0.2,-n,16,-g,10.200.0.1,' in self.create(engine, 'gw')[7]
+
+    def test_a_sysctl_of_the_outside_interface(self, engine):
+        """It exists once the machine is initialised: set with those of the lab interfaces."""
+        engine.deploy(outside_lab(engine, sysctls=['net.ipv4.conf.eth1.rp_filter=2', 'net.ipv4.conf.eth0.arp_ignore=1']))
+        script = next(c.argv[-1] for c in engine.run.starting_with('nsenter') if 'sh' in c.argv)
+        assert script == ('set -e\nip tuntap add dev eth0 mode tap\nip link set dev eth0 up\n'
+                          'sysctl -q -w net.ipv4.conf.eth0.arp_ignore=1\nsysctl -q -w net.ipv4.conf.eth1.rp_filter=2')
+        assert not [word for word in self.create(engine, 'gw') if 'eth1.rp_filter' in word]
+
+    def test_without_pasta(self, engine, monkeypatch):
+        monkeypatch.setattr(podman_engine.shutil, 'which', lambda program, path=None: None)
+        with pytest.raises(EngineError, match=r"^machine 'gw': its outside interface needs pasta \(the package passt\)$"):
+            engine.deploy(outside_lab(engine))
+        assert engine.run.starting_with('mkdir') == [] and engine.run.starting_with('podman', 'create') == []
+
+    def test_on_a_host_without_the_host_address(self, engine, monkeypatch):
+        """pasta reaches the host at that address only if the host owns it (Docker's bridge does)."""
+        asked = []
+        monkeypatch.setattr(PodmanEngine, '_host_has', staticmethod(lambda address: asked.append(address) or False))
+        with pytest.raises(EngineError, match="^machine 'gw': its outside interface needs the address 172.17.0.1 on this host"):
+            engine.deploy(outside_lab(engine))
+        assert asked == ['172.17.0.1'] and engine.run.starting_with('podman', 'create') == []
+
+    def test_nothing_is_asked_of_a_lab_without_outside_interface(self, engine, monkeypatch):
+        monkeypatch.setattr(podman_engine.shutil, 'which', lambda program, path=None: None)
+        monkeypatch.setattr(PodmanEngine, '_host_has', staticmethod(lambda address: False))
+        engine.deploy(two_machines(engine))
+        assert len(engine.run.starting_with('podman', 'start')) == 2
+
+    def test_an_address_of_this_host(self):
+        assert PodmanEngine._host_has('127.0.0.1') is True
+        assert PodmanEngine._host_has('192.0.2.77') is False     # a documentation address: nobody's
+
+
+# ---------------------------------------------------------------------------
+# Privileged machines
+# ---------------------------------------------------------------------------
+
+def systemd_lab(engine, entrypoint='/sbin/init'):
+    """`srv`, privileged, running an init; `client`, plain; one hub."""
+    lab = engine.new_lab(RUNNING_LAB)
+    engine.add_machine(lab, 'srv', image='sysreseval/init13:1.36', privileged=True, entrypoint=entrypoint)
+    engine.connect_machine(lab, 'srv', 'lan', interface=0, mac=None)
+    engine.add_machine(lab, 'client', image=IMAGE, privileged=None, entrypoint=None)
+    engine.connect_machine(lab, 'client', 'lan', interface=0, mac=None)
+    return lab
+
+
+class TestPrivilegedMachines:
+    @pytest.fixture
+    def no_sleep(self, monkeypatch):
+        monkeypatch.setattr(podman_engine.time, 'sleep', lambda seconds: None)
+
+    def booting(self, engine, *answers):
+        """`systemctl is-system-running` in `srv` answers *answers* in turn, then `running`."""
+        left = list(answers)
+        engine.run.reply('podman', 'exec', f'sre_{HASH}_srv', 'systemctl',
+                         function=lambda argv: left.pop(0) if left else completed(0, b'running\n'))
+
+    def test_every_capability_inside_and_nothing_of_the_host(self, engine, no_sleep):
+        """Still a rootless container in the uid range of its project: the capabilities are
+        bounded by its user namespace.  `/proc/sys` is writable, as in a privileged container of
+        Docker, and Podman is told the first process is systemd."""
+        self.booting(engine)
+        engine.deploy(systemd_lab(engine))
+        srv, client = (c.argv for c in engine.run.starting_with('podman', 'create'))
+        at = srv.index('--pids-limit')
+        assert srv[at:at + 8] == ['--pids-limit', '-1', '--cap-add', 'all', '--security-opt', 'unmask=/proc/sys',
+                                  '--systemd', 'always']
+        assert srv[srv.index('--uidmap') + 1] == '0:1:65536' and '--privileged' not in srv
+        assert srv[-3:] == ['--entrypoint', '["/sbin/init"]', 'docker.io/sysreseval/init13:1.36']
+        assert client[at:at + 4] == ['--pids-limit', '-1', '--cap-add',
+                                     'NET_ADMIN,NET_RAW,NET_BROADCAST,NET_BIND_SERVICE,SYS_ADMIN,MKNOD,AUDIT_WRITE']
+        assert '--security-opt' not in client and '--systemd' not in client
+
+    @pytest.mark.parametrize('entrypoint, systemd', [
+        ('/sbin/init', True), ('/lib/systemd/systemd --log-level=info', True), ('init', True),
+        ('/usr/sbin/sshd -D', False), ('/usr/local/bin/initialise', False), (None, False), ('', False),
+    ])
+    def test_the_systemd_mode_follows_the_entrypoint(self, engine, no_sleep, entrypoint, systemd):
+        self.booting(engine)
+        engine.deploy(systemd_lab(engine, entrypoint))
+        srv = engine.run.starting_with('podman', 'create')[0].argv
+        at = srv.index('--cap-add')
+        assert ('--systemd' in srv) is systemd and srv[at:at + 4] == ['--cap-add', 'all', '--security-opt', 'unmask=/proc/sys']
+        assert bool(engine.run.starting_with('podman', 'exec', f'sre_{HASH}_srv', 'systemctl')) is systemd
+
+    def test_the_start_up_commands_wait_for_systemd(self, engine, no_sleep):
+        """Right after the start `systemctl` finds no bus (measured: 2.8 s): the start-up commands
+        of the machine and the `initial` state of the lab come after the deployment."""
+        self.booting(engine, completed(1, b'', b'Failed to connect to system scope bus via local transport\n'),
+                     completed(1, b'starting\n'), completed(1, b'degraded\n'))
+        engine.deploy(systemd_lab(engine))
+        srv = [c.argv[1:5] for c in engine.run.calls if c.argv[0] == 'podman' and f'sre_{HASH}_srv' in c.argv[:4]
+               and c.argv[1] in ('start', 'exec')]
+        poll = ['exec', f'sre_{HASH}_srv', 'systemctl', 'is-system-running']
+        assert srv == [['start', f'sre_{HASH}_srv'], poll, poll, poll, ['exec', '--detach', f'sre_{HASH}_srv', '/bin/bash']]
+        # a machine that is not an init is not waited for
+        assert engine.run.starting_with('podman', 'exec', f'sre_{HASH}_client', 'systemctl') == []
+
+    def test_a_machine_that_takes_too_long_is_left_to_boot(self, engine, no_sleep, monkeypatch):
+        monkeypatch.setattr(podman_engine, '_SYSTEMD_BOOT_TIMEOUT', 0)
+        engine.run.reply('podman', 'exec', f'sre_{HASH}_srv', 'systemctl', returncode=1, stdout=b'starting\n')
+        engine.deploy(systemd_lab(engine))
+        assert len(engine.run.starting_with('podman', 'exec', '--detach')) == 2
+
+    def test_a_machine_that_is_gone_is_not_waited_for(self, engine, no_sleep):
+        engine.run.reply('podman', 'exec', f'sre_{HASH}_srv', 'systemctl', returncode=125,
+                         stderr=b'Error: no container with name or ID "x" found: no such container\n')
+        engine.deploy(systemd_lab(engine))
+        assert len(engine.run.starting_with('podman', 'exec', f'sre_{HASH}_srv', 'systemctl')) == 1
+
+
+# ---------------------------------------------------------------------------
 # What the engine does not do yet
 # ---------------------------------------------------------------------------
 
 class TestNotYet:
-    def test_the_switch_console(self, engine):
-        with pytest.raises(RuntimeError, match="no switch console yet"):
-            engine.require_switch_console()
-        for call in (lambda: engine.switch_exec(HASH, 'lan', 'vlan/print'), lambda: engine.switch_ports(HASH, 'lan')):
-            with pytest.raises(EngineError, match="no switch console yet"):
-                call()
-
     def test_a_failed_deployment_is_never_a_plugin_matter(self, engine):
         assert engine.is_network_plugin_error(RuntimeError('DockerPluginError')) is False
 

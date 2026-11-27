@@ -413,6 +413,8 @@ class NetScheme(NetScheme0):
 
 Port wildcards: `"80XX:80/tcp"` allocates the first free port in 8000–8099.
 
+**With the Podman engine** (a site may run some hosts with it, see [Podman engine](installation.md#podman-engine-rootless-containers)) a lab file is the same, but `privileged` and `bridged` do not mean quite the same: a privileged machine has every capability inside its own namespaces and a real systemd, and nothing of the host (no device, no `dmesg`, no `kernel.*` setting, no `modprobe`, no eBPF program, a read-only `/sys`); the outside interface of a bridged machine has the address and the route of Docker's bridge, reaches the host at 172.17.0.1 and the Internet by TCP, UDP and ping, and every bridged machine has the same address. A lab meant for both engines keeps to what both give; *What differs from Docker* in the installation guide has the list, with the labs concerned.
+
 **Machines running systemd.** A machine of the `init13` (or `init12`) image with `privileged=True` and `entrypoint="/sbin/init"` boots a genuine systemd. A privileged container is not confined like the others: it has the host's `/sys`, `/proc/sys` and device nodes, and a systemd left to itself treats them as its own. The init images therefore keep their systemd to the machine:
 
 - the udev coldplug replays the machine's own network interfaces only (`allow-hotplug` and the per-interface sysctls still work), never the devices of the host;

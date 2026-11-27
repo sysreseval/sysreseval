@@ -21,8 +21,7 @@ host.  Excluded from `make tests`; run with `make docker-tests`, or one lab alon
 workstation that has the images.
 
 On a host whose engine is Podman (`make podman-tests`) the same procedure runs on Podman: what
-is left of a project is asked of that engine, and a lab it cannot run yet (a privileged machine,
-a switch...) is skipped with the reason `sre start` gives.
+is left of a project is asked of that engine.
 """
 import json
 import os
@@ -52,7 +51,6 @@ if PODMAN:
     from test_podman_lifecycle import _leftovers, projects  # noqa: E402, F401  (projects: a fixture)
 else:
     from test_docker_lifecycle import _containers, _networks, docker_client, projects  # noqa: E402, F401  (fixtures)
-PODMAN_REFUSAL = "with the Podman engine yet"   # the end of what the engine says of a lab it cannot run
 
 LABS_DIR = Path(params.lab_dir) / params.shipped_lab_link_name
 # the file labs of the directory itself: `glob` does not enter the sub-directories
@@ -90,8 +88,6 @@ def _start(projects, lab):
     shared host somebody else may start a project meanwhile."""
     before = _project_dirs()
     r = _sre('start', f'{params.shipped_lab_link_name}/{lab}', timeout=START_TIMEOUT)
-    if PODMAN and r.returncode != 0 and PODMAN_REFUSAL in r.stderr:
-        pytest.skip(r.stderr.strip().splitlines()[-1])
     assert r.returncode == 0, f"sre start failed:\n{r.stderr[-3000:]}"
     running_lab_name = _created_project(r.stderr)
     if running_lab_name is None:

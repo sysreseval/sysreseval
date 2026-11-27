@@ -9,9 +9,10 @@ the interfaces), the directory of the networks.
 
 Requirements — the module is skipped otherwise: run as root, on a host whose engine is Podman
 (`container_engine` or `container_engine_by_host` of `params.py`) and that
-`scripts/podman-setup.sh` prepared, with the base image of the labs (pulled by the first start)
-and a writable directory listed in `params.authorized_src_dir` (the temporary labs are written
-there).  Excluded from `make tests`; run with `make podman-tests`.
+`scripts/podman-setup.sh` prepared, with the switch program (`make vde-switch`), pasta, the
+address `params.sre_host_ip` on the host (Docker's bridge has it), the images of the labs (pulled
+by the first start) and a writable directory listed in `params.authorized_src_dir` (the temporary
+labs are written there).  Excluded from `make tests`; run with `make podman-tests`.
 """
 import json
 import os
@@ -19,10 +20,13 @@ import pty
 import select
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -45,8 +49,10 @@ if _HOST_ENGINE != params.container_engine_podman:
 
 from SRE.engine.podman_engine import PodmanEngine, lab_hash_of  # noqa: E402
 from test_docker_lifecycle import (  # noqa: E402, F401  (no_exam: a fixture)
-    HUB_LAB, INSTRUCTOR_LAB, IPV6_LAB, NON_PRIVILEGED_LAB, PRIVILEGED_LAB, PROJECTS, ROOT_OWNED_DIRS_CMD,
-    SHARED_LAB, SRE_PY, SWITCH_LAB, _lab_hash, _project_dirs, _sre, _sre_user, _user_public_dir, no_exam)
+    DMZ_PC1, DMZ_R1, DMZ_SRV, FAILING_PRIVILEGED_LAB, HUB_LAB, INSTRUCTOR_LAB, IPV6_LAB, NON_PRIVILEGED_LAB,
+    OLD_PC3, OLD_SRV, PC1, PC2, PC3, PRIVILEGED_INSTRUCTOR_LAB, PRIVILEGED_LAB, PROJECTS, R1_VLAN10,
+    ROOT_OWNED_DIRS_CMD, SHARED_LAB, SRE_PY, SWITCH_LAB, _info, _lab_hash, _project_dirs, _sre, _sre_user,
+    _user_public_dir, no_exam)
 
 ENGINE = PodmanEngine()     # asked as root: its commands run as the sre account, like those of the CLI
 START_TIMEOUT = 1800        # seconds: the first start pulls the image and copies it for the uid range
@@ -69,6 +75,40 @@ OPTIONS_LAB = NON_PRIVILEGED_LAB.replace(
         'client': {},
     }""")
 assert 'deliberate failure' in FAILING_LAB and 'no-such-image' in MISSING_IMAGE_LAB and 'exec_commands' in OPTIONS_LAB
+
+# gw has one lab interface (eth0), so its outside interface is eth1, and a port published in a
+# range of a hundred; pc1 reaches the outside through the NAT of gw
+OUTSIDE_LAB = '''
+from dataclasses import dataclass
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state
+
+title = "podman lifecycle test (outside interface)"
+
+
+@dataclass(slots=True)
+class Data(Data0):
+    @classmethod
+    def generate(cls):
+        return cls()
+
+
+class NetScheme(NetScheme0):
+    _machine_specs = {'gw': {'bridged': True, 'ports': ['184XX:80/tcp']}, 'pc1': {}}
+    _topology = {'lan': ['gw', 'pc1']}
+
+    @sre_state()
+    def initial(self):
+        self.cmd('gw', 'ip addr add 10.97.0.1/24 dev eth0')
+        self.cmd('gw', 'iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE')
+        self.cmd('pc1', 'ip addr add 10.97.0.2/24 dev eth0')
+        self.cmd('pc1', 'ip route add default via 10.97.0.1')
+
+
+class Grade(Grade0):
+    def grade(self):
+        super().grade()
+        self.add_grade_element(title='dummy', grade=0, max_grade=1)
+'''
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +171,9 @@ def labs_dir():
     for name, text in (('non_privileged.py', NON_PRIVILEGED_LAB), ('privileged.py', PRIVILEGED_LAB),
                        ('shared.py', SHARED_LAB), ('ipv6.py', IPV6_LAB), ('hubs.py', HUB_LAB),
                        ('instructor.py', INSTRUCTOR_LAB), ('failing.py', FAILING_LAB),
-                       ('missing_image.py', MISSING_IMAGE_LAB), ('options.py', OPTIONS_LAB)):
+                       ('missing_image.py', MISSING_IMAGE_LAB), ('options.py', OPTIONS_LAB),
+                       ('outside.py', OUTSIDE_LAB), ('failing_privileged.py', FAILING_PRIVILEGED_LAB),
+                       ('instructor_privileged.py', PRIVILEGED_INSTRUCTOR_LAB)):
         (d / name).write_text(text)
     shutil.copy(SWITCH_LAB, d / 'switch_modes.py')
     for f in d.iterdir():
@@ -511,6 +553,292 @@ class TestSharedDirectories:
 
 
 # ---------------------------------------------------------------------------
+# Switches and managed switches
+# ---------------------------------------------------------------------------
+
+def _ping(running_lab_name, machine, address):
+    return _run(running_lab_name, machine, f'ping -c 2 -w 4 {address}')[0] == 0
+
+
+def _switches(lab_hash):
+    """The networks of a project that are not hubs, with their mode, as the engine left them."""
+    path = Path(ENGINE._network_dir(lab_hash), 'networks.json')
+    return {name: entry['mode'] for name, entry in json.loads(path.read_text()).items()} if path.exists() else {}
+
+
+class TestSwitchModes:
+    """The Podman counterpart of `TestSwitchModes` of the Docker tests, on the same lab
+    (`tests/labs/switch_test_lab.py`); save / restore is not available yet."""
+
+    def test_only_a_hub_shows_the_traffic_to_a_third_machine(self, labs_dir, projects):
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'switch_modes.py')
+        # hub: pc2 sees what srv sends to pc3
+        assert _sees_traffic(running_lab_name, 'pc2', 'eth1', 'srv', OLD_SRV, OLD_PC3), "a hub floods every frame"
+        # plain switch: pc1 captures what r1 sends to it (the capture works there), not what r1 sends to srv
+        assert _sees_traffic(running_lab_name, 'pc1', 'eth1', 'r1', DMZ_R1, DMZ_PC1)
+        assert not _sees_traffic(running_lab_name, 'pc1', 'eth1', 'r1', DMZ_R1, DMZ_SRV), \
+            "a switch sends a frame to its destination only"
+        # managed switch, the three PCs in VLAN 10: the same inside a VLAN
+        r = _sre('state', running_lab_name, 'move')
+        assert r.returncode == 0, r.stderr
+        assert _sees_traffic(running_lab_name, 'pc3', 'eth0', 'pc1', PC1, PC3)
+        assert not _sees_traffic(running_lab_name, 'pc3', 'eth0', 'pc1', PC1, PC2), \
+            "a managed switch is a switch inside a VLAN"
+        _stop(running_lab_name, lab_hash)
+
+    def test_modes_vlans_console_and_states(self, labs_dir, projects, no_exam):
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'switch_modes.py')
+        assert _switches(lab_hash) == {'lan': 'managed', 'dmz': 'switch', 'closed': 'managed', 'hid': 'managed'}
+        assert _info(running_lab_name)['switches'] == [
+            {'name': 'lan', 'mode': 'managed', 'allow_connection': True},
+            {'name': 'dmz', 'mode': 'switch', 'allow_connection': True},
+            {'name': 'closed', 'mode': 'managed', 'allow_connection': False},
+            {'name': 'old', 'mode': 'hub', 'allow_connection': True},
+        ]
+        # one IP subnet: only the VLANs separate pc2 (VLAN 20) from pc1 and pc3 (VLAN 10)
+        assert _ping(running_lab_name, 'pc1', PC3), "pc1 and pc3 are both in VLAN 10"
+        assert not _ping(running_lab_name, 'pc1', PC2), "pc2 is in VLAN 20"
+        if _run(running_lab_name, 'r1', 'ip link show eth0.10')[0] == 0:    # the 8021q module of the host
+            assert _ping(running_lab_name, 'pc1', R1_VLAN10), "r1 reaches VLAN 10 tagged on its trunk port"
+
+        # the console, for a privileged user; the ports read as the grading code reads them
+        r = _sre('exec', running_lab_name, 'lan', 'vlan/print')
+        assert r.returncode == 0 and 'VLAN 0010' in r.stdout and 'VLAN 0020' in r.stdout, (r.stdout, r.stderr)
+        r = _sre('exec', running_lab_name, 'lan', 'vlan/create', '10')
+        assert r.returncode == 17 and 'error:' in r.stderr, (r.returncode, r.stderr)
+        r = _sre('exec', running_lab_name, 'dmz', 'vlan/print')
+        assert r.returncode == 1 and 'device dmz is a switch: it has no console' in r.stderr, r.stderr
+        r = _sre('exec', running_lab_name, 'lan', 'port/allprint')
+        assert r.returncode == 0 and 'kathara pc1:eth0' in r.stdout and 'kathara r1:eth0' in r.stdout, r.stdout
+        ports = ENGINE.switch_ports(lab_hash, 'lan')
+        by_endpoint = {port['endpoints'][0]: (number, port['vlan'], port['tagged_vlans'])
+                       for number, port in ports.items() if port['endpoints']}
+        assert by_endpoint == {'pc1:eth0': (1, 10, []), 'pc2:eth0': (2, 20, []), 'pc3:eth0': (3, 10, []),
+                               'r1:eth0': (4, 0, [10, 20])}, ports
+
+        # the console, for a student: the commands of the allow-list only
+        r = _sre_user('connect', running_lab_name, 'lan', input='vlan/print\nport/remove 1\nshutdown\nexit\n')
+        assert r.returncode == 0, r.stderr
+        assert 'VLAN 0010' in r.stdout, r.stdout
+        assert "command 'port/remove' is not allowed" in r.stderr, r.stderr
+        assert "command 'shutdown' is not allowed" in r.stderr, r.stderr
+        r = _sre('exec', running_lab_name, 'lan', 'port/print')
+        assert r.returncode == 0 and 'pc1:eth0' in r.stdout, "the refused commands did not reach the switch"
+        r = _sre_user('connect', running_lab_name, 'closed', input='vlan/print\n')
+        assert r.returncode == 1 and 'connection to device closed is not allowed' in r.stderr, r.stderr
+        r = _sre_user('connect', running_lab_name, 'hid', input='vlan/print\n')
+        assert r.returncode == 1 and 'device hid is unknown' in r.stderr, r.stderr
+        # what no user may send, whoever asks
+        r = _sre('exec', running_lab_name, 'lan', 'shutdown')
+        assert r.returncode == 1 and 'Operation not permitted' in r.stderr, (r.returncode, r.stderr)
+
+        # a state runs a switch command: pc2 joins VLAN 10; the grade reads the switch
+        def grades():
+            r = _sre('eval', running_lab_name)
+            assert r.returncode == 0, r.stderr
+            return {g['title']: g['grade'] for g in json.loads(r.stdout)['grades']}
+
+        assert grades() == {'pc2 in the VLAN of pc1': 0, 'pc1 reaches pc2': 0}
+        r = _sre_user('state', running_lab_name, 'move')
+        assert r.returncode == 0, r.stderr
+        assert _ping(running_lab_name, 'pc1', PC2), "the state moved the port of pc2 to VLAN 10"
+        assert grades() == {'pc2 in the VLAN of pc1': 1, 'pc1 reaches pc2': 1}
+        r = _sre('state', running_lab_name, 'back')
+        assert r.returncode == 0, r.stderr
+        assert not _ping(running_lab_name, 'pc1', PC2)
+        _stop(running_lab_name, lab_hash)
+
+    def test_switches_carry_large_frames(self, labs_dir, projects):
+        """The switch program of SRE has the frame buffer of the Kathara network plugin: an MTU
+        of 9000 crosses a plain switch and, inside a VLAN, a managed one."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'switch_modes.py')
+        for machine, interface in (('r1', 'eth1'), ('srv', 'eth0'), ('pc1', 'eth0'), ('pc3', 'eth0')):
+            assert _run(running_lab_name, machine, f'ip link set dev {interface} mtu 9000')[0] == 0
+        for payload in (1472, 4000, 8972):
+            rc, out = _run(running_lab_name, 'r1', f'ping -c 2 -i 0.2 -W 2 -M do -s {payload} {DMZ_SRV}')
+            assert rc == 0, f"plain switch, payload {payload}:\n{out}"
+            rc, out = _run(running_lab_name, 'pc1', f'ping -c 2 -i 0.2 -W 2 -M do -s {payload} {PC3}')
+            assert rc == 0, f"managed switch, payload {payload}:\n{out}"
+
+
+# ---------------------------------------------------------------------------
+# The outside interface
+# ---------------------------------------------------------------------------
+
+class _Listener:
+    """A TCP service of the host answering `hello`, on *address* and a port the system gives."""
+
+    def __init__(self, address):
+        self._socket = socket.socket()
+        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._socket.bind((address, 0))
+        self._socket.listen(8)
+        self.port = self._socket.getsockname()[1]
+        self.peers = []
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self):
+        while True:
+            try:
+                connection, peer = self._socket.accept()
+            except OSError:
+                return
+            self.peers.append(peer[0])
+            with connection:
+                connection.sendall(b'hello\n')
+
+    def close(self):
+        self._socket.close()
+
+
+def _greeting(running_lab_name, machine, address, port):
+    """What *machine* reads from *address*:*port* (`hello` from a listener above, '' when closed)."""
+    return _run(running_lab_name, machine,
+                f"timeout 4 bash -c 'exec 3<>/dev/tcp/{address}/{port} && head -c 5 <&3' 2>/dev/null")[1]
+
+
+class TestOutsideInterface:
+    @pytest.fixture
+    def listeners(self):
+        everywhere, loopback = _Listener('0.0.0.0'), _Listener('127.0.0.1')
+        yield everywhere, loopback
+        everywhere.close()
+        loopback.close()
+
+    def test_as_the_bridge_of_docker_from_inside(self, labs_dir, projects):
+        """The interface after the lab interfaces, with the address and the default route a
+        container gets on Docker's bridge; no IPv6, the MTU of a bridge; the files Kathara
+        leaves plain are plain files."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'outside.py')
+        _wait_started(running_lab_name, 'gw')
+        host = params.sre_host_ip
+        rc, out = _run(running_lab_name, 'gw', '; '.join([
+            'ip -4 -o addr show dev eth1 | tr -s " " | cut -d" " -f2-4', 'ip route show default',
+            'cat /sys/class/net/eth1/mtu', 'cat /proc/sys/net/ipv6/conf/eth1/disable_ipv6',
+            # (a host whose kernel has the gre or bonding modules shows their own devices in every machine)
+            'ls -d /sys/class/net/eth* | tr "\\n" " "; echo', 'echo "resolv.conf: $(wc -c < /etc/resolv.conf)"',
+            'grep -c " /etc/resolv.conf \\| /etc/hosts " /proc/self/mountinfo', 'tail -1 /etc/hosts']))
+        assert out.splitlines() == [
+            'eth1 inet 172.17.0.2/16', f'default via {host} dev eth1 ', '1500', '1', '/sys/class/net/eth0 /sys/class/net/eth1 ',
+            'resolv.conf: 0', '0', '127.0.1.1 gw'], out
+        # what the labs do on a gateway: the route exists already, as under Docker
+        rc, out = _run(running_lab_name, 'gw', f'ip route add 0.0.0.0/0 via {host} 2>&1')
+        assert rc != 0 and 'File exists' in out
+        _stop(running_lab_name, lab_hash)
+
+    def test_the_host_and_beyond(self, labs_dir, projects, listeners):
+        """The host answers at `sre_host_ip` (the X11 displays, a capture sent to the host), its
+        services bound to its loopback only do not; a machine behind the gateway reaches the
+        same through the gateway's NAT."""
+        everywhere, loopback = listeners
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'outside.py')
+        host = params.sre_host_ip
+        assert _greeting(running_lab_name, 'gw', host, everywhere.port) == 'hello'
+        assert _greeting(running_lab_name, 'gw', host, loopback.port) == '', "a loopback-only service of the host is open"
+        assert _run(running_lab_name, 'gw', f'ping -c 1 -W 2 {host}')[0] == 0
+        assert _ping(running_lab_name, 'pc1', '10.97.0.1')
+        assert _greeting(running_lab_name, 'pc1', host, everywhere.port) == 'hello', "through the NAT of the gateway"
+        assert _greeting(running_lab_name, 'pc1', host, loopback.port) == ''
+        assert len(everywhere.peers) == 2 and loopback.peers == []
+        _stop(running_lab_name, lab_hash)
+        assert ENGINE.run(['pgrep', '-u', str(params.sre_uid), '-c', 'pasta']).stdout.strip() == b'0'
+
+    def test_a_published_port(self, labs_dir, projects):
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'outside.py')
+        (published,) = next(m for m in _info(running_lab_name)['machines'] if m['name'] == 'gw')['ports']
+        port = int(published.split(':')[0])
+        assert 18400 <= port <= 18499 and published.endswith(':80/tcp'), published
+        assert _run(running_lab_name, 'gw', 'cd /tmp && (nohup python3 -m http.server 80 >/dev/null 2>&1 &) ; sleep 1')[0] == 0
+        with urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=5) as answer:
+            assert answer.status == 200
+        _stop(running_lab_name, lab_hash)
+        with pytest.raises(OSError):
+            urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=2)
+
+
+# ---------------------------------------------------------------------------
+# Privileged machines (systemd)
+# ---------------------------------------------------------------------------
+
+def _left_running():
+    """The processes of the uids of the machines (the subordinate ids of the account)."""
+    first = int(ENGINE.podman(['unshare', 'awk', '$1 == 1 {print $2}', '/proc/self/uid_map']).stdout.split()[0])
+    listing = subprocess.run(['ps', '-eo', 'uid=,args='], capture_output=True, text=True).stdout
+    return [line.strip()[:80] for line in listing.splitlines() if int(line.split()[0]) >= first]
+
+
+class TestPrivilegedMachines:
+    def test_a_systemd_machine(self, labs_dir, projects):
+        """`privileged` is a rootless container too: systemd runs, its services answer as soon
+        as `sre start` returns, and nothing of the host is given."""
+        if not params.allow_privileged_machines:
+            pytest.skip("params.allow_privileged_machines is False")
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'privileged.py')
+        assert {name: c['State'] for name, c in _containers(lab_hash).items()} == {'srv': 'running', 'client': 'running'}
+        # no wait here: the deployment returned once systemd was up
+        rc, out = _run(running_lab_name, 'srv', 'systemctl is-system-running; cat /proc/1/comm; ls /tmp/EOS')
+        assert out.splitlines()[0] in ('running', 'degraded') and out.splitlines()[1:] == ['systemd', '/tmp/EOS'], out
+        rc, out = _run(running_lab_name, 'srv', 'systemctl start ssh && systemctl is-active ssh && journalctl -q --no-pager -u ssh | wc -l')
+        assert rc == 0 and out.splitlines()[0] == 'active' and int(out.splitlines()[1]) > 0, out
+        # every capability inside, a writable /proc/sys without the remount of the plain machines...
+        rc, out = _run(running_lab_name, 'srv', 'grep CapEff /proc/1/status | cut -f2; sysctl -w net.ipv4.ip_forward=0 && '
+                                                'sysctl -w net.ipv4.conf.all.src_valid_mark=1 >/dev/null && cat /proc/sys/net/ipv4/ip_forward')
+        assert rc == 0 and out.splitlines()[0].endswith('ffffffffff') and out.splitlines()[-1] == '0', out
+        # ... and nothing of the host: its root is an ordinary uid, the kernel's own settings are out of reach
+        host_uid = _host_uid(lab_hash, 'srv')
+        assert host_uid not in (0, params.sre_uid) and host_uid > 65535
+        assert _run(running_lab_name, 'srv', 'sysctl -w kernel.sysrq=1')[0] != 0
+        assert _run(running_lab_name, 'srv', 'dmesg')[0] != 0
+        _stop(running_lab_name, lab_hash)
+        assert _left_running() == []
+
+    def test_a_failed_start_leaves_nothing(self, labs_dir):
+        """The lab fails in its `initial` state: the machines run, the command has dropped root."""
+        if not params.allow_privileged_machines:
+            pytest.skip("params.allow_privileged_machines is False")
+        before, projects_before = _everything(), _project_dirs()
+        r = _sre('start', '-p', str(labs_dir / 'failing_privileged.py'), timeout=START_TIMEOUT)
+        assert r.returncode != 0 and 'deliberate failure after deploy' in r.stderr, r.stderr[-3000:]
+        assert _everything() == before and _project_dirs() == projects_before
+        assert _left_running() == []
+
+    def test_states_and_evaluations_as_a_student(self, labs_dir, projects, no_exam):
+        """The instructor lab with a systemd router: the commands keep root for such a lab and
+        call the engine as root; a state and an evaluation from the student path."""
+        if not params.allow_privileged_machines:
+            pytest.skip("params.allow_privileged_machines is False")
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'instructor_privileged.py')
+        assert _run(running_lab_name, 'router', 'cat /root/from_initial') == (0, 'from-initial\n')
+        r = _sre_user('state', running_lab_name, 'broken')
+        assert r.returncode == 0, r.stderr
+        assert _run(running_lab_name, 'router', 'cat /root/state') == (0, 'broken\n')
+        r = _sre('state', running_lab_name, 'final')
+        assert r.returncode == 0, r.stderr
+        assert _run(running_lab_name, 'router', 'cat /root/state; cat /root/solution') == (0, 'final\nthe solution\n')
+        for evaluate in (_sre, _sre_user):
+            r = evaluate('eval', running_lab_name)
+            assert r.returncode == 0 and 'Traceback' not in r.stderr, r.stderr
+
+    def test_eval_all_with_two_privileged_projects(self, labs_dir, projects):
+        """The evaluations of several projects run in threads, each raising and lowering the
+        effective uid of the process around its engine calls."""
+        if not params.allow_privileged_machines:
+            pytest.skip("params.allow_privileged_machines is False")
+        if _project_dirs():
+            pytest.skip("sre eval-all would evaluate projects that are not the test's")
+        first, _ = _start(projects, labs_dir / 'privileged.py')
+        time.sleep(1)
+        second, _ = _start(projects, labs_dir / 'privileged.py')
+        for _ in range(3):
+            r = _sre('eval-all', '--no-display-grades')
+            assert r.returncode == 0 and 'Traceback' not in r.stderr and 'cannot run' not in r.stderr, r.stderr[-3000:]
+            time.sleep(1.1)     # an archive is named after the second of its evaluation
+        for running_lab_name in (first, second):
+            archives = [p for d in params.archive_dirs if os.path.isdir(d) for p in Path(d).rglob(f'*{running_lab_name}*')]
+            assert len(archives) >= 3, (running_lab_name, archives)
+
+
+# ---------------------------------------------------------------------------
 # Failures and refusals
 # ---------------------------------------------------------------------------
 
@@ -529,16 +857,6 @@ class TestFailures:
             assert 'Traceback' not in r.stderr, r.stderr[-3000:]
         assert _everything() == before
         assert _project_dirs() == projects_before
-
-    @pytest.mark.parametrize('lab_file, said', [
-        ('privileged.py', "sre: machine 'srv': a privileged machine is not available with the Podman engine yet"),
-        ('switch_modes.py', "is not available with the Podman engine yet (hubs only)"),
-    ])
-    def test_a_lab_the_engine_cannot_run_yet(self, labs_dir, lab_file, said):
-        before, projects_before = _everything(), _project_dirs()
-        r = _sre('start', '-p', str(labs_dir / lab_file))
-        assert r.returncode == 1 and said in r.stderr and 'Traceback' not in r.stderr, r.stderr[-3000:]
-        assert _everything() == before and _project_dirs() == projects_before
 
     def test_save_is_refused_and_the_project_goes_on(self, labs_dir, projects, tmp_path):
         running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')

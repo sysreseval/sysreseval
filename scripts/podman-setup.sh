@@ -9,7 +9,12 @@
 #     the networks are its units, and it makes the user namespace of Podman after each boot;
 #   - the directory podman_dir gets the configuration and the image store of the engine;
 #   - the user namespace of the account is created, and Podman is asked to answer both as the
-#     account and with the group the sre command runs with (docker_gid).
+#     account and with the group the sre command runs with (docker_gid);
+#   - the quota of kernel keys of a user is raised (/etc/sysctl.d/60-sre-podman.conf): the
+#     services of a machine running systemd each use one.
+# It also says what the engine would refuse on this host: a lab with a switch without the switch
+# program (`make vde-switch`), a machine with an outside interface without pasta or without the
+# host address sre_host_ip.
 #
 # The values come from params.py of this tree; each can be given in the environment instead:
 # PODMAN_USER, PODMAN_DIR, PODMAN_UID_RANGES, and PODMAN_SUBID_FIRST (the first subordinate
@@ -25,7 +30,7 @@ RANGE_SIZE=65536
 
 case "${1:-}" in
     -h|--help)
-        sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
         echo "usage: $(basename "$0")"
         exit 0;;
 esac
@@ -123,6 +128,21 @@ fi
 with_group "$cli_gid" podman info --format 'podman {{.Version.Version}}, {{.Host.OCIRuntime.Name}}, images in {{.Store.GraphRoot}} ({{.Store.GraphDriverName}})' \
     || fail "podman does not answer as $user with the group $cli_gid"
 with_group "$cli_gid" systemd-run --user --collect --wait --quiet true || fail "the user manager of $user does not run a unit"
+
+# ---- the key quota of a project ---------------------------------------------------------
+keys_conf=/etc/sysctl.d/60-sre-podman.conf
+if [ "$(sysctl -n kernel.keys.maxkeys)" -lt 20000 ] || [ "$(sysctl -n kernel.keys.maxbytes)" -lt 2000000 ]; then
+    install -m 0644 -o root -g root "$ROOT/scripts/etc/sre-podman.conf" "$keys_conf"
+    sysctl -q -p "$keys_conf"
+    echo "written: $keys_conf (kernel.keys.maxkeys = $(sysctl -n kernel.keys.maxkeys))"
+fi
+
+# ---- what a lab may need on top ---------------------------------------------------------
+switch="$(param vde_switch_program)"
+[ -x "$switch" ] || note "no switch program ($switch): a lab with a 'switch' or 'managed' network is refused. Build it with: make vde-switch"
+command -v pasta >/dev/null 2>&1 || note "pasta is not installed (Debian package passt): a lab with an outside interface ('bridged') is refused."
+host_ip="$(param sre_host_ip)"
+ip -4 -o addr show | grep -q " $host_ip/" || note "no interface of this host has $host_ip (sre_host_ip; the bridge of Docker has it where Docker runs): a lab with an outside interface is refused."
 
 if id -Gn "$user" | tr ' ' '\n' | grep -qx "$(getent group "$cli_gid" | cut -d: -f1)" && [ "$cli_gid" != "$gid" ]; then
     note "$user is a member of the group $(getent group "$cli_gid" | cut -d: -f1) (docker_gid of params.py): what runs as $user can reach the Docker daemon."

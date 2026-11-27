@@ -65,10 +65,11 @@ docker_socket_path = "/var/run/docker.sock"   # absent: no Docker daemon on this
 self_update_allowed = None   # None: True (checkout), False (fhs: the package is updated with apt); `sre update`
 network_plugin_hint = None   # None: how to install the network plugin with the switch types, by layout
 kathara_hint = None          # None: how to get a Kathara with the switch modes, by layout
-container_engine = "kathara"   # what runs the machines: "kathara" (Docker through Kathara) or "podman" (rootless Podman under sre_user, set up by `make podman-setup`; non-privileged machines on hub networks only for now)
+container_engine = "kathara"   # what runs the machines: "kathara" (Docker through Kathara) or "podman" (rootless Podman under sre_user, set up by `make podman-setup`; no save / restore yet)
 container_engine_by_host = {}  # host name -> engine, for the hosts that differ from container_engine: {"s17": "podman"}
 podman_dir = None            # None: sre_pub_dir/podman: configuration and image store of the Podman engine (a local disk, never NFS)
 podman_uid_ranges = 32       # Podman engine: each project runs in a uid range of its own, so this is how many projects a host runs at once (1: they all share one range)
+vde_switch_program = None    # None: main_sre_dir/bin/sre-vde-switch: the switch of the Podman engine for 'switch' and 'managed' networks, built by `make vde-switch`; the vde_switch of Debian ("/usr/bin/vde_switch") loses the frames above 1518 bytes
 web_dir = None              # None: main_sre_dir/web (checkout), /usr/share/sysreseval/web (fhs): templates and static files of sre-web
 web_config_file = None       # None: /etc/sreweb/web.toml (checkout), /etc/sysreseval/web.toml (fhs): configuration of sre-web
 agent_config_file = None     # None: /etc/sreweb/agent.toml (checkout), /etc/sysreseval/agent.toml (fhs): configuration of sre-agent
@@ -310,6 +311,8 @@ if kathara_hint is None:
     kathara_hint = "upgrade the python3-kathara package" if _fhs else "install it again with `make venv`"
 if podman_dir is None:
     podman_dir = sre_pub_dir + "/podman"
+if vde_switch_program is None:
+    vde_switch_program = main_sre_dir + "/bin/sre-vde-switch"
 if web_dir is None:
     web_dir = "/usr/share/sysreseval/web" if _fhs else main_sre_dir + "/web"
 if web_config_file is None:

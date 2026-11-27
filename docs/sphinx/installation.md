@@ -341,6 +341,7 @@ systemctl enable --now sre-wipe-at-shutdown.service
 | `make install` | `check-debug-mode` + `sre-wrapper` + `wrappers`. |
 | `make network-plugin` | Kathara VDE network plugin with the switch types, built from the fork and installed in place of the stock plugin (see [Network plugin for the switch types](#network-plugin-for-the-switch-types)). |
 | `make podman-setup` | Prepares the host for the Podman engine, as root: subordinate uids of the `sre` account, its user manager, the directory of the engine (see [Podman engine](#podman-engine-rootless-containers)). |
+| `make vde-switch` | `bin/sre-vde-switch`: the switch of the Podman engine for the networks of mode `switch` and `managed`, the `vde_switch` of the Kathara network plugin built from a pinned, checksummed archive (see [Podman engine](#podman-engine-rootless-containers)). |
 | `make translations` | Compile Qt `.ts → .qm` and gettext `.po → .mo`. |
 | `make docs` | API docs (pdoc) + main docs (Sphinx) → `docs/html/main/`, `docs/html/api/`, `docs/documentation.pdf`. |
 | `make set-debug-mode` / `make remove-debug-mode` | Flip `debug_mode` in `src/SRE/params.py`. |
@@ -424,7 +425,7 @@ Without it `sre start` of a lab that uses a switch fails — Kathara's message (
 
 ### Podman engine (rootless containers)
 
-By default the machines of a lab are Docker containers started through Kathara, and the root of a machine is root on the host. With the **Podman engine** they are rootless Podman containers of the `sre` account: the root of a machine is an unprivileged uid of the host (one of the *subordinate* uids of the account, a different range for each running project), the networks are VDE hubs run by SRE itself, and neither the Docker daemon nor Kathara takes part.
+By default the machines of a lab are Docker containers started through Kathara, and the root of a machine is root on the host. With the **Podman engine** they are rootless Podman containers of the `sre` account: the root of a machine is an unprivileged uid of the host (one of the *subordinate* uids of the account, a different range for each running project), the networks are VDE hubs and switches run by SRE itself, and neither the Docker daemon nor Kathara takes part.
 
 The engine is chosen in `params.py`, for the whole site or host by host:
 
@@ -435,21 +436,27 @@ container_engine_by_host = {"s17": "podman", "s18": "podman"}   # the hosts that
 
 A host is looked up by the name it gives itself (`hostname`), then by that name cut at its first dot. The second parameter is what lets one `params.py`, shared by every workstation of a room, put a few of them on Podman first. An unknown engine name, in either parameter, ends every `sre` command with a message naming the parameter.
 
-**For now the Podman engine runs non-privileged machines on hub networks.** `sre start` refuses, with one line and before anything is created, a lab that has a privileged machine, a machine with an outside interface (`bridged`) or published ports, or a network that is a switch or a managed switch; `sre save` and `sre restore` are refused too. Everything else is the same for the students and for the web site: `start`, `connect`, `exec`, `state`, `eval`, `stop`, the same `info.json`.
+**Every lab starts with the Podman engine: hubs, switches and managed switches with their console, machines with an outside interface, privileged machines. `sre save` and `sre restore` are not available yet.** For the students and for the web site the commands, the pages and `info.json` are the same; what a machine is differs in a few places, listed under *What differs from Docker* below.
 
 A host is prepared once, as root:
 
 ```bash
-apt install podman uidmap vdeplug
+apt install podman uidmap vdeplug passt
+make vde-switch              # scripts/vde-switch-build.sh; once for a tree several hosts share
 make podman-setup            # scripts/podman-setup.sh
 ```
 
-The script reads `sre_user`, `podman_dir` and `podman_uid_ranges` in `params.py` (or `PODMAN_USER`, `PODMAN_DIR`, `PODMAN_UID_RANGES` in its environment) and changes nothing when run again:
+`make vde-switch` builds `bin/sre-vde-switch`, the program behind the networks of mode `switch` and `managed` (`vde_switch_program` in `params.py`). It is the switch of the Kathara network plugin: vde-2 at the commit the plugin pins, with the plugin's one change, a frame buffer of 16 kB instead of 1.5 kB, so that a switch carries the 9000-byte frames a hub carries. The build takes a few seconds and needs `curl`, `cmake` and a C compiler; the archive is checked against its SHA-256. Without that program a lab with a switch is refused, with a line naming the target. A site may name another `vde_switch` in `vde_switch_program`; the one of Debian's `vde-switch` package works but loses every frame above 1518 bytes. `passt` (the `pasta` program) is needed by the labs that have a machine with an outside interface, and only by them.
+
+The setup script reads `sre_user`, `podman_dir` and `podman_uid_ranges` in `params.py` (or `PODMAN_USER`, `PODMAN_DIR`, `PODMAN_UID_RANGES` in its environment) and changes nothing when run again:
 
 - it gives the account a range of subordinate uids and gids in `/etc/subuid` and `/etc/subgid`, large enough for `podman_uid_ranges` projects (32 by default: this is how many projects a host runs at once, `sre start` refusing the next one), starting at 20000000 or above the ranges other accounts already have (`PODMAN_SUBID_FIRST` to choose);
-- it starts the systemd user manager of the account at boot (`loginctl enable-linger`): the hubs of the networks are units of that manager, so they outlive the `sre` command that started them and are stopped with their project, and that manager makes the user namespace of Podman again after each boot (see below);
+- it starts the systemd user manager of the account at boot (`loginctl enable-linger`): the hubs and the switches of the networks are units of that manager, so they outlive the `sre` command that started them and are stopped with their project, and that manager makes the user namespace of Podman again after each boot (see below);
 - it creates `podman_dir` (`/var/lib/sre/podman` by default; a local disk, never NFS), which holds the configuration of the engine (`config/containers/containers.conf`) and its image store. A registry mirror goes in `config/containers/registries.conf`, written by the administrator;
-- it creates the user namespace of the account and checks that Podman answers with the group the `sre` command runs with (`docker_gid`), and that the user manager runs a unit.
+- it creates the user namespace of the account and checks that Podman answers with the group the `sre` command runs with (`docker_gid`), and that the user manager runs a unit;
+- it raises the quota of kernel keys of a user (`/etc/sysctl.d/60-sre-podman.conf`). Each service of a machine running systemd uses a key, counted against the uid of the root of the machine, which is an ordinary uid of the host: the default quota of 200 keys stops a project at a couple of dozen such machines.
+
+It ends by saying what the engine would refuse on the host: a lab with a switch when the switch program is missing, a lab with an outside interface when `pasta` is missing or when no interface of the host has the address `sre_host_ip`.
 
 The images of the labs are downloaded into the store of the engine, which is not Docker's: `sre preload-images` fills it, and a missing image is pulled by `sre start` (the progress of that download is not shown). A project started with a uid range the image was never used with takes a few seconds more, the time to copy the image for that range (about two seconds and little disk on btrfs, where the copy shares its blocks; not measured on ext4, where it is probably a full copy of the image).
 
@@ -457,7 +464,25 @@ Nothing else of `params.py` changes on a Podman host: the `sre` command still dr
 
 While the `sre` account is a member of the `docker` group, what runs as that account can still reach the Docker daemon (the script says so). On a host that only uses the Podman engine, take the account out of that group and set `docker_gid` to its own group: nothing of the engine then has access to Docker.
 
-Known limit of this engine, beside the kinds of labs it refuses: a machine cannot serve NFS from the kernel (the NFS lab does not work). The hubs carry frames of up to 9000 bytes, for the labs that raise the MTU of their links.
+#### What differs from Docker
+
+**Networks.** A hub is the hub of vdeplug4, a switch or a managed switch is a `vde_switch` as with the Kathara network plugin, with the same console: `sre connect <switch>`, `sre exec`, `switch_cmd()` in a state and `test_switch()` in a grade give the same outputs and the same error codes. The links are much faster than those of the plugin (several Gbit/s, where the plugin gives some 50 Mbit/s): a lab that counts on an unshaped link being slow sees a difference.
+
+**Privileged machines.** `privileged: True` gives a machine every capability *inside its own namespaces*, a writable `/proc/sys` and, when its entrypoint is an init, a real systemd (`systemctl`, the journal, the units of the image). It gives nothing of the host: the root of the machine is an ordinary uid, so there is no host device, no kernel log (`dmesg`), no kernel setting outside the network namespace (`kernel.*`), no module loaded with `modprobe`, no eBPF program, and `/sys` is read-only but for the control groups. Nested containers work (Docker, Compose and Vagrant's Docker provider in the `devops13` image). `sre start` returns once systemd is up in such a machine, a few seconds after its start, so the `initial` state of a lab can use `systemctl` at once.
+
+**The outside interface.** A `bridged` machine gets, after its lab interfaces, an interface made by pasta that looks like Docker's bridge from inside: the address 172.17.0.2/16, `default via 172.17.0.1`, IPv4 only, an MTU of 1500. The host answers at `sre_host_ip` (172.17.0.1: the X11 displays of the `x11_host` machines, a capture a student sends to the host), and its services bound to its loopback only do not. That address must be one of the host's own: it is Docker's bridge where Docker is installed; elsewhere `sre start` refuses a lab with an outside interface until an interface of the host has it. What is not as with Docker:
+
+- every bridged machine has the same address, so two of them cannot reach each other through the outside network, and the host cannot open a connection to a machine except through a published port (`ports`, bound on every address of the host, as with Docker);
+- pasta relays TCP, UDP and ping: a `traceroute` beyond the machine shows nothing;
+- the connections of a machine reach the services of the host and the Internet from an address of the host, as sockets of the `sre` account, not from 172.17.0.x: a rule a site wrote for `docker0` (to cut the Internet during an exam, for instance) does not see them.
+
+**Files.** What a machine writes in `shared/` or in a volume belongs to a subordinate uid of the account, not to root (a setuid file left there gives nothing on the host), and a machine cannot read a file a student left there with mode 600.
+
+**Labs that do not get every point.** The 8 labs of `lab/sre` and the 60 drafts of `lab/sre/_DRAFT_misc` were run on both engines, from an untouched project to their `final` state. All give the same points with both, but:
+
+- `nfs.py` (34 of 64): the NFS server of the kernel cannot be started in a rootless machine;
+- `quic.py` (86 of 107): nginx does not start with `quic_bpf on`, which loads an eBPF program; the four elements of that server are lost;
+- `kubernetes.py` (10 of 132): k3s does not come up. It first lacks the `cpuset` control group, which the user manager of the account does not hand down; `/dev/kmsg` and kernel settings it expects to write would come next.
 
 ### Dependencies
 
