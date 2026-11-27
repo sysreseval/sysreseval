@@ -150,6 +150,27 @@ class TestWipe:
         assert wipe_env['events'].index(('docker_wipe',)) < wipe_env['events'].index(('drop', 'permanent'))
         assert list(wipe_env['projects'].iterdir()) == []
 
+    @pytest.mark.parametrize('alive, exitcode', [(True, None), (False, 1)])
+    def test_an_engine_that_cannot_force_its_wipe_does_not_keep_the_directories(self, wipe_env, monkeypatch, capsys,
+                                                                                alive, exitcode):
+        """At a shutdown what the engine needs may be gone before `sre wipe` runs: the projects
+        must not be there at the next boot all the same."""
+        _populate(wipe_env)
+        monkeypatch.setattr(_FakeProcess, 'alive', alive)
+        monkeypatch.setattr(_FakeProcess, 'exitcode', exitcode)
+
+        def fails():
+            wipe_env['events'].append(('docker_wipe',))
+            raise RuntimeError("cannot run podman: no user manager")
+        monkeypatch.setattr(wipe_mod, '_docker_wipe', fails)
+        with pytest.raises(SystemExit) as exit_info:
+            wipe_mod.wipe()
+        assert exit_info.value.code == 1
+        assert "the machines of the projects may still run: cannot run podman: no user manager" in capsys.readouterr().err
+        kinds = [event[0] for event in wipe_env['events']]
+        assert kinds.index('docker_wipe') < kinds.index('rmtree') < kinds.index('drop')
+        assert not list(wipe_env['projects'].iterdir())
+
     def test_failed_kathara_wipe_falls_back_to_docker(self, wipe_env, monkeypatch):
         monkeypatch.setattr(_FakeProcess, 'exitcode', 1)
         wipe_mod.wipe()

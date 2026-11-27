@@ -11,7 +11,11 @@
 #   - the user namespace of the account is created, and Podman is asked to answer both as the
 #     account and with the group the sre command runs with (docker_gid);
 #   - the quota of kernel keys of a user is raised (/etc/sysctl.d/60-sre-podman.conf): the
-#     services of a machine running systemd each use one.
+#     services of a machine running systemd each use one;
+#   - the services of SRE installed on the host (the web agent, the wipe at shutdown, the preload
+#     of the images) are ordered after that user manager, by a drop-in each
+#     (/etc/systemd/system/<unit>.d/10-sre-podman.conf): at a shutdown they stop, evaluate and
+#     wipe the projects while the machines still run, where their unit files only know Docker.
 # It also says what the engine would refuse on this host: a lab with a switch without the switch
 # program (`make vde-switch`), a machine with an outside interface without pasta or without the
 # host address sre_host_ip.
@@ -19,7 +23,8 @@
 # The values come from params.py of this tree; each can be given in the environment instead:
 # PODMAN_USER, PODMAN_DIR, PODMAN_UID_RANGES, and PODMAN_SUBID_FIRST (the first subordinate
 # id, when the account has no range yet: 20000000, or above the ranges already given to other
-# accounts).  A registry mirror is the matter of the administrator:
+# accounts), PODMAN_ORDERED_UNITS (the services to order, separated by spaces; empty: none).
+# A registry mirror is the matter of the administrator:
 # <podman_dir>/config/containers/registries.conf.
 #
 # `make podman-setup` runs it from a checkout.
@@ -30,7 +35,7 @@ RANGE_SIZE=65536
 
 case "${1:-}" in
     -h|--help)
-        sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
         echo "usage: $(basename "$0")"
         exit 0;;
 esac
@@ -136,6 +141,26 @@ if [ "$(sysctl -n kernel.keys.maxkeys)" -lt 20000 ] || [ "$(sysctl -n kernel.key
     sysctl -q -p "$keys_conf"
     echo "written: $keys_conf (kernel.keys.maxkeys = $(sysctl -n kernel.keys.maxkeys))"
 fi
+
+# ---- the order of the services of SRE ---------------------------------------------------
+# A unit ordered after the user manager is stopped before it: the machines, their networks and
+# the namespace of Podman are there until the services that act on the projects are done.
+ordered_units=${PODMAN_ORDERED_UNITS-sre-agent.service sysreseval-agent.service sre-wipe-at-shutdown.service sre-preload-images.service sysreseval-preload-images.service}
+reload=
+for unit in $ordered_units; do
+    systemctl cat "$unit" >/dev/null 2>&1 || continue       # not installed on this host
+    dropin="/etc/systemd/system/$unit.d/10-sre-podman.conf"
+    wanted="$(printf '%s\n' "# written by scripts/podman-setup.sh of SRE: the Podman engine runs in the user manager of $user" \
+        '[Unit]' "Wants=user@$uid.service" "After=user@$uid.service")"
+    if [ "$(cat "$dropin" 2>/dev/null)" != "$wanted" ]; then
+        install -d -m 0755 "$(dirname "$dropin")"
+        printf '%s\n' "$wanted" > "$dropin"
+        chmod 0644 "$dropin"
+        echo "written: $dropin"
+        reload=1
+    fi
+done
+[ -z "$reload" ] || systemctl daemon-reload
 
 # ---- what a lab may need on top ---------------------------------------------------------
 switch="$(param vde_switch_program)"

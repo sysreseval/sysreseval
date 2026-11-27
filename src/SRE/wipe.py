@@ -54,12 +54,27 @@ def _remove_entries(base: Path, errors: list[str], keep: frozenset = frozenset()
             errors.append(f"{entry}: {e}")
 
 
+def _forced_wipe() -> str:
+    """The last resort of the engine when its own wipe hung or failed; what went wrong, `''`
+    when nothing did."""
+    try:
+        _docker_wipe()
+    except Exception as e:
+        return str(e) or type(e).__name__
+    return ''
+
+
 def wipe():
     """Undeploy every container, then remove every project dir and every user public dir while
     still root: the containers run as host root and leave root-owned files in `shared/` and the
     volume dirs that the sre user cannot delete.  Privileges are dropped permanently afterwards,
-    before the entries left behind (if any) are reported."""
+    before the entries left behind (if any) are reported.
+
+    An engine that cannot even force its wipe (at a shutdown, what it needs may be gone
+    already) does not keep the directories from being removed: a host must not come back with
+    the projects of the day before.  It is reported at the end, with exit status 1."""
     errors: list[str] = []
+    engine_error = ''
     gain_privileges()
     try:
         proc = multiprocessing.Process(target=_kathara_wipe_worker)
@@ -68,13 +83,16 @@ def wipe():
         if proc.is_alive():
             proc.kill()
             proc.join()
-            _docker_wipe()
+            engine_error = _forced_wipe()
         elif proc.exitcode != 0:
             # sometimes with privileged containers an error occurs
-            _docker_wipe()
+            engine_error = _forced_wipe()
         _remove_entries(Path(params.sre_projects_dir), errors)
         _remove_entries(Path(params.sre_user_public_dir), errors, keep=_KEEP_IN_USER_PUBLIC_DIR)
     finally:
         drop_privileges_permanently()
+    messages = [f"the machines of the projects may still run: {engine_error}"] if engine_error else []
     if errors:
-        error_quit(cannot_remove_message(errors))
+        messages.append(cannot_remove_message(errors))
+    if messages:
+        error_quit("\n".join(messages))

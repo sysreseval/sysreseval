@@ -14,15 +14,18 @@ address `params.sre_host_ip` on the host (Docker's bridge has it), the images of
 by the first start) and a writable directory listed in `params.authorized_src_dir` (the temporary
 labs are written there).  Excluded from `make tests`; run with `make podman-tests`.
 """
+import io
 import json
 import os
 import pty
+import re
 import select
 import shutil
 import signal
 import socket
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -47,12 +50,13 @@ if _HOST_ENGINE != params.container_engine_podman:
     pytest.skip("the container engine of this host is not Podman (container_engine / container_engine_by_host)",
                 allow_module_level=True)
 
-from SRE.engine.podman_engine import PodmanEngine, lab_hash_of  # noqa: E402
+from SRE.engine.podman_engine import PodmanEngine, lab_hash_of, project_slices  # noqa: E402
 from test_docker_lifecycle import (  # noqa: E402, F401  (no_exam: a fixture)
-    DMZ_PC1, DMZ_R1, DMZ_SRV, FAILING_PRIVILEGED_LAB, HUB_LAB, INSTRUCTOR_LAB, IPV6_LAB, NON_PRIVILEGED_LAB,
-    OLD_PC3, OLD_SRV, PC1, PC2, PC3, PRIVILEGED_INSTRUCTOR_LAB, PRIVILEGED_LAB, PROJECTS, R1_VLAN10,
-    ROOT_OWNED_DIRS_CMD, SHARED_LAB, SRE_PY, SWITCH_LAB, _info, _lab_hash, _project_dirs, _sre, _sre_user,
-    _user_public_dir, no_exam)
+    CHANGES_OF_THE_SAVED_ROUTER, DMZ_PC1, DMZ_R1, DMZ_SRV, FAILING_PRIVILEGED_LAB, HUB_LAB, INSTRUCTOR_LAB, IPV6_LAB,
+    KEYED_LAB, NON_PRIVILEGED_LAB, OLD_PC3, OLD_SRV, PC1, PC2, PC3, PRIVILEGED_INSTRUCTOR_LAB, PRIVILEGED_LAB,
+    PROJECTS, R1_VLAN10, ROOT_OWNED_DIRS_CMD, SAVED_WITH_DOCKER, SHARED_LAB, SRE_PY, STUDENT, SWITCH_LAB,
+    _archive_of_another_engine, _assert_instructor_project, _assert_normal_project, _assert_owned_by_sre, _info,
+    _lab_hash, _operations_log, _project_dirs, _sre, _sre_user, _user_public_dir, _with_inner_archive, no_exam)
 
 ENGINE = PodmanEngine()     # asked as root: its commands run as the sre account, like those of the CLI
 START_TIMEOUT = 1800        # seconds: the first start pulls the image and copies it for the uid range
@@ -74,7 +78,12 @@ OPTIONS_LAB = NON_PRIVILEGED_LAB.replace(
                    'envs': {'LAB_VARIABLE=a value': True}, 'ulimits': {'nofile=1234:1234': True}},
         'client': {},
     }""")
+# the lab with a systemd machine, which may be saved
+SAVED_PRIVILEGED_LAB = PRIVILEGED_LAB.replace('title = "docker lifecycle test (privileged)"',
+                                              'title = "podman lifecycle test (privileged, saved)"\n'
+                                              'allow_save_restore = True')
 assert 'deliberate failure' in FAILING_LAB and 'no-such-image' in MISSING_IMAGE_LAB and 'exec_commands' in OPTIONS_LAB
+assert 'allow_save_restore = True' in SAVED_PRIVILEGED_LAB
 
 # gw has one lab interface (eth0), so its outside interface is eth1, and a port published in a
 # range of a hundred; pc1 reaches the outside through the NAT of gw
@@ -128,10 +137,11 @@ def _units(lab_hash=''):
 
 
 def _leftovers(lab_hash):
-    """Everything that still belongs to a project."""
+    """Everything that still belongs to a project: its containers, the units of its networks and
+    of its interfaces, the slice of its machines, its directory."""
     directory = Path(ENGINE._network_dir(lab_hash))
     return sorted(c['Names'][0] for c in _containers(lab_hash).values()) + _units(lab_hash + '-') \
-        + ([str(directory)] if directory.exists() else [])
+        + _units(lab_hash + '.slice') + ([str(directory)] if directory.exists() else [])
 
 
 def _everything():
@@ -173,7 +183,8 @@ def labs_dir():
                        ('instructor.py', INSTRUCTOR_LAB), ('failing.py', FAILING_LAB),
                        ('missing_image.py', MISSING_IMAGE_LAB), ('options.py', OPTIONS_LAB),
                        ('outside.py', OUTSIDE_LAB), ('failing_privileged.py', FAILING_PRIVILEGED_LAB),
-                       ('instructor_privileged.py', PRIVILEGED_INSTRUCTOR_LAB)):
+                       ('instructor_privileged.py', PRIVILEGED_INSTRUCTOR_LAB), ('keyed.py', KEYED_LAB),
+                       ('privileged_saved.py', SAVED_PRIVILEGED_LAB)):
         (d / name).write_text(text)
     shutil.copy(SWITCH_LAB, d / 'switch_modes.py')
     for f in d.iterdir():
@@ -216,6 +227,30 @@ def _stop(running_lab_name, lab_hash):
     assert r.returncode == 0, r.stderr
     assert _leftovers(lab_hash) == [], "left after sre stop"
     assert not (PROJECTS / running_lab_name).exists()
+
+
+def _save(running_lab_name, save_file):
+    r = _sre('save', running_lab_name, '-o', str(save_file))
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert Path(save_file).read_bytes().startswith(params.save_file_magic)
+
+
+def _restore(projects, save_file, *options):
+    before = _project_dirs()
+    r = _sre('restore', *options, str(save_file), timeout=START_TIMEOUT)
+    assert r.returncode == 0, f"sre restore failed:\n{r.stderr[-3000:]}"
+    new = _project_dirs() - before
+    assert len(new) == 1, f"expected exactly one new project, got {new}"
+    running_lab_name = new.pop()
+    projects.append((running_lab_name, _lab_hash(running_lab_name)))
+    return running_lab_name, _lab_hash(running_lab_name)
+
+
+def _images():
+    """The images of the store of the engine."""
+    result = ENGINE.podman(['images', '--format', '{{.Repository}}:{{.Tag}} {{.ID}}'])
+    assert result.returncode == 0, result.stderr
+    return sorted(result.stdout.decode().splitlines())
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +296,24 @@ class TestStartStop:
         host_uid = _host_uid(lab_hash, 'router')
         assert host_uid not in (0, params.sre_uid) and host_uid > 65535, host_uid
         assert _host_uid(lab_hash, 'client') == host_uid, "one range for the machines of a project"
+
+    def test_the_machines_of_a_project_are_in_its_slice(self, labs_dir, projects):
+        """Where the web agent reads what a project uses: one cgroup per machine in the slice of
+        the project, readable by root, with the files it reads; gone with the project."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        project_slice = Path(project_slices()) / f'srelab-{lab_hash}.slice'
+        scopes = sorted(p.name for p in project_slice.iterdir() if p.name.startswith('libpod-')
+                        and not p.name.startswith('libpod-conmon-'))
+        ids = sorted(ENGINE.podman(['inspect', '--format', '{{.Id}}', ENGINE._container_name(lab_hash, machine)])
+                     .stdout.decode().strip() for machine in ('router', 'client'))
+        assert scopes == [f'libpod-{cid}.scope' for cid in ids]
+        for scope in scopes:
+            assert int((project_slice / scope / 'memory.current').read_text()) > 0
+            assert 'inactive_file ' in (project_slice / scope / 'memory.stat').read_text()
+            assert 'usage_usec ' in (project_slice / scope / 'cpu.stat').read_text()
+        assert _units(lab_hash + '.slice') == [f'srelab-{lab_hash}.slice']
+        _stop(running_lab_name, lab_hash)
+        assert not project_slice.exists()
 
     def test_two_projects_have_two_uid_ranges(self, labs_dir, projects):
         first, first_hash = _start(projects, labs_dir / 'non_privileged.py')
@@ -568,7 +621,25 @@ def _switches(lab_hash):
 
 class TestSwitchModes:
     """The Podman counterpart of `TestSwitchModes` of the Docker tests, on the same lab
-    (`tests/labs/switch_test_lab.py`); save / restore is not available yet."""
+    (`tests/labs/switch_test_lab.py`)."""
+
+    def test_restore_keeps_the_declared_switch_configuration(self, labs_dir, projects, tmp_path, no_exam):
+        """A save file gives back the types of switch and the declared VLANs; what was changed
+        on the console afterwards is not saved."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'switch_modes.py')
+        r = _sre('state', running_lab_name, 'move')
+        assert r.returncode == 0, r.stderr
+        assert _ping(running_lab_name, 'pc1', PC2)
+
+        _save(running_lab_name, tmp_path / 'switches.sre')
+        restored, restored_hash = _restore(projects, tmp_path / 'switches.sre')
+        assert _switches(restored_hash) == _switches(lab_hash) != {}
+        assert _ping(restored, 'pc1', PC3), "restore() configured the addresses again, pc3 is in VLAN 10"
+        assert not _ping(restored, 'pc1', PC2), "pc2 is back in its declared VLAN 20"
+        r = _sre('exec', restored, 'lan', 'vlan/print')
+        assert r.returncode == 0 and 'VLAN 0020' in r.stdout, (r.stdout, r.stderr)
+        _stop(restored, restored_hash)
+        _stop(running_lab_name, lab_hash)
 
     def test_only_a_hub_shows_the_traffic_to_a_third_machine(self, labs_dir, projects):
         running_lab_name, lab_hash = _start(projects, labs_dir / 'switch_modes.py')
@@ -839,6 +910,288 @@ class TestPrivilegedMachines:
 
 
 # ---------------------------------------------------------------------------
+# sre save / sre restore
+# ---------------------------------------------------------------------------
+
+# Every kind of change a save carries, made in /root and in the image of a machine.
+CHANGES = r'''
+set -e
+cd /root
+echo added > added
+echo changed >> /etc/issue
+rm -f /etc/issue.net
+rm -rf /usr/share/doc/tar
+mkdir -p newdir/sub && echo inside > newdir/sub/file
+mkdir emptydir && chmod 700 emptydir
+chmod 711 /srv
+ln -s /etc/issue symlink
+ln added hardlink
+mkfifo fifo
+echo owned > owned && chown 1000:33 owned && chmod 640 owned
+touch -d '2001-02-03 04:05:06' added
+cp /bin/true capable && setcap cap_net_raw+ep capable
+printf x > 'with space'
+printf x > ./-dash
+printf x > "$(printf 'new\nline')"
+printf x > 'accent-é'
+printf x > "$(printf 'bad-\377-name')"
+long=$(printf 'n%.0s' $(seq 1 150)); mkdir "$long" && echo long > "$long/$long"
+rm -rf /usr/share/doc/bash && echo 'now a file' > /usr/share/doc/bash
+rm -f /etc/debian_version && mkdir /etc/debian_version && echo x > /etc/debian_version/x
+rm -f /var/lock && mkdir /var/lock && echo x > /var/lock/x
+rm -f /etc/motd && ln -s /etc/issue /etc/motd
+echo not-saved > /tmp/in-tmp
+echo not-saved > /run/in-run
+'''
+# What a machine holds of them, in a form that compares: the type, owner, mode, size, time and
+# link count of what was saved as it is, the type, owner and mode of the directories that came
+# back for their content, the names of /root byte by byte (the files the save() and restore() of
+# the lab write there apart), the contents, what is gone.
+STATE = r'''
+cd /
+for p in root/added root/hardlink root/newdir/sub/file root/emptydir srv root/symlink root/fifo root/owned \
+         root/capable 'root/with space' root/-dash root/accent-é usr/share/doc/bash etc/debian_version/x \
+         var/lock/x etc/motd etc/issue; do
+    stat -c '%n %F %u:%g %a %s %Y %h' "./$p"
+done
+for p in root/newdir root/newdir/sub etc/debian_version var/lock; do stat -c '%n %F %u:%g %a' "./$p"; done
+readlink root/symlink etc/motd
+getcap root/capable
+tail -1 etc/issue; cat usr/share/doc/bash root/n*/n*
+ls root | grep -v '_hook$' | LC_ALL=C sort | od -An -c | tr -s ' \n' ' '; echo
+ls -d etc/issue.net usr/share/doc/tar 2>&1 | wc -l
+'''
+
+
+class TestSaveRestore:
+    """The counterparts of the Docker tests of the same name, and what is this engine's own."""
+
+    def test_restore_then_stop_both_instances(self, labs_dir, projects, tmp_path):
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        assert _run(running_lab_name, 'router', 'echo marker > /root/marker')[0] == 0
+        images = _images()
+        _save(running_lab_name, tmp_path / 'project.sre')
+        # the lab's save() hook ran in the original instance before the capture
+        rc, out = _run(running_lab_name, 'router', 'cat /root/save_hook; ls /root')
+        assert rc == 0 and 'saved' in out and 'restore_hook' not in out, out
+        assert _leftovers(lab_hash) != [] and _images() == images
+        # nothing of the save is left where it worked
+        assert list(Path(params.save_tmp_dir).iterdir()) == []
+
+        restored, restored_hash = _restore(projects, tmp_path / 'project.sre')
+        assert restored != running_lab_name and restored_hash != lab_hash
+        containers = _containers(restored_hash)
+        assert set(containers) == {'router', 'client'}
+        assert all(c['State'] == 'running' for c in containers.values())
+        # the restored machines run the images of the lab, and no image was made to hold their files
+        assert {name: c['Image'] for name, c in containers.items()} == \
+            {name: c['Image'] for name, c in _containers(lab_hash).items()}
+        assert _images() == images
+        rc, out = _run(restored, 'router', 'cat /root/marker /root/from_initial /root/save_hook /root/restore_hook')
+        assert rc == 0 and out.split() == ['marker', 'from-initial', 'saved', 'restored'], out
+        # another project: a range of ids of its own
+        assert _host_uid(restored_hash, 'router') != _host_uid(lab_hash, 'router')
+        _stop(restored, restored_hash)
+        _stop(running_lab_name, lab_hash)
+
+    def test_a_restored_project_saved_again_restores_with_both_sessions(self, labs_dir, projects, tmp_path):
+        """Save, restore, work on, save again: the second file holds the changes of both
+        sessions, those of the first being in the machine itself and not in an image of this host."""
+        first, first_hash = _start(projects, labs_dir / 'non_privileged.py')
+        images = _images()
+        # a file added, a file of the image changed, a file of the image deleted
+        assert _run(first, 'router', 'echo one > /root/first && echo changed > /etc/issue && rm /etc/issue.net')[0] == 0
+        _save(first, tmp_path / 'a.sre')
+
+        second, second_hash = _restore(projects, tmp_path / 'a.sre')
+        rc, out = _run(second, 'router', 'cat /root/first /etc/issue; ls /etc/issue.net')
+        assert out.split() == ['one', 'changed'], out
+        # the second session: another file, the deleted one made again, another one deleted,
+        # and the file of the first session removed
+        assert _run(second, 'router', 'echo two > /root/second && echo again > /etc/issue.net && '
+                                      'rm /etc/motd /root/first')[0] == 0
+        _save(second, tmp_path / 'b.sre')
+        _stop(second, second_hash)
+        _stop(first, first_hash)
+
+        third, third_hash = _restore(projects, tmp_path / 'b.sre')
+        rc, out = _run(third, 'router', 'cat /root/second /etc/issue /etc/issue.net /root/from_initial; '
+                                        'ls /root/first /etc/motd 2>&1 | grep -c "No such file"')
+        assert out.split() == ['two', 'changed', 'again', 'from-initial', '2'], out
+        _stop(third, third_hash)
+        assert _images() == images
+
+    def test_encrypted_round_trip(self, labs_dir, projects, tmp_path):
+        pytest.importorskip('cryptography')
+        lab_file = labs_dir / 'keyed.py'
+        running_lab_name, lab_hash = _start(projects, lab_file)
+        _save(running_lab_name, tmp_path / 'keyed.sre')
+        magic, header, payload = (tmp_path / 'keyed.sre').read_bytes().split(b'\n', 2)
+        assert json.loads(header)[params.save_meta_encrypted] is True
+        assert b'data.json' not in payload, "encrypted payload must not expose tar member names"
+
+        restored, restored_hash = _restore(projects, tmp_path / 'keyed.sre')
+        rc, out = _run(restored, 'router', 'cat /root/from_initial /root/save_hook /root/restore_hook')
+        assert rc == 0 and out.split() == ['from-initial', 'saved', 'restored'], out
+
+        # a lab whose key changed cannot restore the file any more
+        lab_file.write_text(KEYED_LAB.replace('docker-tests-key', 'another-key'))
+        try:
+            before, projects_before = _everything(), _project_dirs()
+            r = _sre('restore', str(tmp_path / 'keyed.sre'))
+            assert r.returncode != 0 and 'cannot decrypt' in r.stderr, (r.returncode, r.stderr[-500:])
+            assert _project_dirs() == projects_before and _everything() == before
+        finally:
+            lab_file.write_text(KEYED_LAB)
+        _stop(restored, restored_hash)
+        _stop(running_lab_name, lab_hash)
+
+    def test_every_kind_of_change_comes_back(self, labs_dir, projects, tmp_path):
+        """Owners, modes, times, links, a pipe, file capabilities, names of every kind, and what
+        changed its type: a directory that became a file, a file and a link that became
+        directories (`podman diff` fails on such a machine).  A socket and what is in /tmp and
+        /run are not saved, as with Docker."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        rc, out = _run(running_lab_name, 'router', CHANGES)
+        assert rc == 0, out
+        rc, state = _run(running_lab_name, 'router', STATE)
+        assert rc == 0 and 'No such file' not in state, state
+        assert 'cap_net_raw=ep' in state and state.rstrip().endswith('\n2'), state
+        _save(running_lab_name, tmp_path / 'p.sre')
+        # the machine goes on as it was
+        assert _run(running_lab_name, 'router', STATE) == (0, state)
+
+        restored, restored_hash = _restore(projects, tmp_path / 'p.sre')
+        rc, restored_state = _run(restored, 'router', STATE)
+        assert restored_state == state
+        assert _run(restored, 'router', 'ls /tmp/in-tmp /run/in-run')[0] != 0
+        # the changes of the restored machine are those of the saved one: a save of it would hold them
+        _save(restored, tmp_path / 'again.sre')
+        _stop(restored, restored_hash)
+        again, again_hash = _restore(projects, tmp_path / 'again.sre')
+        assert _run(again, 'router', STATE)[1] == state
+        _stop(again, again_hash)
+        _stop(running_lab_name, lab_hash)
+
+    def test_a_systemd_machine_boots_with_its_saved_files(self, labs_dir, projects, tmp_path):
+        """The files go back before the first process: a unit enabled in the saved machine runs
+        at the boot of the restored one."""
+        if not params.allow_privileged_machines:
+            pytest.skip("params.allow_privileged_machines is False")
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'privileged_saved.py')
+        unit = ('[Unit]\nDescription=saved marker\n[Service]\nType=oneshot\n'
+                'ExecStart=/bin/sh -c "echo booted > /run/saved-marker"\n[Install]\nWantedBy=multi-user.target\n')
+        rc, out = _run(running_lab_name, 'srv', f"printf '{unit}' > /etc/systemd/system/saved-marker.service && "
+                                                   "systemctl enable saved-marker.service 2>&1 && ls /run/saved-marker 2>&1")
+        assert rc != 0 and 'No such file' in out, "the unit is enabled and has not run in the saved machine"
+        _save(running_lab_name, tmp_path / 'p.sre')
+
+        restored, restored_hash = _restore(projects, tmp_path / 'p.sre')
+        rc, out = _run(restored, 'srv', 'cat /proc/1/comm; systemctl is-enabled saved-marker.service; '
+                                        'cat /run/saved-marker')
+        assert out.split() == ['systemd', 'enabled', 'booted'], out
+        _stop(restored, restored_hash)
+        _stop(running_lab_name, lab_hash)
+        assert _left_running() == []
+
+    def test_restore_in_instructor_mode(self, labs_dir, projects, tmp_path):
+        """A save file does not carry the mode: `sre restore` gives a normal project, whatever
+        the saved one was, and `sre restore --instructor-mode` one in instructor mode."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'instructor.py', '--instructor-mode')
+        save_file = tmp_path / 'project.sre'
+        _save(running_lab_name, save_file)
+        assert 'instructor_mode' not in json.loads(save_file.read_bytes().split(b'\n', 2)[1])
+
+        plain, plain_hash = _restore(projects, save_file)
+        _assert_normal_project(plain)
+        assert not _operations_log(plain).exists()
+
+        restored, restored_hash = _restore(projects, save_file, '--instructor-mode')
+        _assert_instructor_project(restored)
+        _assert_owned_by_sre(_operations_log(restored), 0o644)
+        assert re.search(r'^=== .*  state restore$', _operations_log(restored).read_text(), re.MULTILINE)
+        assert _run(restored, 'router', 'cat /root/from_initial') == (0, 'from-initial\n')
+
+        # the student path cannot ask for the mode
+        before = _project_dirs()
+        with open(save_file, 'rb') as f:
+            r = _sre_user('restore', '--instructor-mode', params.save_stdio_arg, stdin=f)
+        assert r.returncode == 1 and '--instructor-mode is not available in user mode' in r.stderr, r.stderr
+        assert _project_dirs() == before
+        for name, h in ((restored, restored_hash), (plain, plain_hash), (running_lab_name, lab_hash)):
+            _stop(name, h)
+
+    def test_a_student_saves_and_restores(self, labs_dir, projects, tmp_path):
+        """The student path: the save on the standard output, the restore from the standard
+        input; the new project is the student's."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        assert _run(running_lab_name, 'router', 'echo marker > /root/marker')[0] == 0
+        env = dict(os.environ, LOGNAME='root', SUDO_USER=STUDENT, USER_USERNAME=STUDENT)
+        env.pop('SUDO_COMMAND', None)
+        with open(tmp_path / 'p.sre', 'wb') as out:
+            r = subprocess.run([sys.executable, '-W', 'ignore', str(SRE_PY), '--user', 'save', running_lab_name],
+                               stdout=out, stderr=subprocess.PIPE, env=env, timeout=600)
+        assert r.returncode == 0, r.stderr.decode()[-3000:]
+        assert (tmp_path / 'p.sre').read_bytes().startswith(params.save_file_magic)
+
+        before = _project_dirs()
+        with open(tmp_path / 'p.sre', 'rb') as f:
+            r = _sre_user('restore', params.save_stdio_arg, stdin=f, timeout=START_TIMEOUT)
+        assert r.returncode == 0, r.stderr[-3000:]
+        (restored,) = _project_dirs() - before
+        restored_hash = _lab_hash(restored)
+        projects.append((restored, restored_hash))
+        assert restored.endswith(f'@@@{STUDENT}')
+        assert _run(restored, 'router', 'cat /root/marker /root/restore_hook') == (0, 'marker\nrestored\n')
+        r = _sre_user('stop', restored)
+        assert r.returncode == 0, r.stderr
+        assert _leftovers(restored_hash) == [] and not (PROJECTS / restored).exists()
+        _stop(running_lab_name, lab_hash)
+
+    def test_a_save_made_with_docker_restores_here(self, labs_dir, projects, tmp_path):
+        """A pool may have hosts of both engines, and a saved project restores on any of them:
+        an archive the Kathara fork wrote on a Docker host."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        _save(running_lab_name, tmp_path / 'here.sre')
+        image = _containers(lab_hash)['router']['Image']
+        _with_inner_archive(tmp_path / 'here.sre',
+                            _archive_of_another_engine(SAVED_WITH_DOCKER, image[len('docker.io/'):]),
+                            tmp_path / 'docker.sre')
+        restored, restored_hash = _restore(projects, tmp_path / 'docker.sre')
+        assert _containers(restored_hash)['router']['Image'] == image
+        rc, out = _run(restored, 'router', 'cat /root/first /etc/issue /root/from_initial /root/restore_hook; '
+                                           'ls /etc/issue.net 2>&1 | grep -c "No such file"')
+        assert out.split() == ['one', 'changed', 'from-initial', 'restored', '1'], out
+        _stop(restored, restored_hash)
+        _stop(running_lab_name, lab_hash)
+
+    def test_the_archive_the_docker_tests_restore(self, labs_dir, projects, tmp_path):
+        """`tests/data/kathara_save_podman.tar.gz`, which the Docker tests restore, is what this
+        engine writes for the same changes: the same manifest, machines, images, deletions and changed files."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        assert _run(running_lab_name, 'router', CHANGES_OF_THE_SAVED_ROUTER)[0] == 0
+        _save(running_lab_name, tmp_path / 'p.sre')
+        _stop(running_lab_name, lab_hash)
+
+        def content(inner):
+            with tarfile.open(fileobj=io.BytesIO(inner)) as tar:
+                manifest = json.loads(tar.extractfile('manifest.json').read())
+                machines = {m['name']: (m['original_image'].split(':')[0], m['deletions']) for m in manifest['machines']}
+                with tarfile.open(fileobj=tar.extractfile('images/router.diff.tar')) as diff:
+                    router = {member.name: diff.extractfile(member).read() for member in diff if member.isfile()}
+                # the rest of a diff is what the start of a machine writes: it follows the image
+                return (manifest['save_mode'], list(manifest), machines,
+                        {name: router.get(name) for name in ('root/first', 'etc/issue', 'etc/issue.net')})
+
+        with open(tmp_path / 'p.sre', 'rb') as f:
+            f.readline(), f.readline()
+            with tarfile.open(fileobj=f, mode='r|') as payload:
+                written = next(payload.extractfile(m).read() for m in payload if m.name == params.save_kathara_name)
+        kept = _archive_of_another_engine('kathara_save_podman.tar.gz', 'sysreseval/base13:0')
+        assert content(written) == content(kept)
+
+
+# ---------------------------------------------------------------------------
 # Failures and refusals
 # ---------------------------------------------------------------------------
 
@@ -858,14 +1211,51 @@ class TestFailures:
         assert _everything() == before
         assert _project_dirs() == projects_before
 
-    def test_save_is_refused_and_the_project_goes_on(self, labs_dir, projects, tmp_path):
+    def test_a_save_of_whole_images_is_refused_and_the_project_goes_on(self, labs_dir, projects, tmp_path):
         running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
-        r = _sre('save', '-o', str(tmp_path / 'p.sre'), running_lab_name)
+        r = _sre('save', '--full-images', '-o', str(tmp_path / 'p.sre'), running_lab_name)
         assert r.returncode == 1 and 'Traceback' not in r.stderr
-        assert r.stderr.strip().endswith("sre: save / restore is not available with the Podman engine yet"), r.stderr
+        assert r.stderr.strip().endswith("sre: a save of whole images (--full-images) is not available with the "
+                                         "Podman engine"), r.stderr
         assert not (tmp_path / 'p.sre').exists()
         assert _run(running_lab_name, 'router', 'cat /root/from_initial') == (0, 'from-initial\n')
         assert _run(running_lab_name, 'router', 'test -e /root/save_hook')[0] == 1, "the save state was applied"
+
+    def test_a_project_with_a_stopped_machine_is_not_saved(self, labs_dir, projects, tmp_path):
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        assert ENGINE.podman(['stop', '--time', '0', ENGINE._container_name(lab_hash, 'client')]).returncode == 0
+        r = _sre('save', '-o', str(tmp_path / 'p.sre'), running_lab_name)
+        assert r.returncode == 1 and 'Traceback' not in r.stderr
+        assert r.stderr.strip().endswith("sre: machine 'client' is not running: a project with a stopped machine "
+                                         "cannot be saved with the Podman engine"), r.stderr
+        assert _run(running_lab_name, 'router', 'cat /root/from_initial') == (0, 'from-initial\n')
+        _stop(running_lab_name, lab_hash)
+
+    def test_a_restore_that_cannot_put_the_files_back_leaves_nothing(self, labs_dir, projects, tmp_path):
+        """A device node, which a machine of this engine cannot make: the restore says which
+        machine and why, and nothing of the new project is left."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        _save(running_lab_name, tmp_path / 'p.sre')
+        diff = io.BytesIO()
+        with tarfile.open(fileobj=diff, mode='w') as tar:
+            node = tarfile.TarInfo('srv/null')
+            node.type, node.devmajor, node.devminor = tarfile.CHRTYPE, 1, 3
+            tar.addfile(node)
+        inner = io.BytesIO()
+        with tarfile.open(fileobj=inner, mode='w') as tar:
+            for name, data in (('manifest.json', json.dumps({'save_mode': 'diff', 'machines': [
+                    {'name': 'router', 'original_image': _containers(lab_hash)['router']['Image'],
+                     'deletions': []}]}).encode()), ('images/router.diff.tar', diff.getvalue())):
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        _with_inner_archive(tmp_path / 'p.sre', inner.getvalue(), tmp_path / 'node.sre')
+        before, projects_before = _everything(), _project_dirs()
+        r = _sre('restore', str(tmp_path / 'node.sre'), timeout=START_TIMEOUT)
+        assert r.returncode == 1 and 'Traceback' not in r.stderr, r.stderr[-3000:]
+        assert "machine 'router': its saved files could not be put back: tar: srv/null: Cannot mknod" in r.stderr
+        assert _everything() == before and _project_dirs() == projects_before
+        _stop(running_lab_name, lab_hash)
 
     def test_a_stopped_machine_is_not_running(self, labs_dir, projects):
         running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')

@@ -9,6 +9,9 @@ server on a unix socket answering ``GET /containers/json`` with its containers, 
     ...
     await docker.stop()
 
+``FakePodman`` is the same for a host whose engine is Podman: no daemon, the cgroup tree alone,
+with a slice per project in the user manager of the account of the engine.
+
 Run as a program it is a fake host for the fake pool (``scripts/web-fake-pool.py --usage``): it
 follows the projects directory of an agent on the fake ``sre`` and gives each project containers
 that use memory and processor time (``Simulation``).
@@ -21,6 +24,76 @@ from aiohttp import web
 MIB = 1024 * 1024
 SYSTEMD, CGROUPFS = 'systemd', 'cgroupfs'
 LAYOUTS = {SYSTEMD: 'system.slice/docker-{id}.scope', CGROUPFS: 'docker/{id}'}
+
+
+def write_cgroup(directory, *, mem: int | None = None, inactive_file: int | None = None,
+                 cpu_usec: int | None = None):
+    """The files of a cgroup the sampler reads (those given)."""
+    directory = Path(directory)
+    if mem is not None:
+        (directory / 'memory.current').write_text(f"{mem}\n")
+    if inactive_file is not None:
+        (directory / 'memory.stat').write_text(f"anon 4096\nfile 8192\ninactive_file {inactive_file}\nactive_file 0\n")
+    if cpu_usec is not None:
+        (directory / 'cpu.stat').write_text(f"usage_usec {cpu_usec}\nuser_usec {cpu_usec}\nsystem_usec 0\n")
+
+
+def remove_cgroup(directory):
+    for path in Path(directory).iterdir():
+        path.unlink()
+    Path(directory).rmdir()
+
+
+class FakePodman:
+    """The cgroups of the machines a Podman engine runs for the account of uid ``UID``: under
+    the user manager of the account, ``srelab.slice`` holds one ``srelab-<lab_hash>.slice`` per
+    project, with for each container its ``libpod-<id>.scope`` and, beside it, the scope of its
+    monitor process (which is not the container).  The user manager runs from the start; the
+    slices appear with the first container."""
+    UID = 1100
+    USER_MANAGER = f'user.slice/user-{UID}.slice/user@{UID}.service'
+
+    def __init__(self, directory):
+        self.directory = Path(directory)
+        self.cgroup_root = self.directory / 'cgroup'
+        self.user_manager = self.cgroup_root / self.USER_MANAGER
+        self.user_manager.mkdir(parents=True, exist_ok=True)
+        self.slices = self.user_manager / 'srelab.slice'
+        self.containers: dict = {}      # id -> its lab hash
+        self._serial = 0
+
+    def config(self, **more) -> dict:
+        """The ``[usage]`` table of the agent.toml of an agent measuring this host."""
+        return {'podman_slices': str(self.slices), 'cgroup_root': str(self.cgroup_root), **more}
+
+    def _directory(self, cid: str) -> Path:
+        return self.slices / f"srelab-{self.containers[cid]}.slice" / f"libpod-{cid}.scope"
+
+    def add(self, lab_hash: str, *, mem: int = 0, inactive_file: int = 0, cpu_usec: int = 0) -> str:
+        """A new running container of the project *lab_hash*.  Returns its id."""
+        self._serial += 1
+        cid = f"{self._serial:064x}"
+        self.containers[cid] = lab_hash
+        directory = self._directory(cid)
+        directory.mkdir(parents=True)
+        write_cgroup(directory, mem=mem, inactive_file=inactive_file, cpu_usec=cpu_usec)
+        monitor = directory.with_name(f"libpod-conmon-{cid}.scope")
+        monitor.mkdir()
+        write_cgroup(monitor, mem=2 * MIB, inactive_file=0, cpu_usec=1000)
+        return cid
+
+    def set(self, cid: str, **figures):
+        write_cgroup(self._directory(cid), **figures)
+
+    def remove(self, cid: str):
+        """The container ended: its scope and the one of its monitor go, the slice stays."""
+        directory = self._directory(cid)
+        remove_cgroup(directory)
+        remove_cgroup(directory.with_name(f"libpod-conmon-{cid}.scope"))
+        del self.containers[cid]
+
+    def host_cpu(self, usec: int):
+        write_cgroup(self.cgroup_root, cpu_usec=usec)
 
 
 class FakeDocker:
@@ -62,25 +135,17 @@ class FakeDocker:
             cpu_usec: int | None = None):
         """The figures of a container: its ``memory.current``, the ``inactive_file`` of its
         ``memory.stat`` and the ``usage_usec`` of its ``cpu.stat`` (those given)."""
-        directory = self._directory(cid)
-        if mem is not None:
-            (directory / 'memory.current').write_text(f"{mem}\n")
-        if inactive_file is not None:
-            (directory / 'memory.stat').write_text(f"anon 4096\nfile 8192\ninactive_file {inactive_file}\nactive_file 0\n")
-        if cpu_usec is not None:
-            (directory / 'cpu.stat').write_text(f"usage_usec {cpu_usec}\nuser_usec {cpu_usec}\nsystem_usec 0\n")
+        write_cgroup(self._directory(cid), mem=mem, inactive_file=inactive_file, cpu_usec=cpu_usec)
 
     def remove(self, cid: str):
         directory = self._directory(cid)
         if directory is not None:
-            for path in directory.iterdir():
-                path.unlink()
-            directory.rmdir()
+            remove_cgroup(directory)
         del self.containers[cid]
 
     def host_cpu(self, usec: int):
         """The processor time the whole host has used: the ``cpu.stat`` of the root cgroup."""
-        (self.cgroup_root / 'cpu.stat').write_text(f"usage_usec {usec}\nuser_usec {usec}\nsystem_usec 0\n")
+        write_cgroup(self.cgroup_root, cpu_usec=usec)
 
     # -- the daemon -----------------------------------------------------------------------------
 

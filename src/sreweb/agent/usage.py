@@ -1,18 +1,27 @@
 """What the running projects use: the containers of each project, their memory and their
 processor time, with the processors the whole host uses.  Every ``[usage] interval`` seconds the
-sampler asks the Docker daemon which containers Kathara runs (one request on its socket: the
-``lab_hash`` label of a container names its project) and reads what each uses in its cgroup
-(version 2: ``memory.current``, ``memory.stat``, ``cpu.stat``).  The status of the agent carries
-the figures to the portal, which learns from them what a project of each lab costs
-(``portal/costs.py``).
+sampler finds the containers of the projects and reads what each uses in its cgroup (version 2:
+``memory.current``, ``memory.stat``, ``cpu.stat``).  The status of the agent carries the figures
+to the portal, which learns from them what a project of each lab costs (``portal/costs.py``).
+
+Where the containers are found depends on the container engine of the host:
+
+* Kathara: the Docker daemon is asked which containers Kathara runs (one request on its socket:
+  the ``lab_hash`` label of a container names its project);
+* Podman: nothing is asked.  The engine gives the machines of a project a slice of their own of
+  the user manager of its account, ``<podman_slices>/srelab-<lab_hash>.slice``, where each
+  machine is a ``libpod-<container id>.scope``: the directory is listed.
+
+The figures mean the same with both (the machines of the project, nothing of what links them):
+the portal learns one cost per lab from all its hosts.
 
 A project is **settled** once the set of its containers has stayed the same for
 ``SETTLE_AFTER`` seconds: the boot of the containers is left out of its figures, and a container
 created again starts the count again.  Its processor figure is the mean number of cores it used
 since then (not what it burns this second: an evaluation or a compilation is a burst).
 
-Nothing here is a limit: a host without Docker socket or without cgroup v2 gives no figure, and
-the portal goes on with what the labs declare.
+Nothing here is a limit: a host without Docker socket, without the user manager of the Podman
+account or without cgroup v2 gives no figure, and the portal goes on with what the labs declare.
 
 No ``SRE`` import: the portal reads the wire constants of this module."""
 import asyncio
@@ -54,6 +63,12 @@ KATHARA_FILTER = json.dumps({'label': ['app=kathara']}, separators=(',', ':'))
 LAB_HASH_LABEL = 'lab_hash'
 LAB_HASH_KEY = 'lab_hash'   # of info.json
 CONTAINER_ID_RE = re.compile(r'[0-9a-f]{64}')
+#: Podman: the cgroup of a container in the slice of its project (the scope of its monitor
+#: process, ``libpod-conmon-<id>.scope``, is beside it and is not the container), and what a lab
+#: hash is made of (never a path built from anything else).
+PODMAN_SCOPE_RE = re.compile(r'libpod-([0-9a-f]{64})\.scope')
+PODMAN_LAB_HASH_RE = re.compile(r'[A-Za-z0-9]+')
+SLICE_SUFFIX = '.slice'
 MIB = 1024 * 1024
 
 
@@ -85,29 +100,63 @@ def cpu_usec(directory: str) -> int | None:
     return parse_stat(text).get('usage_usec') if text is not None else None
 
 
+def read_cgroup(directory: str) -> tuple:
+    """``(memory in bytes, processor time in microseconds)`` of the cgroup *directory*: its
+    working set (``memory.current`` less the ``inactive_file`` of ``memory.stat``: the pages of
+    files the kernel gives back at once, what ``docker stats`` leaves out too) and the
+    ``usage_usec`` of its ``cpu.stat``, each ``None`` when it cannot be read."""
+    memory = None
+    current = _read(os.path.join(directory, 'memory.current'))
+    if current is not None:
+        with contextlib.suppress(ValueError):
+            stat = _read(os.path.join(directory, 'memory.stat'))
+            inactive = parse_stat(stat).get('inactive_file', 0) if stat is not None else 0
+            memory = max(0, int(current.strip()) - inactive)
+    return memory, cpu_usec(directory)
+
+
 def read_container(root: str, cid: str) -> tuple:
-    """``(memory in bytes, processor time in microseconds)`` of the container *cid* from its
-    cgroup under *root*: its working set (``memory.current`` less the ``inactive_file`` of
-    ``memory.stat``: the pages of files the kernel gives back at once, what ``docker stats``
-    leaves out too) and the ``usage_usec`` of its ``cpu.stat``, each ``None`` when it cannot be
-    read; ``(None, None)`` for a container without cgroup directory in either layout of
+    """``read_cgroup()`` of the Docker container *cid* from its cgroup under *root*;
+    ``(None, None)`` for a container without cgroup directory in either layout of
     ``CGROUP_DIRS`` (cgroup v1, another cgroup parent, a container that just ended) and for an
     id that is not one (never a path built from anything else)."""
     if not isinstance(cid, str) or not CONTAINER_ID_RE.fullmatch(cid):
         return None, None
     for layout in CGROUP_DIRS:
         directory = os.path.join(root, layout.format(id=cid))
-        if not os.path.isdir(directory):
-            continue
-        memory = None
-        current = _read(os.path.join(directory, 'memory.current'))
-        if current is not None:
-            with contextlib.suppress(ValueError):
-                stat = _read(os.path.join(directory, 'memory.stat'))
-                inactive = parse_stat(stat).get('inactive_file', 0) if stat is not None else 0
-                memory = max(0, int(current.strip()) - inactive)
-        return memory, cpu_usec(directory)
+        if os.path.isdir(directory):
+            return read_cgroup(directory)
     return None, None
+
+
+def podman_containers(slices: str, lab_hashes) -> tuple:
+    """The containers of the projects *lab_hashes* on a host whose engine is Podman:
+    ``({lab_hash: [container id]}, {container id: its cgroup directory})``, from the slices of
+    the projects in the directory *slices* (the cgroup of a slice ``srelab.slice``: a project is
+    the slice ``srelab-<lab_hash>.slice`` inside it, as systemd names the slices of a slice).
+    A project without slice has no container.  Raises ``OSError`` when the directory above
+    *slices* is not there: the user manager of the account of the engine does not run, nothing
+    can be measured.  Run in a thread."""
+    slices = slices.rstrip('/')
+    os.stat(os.path.dirname(slices))
+    name = os.path.basename(slices)
+    prefix = name[:-len(SLICE_SUFFIX)] if name.endswith(SLICE_SUFFIX) else name
+    by_lab: dict = {}
+    where: dict = {}
+    for lab_hash in lab_hashes:
+        if not isinstance(lab_hash, str) or not PODMAN_LAB_HASH_RE.fullmatch(lab_hash):
+            continue
+        directory = os.path.join(slices, f'{prefix}-{lab_hash}{SLICE_SUFFIX}')
+        try:
+            entries = os.listdir(directory)
+        except OSError:
+            continue
+        for entry in entries:
+            match = PODMAN_SCOPE_RE.fullmatch(entry)
+            if match:
+                by_lab.setdefault(lab_hash, []).append(match.group(1))
+                where[match.group(1)] = os.path.join(directory, entry)
+    return by_lab, where
 
 
 def containers_by_lab(body) -> dict:
@@ -127,10 +176,12 @@ def containers_by_lab(body) -> dict:
     return found
 
 
-def _read_all(root: str, ids) -> dict:
-    """``{id: read_container()}`` of every container of *ids*, and the processor time of the
-    whole host under the key ``None`` (the root cgroup); run in a thread."""
-    figures = {cid: read_container(root, cid) for cid in ids}
+def _read_all(root: str, ids, where: dict | None = None) -> dict:
+    """``{id: its figures}`` of every container of *ids* (``read_cgroup()`` of its directory in
+    *where* when it is there, else ``read_container()``), and the processor time of the whole
+    host under the key ``None`` (the root cgroup); run in a thread."""
+    where = where or {}
+    figures = {cid: read_cgroup(where[cid]) if cid in where else read_container(root, cid) for cid in ids}
     figures[None] = cpu_usec(root)
     return figures
 
@@ -152,14 +203,17 @@ class UsageSampler:
     """The periodic measure of the projects of *registry* (``sample()``, run every
     ``cfg.interval`` seconds by its own task: never from the status handler, which a slow Docker
     daemon would hold longer than the portal waits for it) and what the status tells of it
-    (``rows()``, ``cpu_busy``).  *docker_socket*: the socket of the daemon, ``''`` for an agent
-    that measures nothing (its status still lists its projects, without figures); *clock*:
-    injectable for the tests."""
+    (``rows()``, ``cpu_busy``).  *docker_socket*: the socket of the daemon; *podman_slices*: the
+    directory of the slices of the projects of the Podman engine, which is read when it is given
+    (the daemon is then not asked); both ``''`` for an agent that measures nothing (its status
+    still lists its projects, without figures); *clock*: injectable for the tests."""
 
-    def __init__(self, registry, cfg: UsageConfig, *, docker_socket: str, clock=time.monotonic):
+    def __init__(self, registry, cfg: UsageConfig, *, docker_socket: str, podman_slices: str = '',
+                 clock=time.monotonic):
         self.registry = registry
         self.cfg = cfg
         self.docker_socket = docker_socket
+        self.podman_slices = podman_slices
         self.clock = clock
         self.cpu_busy: float | None = None      # the cores the host uses, smoothed over BUSY_TAU
         self._tracks: dict[str, _Track] = {}
@@ -169,7 +223,7 @@ class UsageSampler:
 
     @property
     def enabled(self) -> bool:
-        return self.cfg.interval > 0 and bool(self.docker_socket)
+        return self.cfg.interval > 0 and bool(self.docker_socket or self.podman_slices)
 
     # -- the measure ----------------------------------------------------------------------------
 
@@ -196,20 +250,26 @@ class UsageSampler:
         processors of the host.  Without project the Docker daemon is not asked."""
         now = self.clock()
         projects = {p.rln: p for p in self.registry.projects.values()}
+        hash_of = {rln: project.info.get(LAB_HASH_KEY) if isinstance(project.info, dict) else None
+                   for rln, project in projects.items()}
         by_lab: dict | None = {}
+        where: dict = {}
         if projects:
             try:
-                by_lab = await self._list_containers()
+                if self.podman_slices:
+                    by_lab, where = await asyncio.to_thread(podman_containers, self.podman_slices,
+                                                            list(hash_of.values()))
+                else:
+                    by_lab = await self._list_containers()
             except (aiohttp.ClientError, asyncio.TimeoutError, OSError, RuntimeError, ValueError) as e:
                 by_lab = None
-                self._warn(f"{self.docker_socket}: {e or type(e).__name__}")
+                self._warn(f"{self.podman_slices or self.docker_socket}: {e or type(e).__name__}")
         ids_of = {}
         if by_lab is not None:
-            for rln, project in projects.items():
-                lab_hash = project.info.get(LAB_HASH_KEY) if isinstance(project.info, dict) else None
+            for rln, lab_hash in hash_of.items():
                 ids_of[rln] = frozenset(by_lab.get(lab_hash, ())) if isinstance(lab_hash, str) else frozenset()
         wanted = set().union(*ids_of.values()) if ids_of else set()
-        figures = await asyncio.to_thread(_read_all, self.cfg.cgroup_root, wanted)
+        figures = await asyncio.to_thread(_read_all, self.cfg.cgroup_root, wanted, where)
         self._host_measure(now, figures.pop(None))
         for rln in list(self._tracks):
             if rln not in projects:

@@ -819,6 +819,38 @@ class TestActionUpdate:
         assert 'wipe' not in update_env.events
         assert "'sre wipe' skipped" in capsys.readouterr().err
 
+    def test_a_podman_host_is_wiped_without_any_docker_socket(self, update_env, tmp_pub_dir, monkeypatch, capsys):
+        """The projects of such a host are not Docker's: the files must not be replaced under them."""
+        (tmp_pub_dir / 'docker.sock').unlink()
+        monkeypatch.setattr(params, 'container_engine', params.container_engine_podman)
+        monkeypatch.setattr(params, 'podman_dir', str(tmp_pub_dir))
+        assert run_update(update_env) == 0
+        assert 'wipe' in update_env.events and "skipped" not in capsys.readouterr().err
+
+    def test_a_host_where_the_podman_engine_is_not_set_up(self, update_env, tmp_pub_dir, monkeypatch, capsys):
+        """A file server of a site whose engine is Podman: it runs no project, with or without Docker."""
+        monkeypatch.setattr(params, 'container_engine', params.container_engine_podman)
+        monkeypatch.setattr(params, 'podman_dir', str(tmp_pub_dir / 'no-podman'))
+        assert run_update(update_env) == 0
+        assert 'wipe' not in update_env.events
+        assert (f"warning: the Podman engine is not set up on this host ({tmp_pub_dir / 'no-podman'} is missing): "
+                "'sre wipe' skipped") in capsys.readouterr().err
+
+    def test_one_host_on_podman_in_a_site_on_kathara(self, update_env, tmp_pub_dir, monkeypatch):
+        import socket
+        (tmp_pub_dir / 'docker.sock').unlink()
+        monkeypatch.setattr(params, 'container_engine_by_host', {socket.gethostname(): 'podman'})
+        monkeypatch.setattr(params, 'podman_dir', str(tmp_pub_dir))
+        assert run_update(update_env) == 0
+        assert 'wipe' in update_env.events
+
+    def test_an_engine_that_is_none_stops_the_update(self, update_env, monkeypatch, capsys):
+        monkeypatch.setattr(params, 'container_engine', 'lxc')
+        assert run_update(update_env) == 1
+        assert "not a container engine" in capsys.readouterr().err
+        assert 'wipe' not in update_env.events
+        assert (update_env.root / 'src' / 'sre.py').read_text() == 'print("old")\n'
+
     def test_happy_path(self, update_env, capsys):
         state_of(update_env.root)
         root = update_env.root

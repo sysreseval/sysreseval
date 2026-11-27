@@ -207,6 +207,26 @@ def render_readmes(labs: list) -> list:
     return rendered
 
 
+def usage_sources(cfg, pub_dir) -> dict:
+    """Where the usage sampler finds the containers of the projects (its `docker_socket` and
+    `podman_slices`): what `[usage]` names, the slices of Podman before the socket of Docker;
+    else, for the agent of the machine, where the container engine of the host has them.  An
+    agent given its own projects directory (the tests, the fake pool) is not the agent of the
+    machine: it measures nothing of the workstation unless `[usage]` names something."""
+    if cfg.podman_slices:
+        return {'docker_socket': '', 'podman_slices': cfg.podman_slices}
+    if cfg.docker_socket or pub_dir is not None:
+        return {'docker_socket': cfg.docker_socket, 'podman_slices': ''}
+    try:
+        engine = params.host_container_engine()
+    except ValueError:
+        engine = params.container_engine_kathara     # `sre` itself says what is wrong with the parameter
+    if engine == params.container_engine_podman:
+        from SRE.engine.podman_engine import project_slices
+        return {'docker_socket': '', 'podman_slices': project_slices(cfg.cgroup_root)}
+    return {'docker_socket': params.docker_socket_path, 'podman_slices': ''}
+
+
 class Agent:
     def __init__(self, cfg: AgentConfig, *, pub_dir: str | None = None, projects_dir: str | None = None,
                  localedirs=None, hostname: str | None = None, extra_env: dict | None = None,
@@ -236,11 +256,8 @@ class Agent:
                                      on_exam_ended=self._exam_ended)
         # the Docker images of the labs, pulled when the portal gives this host its turn
         self.preloader = Preloader(self.runner, cfg.preload, default_paths=_lab_directories())
-        # what the running projects use, measured for the portal.  An agent given its own
-        # projects directory (the tests, the fake pool) is not the agent of the machine: it asks
-        # the Docker daemon of the workstation nothing unless [usage] docker_socket names one
-        self.usage = UsageSampler(self.registry, cfg.usage, docker_socket=cfg.usage.docker_socket or (
-            params.docker_socket_path if pub_dir is None else ''))
+        # what the running projects use, measured for the portal
+        self.usage = UsageSampler(self.registry, cfg.usage, **usage_sources(cfg.usage, pub_dir))
         # the drain asked on the host itself (`sre set-drain`), told to the portal in the status
         self.local_drain = LocalDrain(self.pub_dir, cfg.allow_local_drain)
         # the saved projects: a directory shared by the pool hosts ([saves] of agent.toml)

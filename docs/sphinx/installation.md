@@ -91,7 +91,7 @@ The package follows the FHS instead of the `/opt/sre` tree:
 
 `sudo sre update` refreshes an installed tree from the GitHub repository: the latest release by default, `--main` for the head of `main`, `--check` to only see whether a newer version exists. It downloads the sources, merges `src/SRE/params.py` with the site's settings (customised parameters are kept; the questions concern only the parameters both customised here and changed upstream), replaces the files, keeps the site's own labs (everything in `lab/` but `lab/sre/`) and extra `lib/` files, rebuilds `bin/sre-wrapper` and records the installed commit in `<main_sre_dir>/.sre-update.json`. See the [CLI reference](cli.md) for the details.
 
-Before it replaces anything it runs `sre wipe`: run it outside class hours, every running project is stopped. It must run on the host that owns the tree: the NFS server in the read-only export topology (without a Docker daemon there, the wipe is skipped and `sre wipe` has to be run on the client hosts), and every workstation of the "replicate per workstation" topology. The per-host bits listed above are not touched; when the templates of `scripts/etc/` changed, the update says so and they have to be reinstalled by hand. The venv is rebuilt only with `--venv` (or `make venv` afterwards; the update says when the recipe changed). To go back to the previous version: `sudo sre update --ref <previous commit>`, printed at the end of each update. The sample labs of `lab/sre/` are reinstalled in full at every update.
+Before it replaces anything it runs `sre wipe`: run it outside class hours, every running project is stopped. It must run on the host that owns the tree: the NFS server in the read-only export topology (a host that can run no project skips the wipe, and `sre wipe` has to be run on the client hosts: a host without Docker daemon, or, where the engine is Podman, a host the setup script never prepared), and every workstation of the "replicate per workstation" topology. The per-host bits listed above are not touched; when the templates of `scripts/etc/` changed, the update says so and they have to be reinstalled by hand. The venv is rebuilt only with `--venv` (or `make venv` afterwards; the update says when the recipe changed). To go back to the previous version: `sudo sre update --ref <previous commit>`, printed at the end of each update. The sample labs of `lab/sre/` are reinstalled in full at every update.
 
 ## Running the installer
 
@@ -436,7 +436,7 @@ container_engine_by_host = {"s17": "podman", "s18": "podman"}   # the hosts that
 
 A host is looked up by the name it gives itself (`hostname`), then by that name cut at its first dot. The second parameter is what lets one `params.py`, shared by every workstation of a room, put a few of them on Podman first. An unknown engine name, in either parameter, ends every `sre` command with a message naming the parameter.
 
-**Every lab starts with the Podman engine: hubs, switches and managed switches with their console, machines with an outside interface, privileged machines. `sre save` and `sre restore` are not available yet.** For the students and for the web site the commands, the pages and `info.json` are the same; what a machine is differs in a few places, listed under *What differs from Docker* below.
+**Every command works with the Podman engine, and every lab starts: hubs, switches and managed switches with their console, machines with an outside interface, privileged machines, saved projects (a save file is the same with both engines).** For the students and for the web site the commands, the pages and `info.json` are the same; what a machine is differs in a few places, listed under *What differs from Docker* below.
 
 A host is prepared once, as root:
 
@@ -454,7 +454,8 @@ The setup script reads `sre_user`, `podman_dir` and `podman_uid_ranges` in `para
 - it starts the systemd user manager of the account at boot (`loginctl enable-linger`): the hubs and the switches of the networks are units of that manager, so they outlive the `sre` command that started them and are stopped with their project, and that manager makes the user namespace of Podman again after each boot (see below);
 - it creates `podman_dir` (`/var/lib/sre/podman` by default; a local disk, never NFS), which holds the configuration of the engine (`config/containers/containers.conf`) and its image store. A registry mirror goes in `config/containers/registries.conf`, written by the administrator;
 - it creates the user namespace of the account and checks that Podman answers with the group the `sre` command runs with (`docker_gid`), and that the user manager runs a unit;
-- it raises the quota of kernel keys of a user (`/etc/sysctl.d/60-sre-podman.conf`). Each service of a machine running systemd uses a key, counted against the uid of the root of the machine, which is an ordinary uid of the host: the default quota of 200 keys stops a project at a couple of dozen such machines.
+- it raises the quota of kernel keys of a user (`/etc/sysctl.d/60-sre-podman.conf`). Each service of a machine running systemd uses a key, counted against the uid of the root of the machine, which is an ordinary uid of the host: the default quota of 200 keys stops a project at a couple of dozen such machines;
+- it orders the services of SRE installed on the host after the user manager of the account, with a drop-in each (`/etc/systemd/system/<unit>.d/10-sre-podman.conf`: `Wants=` and `After=user@<uid>.service`): the web agent, the wipe at shutdown and the preload of the images. Their unit files only know Docker, and at a shutdown they must stop, evaluate and wipe the projects while the machines still run. `PODMAN_ORDERED_UNITS` names other units, or none when empty; run the script again after installing one of those services.
 
 It ends by saying what the engine would refuse on the host: a lab with a switch when the switch program is missing, a lab with an outside interface when `pasta` is missing or when no interface of the host has the address `sre_host_ip`.
 
@@ -477,6 +478,16 @@ While the `sre` account is a member of the `docker` group, what runs as that acc
 - the connections of a machine reach the services of the host and the Internet from an address of the host, as sockets of the `sre` account, not from 172.17.0.x: a rule a site wrote for `docker0` (to cut the Internet during an exam, for instance) does not see them.
 
 **Files.** What a machine writes in `shared/` or in a volume belongs to a subordinate uid of the account, not to root (a setuid file left there gives nothing on the host), and a machine cannot read a file a student left there with mode 600.
+
+**Saved projects.** `sre save` and `sre restore` work as with Docker, and a save file is the same with both engines: a project saved on a Docker host restores on a Podman host and the reverse, so a web pool may have hosts of both. On a Podman host:
+
+- a restore builds no image: the files of a machine are put back, and those it had deleted removed, in the new machine before its first process (a machine running systemd boots with the units that were enabled when it was saved);
+- `sre save --full-images` is refused, and so is the restore of a file saved that way on a Docker host;
+- a project one of whose machines is stopped is not saved (the message names the machine); Docker saves it;
+- a save made on a Docker host that holds a device node, or a file owned by an id above 65535, is not restored: a rootless machine can make neither. The restore names the machine and the file, and leaves nothing behind;
+- in a machine running systemd the journal (`/var/log/journal`) is a temporary filesystem and is not saved.
+
+**Changing the engine of a host.** Do it when the host runs no project (`sre wipe` first): `sre stop` and `sre wipe` act on the engine `params.py` gives the host now, and the machines the other engine still runs would be left, without their project.
 
 **Labs that do not get every point.** The 8 labs of `lab/sre` and the 60 drafts of `lab/sre/_DRAFT_misc` were run on both engines, from an untouched project to their `final` state. All give the same points with both, but:
 

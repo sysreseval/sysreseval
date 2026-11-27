@@ -124,10 +124,24 @@ def _print_summary(plan: upd.InstallPlan, manifest_source: str, params_report: l
     print("\nThis runs 'sre wipe' (every running project is stopped and removed) and replaces the files above.")
 
 
+def _no_project_here() -> str:
+    """Why this host cannot be running any project (a file server that only holds the tree),
+    `''` when it may: what the container engine of the host needs is there."""
+    if params.host_container_engine() == params.container_engine_podman:
+        if not os.path.isdir(params.podman_dir):
+            return f"the Podman engine is not set up on this host ({params.podman_dir} is missing)"
+    elif not os.path.exists(params.docker_socket_path):
+        return f"no Docker daemon on this host ({params.docker_socket_path} is missing)"
+    return ''
+
+
 def _run_wipe() -> None:
-    if not os.path.exists(params.docker_socket_path):
-        print(f"warning: no Docker daemon on this host ({params.docker_socket_path} is missing): "
-              "'sre wipe' skipped, run it on every host that runs projects", file=sys.stderr)
+    try:
+        reason = _no_project_here()
+    except ValueError as e:
+        raise upd.UpdateError(str(e)) from None
+    if reason:
+        print(f"warning: {reason}: 'sre wipe' skipped, run it on every host that runs projects", file=sys.stderr)
         return
     print("stopping every running project (sre wipe) …", flush=True)
     result = subprocess.run([params.sre_exe, 'wipe'], stdin=subprocess.DEVNULL)

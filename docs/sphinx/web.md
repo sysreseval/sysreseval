@@ -1958,14 +1958,18 @@ machines weigh the same. `[pool] capacity = "resources"` replaces the count by t
   known before the first start of the lab.
 - The **usage** of a running project is measured by the agent of its host (`[usage]` of
   `agent.toml`, every 15 s): the containers of the project (one request to the Docker daemon on
-  its socket: the containers Kathara labelled), the memory of each (its working set: `memory.current`
+  its socket: the containers Kathara labelled; on a host whose container engine is Podman, the
+  machines of the project are the scopes of a slice of the cgroup tree, which the agent lists
+  without asking anything), the memory of each (its working set: `memory.current`
   less the inactive file pages, as `docker stats` shows it) and its processor time, read in its
   cgroup (version 2). A project is *settled* once the set of its containers has not changed for
   two minutes: the boot of the containers is left out, and its processor figure is the mean
   number of cores it used since then. The agent also tells the processors and the memory of its
-  host, and the cores the whole host uses. A host without Docker socket or without cgroup
-  version 2 gives no figure (one warning in the journal of the agent): its labs keep their
-  declared weight.
+  host, and the cores the whole host uses. A host without Docker socket (with Podman: without
+  the user manager of the account of the engine) or without cgroup version 2 gives no figure
+  (one warning in the journal of the agent): its labs keep their declared weight. The figures
+  mean the same with both engines (the same lab measured on one host: 35.7 MiB with Docker,
+  35.3 with Podman), so a pool may mix them.
 - The **cost** of a lab is what the portal sets aside for one more project of it, in MiB and in
   cores. Once three projects of the lab have been measured: the 80th percentile of what its
   last forty projects used (their memory at its highest, their mean processor use). Before
@@ -2871,7 +2875,9 @@ once.
 host, protected by the MIT cookie of its project only, exactly like the X server of a workstation
 configured for the labs (`installation.md`); an nftables rule such as
 `nft add rule inet filter input tcp dport 6010-6099 iifname != "docker0" drop` keeps the other
-hosts out. The RFB socket of a desktop is reachable by root only (the agent); the window manager
+hosts out. On a pool host whose container engine is Podman the machines reach the desktop from
+the host itself, not through `docker0`: the rule must let the loopback in too
+(`iifname != { "docker0", "lo" }`), or it cuts the Display tab of every project. The RFB socket of a desktop is reachable by root only (the agent); the window manager
 runs as `sreweb-x11` with no menu, no launcher and no key binding running a program of the host;
 the browser reaches a desktop through the owner check of the portal and of the agent.
 

@@ -1361,6 +1361,7 @@ class UsageConfig:
     figures the portal learns the cost of a lab from."""
     interval: float = 15.0            # seconds between two measures; 0 = no measure
     docker_socket: str = ''           # the Docker socket the containers are listed on; '' = the one of the host
+    podman_slices: str = ''           # Podman engine: the cgroup directory of the slices of the projects; '' = the one of the host
     cgroup_root: str = '/sys/fs/cgroup'   # where the cgroups (v2) of the containers are read
     meminfo: str = '/proc/meminfo'    # where the memory of the host is read (MemTotal, MemAvailable)
 
@@ -1371,6 +1372,8 @@ def _check_usage(u: UsageConfig, path: str):
         raise ConfigError(f"{where}interval must be a duration, 0 or more")
     if not isinstance(u.docker_socket, str) or (u.docker_socket and not u.docker_socket.startswith('/')):
         raise ConfigError(f"{where}docker_socket must be an absolute path")
+    if not isinstance(u.podman_slices, str) or (u.podman_slices and not u.podman_slices.startswith('/')):
+        raise ConfigError(f"{where}podman_slices must be an absolute path")
     if not isinstance(u.cgroup_root, str) or not u.cgroup_root.startswith('/'):
         raise ConfigError(f"{where}cgroup_root must be an absolute path")
     if not isinstance(u.meminfo, str) or not u.meminfo.startswith('/'):

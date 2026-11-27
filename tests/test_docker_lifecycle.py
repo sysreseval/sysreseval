@@ -18,12 +18,15 @@ Requirements — the tests are skipped otherwise: run as root, a reachable Docke
 `params.authorized_src_dir` (the temporary labs are written there).  Excluded from
 `make tests`; run with `make docker-tests`.
 """
+import gzip
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -340,6 +343,48 @@ def _save_repository(lab_hash):
     return 'kathara_save_' + re.sub(r'[^a-z0-9]', '', lab_hash.lower())
 
 
+# Saves of the non-privileged lab made with each engine, kept as their inner archive: in the
+# router a file was added (/root/first: "one"), one changed (/etc/issue: "changed") and one
+# deleted (/etc/issue.net).  Each engine restores the one of the other.
+SAVED_WITH_DOCKER = 'kathara_save_docker.tar.gz'
+SAVED_WITH_PODMAN = 'kathara_save_podman.tar.gz'
+CHANGES_OF_THE_SAVED_ROUTER = 'echo one > /root/first && echo changed > /etc/issue && rm /etc/issue.net'
+
+
+def _archive_of_another_engine(name, image):
+    """The inner archive `tests/data/<name>`, its machines on *image* (the image of the lab
+    today: the one of the day it was made may be gone)."""
+    with gzip.open(Path(__file__).parent / 'data' / name) as f:
+        data = f.read()
+    out = io.BytesIO()
+    with tarfile.open(fileobj=io.BytesIO(data)) as source, tarfile.open(fileobj=out, mode='w') as target:
+        for member in source.getmembers():
+            content = source.extractfile(member).read()
+            if member.name == 'manifest.json':
+                manifest = json.loads(content)
+                for machine in manifest['machines']:
+                    machine['original_image'] = image
+                content = json.dumps(manifest).encode()
+                member.size = len(content)
+            target.addfile(member, io.BytesIO(content))
+    return out.getvalue()
+
+
+def _with_inner_archive(save_file, inner, out_file):
+    """Write *out_file*: the save file *save_file* (not encrypted) with *inner* as the archive
+    of the filesystems of its machines."""
+    magic, header, payload = Path(save_file).read_bytes().split(b'\n', 2)
+    out = io.BytesIO()
+    with tarfile.open(fileobj=io.BytesIO(payload), mode='r|') as source, tarfile.open(fileobj=out, mode='w|') as target:
+        for member in source:
+            if member.name == params.save_kathara_name:
+                member.size = len(inner)
+                target.addfile(member, io.BytesIO(inner))
+            else:
+                target.addfile(member, source.extractfile(member) if member.isfile() else None)
+    Path(out_file).write_bytes(magic + b'\n' + header + b'\n' + out.getvalue())
+
+
 @pytest.fixture
 def projects(docker_client):
     """Registry of the projects a test creates; whatever is left is stopped, and any container,
@@ -596,6 +641,33 @@ class TestSaveRestore:
         assert _containers(docker_client, third_hash) == []
         assert docker_client.images.list(name=_save_repository(third_hash)) == [], "images of a restore left by sre stop"
         assert left == [], f"images of a restore left by sre stop: {left}"
+
+    def test_a_save_made_with_the_podman_engine_restores_here(self, docker_client, labs_dir, projects, tmp_path):
+        """A pool may have hosts of both engines, and a saved project restores on any of them."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        here = tmp_path / 'here.sre'
+        r = _sre('save', running_lab_name, '-o', str(here))
+        assert r.returncode == 0, r.stderr
+        image = _machine(docker_client, lab_hash, 'router').attrs['Config']['Image']
+        foreign = tmp_path / 'podman.sre'
+        _with_inner_archive(here, _archive_of_another_engine(SAVED_WITH_PODMAN, image), foreign)
+
+        before = _project_dirs()
+        r = _sre('restore', str(foreign))
+        assert r.returncode == 0, r.stderr[-3000:]
+        restored = (_project_dirs() - before).pop()
+        restored_hash = _lab_hash(restored)
+        projects.append((restored, restored_hash))
+        r = _sre('exec', restored, 'router', 'sh', '-c',
+                 'cat /root/first /etc/issue /root/from_initial /root/restore_hook; ls /etc/issue.net')
+        assert r.stdout.split() == ['one', 'changed', 'from-initial', 'restored'], (r.stdout, r.stderr)
+        assert 'issue.net' in r.stderr, "the file deleted in the saved machine is back"
+
+        for name, h in ((restored, restored_hash), (running_lab_name, lab_hash)):
+            r = _sre('stop', name)
+            assert r.returncode == 0, r.stderr
+            assert _containers(docker_client, h) == []
+        assert docker_client.images.list(name=_save_repository(restored_hash)) == []
 
     def test_encrypted_round_trip(self, docker_client, labs_dir, projects, tmp_path):
         pytest.importorskip('cryptography')

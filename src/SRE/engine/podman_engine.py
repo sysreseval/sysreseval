@@ -4,7 +4,17 @@
 This is the only module of SRE that runs ``podman``, ``systemd-run``, ``nsenter`` or the VDE
 programs.  The host is prepared once, as root, by ``scripts/podman-setup.sh``.
 
-**Limit for now**: save / restore is refused with an :class:`EngineError`.
+**Save and restore** use the archive of the Kathara fork (``save_format``): a file saved on a
+Docker host restores here and the reverse.  What a machine changed in its image is found by
+comparing its mounted filesystem with the mounted image (``tree_changes``, run in the user
+namespace of the account; ``podman diff`` fails on some machines and is slow on others), then one
+``tar`` in the machine writes those paths: its output is stored as it comes and never read here,
+the ``tar`` of a machine being the student's.  A restore creates each machine from the image it
+was saved from, and puts its files back between ``podman init`` and ``podman start``, from inside
+every namespace of the machine: before its first process, with nothing resolved against the
+files of the host, and with what a process of the machine has and no more (the programs that do
+it are those of the image, and a save file names its image).  Not done: a save of whole images,
+and the save of a project one of whose machines is stopped.
 
 **How a project is deployed**
 
@@ -33,7 +43,10 @@ programs.  The host is prepared once, as root, by ``scripts/podman-setup.sh``.
 * every project runs in a uid range of its own (``params.podman_uid_ranges``): the root of a
   machine is an unprivileged uid of the host, different for each project.  It is never the
   account itself: a setuid file a machine writes into ``shared/`` would otherwise hand the account
-  to whoever runs it on the host.
+  to whoever runs it on the host;
+* the machines of a project are in a slice of their own of the user manager
+  (``srelab-<hash>.slice``): what a project uses is read there, by root, without asking Podman
+  (``project_slices()``, for the web agent).
 
 **One identity for every command.**  The commands of SRE call the engine as the account, as
 root, or with the effective uid lowered only.  Whatever the caller, an external command runs as
@@ -65,7 +78,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from .. import params
-from . import vde_console
+from . import save_format, vde_console
 from .base import Engine, EngineError, SwitchModesUnsupported
 
 # What Kathara gives a non-privileged machine, and the two capabilities of Docker's default set
@@ -119,6 +132,51 @@ _SHUTDOWN = (
     "/hostlab/{machine}.shutdown; fi; "
     'if [ -f "/hostlab/shared.shutdown" ]; then chmod u+x /hostlab/shared.shutdown; /hostlab/shared.shutdown; fi'
 )
+
+# The changes of a machine since its image (save): both are mounted in the user namespace of the
+# account, where `tree_changes` compares them.  Arguments: the container, its image, the Python
+# to run, the program, then the arguments of the program after its two directories.
+_TREE_CHANGES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tree_changes.py")
+_MOUNT_AND_COMPARE = (
+    'new=$(podman mount "$1") || exit 1; '
+    'old=$(podman image mount "$2") || { podman umount "$1" >/dev/null 2>&1; exit 1; }; '
+    'container=$1; image=$2; python=$3; program=$4; shift 4; '
+    '"$python" -I "$program" "$new" "$old" "$@"; status=$?; '
+    'podman umount "$container" >/dev/null 2>&1; podman image umount "$image" >/dev/null 2>&1; '
+    'exit $status'
+)
+# The tar that writes the changed paths of a machine, run in it: the names come on stdin, ended
+# by null bytes and taken as they are; a directory is an entry without its content; a path that
+# went away meanwhile is not an error; the ids are the machine's own numbers; of the extended
+# attributes only the file capabilities are kept, as Docker's archives do.
+_TAR_CREATE = ["tar", "-c", "-f", "-", "--numeric-owner", "--ignore-failed-read", "--no-recursion",
+               "--xattrs", "--xattrs-include=security.capability", "--pax-option=delete=atime,delete=ctime",
+               "--null", "--verbatim-files-from", "-C", "/", "-T", "-"]
+_TAR_CHANGED_WHILE_READ = 1    # exit status of tar when a file changed as it was read: the machine runs
+# Putting the files of a save back in a machine that has not started yet (restore), from inside
+# its namespaces: all of them.  The programs run there are the image's, and the image is the one
+# the save file names: in the user and mount namespaces alone they would have the network of the
+# host, and would outlive the machine.  Before the archive is unpacked, what would be in its way
+# goes: a directory where the archive has a file, a file or a link where it has a directory (tar
+# replaces neither).
+_ALL_NAMESPACES = ["--user", "--mount", "--net", "--pid", "--ipc", "--uts", "--cgroup"]
+_REMOVE = ["xargs", "-0", "-r", "rm", "-rf", "--"]
+_MAKE_ROOM_FOR_FILES = ["xargs", "-0", "-r", "sh", "-c",
+                        'for p; do if [ -d "$p" ] && [ ! -L "$p" ]; then rm -rf -- "$p"; fi; done', "sh"]
+_MAKE_ROOM_FOR_DIRECTORIES = ["xargs", "-0", "-r", "sh", "-c",
+                              'for p; do if [ -L "$p" ] || { [ -e "$p" ] && [ ! -d "$p" ]; }; then rm -f -- "$p"; fi; done',
+                              "sh"]
+_TAR_EXTRACT = ["tar", "-x", "-p", "--numeric-owner", "--xattrs", "--xattrs-include=security.capability",
+                "-f", "-", "-C", "/"]
+
+
+def project_slices(cgroup_root: str = "/sys/fs/cgroup") -> str:
+    """The directory of the cgroup tree that holds what the running projects use: one
+    ``srelab-<hash>.slice`` per project (the name systemd gives a slice inside ``srelab.slice``),
+    with one ``libpod-<container id>.scope`` per machine.  The web agent measures the projects
+    there."""
+    uid = params.sre_uid
+    return f"{cgroup_root}/user.slice/user-{uid}.slice/user@{uid}.service/{_UNIT_PREFIX}.slice"
 
 
 def lab_hash_of(name: str) -> str:
@@ -227,6 +285,8 @@ class PodmanMachine:
         self.options = options or {}
         self.interfaces: dict[int, tuple[str, str | None]] = {}  # number -> (network, MAC or None)
         self.api_object = None  # its PodmanContainer once deployed
+        # during a restore: (the paths of its image to remove, its diff tar or None)
+        self.saved: tuple[list, str | None] | None = None
 
 
 class PodmanContainer:
@@ -435,6 +495,11 @@ class PodmanEngine(Engine):
     def _unit(lab_hash: str, *parts) -> str:
         return "-".join([_UNIT_PREFIX, lab_hash] + [str(part) for part in parts])
 
+    @staticmethod
+    def _slice(lab_hash: str) -> str:
+        """The slice of the machines of a project (see ``project_slices()``)."""
+        return f"{_UNIT_PREFIX}-{lab_hash}.slice"
+
     def _containers(self, lab_hash: str | None = None) -> list[dict]:
         """The containers of this engine (of one project), running or not, as `podman ps` lists
         them: ``Names``, ``State``, ``Labels``."""
@@ -586,7 +651,7 @@ class PodmanEngine(Engine):
         options = machine.options
         arguments = ["create", "--name", self._container_name(lab.hash, machine.name), "--hostname", machine.name,
                      *self._network_arguments(machine), "--no-hosts", "--tty", "--interactive", "--pull", "never",
-                     "--pids-limit", "-1"]
+                     "--pids-limit", "-1", "--cgroup-parent", self._slice(lab.hash)]
         if options.get("privileged"):
             arguments += ["--cap-add", "all", "--security-opt", "unmask=/proc/sys"]
             if self._is_systemd(machine):
@@ -621,6 +686,8 @@ class PodmanEngine(Engine):
         name = self._container_name(lab.hash, machine.name)
         self._podman_checked(["init", name])
         pids = self._podman_checked(["inspect", "--format", "{{.State.ConmonPid}} {{.State.Pid}}", name]).stdout.split()
+        if machine.saved is not None:
+            self._put_back(machine, int(pids[1]))
         # the user namespace of Podman (its monitor process is in it) and the network namespace
         # of the machine: there, this account is root over the interfaces of the machine
         enter = ["nsenter", f"--user=/proc/{int(pids[0])}/ns/user", f"--net=/proc/{int(pids[1])}/ns/net"]
@@ -814,12 +881,16 @@ class PodmanEngine(Engine):
         """Remove the containers, the units and the directory of a project; the names of the
         containers removed."""
         containers = self._containers(lab_hash)
-        if run_hooks:
-            for container in containers:
-                if container.get("State") == "running":
-                    labels = container["Labels"]
-                    self.podman(["exec", container["Names"][0], labels.get("shell") or _DEFAULT_SHELL, "-c",
-                                 _SHUTDOWN.format(machine=labels.get("name", ""))], stdout=subprocess.DEVNULL)
+        running = [container for container in containers if container.get("State") == "running"]
+        if run_hooks and running:
+            # one command per machine: several at a time, a project of twenty machines is else
+            # seconds to stop and a host of thirty projects more than a wipe is given
+            def hook(container):
+                labels = container["Labels"]
+                self.podman(["exec", container["Names"][0], labels.get("shell") or _DEFAULT_SHELL, "-c",
+                             _SHUTDOWN.format(machine=labels.get("name", ""))], stdout=subprocess.DEVNULL)
+            with ThreadPoolExecutor(max_workers=max(1, min(params.max_docker_concurrency, len(running)))) as pool:
+                list(pool.map(hook, running))
         names = [container["Names"][0] for container in containers]
         removed = []
         if names:
@@ -828,7 +899,9 @@ class PodmanEngine(Engine):
                 errors.append(f"containers of the lab {lab_hash}: {_message(result.stderr)}")
             else:
                 removed = names
-        self.run(["systemctl", "--user", "stop", self._unit(lab_hash, "*")])   # nothing to stop is not an error
+        # the networks and the plugs, and the slice of the machines, which systemd keeps once it
+        # is empty; nothing to stop is not an error
+        self.run(["systemctl", "--user", "stop", self._unit(lab_hash, "*"), self._slice(lab_hash)])
         shutil.rmtree(self._network_dir(lab_hash), ignore_errors=True)
         return removed
 
@@ -915,17 +988,132 @@ class PodmanEngine(Engine):
 
     # ---- save and restore ---------------------------------------------------------------------------
 
-    def require_save_restore(self):
-        raise EngineError("save / restore is not available with the Podman engine yet")
+    def require_save_restore(self, full_images=False):
+        if full_images:
+            raise EngineError("a save of whole images (--full-images) is not available with the Podman engine")
+
+    def _changes(self, container: dict) -> dict:
+        """What a machine changed in its image: the paths ``changed``, ``added`` and ``deleted``."""
+        machine = container["Labels"].get("name", "")
+        try:
+            first = 1 + int(container["Labels"].get("uid_range")) * _RANGE_SIZE
+        except (TypeError, ValueError):
+            raise EngineError(f"machine '{machine}': its uid range is not known") from None
+        image = container.get("ImageID")
+        if not image:
+            raise EngineError(f"machine '{machine}': its image is not known")
+        not_entered = [prefix.rstrip("/") for prefix in save_format.EXCLUDED_PREFIXES]
+        result = self.podman(["unshare", "sh", "-c", _MOUNT_AND_COMPARE, "sh", container["Names"][0], image,
+                              sys.executable, _TREE_CHANGES, str(first), str(first)] + not_entered)
+        try:
+            if result.returncode != 0:
+                raise ValueError
+            changes = json.loads(result.stdout)
+            return {kind: list(changes[kind]) for kind in ("changed", "added", "deleted")}
+        except (ValueError, KeyError, TypeError):
+            raise EngineError(f"machine '{machine}': what it changed could not be read: "
+                              f"{_message(result.stderr) or f'exit status {result.returncode}'}") from None
+
+    def _save_machine(self, container: dict, diff_path: str) -> tuple:
+        """Write the diff tar of a machine: ``(machine, its image, the paths it deleted)``."""
+        machine = container["Labels"].get("name", "")
+        changes = self._changes(container)
+        paths, deletions = save_format.paths_to_save(changes["changed"], changes["added"], changes["deleted"])
+        if not paths:
+            save_format.write_empty_diff(diff_path)
+        else:
+            with open(diff_path, "wb") as out:
+                result = self.podman(["exec", "--interactive", "--user", "0:0", container["Names"][0]] + _TAR_CREATE,
+                                     input=save_format.member_names(paths), stdout=out)
+            self.raise_if_podman_failed(result, f"machine '{machine}'")
+            if result.returncode not in (0, _TAR_CHANGED_WHILE_READ):
+                raise EngineError(f"machine '{machine}': its files could not be read: "
+                                  f"{_message(result.stderr) or f'exit status {result.returncode}'}")
+        return machine, save_format.docker_image_name(container.get("Image") or ""), deletions
 
     def save(self, archive_path, lab_hash, filesystem_diff, temp_dir):
-        self.require_save_restore()
+        self.require_save_restore(full_images=not filesystem_diff)
+        containers = sorted(self._containers(lab_hash), key=lambda c: c["Labels"].get("name", ""))
+        for container in containers:
+            if container.get("State") != "running":
+                raise EngineError(f"machine '{container['Labels'].get('name', '')}' is not running: a project with "
+                                  f"a stopped machine cannot be saved with the Podman engine")
+        diffs = [os.path.join(temp_dir, f"save-{index}.diff.tar") for index in range(len(containers))]
+        try:
+            with ThreadPoolExecutor(max_workers=max(1, min(params.max_docker_concurrency, len(containers)))) as pool:
+                saved = list(pool.map(self._save_machine, containers, diffs))
+            save_format.write_archive(archive_path, save_format.manifest(lab_hash, saved),
+                                      {machine: diff for (machine, _, _), diff in zip(saved, diffs)})
+        finally:
+            for diff in diffs:
+                try:
+                    os.unlink(diff)
+                except OSError:
+                    pass
+
+    def _put_back(self, machine, pid: int):
+        """Put the saved files of *machine* back in its container, which has its filesystem and
+        no process yet (*pid* is the one Podman will start): from inside its namespaces, where
+        this account is its root, `/` is its own, and nothing of the host is in reach."""
+        deletions, diff_path = machine.saved
+        inside = ["nsenter", "--target", str(pid)] + _ALL_NAMESPACES
+
+        def run(command, what, **kwargs):
+            result = self.run(inside + command, **kwargs)
+            if result.returncode != 0:
+                raise EngineError(f"machine '{machine.name}': {what}: "
+                                  f"{_message(result.stderr, first=True) or f'exit status {result.returncode}'}")
+
+        if deletions:
+            run(_REMOVE, "the files it had deleted could not be removed",
+                input=b"".join(path.encode("utf-8") + b"\0" for path in deletions))
+        if diff_path is None:
+            return
+        others, directories = save_format.diff_members(diff_path)
+        if others:
+            run(_MAKE_ROOM_FOR_FILES, "its saved files could not be put back", input=b"\0".join(others) + b"\0")
+        if directories:
+            run(_MAKE_ROOM_FOR_DIRECTORIES, "its saved files could not be put back",
+                input=b"\0".join(directories) + b"\0")
+        # a directory the archive only implies is made by tar: with the mode it had in a machine
+        # (the one Docker gives it too), whatever the mask of whoever runs sre
+        with open(diff_path, "rb") as archive:
+            run(_TAR_EXTRACT, "its saved files could not be put back", stdin=archive, umask=0o022)
 
     def restore(self, archive_path, lab, temp_dir):
-        self.require_save_restore()
+        mode, saved = save_format.read_archive(archive_path)
+        if mode != save_format.MODE_DIFF:
+            raise EngineError("this save file holds whole images (--full-images): it cannot be restored with "
+                              "the Podman engine")
+        diffs = []
+        try:
+            for name in sorted(saved):
+                machine = lab.machines.get(name)
+                if machine is None:
+                    continue    # the lab no longer has this machine
+                # the image the machine was saved from, not the one the lab names today
+                machine.options["image"] = saved[name].image
+                diff_path = None
+                if saved[name].has_diff:
+                    diff_path = os.path.join(temp_dir, f"restore-{len(diffs)}.diff.tar")
+                    diffs.append(diff_path)
+                    save_format.extract_diff(archive_path, name, diff_path)
+                machine.saved = (saved[name].deletions, diff_path)
+            self.deploy(lab)
+        finally:
+            for machine in lab.machines.values():
+                machine.saved = None
+            for diff in diffs:
+                try:
+                    os.unlink(diff)
+                except OSError:
+                    pass
 
     # ---- images -------------------------------------------------------------------------------------
 
     def pull_image(self, image):
-        result = self.podman(["pull", qualified_image(image)], stderr=subprocess.STDOUT)
+        try:
+            result = self.podman(["pull", qualified_image(image)], stderr=subprocess.STDOUT)
+        except EngineError as e:
+            return False, str(e)    # an image that could not be pulled, like any other: the caller goes on
         return result.returncode == 0, (result.stdout or b"").decode(errors="replace")

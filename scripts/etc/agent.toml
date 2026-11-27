@@ -122,16 +122,21 @@ user = "sreweb-x11"
 at_start = false
 # paths = ["/opt/sre/lab"]
 # timeout = "2h"
-# What the running projects use, measured by this agent for the portal: their containers (one
-# request to the Docker daemon on its socket), the memory and the processor time of each (read in
-# its cgroup, version 2), and the processors the whole host uses.  The portal learns from these
-# figures what a project of each lab costs ([pool] capacity of web.toml).  Nothing is limited.
+# What the running projects use, measured by this agent for the portal: their containers, the
+# memory and the processor time of each (read in its cgroup, version 2), and the processors the
+# whole host uses.  The portal learns from these figures what a project of each lab costs
+# ([pool] capacity of web.toml).  Nothing is limited.  The containers are found as the container
+# engine of the host has them (container_engine of params.py): one request to the Docker daemon
+# on its socket, or, with the Podman engine, the slices of the projects in the cgroup tree.
 # interval: the time between two measures, 0 = no measure; docker_socket: the socket of the
-# daemon (default: the one of the host, /var/run/docker.sock); cgroup_root: where the cgroups are;
-# meminfo: where the memory of the host is read.
+# daemon (default: the one of the host, /var/run/docker.sock); podman_slices: the cgroup
+# directory of the slices of the projects (default: the one of the account of the engine,
+# .../user@<uid>.service/srelab.slice), read in place of the daemon when given; cgroup_root:
+# where the cgroups are; meminfo: where the memory of the host is read.
 # [usage]
 # interval = "15s"
 # docker_socket = "/var/run/docker.sock"
+# podman_slices = "/sys/fs/cgroup/user.slice/user-1100.slice/user@1100.service/srelab.slice"
 # cgroup_root = "/sys/fs/cgroup"
 # meminfo = "/proc/meminfo"
 # The saved projects of the web site: a user saves a project whose lab allows it

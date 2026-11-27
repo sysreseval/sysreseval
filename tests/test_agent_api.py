@@ -232,6 +232,34 @@ class TestOccupancyAndPower:
                                 'settled': True}}
         run(go())
 
+    def test_usage_of_the_projects_of_a_podman_host(self, tmp_path, monkeypatch):
+        """The same status on a host whose engine is Podman: the machines of each project are
+        the scopes of its slice in the cgroup tree, and no daemon is asked."""
+        import hashlib
+        from fake_docker import FakePodman, MIB
+        from sreweb.agent import usage
+        from test_agent_exam import start_by_hand
+
+        async def go():
+            podman = FakePodman(tmp_path / 'host')
+            async with Harness(tmp_path, usage=podman.config(interval=0)) as h:
+                assert h.agent.usage.podman_slices == str(podman.slices) and h.agent.usage.docker_socket == ''
+                web = await h.started()
+                local = start_by_hand(h, lab='s4/tp_ssh', login='bob')
+                await h.agent.registry.tick()
+                for rln, mem in ((web, 40), (local, 25)):
+                    lab_hash = hashlib.md5(rln.encode()).hexdigest()    # what the fake sre writes in info.json
+                    podman.add(lab_hash, mem=mem * MIB)
+                    podman.add(lab_hash, mem=10 * MIB)
+                await h.agent.usage.sample()
+                clock = h.agent.usage.clock
+                monkeypatch.setattr(h.agent.usage, 'clock', lambda: clock() + usage.SETTLE_AFTER)
+                await h.agent.usage.sample()
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert {row['name']: (row['containers'], row['mem_mb'], row['settled']) for row in st['usage']} == {
+                    web: (2, 50.0, True), local: (2, 35.0, True)}
+        run(go())
+
     def test_memory_of_the_host_from_the_meminfo_file(self, tmp_path):
         """``[usage] meminfo``: the file the memory of the host is read from (``/proc/meminfo``
         by default; the fake pool gives each fake host its own): MemTotal and MemAvailable in

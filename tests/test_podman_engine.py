@@ -11,6 +11,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,7 +22,7 @@ import pytest
 import SRE.engine as engine_package
 from SRE import lib_sre, params
 from SRE.command import restore as restore_cmd, save as save_cmd
-from SRE.engine import Engine, EngineError, SwitchModesUnsupported, podman_engine
+from SRE.engine import Engine, EngineError, SwitchModesUnsupported, podman_engine, save_format
 from SRE.engine.base import SwitchCommandError
 from SRE.engine.kathara_engine import KatharaEngine
 from SRE.engine.podman_engine import (PodmanContainer, PodmanEngine, environment_arguments, lab_hash_of,
@@ -193,9 +194,13 @@ def two_machines(engine):
     return lab
 
 
+IMAGE_ID = 'c82e7474' + '0' * 56
+
+
 def listing(*containers):
     """The output of `podman ps --format json` for ``(machine, state, uid range)`` containers."""
-    return json.dumps([{'Names': [f'sre_{HASH}_{name}'], 'State': state,
+    return json.dumps([{'Names': [f'sre_{HASH}_{name}'], 'State': state, 'Image': f'docker.io/{IMAGE}',
+                        'ImageID': IMAGE_ID,
                         'Labels': {'app': 'sre', 'name': name, 'lab_hash': HASH, 'shell': '/bin/bash',
                                    'uid_range': str(uid_range)}}
                        for name, state, uid_range in containers]).encode()
@@ -737,6 +742,7 @@ class TestDeploy:
         assert commands[6] == [
             'podman', 'create', '--name', f'sre_{HASH}_pc1', '--hostname', 'pc1', '--network', 'none', '--no-hosts',
             '--tty', '--interactive', '--pull', 'never', '--pids-limit', '-1',
+            '--cgroup-parent', f'srelab-{HASH}.slice',
             '--cap-add', 'NET_ADMIN,NET_RAW,NET_BROADCAST,NET_BIND_SERVICE,SYS_ADMIN,MKNOD,AUDIT_WRITE',
             *[word for sysctl in DEFAULT_SYSCTLS for word in ('--sysctl', sysctl)],
             '--env', 'SRE_LAB_NAME', '--volume', '/pub/x/shared:/shared:rw',
@@ -841,14 +847,14 @@ class TestDeploy:
         with pytest.raises(EngineError, match="^network 'lan': its hub did not start$"):
             engine.deploy(two_machines(engine))
         assert engine.run.starting_with('podman', 'create') == []
-        assert engine.run.commands[-1] == ['systemctl', '--user', 'stop', f'srelab-{HASH}-*']
+        assert engine.run.commands[-1] == ['systemctl', '--user', 'stop', f'srelab-{HASH}-*', f'srelab-{HASH}.slice']
 
     def test_an_interface_that_could_not_be_plugged(self, engine):
         engine.run.reply('systemctl', '--user', '--quiet', 'is-active', returncode=3)
         with pytest.raises(EngineError, match="^machine 'pc1': an interface could not be plugged into its network$"):
             engine.deploy(two_machines(engine))
         assert engine.run.starting_with('podman', 'exec') == []
-        assert engine.run.commands[-1] == ['systemctl', '--user', 'stop', f'srelab-{HASH}-*']
+        assert engine.run.commands[-1] == ['systemctl', '--user', 'stop', f'srelab-{HASH}-*', f'srelab-{HASH}.slice']
 
     def test_a_missing_image_is_downloaded_once(self, engine):
         engine.run.reply('podman', 'image', 'exists', returncode=1)
@@ -887,13 +893,42 @@ class TestDeploy:
         assert engine.run.commands[-3:] == [
             ['podman', 'ps', '--all', '--format', 'json', '--filter', 'label=app=sre', '--filter', f'label=lab_hash={HASH}'],
             ['podman', 'rm', '--force', '--volumes', '--ignore', '--time', '0', f'sre_{HASH}_pc1', f'sre_{HASH}_r'],
-            ['systemctl', '--user', 'stop', f'srelab-{HASH}-*']]
+            ['systemctl', '--user', 'stop', f'srelab-{HASH}-*', f'srelab-{HASH}.slice']]
         assert not (runtime_dir / 'sre-net' / HASH).exists()
 
     def test_the_first_error_goes_up_when_the_cleanup_fails_too(self, engine):
         engine.run.reply('podman', 'ps', returncode=125, stderr=b'Error: no store\n')
         with pytest.raises(EngineError, match="^podman ps: Error: no store$"):
             engine.deploy(two_machines(engine))
+
+
+class TestSlice:
+    """The machines of a project are in a slice of their own of the user manager: what the
+    project uses is read there (the web agent), and the slice goes with the project."""
+
+    def test_every_machine_is_created_in_the_slice_of_its_project(self, engine):
+        engine.deploy(two_machines(engine))
+        for create in engine.run.starting_with('podman', 'create'):
+            assert create.argv[create.argv.index('--cgroup-parent') + 1] == f'srelab-{HASH}.slice'
+
+    def test_the_networks_are_not_in_it(self, engine):
+        """What is measured there is what the machines use, as under Docker."""
+        engine.deploy(two_machines(engine))
+        assert not [call for call in engine.run.starting_with('systemd-run') if '--slice' in ' '.join(call.argv)]
+
+    def test_where_the_slices_are(self, monkeypatch):
+        monkeypatch.setattr(params, 'sre_uid', 1100)
+        assert podman_engine.project_slices() == \
+            '/sys/fs/cgroup/user.slice/user-1100.slice/user@1100.service/srelab.slice'
+        assert podman_engine.project_slices('/tmp/cg') == \
+            '/tmp/cg/user.slice/user-1100.slice/user@1100.service/srelab.slice'
+        # the slice of a project is named as systemd names a slice inside that one
+        assert PodmanEngine._slice(HASH) == f'srelab-{HASH}.slice'
+
+    def test_the_stop_of_a_project_does_not_name_the_slice_of_another(self, engine):
+        """The pattern of the units of a project ends with a dash; its slice is named in full."""
+        engine.undeploy(HASH)
+        assert engine.run.commands[-1][3:] == [f'srelab-{HASH}-*', f'srelab-{HASH}.slice']
 
 
 class TestUidRanges:
@@ -960,7 +995,7 @@ class TestUndeploy:
             ['podman', 'ps', '--all', '--format', 'json', '--filter', 'label=app=sre', '--filter', f'label=lab_hash={HASH}'],
             ['podman', 'exec', f'sre_{HASH}_pc1', '/bin/bash', '-c', hook],       # the running machine only
             ['podman', 'rm', '--force', '--volumes', '--ignore', '--time', '0', f'sre_{HASH}_pc1', f'sre_{HASH}_r'],
-            ['systemctl', '--user', 'stop', f'srelab-{HASH}-*'],
+            ['systemctl', '--user', 'stop', f'srelab-{HASH}-*', f'srelab-{HASH}.slice'],
         ]
         assert not (runtime_dir / 'sre-net' / HASH).exists() and (runtime_dir / 'sre-net' / 'other' / '0').is_dir()
 
@@ -973,7 +1008,7 @@ class TestUndeploy:
         engine.run.reply('podman', 'rm', returncode=125, stderr=b'Error: cannot remove container\n')
         with pytest.raises(EngineError, match=f"containers of the lab {HASH}: Error: cannot remove container"):
             engine.undeploy(HASH)
-        assert engine.run.commands[-1] == ['systemctl', '--user', 'stop', f'srelab-{HASH}-*']
+        assert engine.run.commands[-1] == ['systemctl', '--user', 'stop', f'srelab-{HASH}-*', f'srelab-{HASH}.slice']
 
     def test_leftovers_are_removed_without_hook(self, engine):
         engine.run.reply('podman', 'ps', stdout=listing(('pc1', 'running', 0), ('r', 'running', 0)))
@@ -1282,7 +1317,7 @@ class TestSwitches:
         with pytest.raises(EngineError, match="^network 'lan': its switch did not start$"):
             engine.deploy(switch_lab(engine))
         assert engine._console.opened == [] and engine.run.starting_with('podman', 'create') == []
-        assert engine.run.commands[-1] == ['systemctl', '--user', 'stop', f'srelab-{HASH}-*']
+        assert engine.run.commands[-1] == ['systemctl', '--user', 'stop', f'srelab-{HASH}-*', f'srelab-{HASH}.slice']
 
     def test_a_command_the_switch_refuses_stops_the_deployment(self, engine, runtime_dir):
         engine._console.refused['port/setvlan 2 20'] = SwitchCommandError(1006, 'No such device or address')
@@ -1492,12 +1527,11 @@ class TestPrivilegedMachines:
         self.booting(engine)
         engine.deploy(systemd_lab(engine))
         srv, client = (c.argv for c in engine.run.starting_with('podman', 'create'))
-        at = srv.index('--pids-limit')
-        assert srv[at:at + 8] == ['--pids-limit', '-1', '--cap-add', 'all', '--security-opt', 'unmask=/proc/sys',
-                                  '--systemd', 'always']
+        at = srv.index('--cap-add')
+        assert srv[at:at + 6] == ['--cap-add', 'all', '--security-opt', 'unmask=/proc/sys', '--systemd', 'always']
         assert srv[srv.index('--uidmap') + 1] == '0:1:65536' and '--privileged' not in srv
         assert srv[-3:] == ['--entrypoint', '["/sbin/init"]', 'docker.io/sysreseval/init13:1.36']
-        assert client[at:at + 4] == ['--pids-limit', '-1', '--cap-add',
+        assert client[at:at + 2] == ['--cap-add',
                                      'NET_ADMIN,NET_RAW,NET_BROADCAST,NET_BIND_SERVICE,SYS_ADMIN,MKNOD,AUDIT_WRITE']
         assert '--security-opt' not in client and '--systemd' not in client
 
@@ -1540,40 +1574,403 @@ class TestPrivilegedMachines:
 
 
 # ---------------------------------------------------------------------------
-# What the engine does not do yet
+# Save and restore
 # ---------------------------------------------------------------------------
 
-class TestNotYet:
-    def test_a_failed_deployment_is_never_a_plugin_matter(self, engine):
-        assert engine.is_network_plugin_error(RuntimeError('DockerPluginError')) is False
+NOT_ENTERED = ['/dev', '/proc', '/sys', '/run', '/tmp', '/hosthome', '/shared', '/hostlab']
+TAR_CREATE = ['tar', '-c', '-f', '-', '--numeric-owner', '--ignore-failed-read', '--no-recursion', '--xattrs',
+              '--xattrs-include=security.capability', '--pax-option=delete=atime,delete=ctime', '--null',
+              '--verbatim-files-from', '-C', '/', '-T', '-']
+TAR_EXTRACT = ['tar', '-x', '-p', '--numeric-owner', '--xattrs', '--xattrs-include=security.capability',
+               '-f', '-', '-C', '/']
 
-    def test_save_and_restore(self, engine):
-        for call in (engine.require_save_restore, lambda: engine.save('/a.tar', HASH, True, '/tmp'),
-                     lambda: engine.restore('/a.tar', engine.new_lab(RUNNING_LAB), '/tmp')):
-            with pytest.raises(EngineError, match="save / restore is not available with the Podman engine yet"):
-                call()
-        assert engine.run.calls == []
 
-    def test_sre_save_stops_before_touching_the_project(self, engine, monkeypatch):
+@pytest.fixture
+def work(tmp_path):
+    """The directory a save or a restore works in (the engine of the tests keeps its own things
+    in `tmp_path`)."""
+    path = tmp_path / 'work'
+    path.mkdir()
+    return path
+
+
+def answer_changes(engine, **by_machine):
+    """Make the comparison of each machine with its image (`podman unshare ...`) answer the
+    changes given for it, none for the others."""
+    def answer(argv):
+        machine = argv[6][len(f'sre_{HASH}_'):]
+        return completed(stdout=json.dumps({'changed': [], 'added': [], 'deleted': [],
+                                            **by_machine.get(machine, {})}).encode())
+    engine.run.reply('podman', 'unshare', function=answer)
+
+
+def answer_tar(engine, returncode=0, stderr=b''):
+    """Make the tar run in a machine write, where its output goes, the names it was given."""
+    def answer(argv):
+        call = engine.run.calls[-1]
+        call.kwargs['stdout'].write(b'TAR OF ' + call.kwargs['input'])
+        return completed(returncode, stderr=stderr)
+    engine.run.reply('podman', 'exec', '--interactive', function=answer)
+
+
+class TestSave:
+    @pytest.fixture
+    def project(self, engine):
+        engine.run.reply('podman', 'ps', stdout=listing(('r', 'running', 0), ('pc1', 'running', 0)))
+        answer_changes(engine, pc1={'changed': ['/etc', '/etc/issue'], 'added': ['/root/new', '/tmp/EOS'],
+                                    'deleted': ['/etc/issue.net', '/run/x']})
+        answer_tar(engine)
+        return engine
+
+    def test_the_commands_and_the_archive(self, project, work):
+        archive = str(work / 'kathara.tar')
+        project.save(archive, HASH, True, str(work))
+        commands = project.run.commands
+        assert commands[0] == ['podman', 'ps', '--all', '--format', 'json', '--filter', 'label=app=sre', '--filter',
+                               f'label=lab_hash={HASH}']
+        # the machines in the order of their names; each: its changes, then one tar if it has any
+        assert [argv[:2] + argv[6:7] if argv[1] == 'unshare' else argv[:2] for argv in commands[1:]] == [
+            ['podman', 'unshare', f'sre_{HASH}_pc1'], ['podman', 'exec'], ['podman', 'unshare', f'sre_{HASH}_r']]
+        assert commands[1] == ['podman', 'unshare', 'sh', '-c', podman_engine._MOUNT_AND_COMPARE, 'sh',
+                               f'sre_{HASH}_pc1', IMAGE_ID, sys.executable,
+                               str(SRC / 'SRE' / 'engine' / 'tree_changes.py'), '1', '1'] + NOT_ENTERED
+        capture = project.run.calls[2]
+        assert capture.argv == ['podman', 'exec', '--interactive', '--user', '0:0', f'sre_{HASH}_pc1'] + TAR_CREATE
+        assert capture.kwargs['input'] == b'etc/issue\0root/new\0'
+        assert capture.kwargs['stdout'].name == str(work / 'save-0.diff.tar')
+        # the archive: the format of the Kathara fork, the images as Docker spells them
+        mode, machines = save_format.read_archive(archive)
+        assert mode == 'diff'
+        assert machines == {'pc1': save_format.SavedMachine(IMAGE, ['/etc/issue.net'], True),
+                            'r': save_format.SavedMachine(IMAGE, [], True)}
+        with tarfile.open(archive) as tar:
+            assert tar.extractfile('images/pc1.diff.tar').read() == b'TAR OF etc/issue\0root/new\0'
+            # a machine that changed nothing: a tar without member, written here
+            with tarfile.open(fileobj=tar.extractfile('images/r.diff.tar')) as empty:
+                assert empty.getmembers() == []
+            assert json.loads(tar.extractfile('manifest.json').read())['lab']['hash'] == HASH
+        assert sorted(p.name for p in work.iterdir()) == ['kathara.tar']
+
+    def test_the_program_that_compares_is_there(self):
+        assert Path(podman_engine._TREE_CHANGES) == SRC / 'SRE' / 'engine' / 'tree_changes.py'
+        assert Path(podman_engine._TREE_CHANGES).is_file()
+
+    def test_the_ids_of_a_machine_start_at_the_range_of_its_project(self, engine, work):
+        engine.run.reply('podman', 'ps', stdout=listing(('r', 'running', 2)))
+        answer_changes(engine)
+        engine.save(str(work / 'kathara.tar'), HASH, True, str(work))
+        (compare,) = engine.run.starting_with('podman', 'unshare')
+        assert compare.argv[10:12] == ['131073', '131073']
+
+    def test_a_machine_whose_image_is_not_known(self, engine, work):
+        engine.run.reply('podman', 'ps', stdout=json.dumps([{
+            'Names': [f'sre_{HASH}_r'], 'State': 'running',
+            'Labels': {'app': 'sre', 'name': 'r', 'lab_hash': HASH, 'uid_range': '0'}}]).encode())
+        with pytest.raises(EngineError, match="machine 'r': its image is not known"):
+            engine.save(str(work / 'kathara.tar'), HASH, True, str(work))
+
+    def test_a_machine_whose_range_is_not_known(self, engine, work):
+        engine.run.reply('podman', 'ps', stdout=listing(('r', 'running', 'x')))
+        with pytest.raises(EngineError, match="machine 'r': its uid range is not known"):
+            engine.save(str(work / 'kathara.tar'), HASH, True, str(work))
+
+    def test_whole_images_are_refused_before_anything(self, engine, work):
+        with pytest.raises(EngineError, match=r"a save of whole images \(--full-images\) is not available with the "
+                                              "Podman engine"):
+            engine.save(str(work / 'kathara.tar'), HASH, False, str(work))
+        with pytest.raises(EngineError, match="whole images"):
+            engine.require_save_restore(full_images=True)
+        assert engine.require_save_restore() is None
+        assert engine.run.calls == [] and list(work.iterdir()) == []
+
+    def test_a_stopped_machine(self, engine, work):
+        engine.run.reply('podman', 'ps', stdout=listing(('pc1', 'running', 0), ('r', 'exited', 0)))
+        with pytest.raises(EngineError, match="machine 'r' is not running: a project with a stopped machine cannot "
+                                              "be saved with the Podman engine"):
+            engine.save(str(work / 'kathara.tar'), HASH, True, str(work))
+        assert len(engine.run.calls) == 1 and list(work.iterdir()) == []
+
+    @pytest.mark.parametrize('reply, said', [
+        (dict(returncode=1, stderr=b'Error: mounting the container\n'), "Error: mounting the container"),
+        (dict(returncode=1), "exit status 1"),
+        (dict(stdout=b'not json'), "exit status 0"),
+        (dict(stdout=b'{"changed": []}'), "exit status 0"),
+    ])
+    def test_changes_that_cannot_be_read(self, engine, work, reply, said):
+        engine.run.reply('podman', 'ps', stdout=listing(('r', 'running', 0)))
+        engine.run.reply('podman', 'unshare', **reply)
+        with pytest.raises(EngineError, match=f"machine 'r': what it changed could not be read: {said}"):
+            engine.save(str(work / 'kathara.tar'), HASH, True, str(work))
+        assert list(work.iterdir()) == []
+
+    def test_a_file_that_changed_while_tar_read_it_is_no_error(self, project, work):
+        answer_tar(project, returncode=1, stderr=b'tar: var/log/syslog: file changed as we read it\n')
+        project.save(str(work / 'kathara.tar'), HASH, True, str(work))
+        assert save_format.read_archive(str(work / 'kathara.tar'))[1]['pc1'].has_diff
+
+    def test_a_tar_that_fails(self, project, work):
+        answer_tar(project, returncode=2, stderr=b'tar: etc/shadow: Cannot open: Permission denied\n'
+                                                 b'tar: Exiting with failure status due to previous errors\n')
+        with pytest.raises(EngineError, match="machine 'pc1': its files could not be read: tar: Exiting with failure"):
+            project.save(str(work / 'kathara.tar'), HASH, True, str(work))
+        assert list(work.iterdir()) == []
+
+    def test_a_machine_without_tar(self, project, work):
+        project.run.reply('podman', 'exec', '--interactive', returncode=127,
+                          stderr=b'Error: crun: executable file `tar` not found in $PATH: No such file or directory\n')
+        with pytest.raises(EngineError, match="machine 'pc1': its files could not be read: Error: crun: executable "
+                                              "file `tar` not found"):
+            project.save(str(work / 'kathara.tar'), HASH, True, str(work))
+
+    def test_a_machine_that_went_away(self, project, work):
+        project.run.reply('podman', 'exec', '--interactive', returncode=125, stderr=b'Error: no such container\n')
+        with pytest.raises(EngineError, match="machine 'pc1': no such container"):
+            project.save(str(work / 'kathara.tar'), HASH, True, str(work))
+
+    def test_sre_save_of_whole_images_stops_before_touching_the_project(self, engine, monkeypatch):
         module = SimpleNamespace(allow_save_restore=True)
         monkeypatch.setattr(save_cmd, 'set_all_variables_for_action', lambda running_lab_name: (module, MagicMock()))
         monkeypatch.setattr(save_cmd, 'get_engine', lambda: engine)
         monkeypatch.setattr(save_cmd, 'ensure_save_tmp_dir', lambda: pytest.fail("the save went on"))
-        with pytest.raises(EngineError, match="save / restore is not available"):
-            save_cmd.do_action_save(RUNNING_LAB)
+        with pytest.raises(EngineError, match="a save of whole images"):
+            save_cmd.do_action_save(RUNNING_LAB, full_images=True)
 
-    def test_sre_restore_stops_before_creating_a_project(self, engine, monkeypatch):
-        module = SimpleNamespace(allow_save_restore=True)
-        monkeypatch.setattr(restore_cmd, 'read_header', lambda source: (SimpleNamespace(lab_name='latency'), '{}'))
-        monkeypatch.setattr(restore_cmd, 'lab_cli_arg_from_lab_name', lambda name: (name, False))
-        monkeypatch.setattr(restore_cmd, 'set_lab_dir_and_import_module', lambda **kwargs: (module, 'latency', None, 'f.py'))
-        monkeypatch.setattr(restore_cmd, 'get_engine', lambda: engine)
-        monkeypatch.setattr(restore_cmd, 'check_grade_class', lambda *a: pytest.fail("the restore went on"))
-        with pytest.raises(EngineError, match="save / restore is not available"):
-            restore_cmd.do_action_restore(io.BytesIO(b''))
-
-    def test_the_kathara_engine_saves_and_restores(self):
+    def test_the_kathara_engine_saves_whole_images(self):
         assert KatharaEngine.require_save_restore(MagicMock()) is None
+        assert KatharaEngine.require_save_restore(MagicMock(), full_images=True) is None
+
+
+class TestMountAndCompare:
+    """The script the engine runs in the user namespace of the account, here with a `podman`
+    that only says where things are mounted."""
+
+    @pytest.fixture
+    def run(self, tmp_path):
+        log = tmp_path / 'podman.log'
+        bin_dir = tmp_path / 'bin'
+        bin_dir.mkdir()
+        (bin_dir / 'podman').write_text(
+            '#!/bin/sh\necho "$*" >> "$LOG"\n'
+            'case "$1 $2" in\n'
+            '  "mount $FAILING"|"image $FAILING") echo "Error: cannot mount" >&2; exit 125;;\n'
+            '  "mount machine") echo "$NEW";;\n'
+            '  "image mount") echo "$OLD";;\n'
+            'esac\n')
+        (bin_dir / 'podman').chmod(0o755)
+        for name in ('new', 'old'):
+            (tmp_path / name / 'etc').mkdir(parents=True)
+            (tmp_path / name / 'etc' / 'issue').write_text('Debian\n')
+            os.utime(tmp_path / name / 'etc' / 'issue', ns=(10 ** 9, 10 ** 9))
+        (tmp_path / 'new' / 'etc' / 'added').write_text('x')
+
+        def run(failing='', program=podman_engine._TREE_CHANGES, new=str(tmp_path / 'new')):
+            result = subprocess.run(
+                ['sh', '-c', podman_engine._MOUNT_AND_COMPARE, 'sh', 'machine', 'the-image', sys.executable, program,
+                 '0', '0', '/tmp'], capture_output=True, text=True,
+                env={'PATH': f"{bin_dir}:{os.environ['PATH']}", 'LOG': str(log), 'FAILING': failing, 'NEW': new,
+                     'OLD': str(tmp_path / 'old')})
+            calls = log.read_text().splitlines() if log.exists() else []
+            log.unlink(missing_ok=True)
+            return result, calls
+        return run
+
+    def test_both_are_mounted_compared_and_unmounted(self, run):
+        result, calls = run()
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) == {'changed': [], 'added': ['/etc/added'], 'deleted': []}
+        assert calls == ['mount machine', 'image mount the-image', 'umount machine', 'image umount the-image']
+
+    def test_a_machine_that_cannot_be_mounted(self, run):
+        result, calls = run(failing='machine')
+        assert result.returncode == 1 and result.stdout == '' and 'cannot mount' in result.stderr
+        assert calls == ['mount machine']
+
+    def test_an_image_that_cannot_be_mounted(self, run):
+        result, calls = run(failing='mount')
+        assert result.returncode == 1 and result.stdout == ''
+        assert calls == ['mount machine', 'image mount the-image', 'umount machine']
+
+    def test_a_comparison_that_fails_still_unmounts(self, run, tmp_path):
+        result, calls = run(new=str(tmp_path / 'nothing-there'))
+        assert result.returncode not in (0, 125) and result.stdout == ''
+        assert calls[-2:] == ['umount machine', 'image umount the-image']
+
+
+def saved_project(tmp_path, **machines):
+    """An archive as a save writes it.  Per machine: `(image, deletions, members of its diff or
+    None for no diff)`, a member being `(name, 'file' | 'dir')`."""
+    diffs = {}
+    for name, (_, _, members) in machines.items():
+        if members is None:
+            continue
+        diffs[name] = str(tmp_path / f'{name}.source.tar')
+        with tarfile.open(diffs[name], 'w') as tar:
+            for member, kind in members:
+                info = tarfile.TarInfo(member)
+                if kind == 'dir':
+                    info.type = tarfile.DIRTYPE
+                tar.addfile(info, None if kind == 'dir' else io.BytesIO(b''))
+    path = str(tmp_path / 'kathara.tar')
+    save_format.write_archive(path, save_format.manifest('SavedHash', [(name, image, deletions) for
+                                                                       name, (image, deletions, _) in machines.items()]),
+                              diffs)
+    for diff in diffs.values():
+        os.unlink(diff)
+    return path
+
+
+class TestRestore:
+    # every namespace of the machine: the programs run there are those of the image the save names
+    INSIDE = ['nsenter', '--target', '222', '--user', '--mount', '--net', '--pid', '--ipc', '--uts', '--cgroup']
+
+    @pytest.fixture
+    def archive(self, work):
+        """`pc1` saved from an older image, with a deleted file and three entries; `r` unchanged;
+        `former`, a machine the lab no longer has."""
+        return saved_project(
+            work,
+            pc1=('sysreseval/base13:1.30', ['/etc/issue.net'],
+                 [('root/a', 'file'), ('root/d', 'dir'), ('etc/version/x', 'file')]),
+            r=(IMAGE, [], None), former=(IMAGE, ['/x'], [('y', 'file')]))
+
+    def unpacked(self, engine):
+        """Keep what each tar that unpacks a diff is given on its standard input."""
+        given = []
+
+        def answer(argv):
+            given.append(engine.run.calls[-1].kwargs['stdin'].read())
+            return completed()
+        engine.run.reply(*self.INSIDE, 'tar', function=answer)
+        return given
+
+    def test_the_files_go_back_before_the_first_process(self, engine, archive, work):
+        given = self.unpacked(engine)
+        lab = two_machines(engine)
+        engine.restore(archive, lab, str(work))
+        commands = engine.run.commands
+        # each machine from the image it was saved from, which is looked for like any other
+        assert ['podman', 'image', 'exists', 'docker.io/sysreseval/base13:1.30'] in commands
+        creates = {call.argv[3]: call.argv[-1] for call in engine.run.starting_with('podman', 'create')}
+        assert creates == {f'sre_{HASH}_pc1': 'docker.io/sysreseval/base13:1.30', f'sre_{HASH}_r': f'docker.io/{IMAGE}'}
+        # pc1: between `podman init` and its interfaces, from inside its user and mount namespaces
+        first = commands.index(['podman', 'init', f'sre_{HASH}_pc1'])
+        inside = len(self.INSIDE)
+        steps = [argv[:1] + argv[inside:inside + 2] if argv[:2] == self.INSIDE[:2] else argv[:2]
+                 for argv in commands[first:first + 9]]
+        assert steps == [['podman', 'init'], ['podman', 'inspect'], ['nsenter', 'xargs', '-0'], ['nsenter', 'xargs', '-0'],
+                         ['nsenter', 'xargs', '-0'], ['nsenter', 'tar', '-x'], ['nsenter', '--user=/proc/111/ns/user'],
+                         ['systemd-run', '--user'], ['podman', 'start']]
+        remove, files, directories, unpack = engine.run.calls[first + 2:first + 6]
+        assert remove.argv == self.INSIDE + ['xargs', '-0', '-r', 'rm', '-rf', '--']
+        assert remove.kwargs['input'] == b'/etc/issue.net\0'
+        # what would be in the way of the archive: a directory where it has a file ...
+        assert files.argv == self.INSIDE + podman_engine._MAKE_ROOM_FOR_FILES
+        assert files.kwargs['input'] == b'/etc/version/x\0/root/a\0'
+        # ... a file or a link where it has, or implies, a directory
+        assert directories.argv == self.INSIDE + podman_engine._MAKE_ROOM_FOR_DIRECTORIES
+        assert directories.kwargs['input'] == b'/etc\0/etc/version\0/root\0/root/d\0'
+        assert unpack.argv == self.INSIDE + TAR_EXTRACT and unpack.kwargs['umask'] == 0o022
+        with tarfile.open(fileobj=io.BytesIO(given[0])) as tar:
+            assert tar.getnames() == ['root/a', 'root/d', 'etc/version/x']
+        # r had nothing saved but its image: no command in it before its start
+        assert len(given) == 1 and len(engine.run.starting_with(*self.INSIDE)) == 4
+        # nothing is kept
+        assert all(machine.saved is None for machine in lab.machines.values())
+        assert sorted(p.name for p in work.iterdir()) == ['kathara.tar']
+
+    def test_a_machine_of_the_lab_that_was_not_saved(self, engine, work):
+        archive = saved_project(work, pc1=(IMAGE, [], [('root/a', 'file')]))
+        self.unpacked(engine)
+        lab = two_machines(engine)
+        engine.restore(archive, lab, str(work))
+        assert len(engine.run.starting_with('podman', 'start')) == 2
+        assert [call.argv[len(self.INSIDE)] for call in engine.run.starting_with(*self.INSIDE)] == ['xargs', 'xargs', 'tar']
+
+    def test_only_deletions(self, engine, work):
+        archive = saved_project(work, pc1=(IMAGE, ['/etc/motd', '/usr/share/doc/tar'], None))
+        engine.restore(archive, two_machines(engine), str(work))
+        (remove,) = engine.run.starting_with(*self.INSIDE)
+        assert remove.kwargs['input'] == b'/etc/motd\0/usr/share/doc/tar\0'
+
+    def test_whole_images_are_refused_before_anything(self, engine, work):
+        path = str(work / 'kathara.tar')
+        manifest = {'save_mode': 'full', 'machines': [{'name': 'pc1', 'meta': {'image': 'kathara_save_h:pc1'}}]}
+        with tarfile.open(path, 'w') as tar:
+            data = json.dumps(manifest).encode()
+            info = tarfile.TarInfo('manifest.json')
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+        with pytest.raises(EngineError, match=r"this save file holds whole images \(--full-images\): it cannot be "
+                                              "restored with the Podman engine"):
+            engine.restore(path, two_machines(engine), str(work))
+        assert engine.run.calls == []
+
+    def test_a_file_that_is_no_archive(self, engine, work):
+        (work / 'kathara.tar').write_bytes(b'x' * 2000)
+        with pytest.raises(EngineError, match="not a valid save file"):
+            engine.restore(str(work / 'kathara.tar'), two_machines(engine), str(work))
+        assert engine.run.calls == []
+
+    @pytest.mark.parametrize('command, said', [
+        ('tar', "machine 'pc1': its saved files could not be put back: tar: srv/null: Cannot mknod: Operation not "
+                "permitted"),
+        ('xargs', "machine 'pc1': the files it had deleted could not be removed: rm: cannot remove '/etc/issue.net'"),
+    ])
+    def test_files_that_cannot_be_put_back_stop_the_restore(self, engine, archive, work, command, said):
+        stderr = {'tar': b'tar: srv/null: Cannot mknod: Operation not permitted\n'
+                         b'tar: Exiting with failure status due to previous errors\n',
+                  'xargs': b"rm: cannot remove '/etc/issue.net': Read-only file system\n"}[command]
+        engine.run.reply(*self.INSIDE, command, returncode=2 if command == 'tar' else 123, stderr=stderr)
+        lab = two_machines(engine)
+        with pytest.raises(EngineError, match=said):
+            engine.restore(archive, lab, str(work))
+        # the machine was never started, and the deployment is undone
+        assert ['podman', 'start', f'sre_{HASH}_pc1'] not in engine.run.commands
+        assert ['systemctl', '--user', 'stop', f'srelab-{HASH}-*', f'srelab-{HASH}.slice'] in engine.run.commands
+        assert all(machine.saved is None for machine in lab.machines.values())
+        assert sorted(p.name for p in work.iterdir()) == ['kathara.tar']
+
+    def test_a_plain_deployment_puts_nothing_back(self, engine):
+        engine.deploy(two_machines(engine))
+        assert [call for call in engine.run.starting_with('nsenter') if '--mount' in call.argv] == []
+
+
+class TestMakingRoom:
+    """The two scripts run in a machine before an archive is unpacked, here in a directory."""
+
+    def tree(self, tmp_path):
+        (tmp_path / 'directory' / 'below').mkdir(parents=True)
+        (tmp_path / 'file').write_text('x')
+        os.symlink('directory', tmp_path / 'link-to-a-directory')
+        os.symlink('file', tmp_path / 'link-to-a-file')
+        os.symlink('nothing', tmp_path / 'dangling')
+        return ['directory', 'file', 'link-to-a-directory', 'link-to-a-file', 'dangling', 'absent', '-dash absent']
+
+    def run(self, tmp_path, command, names):
+        result = subprocess.run(command, input=b''.join(name.encode() + b'\0' for name in names), cwd=tmp_path,
+                                capture_output=True)
+        assert result.returncode == 0, result.stderr
+        return sorted(p.name for p in tmp_path.iterdir())
+
+    def test_for_a_file_only_a_real_directory_goes(self, tmp_path):
+        """tar replaces a file or a link by a file, not a directory."""
+        names = self.tree(tmp_path)
+        assert self.run(tmp_path, podman_engine._MAKE_ROOM_FOR_FILES, names) == [
+            'dangling', 'file', 'link-to-a-directory', 'link-to-a-file']
+
+    def test_for_a_directory_everything_else_goes(self, tmp_path):
+        """A file is in the way of a directory, and tar would unpack through a link to one."""
+        names = self.tree(tmp_path)
+        assert self.run(tmp_path, podman_engine._MAKE_ROOM_FOR_DIRECTORIES, names) == ['directory']
+        assert (tmp_path / 'directory' / 'below').is_dir()
+
+    def test_nothing_to_look_at(self, tmp_path):
+        assert self.run(tmp_path, podman_engine._MAKE_ROOM_FOR_FILES, []) == []
+
+
+class TestPluginError:
+    def test_a_failed_deployment_is_never_a_plugin_matter(self, engine):
+        assert engine.is_network_plugin_error(RuntimeError('DockerPluginError')) is False
 
 
 class TestImages:
@@ -1583,6 +1980,13 @@ class TestImages:
         assert engine.pull_image(IMAGE) == (ok, 'Trying to pull...\n')
         (call,) = engine.run.calls
         assert call.argv == ['podman', 'pull', f'docker.io/{IMAGE}'] and call.kwargs == {'stderr': subprocess.STDOUT}
+
+    def test_a_host_where_podman_cannot_run_is_a_failed_pull(self, engine, monkeypatch):
+        """`sre preload-images` goes on with the other images and reports each, as with Docker."""
+        def refuses(arguments, **kwargs):
+            raise EngineError("cannot make the user namespace of Podman for sre: no user manager")
+        monkeypatch.setattr(engine, 'podman', refuses)
+        assert engine.pull_image(IMAGE) == (False, "cannot make the user namespace of Podman for sre: no user manager")
 
     def test_nothing_to_capture_at_start_up(self, engine):
         assert engine.capture_root_privileges() is None and engine.run.calls == []

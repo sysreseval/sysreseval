@@ -161,15 +161,17 @@ class Engine(ABC):
     # ---- save and restore ---------------------------------------------------------------
 
     @abstractmethod
-    def require_save_restore(self):
+    def require_save_restore(self, full_images: bool = False):
         """Raise :class:`EngineError` when the engine cannot save and restore a project (asked
-        before anything of a save or a restore is done)."""
+        before anything of a save or a restore is done).  *full_images*: a save of whole images
+        is what is asked."""
 
     @abstractmethod
     def save(self, archive_path: str, lab_hash: str, filesystem_diff: bool, temp_dir: str):
         """Write the filesystems of the machines of a running project to *archive_path*: what
         each machine changed in its image (*filesystem_diff*), or whole images.  Temporary
-        files go to *temp_dir*."""
+        files go to *temp_dir*.  The archive has the format of the Kathara fork whatever the
+        engine (``save_format``): a file saved with one engine restores with another."""
 
     @abstractmethod
     def restore(self, archive_path: str, lab, temp_dir: str):

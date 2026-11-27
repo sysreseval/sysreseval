@@ -213,7 +213,7 @@ class KatharaEngine(Engine):
 
     # ---- save and restore ---------------------------------------------------------------
 
-    def require_save_restore(self):
+    def require_save_restore(self, full_images=False):
         pass
 
     def save(self, archive_path, lab_hash, filesystem_diff, temp_dir):

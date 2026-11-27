@@ -49,18 +49,18 @@ Stops every running project the caller may access, each one as `sre stop` does (
 
 ### `sre save [-o <file>] [--full-images] <running_lab>`
 
-Saves a running project into a single save file (`.sre`): the filesystem of every container (captured by the patched Kathara `save_lab`, as a diff against the base image by default) plus the project files (`data.json`, `answers/`, `.private/files`, the user public dir with `shared/` and the volume directories, `.private/mnt`). The lab must set `allow_save_restore = True`; the lab's `save` state is applied first (see [Lifecycle states](lab-authoring.md#lifecycle-states-save--restore)). Only files are captured, not running processes.
+Saves a running project into a single save file (`.sre`): the filesystem of every container (captured by the container engine in the format of the patched Kathara's `save_lab`, as a diff against the base image by default: a file saved with one engine restores with the other) plus the project files (`data.json`, `answers/`, `.private/files`, the user public dir with `shared/` and the volume directories, `.private/mnt`). The lab must set `allow_save_restore = True`; the lab's `save` state is applied first (see [Lifecycle states](lab-authoring.md#lifecycle-states-save--restore)). Only files are captured, not running processes.
 
 | Option | Description |
 |--------|-------------|
 | `-o` / `--output <file>` | Write the save file here instead of stdout (privileged only). |
-| `--full-images` | Store full committed device images instead of filesystem diffs — self-contained but large (privileged only). |
+| `--full-images` | Store full committed device images instead of filesystem diffs — self-contained but large (privileged only; not with the Podman engine). |
 
 In user mode (`--user`, i.e. from the GUI) the file is always written to stdout. When the lab defines `save_key`, the payload is encrypted. See [Save file format](internals.md#save-file-format).
 
 ### `sre restore [--instructor-mode] <save_file | ->`
 
-Restores a save file as a **new** running project (fresh timestamp, current user): loads the lab module named in the header (`allow_save_restore` required), recreates the project directories and copies the saved project files back, rebuilds the Kathara lab from the restored `data.json` (fresh host ports, X11 cookie, volumes, `/shared`), redeploys the containers from the saved filesystems (`Kathara.restore_lab(…, lab=…)`, same `pull`/`deploy` progress events as `start`), refreshes `exetests.py`, applies the lab's `restore` state and writes `info.json`. On failure everything created so far is rolled back.
+Restores a save file as a **new** running project (fresh timestamp, current user): loads the lab module named in the header (`allow_save_restore` required), recreates the project directories and copies the saved project files back, rebuilds the Kathara lab from the restored `data.json` (fresh host ports, X11 cookie, volumes, `/shared`), redeploys the containers from the saved filesystems (`Kathara.restore_lab(…, lab=…)`, or the Podman engine itself, which puts the files back before the first process of each machine; same `pull`/`deploy` progress events as `start`), refreshes `exetests.py`, applies the lab's `restore` state and writes `info.json`. On failure everything created so far is rolled back.
 
 `-` reads the save file from stdin — the only form accepted in user mode (the GUI opens the file as the student). Labs referenced by an absolute path (`sre start -p`) can only be restored by privileged users, unless the path lies inside the lab directory (`/opt/sre/lab`), in which case the save file is restored like any other lab of that directory. An encrypted file needs a lab with the same `save_key`; a cleartext file for a lab that defines `save_key` is refused in user mode (accepted with a warning otherwise).
 
@@ -68,7 +68,7 @@ Restores a save file as a **new** running project (fresh timestamp, current user
 
 ### `sre wipe`
 
-Stops every running Kathara lab and removes everything under `/var/lib/sre/projects/` and the user public directories. Privileged only: the user-mode form is `sre stop-all`. On a pool host of the web site it also stops the projects of the web users placed there: `sre wipe-local` leaves those running.
+Stops every running project of the container engine of the host and removes everything under `/var/lib/sre/projects/` and the user public directories. When the engine cannot stop the machines (at a shutdown, what it needs may be gone already), the directories are removed all the same, and the command says so with exit status 1. Privileged only: the user-mode form is `sre stop-all`. On a pool host of the web site it also stops the projects of the web users placed there: `sre wipe-local` leaves those running.
 
 ### `sre wipe-local`
 
@@ -233,7 +233,7 @@ Dismissals self-expire: inactivity alerts return on new archives, error alerts r
 
 ### `sre preload-images [--random-delay <sec>] [--progress] <file_or_dir…>`
 
-Reads the lab `.py` files and `docker pull`s each image they name, once. The files are parsed, never imported, and an image is found wherever the file writes it: every `sre_docker_image(...)` call with a literal name (in a machine spec, but also kept in a constant such as `SCAN_IMAGE = sre_docker_image("scan13")` used by the specs, assigned with `spec['image'] = ...`, or given to `default_image`), and every image written as a plain string where an image is expected (the `'image'` key of a spec, `Machine(image=...)`, `spec['image'] = ...`, `default_image`), directly or through a name of the file holding that string. A name computed when the lab runs (`sre_docker_image(name)` in a loop, an f-string) is not seen: write the names out for such a lab to be preloaded. A file that does not parse is reported on stderr and skipped. `--random-delay <sec>` waits 0–N seconds before pulling (smooths thundering-herd when invoked across many hosts). `--progress` also writes the steps as JSON lines on stderr (`{"phase": "preload", "status": "start", "total": N}`, then `"status": "pull"` with `image` / `current` / `total` before each pull and `"status": "error"` with `image` after a failed one); what is printed on stdout and the exit status are unchanged. It is what the agent of the web front-end runs when the portal gives its host a turn to preload (see [Pre-loading the images](web.md) in the pool section of the web front-end).
+Reads the lab `.py` files and pulls each image they name, once, into the store of the container engine of the host (`docker pull`, or `podman pull` with the Podman engine: the two stores are apart). The files are parsed, never imported, and an image is found wherever the file writes it: every `sre_docker_image(...)` call with a literal name (in a machine spec, but also kept in a constant such as `SCAN_IMAGE = sre_docker_image("scan13")` used by the specs, assigned with `spec['image'] = ...`, or given to `default_image`), and every image written as a plain string where an image is expected (the `'image'` key of a spec, `Machine(image=...)`, `spec['image'] = ...`, `default_image`), directly or through a name of the file holding that string. A name computed when the lab runs (`sre_docker_image(name)` in a loop, an f-string) is not seen: write the names out for such a lab to be preloaded. A file that does not parse is reported on stderr and skipped. `--random-delay <sec>` waits 0–N seconds before pulling (smooths thundering-herd when invoked across many hosts). `--progress` also writes the steps as JSON lines on stderr (`{"phase": "preload", "status": "start", "total": N}`, then `"status": "pull"` with `image` / `current` / `total` before each pull and `"status": "error"` with `image` after a failed one); what is printed on stdout and the exit status are unchanged. It is what the agent of the web front-end runs when the portal gives its host a turn to preload (see [Pre-loading the images](web.md) in the pool section of the web front-end).
 
 ### `sre make-titles [-o <file> | -r] [-d] <directory>`
 
@@ -300,7 +300,7 @@ What an update does, in order:
 1. Checks: no exam configured (`sre del-exam` first), a writable tree (on a read-only NFS mount, run it on the server), one update at a time.
 2. Downloads the source archive of the commit into a temporary directory of the tree and decides everything before touching anything: which files change, which are deleted, what `params.py` becomes, and that the new code compiles with the venv's Python.
 3. Prints a summary and asks for a confirmation (unless `--yes`).
-4. Runs `sre wipe`: every running project is stopped and removed, since the new code may not handle projects started by the old one. Without a Docker daemon on the host (`params.docker_socket_path` missing, e.g. an NFS server), the wipe is skipped with a warning: run `sre wipe` on the client hosts.
+4. Runs `sre wipe`: every running project is stopped and removed, since the new code may not handle projects started by the old one. A host that can run no project skips the wipe with a warning (run `sre wipe` on the client hosts): with the Kathara engine a host without Docker daemon (`params.docker_socket_path` missing, e.g. an NFS server), with the Podman engine a host `scripts/podman-setup.sh` never prepared (`params.podman_dir` missing).
 5. Replaces the files and reapplies the ownership and modes of `scripts/install.sh` (root, world-readable; the entries of `lab/` and `lib/` to the `sre` user, not world-readable), removes the stale `__pycache__` directories, then runs `make fonts sre-wrapper` and makes `sbin/sre` and `bin/sysreseval` executable again.
 
 What is installed, kept and deleted:

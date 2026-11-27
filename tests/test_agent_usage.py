@@ -12,10 +12,11 @@ import pytest
 
 pytest.importorskip('aiohttp', reason="aiohttp is not installed: the web front-end needs it: run `make venv`")
 
-from fake_docker import FakeDocker, MIB, SYSTEMD, CGROUPFS  # noqa: E402
-from sreweb.agent import usage  # noqa: E402
+from fake_docker import FakeDocker, FakePodman, MIB, SYSTEMD, CGROUPFS  # noqa: E402
+from SRE import params  # noqa: E402
+from sreweb.agent import app as agent_app, usage  # noqa: E402
 from sreweb.agent.usage import (UsageSampler, parse_stat, read_container, containers_by_lab, cpu_usec,  # noqa: E402
-                                SETTLE_AFTER, MEAN_AFTER, BUSY_TAU)
+                                podman_containers, SETTLE_AFTER, MEAN_AFTER, BUSY_TAU)
 from sreweb.config import UsageConfig, agent_config_from_dict, ConfigError  # noqa: E402
 
 CID = 'ab' * 32
@@ -485,6 +486,189 @@ class TestSimulation:
 
 
 # ---------------------------------------------------------------------------------------------
+# a host whose engine is Podman
+# ---------------------------------------------------------------------------------------------
+
+def podman_sampler(podman, reg, clock=None, **cfg):
+    return UsageSampler(reg, UsageConfig(cgroup_root=str(podman.cgroup_root), **cfg), docker_socket='',
+                        podman_slices=str(podman.slices), clock=clock or Clock())
+
+
+class TestPodmanContainers:
+    def test_the_scopes_of_the_slice_of_each_project(self, tmp_path):
+        podman = FakePodman(tmp_path)
+        a, b = podman.add('h1'), podman.add('h1')
+        c = podman.add('H2x')
+        podman.add('other')
+        (podman.slices / 'srelab-h1.slice' / 'cgroup.procs').write_text('')
+        (podman.slices / 'srelab-h1.slice' / 'libpod-short.scope').mkdir()
+        (podman.slices / 'srelab-h1.slice' / f'libpod-{"g" * 64}.scope').mkdir()
+        by_lab, where = podman_containers(str(podman.slices), ['h1', 'H2x', 'nothing', None])
+        assert {lab: sorted(ids) for lab, ids in by_lab.items()} == {'h1': [a, b], 'H2x': [c]}
+        assert where == {cid: str(podman.slices / f'srelab-{lab}.slice' / f'libpod-{cid}.scope')
+                         for cid, lab in ((a, 'h1'), (b, 'h1'), (c, 'H2x'))}
+
+    def test_the_slice_of_a_project_is_named_after_the_directory(self, tmp_path):
+        """As systemd names a slice inside another: `<name>-<lab hash>.slice` in `<name>.slice`."""
+        slices = tmp_path / 'user@1.service' / 'labs.slice'
+        scope = slices / 'labs-h1.slice' / f'libpod-{CID}.scope'
+        scope.mkdir(parents=True)
+        assert podman_containers(str(slices) + '/', ['h1']) == ({'h1': [CID]}, {CID: str(scope)})
+
+    @pytest.mark.parametrize('bad', ['../h1', 'h1/..', 'a/b', '', 'h1.slice', 'h 1', 7, None, ['h1']])
+    def test_only_a_lab_hash_makes_a_path(self, tmp_path, bad):
+        podman = FakePodman(tmp_path)
+        podman.add('h1')
+        assert podman_containers(str(podman.slices), [bad]) == ({}, {})
+
+    def test_no_project_of_the_engine_yet(self, tmp_path):
+        """The user manager runs and no slice was ever made: no container, and no error."""
+        podman = FakePodman(tmp_path)
+        assert podman_containers(str(podman.slices), ['h1']) == ({}, {})
+
+    def test_without_the_user_manager_nothing_can_be_said(self, tmp_path):
+        with pytest.raises(OSError):
+            podman_containers(str(tmp_path / 'user@1100.service' / 'srelab.slice'), ['h1'])
+
+
+class TestPodmanSampler:
+    def test_the_figures_of_a_project(self, tmp_path):
+        """The machines of the project and nothing else: not their monitor processes, not the
+        machines of another project.  No daemon is asked."""
+        async def go():
+            podman = FakePodman(tmp_path)
+            podman.add('h1', mem=40 * MIB, cpu_usec=100)
+            podman.add('h1', mem=24 * MIB, inactive_file=4 * MIB, cpu_usec=100)
+            podman.add('other', mem=500 * MIB)
+            sampler = podman_sampler(podman, registry(project()))
+            assert sampler.enabled
+            await sampler.sample()
+            assert sampler.rows() == [{'name': RLN, 'lab': 'sre@dhcp.py', 'containers': 2, 'mem_mb': 60.0,
+                                       'cpu': None, 'settled': False}]
+        asyncio.run(go())
+
+    def test_settled_the_mean_and_a_change_of_the_machines(self, tmp_path):
+        async def go():
+            podman = FakePodman(tmp_path)
+            first = podman.add('h1', mem=10 * MIB, cpu_usec=0)
+            clock = Clock()
+            sampler = podman_sampler(podman, registry(project()), clock)
+            await sampler.sample()
+            clock.advance(SETTLE_AFTER)
+            await sampler.sample()                      # settled: the mean starts here
+            assert row(sampler)['settled'] is True and row(sampler)['cpu'] is None
+            clock.advance(MEAN_AFTER)
+            podman.set(first, cpu_usec=int(MEAN_AFTER * 0.5e6))
+            await sampler.sample()
+            assert row(sampler)['cpu'] == pytest.approx(0.5)
+            podman.remove(first)                        # a machine made again: the count starts again
+            podman.add('h1', mem=10 * MIB)
+            await sampler.sample()
+            assert row(sampler) == {'name': RLN, 'lab': 'sre@dhcp.py', 'containers': 1, 'mem_mb': 10.0, 'cpu': None,
+                                    'settled': False}
+        asyncio.run(go())
+
+    def test_a_project_whose_machines_are_gone(self, tmp_path):
+        async def go():
+            podman = FakePodman(tmp_path)
+            cid = podman.add('h1', mem=10 * MIB)
+            sampler = podman_sampler(podman, registry(project(), project('20261120100001@@@x@@@bob', lab_hash=None)))
+            await sampler.sample()
+            podman.remove(cid)                          # its slice stays, empty
+            await sampler.sample()
+            assert [(r['containers'], r['mem_mb'], r['settled']) for r in sampler.rows()] == [(0, None, False)] * 2
+        asyncio.run(go())
+
+    def test_the_user_manager_is_not_running(self, tmp_path, caplog):
+        """Nothing is told of the projects, said once; the figures come back with it."""
+        async def go():
+            podman = FakePodman(tmp_path)
+            podman.add('h1', mem=10 * MIB)
+            sampler = podman_sampler(podman, registry(project()))
+            shutil.move(podman.user_manager, tmp_path / 'aside')
+            with caplog.at_level(logging.WARNING, logger='sreweb.agent'):
+                await sampler.sample()
+                await sampler.sample()
+            assert row(sampler)['containers'] is None and row(sampler)['mem_mb'] is None
+            warnings = [r.getMessage() for r in caplog.records]
+            assert len(warnings) == 1 and warnings[0].startswith(
+                f"usage of the projects not measured: {podman.slices}: ")
+            shutil.move(tmp_path / 'aside', podman.user_manager)
+            await sampler.sample()
+            assert row(sampler)['mem_mb'] == 10.0
+        asyncio.run(go())
+
+    def test_the_processors_of_the_host(self, tmp_path):
+        async def go():
+            podman = FakePodman(tmp_path)
+            podman.add('h1')
+            clock = Clock()
+            sampler = podman_sampler(podman, registry(project()), clock)
+            podman.host_cpu(0)
+            await sampler.sample()
+            clock.advance(10)
+            podman.host_cpu(20_000_000)
+            await sampler.sample()
+            assert sampler.cpu_busy == pytest.approx(2.0)
+        asyncio.run(go())
+
+    def test_the_slices_are_read_and_the_daemon_is_not_asked(self, short_dir):
+        """Both given: the projects of this host are those of Podman."""
+        async def go():
+            async with FakeDocker(short_dir) as docker:
+                docker.add('h1', mem=999 * MIB)
+                podman = FakePodman(short_dir / 'podman')
+                podman.add('h1', mem=10 * MIB)
+                sampler = UsageSampler(registry(project()), UsageConfig(cgroup_root=str(podman.cgroup_root)),
+                                       docker_socket=docker.socket, podman_slices=str(podman.slices), clock=Clock())
+                await sampler.sample()
+                assert row(sampler)['mem_mb'] == 10.0 and docker.requests == []
+        asyncio.run(go())
+
+
+class TestSources:
+    """Where the agent of a machine looks for the containers (`usage_sources()` of the agent)."""
+
+    @pytest.fixture(autouse=True)
+    def host(self, monkeypatch):
+        monkeypatch.setattr(params, 'container_engine', params.container_engine_kathara)
+        monkeypatch.setattr(params, 'container_engine_by_host', {})
+        monkeypatch.setattr(params, 'docker_socket_path', '/var/run/docker.sock')
+        monkeypatch.setattr(params, 'sre_uid', 1100)
+
+    def test_the_engine_of_the_host_is_kathara(self):
+        assert agent_app.usage_sources(UsageConfig(), None) == {'docker_socket': '/var/run/docker.sock',
+                                                                'podman_slices': ''}
+
+    def test_the_engine_of_the_host_is_podman(self, monkeypatch):
+        monkeypatch.setattr(params, 'container_engine', params.container_engine_podman)
+        assert agent_app.usage_sources(UsageConfig(cgroup_root='/cg'), None) == {
+            'docker_socket': '', 'podman_slices': '/cg/user.slice/user-1100.slice/user@1100.service/srelab.slice'}
+
+    def test_this_host_alone_is_on_podman(self, monkeypatch):
+        monkeypatch.setattr(params, 'container_engine_by_host', {agent_app.socket.gethostname(): 'podman'})
+        assert agent_app.usage_sources(UsageConfig(), None)['podman_slices'].endswith('/srelab.slice')
+
+    def test_an_engine_that_is_none(self, monkeypatch):
+        """`sre` says what is wrong with the parameter; the agent measures as it always did."""
+        monkeypatch.setattr(params, 'container_engine', 'lxc')
+        assert agent_app.usage_sources(UsageConfig(), None) == {'docker_socket': '/var/run/docker.sock',
+                                                                'podman_slices': ''}
+
+    def test_what_the_configuration_names_wins(self, monkeypatch):
+        monkeypatch.setattr(params, 'container_engine', params.container_engine_podman)
+        assert agent_app.usage_sources(UsageConfig(docker_socket='/run/d.sock'), None) == {
+            'docker_socket': '/run/d.sock', 'podman_slices': ''}
+        assert agent_app.usage_sources(UsageConfig(docker_socket='/run/d.sock', podman_slices='/cg/x.slice'), '/pub') == {
+            'docker_socket': '', 'podman_slices': '/cg/x.slice'}
+
+    @pytest.mark.parametrize('engine', ['kathara', 'podman'])
+    def test_an_agent_that_is_not_the_one_of_the_machine_measures_nothing(self, monkeypatch, engine):
+        monkeypatch.setattr(params, 'container_engine', engine)
+        assert agent_app.usage_sources(UsageConfig(), '/tmp/pub') == {'docker_socket': '', 'podman_slices': ''}
+
+
+# ---------------------------------------------------------------------------------------------
 # [usage] of agent.toml
 # ---------------------------------------------------------------------------------------------
 
@@ -493,8 +677,8 @@ class TestConfig:
 
     def test_defaults(self):
         cfg = agent_config_from_dict(dict(self.BASE))
-        assert cfg.usage == UsageConfig(interval=15.0, docker_socket='', cgroup_root='/sys/fs/cgroup',
-                                        meminfo='/proc/meminfo')
+        assert cfg.usage == UsageConfig(interval=15.0, docker_socket='', podman_slices='',
+                                        cgroup_root='/sys/fs/cgroup', meminfo='/proc/meminfo')
 
     def test_values(self):
         cfg = agent_config_from_dict({**self.BASE, 'usage': {'interval': '1m', 'docker_socket': '/run/docker.sock',
@@ -502,12 +686,16 @@ class TestConfig:
         assert cfg.usage == UsageConfig(interval=60.0, docker_socket='/run/docker.sock', cgroup_root='/cg',
                                         meminfo='/x/meminfo')
         assert agent_config_from_dict({**self.BASE, 'usage': {'interval': 0}}).usage.interval == 0
+        assert agent_config_from_dict({**self.BASE, 'usage': {'podman_slices': '/cg/srelab.slice'}}).usage \
+            .podman_slices == '/cg/srelab.slice'
 
     @pytest.mark.parametrize('table, message', [
         ({'interval': -1}, 'negative'),
         ({'interval': True}, 'duration'),
         ({'docker_socket': 'docker.sock'}, 'docker_socket must be an absolute path'),
         ({'docker_socket': 3}, 'docker_socket must be an absolute path'),
+        ({'podman_slices': 'srelab.slice'}, 'podman_slices must be an absolute path'),
+        ({'podman_slices': 7}, 'podman_slices must be an absolute path'),
         ({'cgroup_root': ''}, 'cgroup_root must be an absolute path'),
         ({'cgroup_root': 'sys'}, 'cgroup_root must be an absolute path'),
         ({'meminfo': 'meminfo'}, 'meminfo must be an absolute path'),
