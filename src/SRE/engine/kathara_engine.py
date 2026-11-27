@@ -213,6 +213,9 @@ class KatharaEngine(Engine):
 
     # ---- save and restore ---------------------------------------------------------------
 
+    def require_save_restore(self):
+        pass
+
     def save(self, archive_path, lab_hash, filesystem_diff, temp_dir):
         with _temp_dir(temp_dir):
             Kathara.get_instance().save_lab(archive_path, lab_hash=lab_hash, filesystem_diff=filesystem_diff)

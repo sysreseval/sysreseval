@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from SRE import access, params
-from SRE.engine import get_engine
+from SRE.engine import EngineError, get_engine
 from SRE.utils import error_quit
 from SRE.utils_privileges import drop_privileges_temporarily, drop_privileges_permanently
 
@@ -473,7 +473,10 @@ if access.launched_by_sudo(os.environ, params.sre_exe):
 if uid == 0:
     # The engine must see the process as root before the effective uid is lowered below, or it
     # could never raise it again for a lab with privileged machines.
-    get_engine().capture_root_privileges()
+    try:
+        get_engine().capture_root_privileges()
+    except EngineError as e:  # no engine of that name (container_engine of params.py)
+        error_quit(str(e))
 
 # `update` writes the root-owned tree: root stays available to it whatever allow_privileged_machines says
 if SRE.args.action == 'update' or (
@@ -490,83 +493,87 @@ else:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
-match SRE.args.action:
-    case 'wipe':
-        action_wipe()
-    case 'wipe-local':
-        action_wipe_local()
-    case 'status':
-        action_status(as_json=SRE.args.json)
-    case 'set-drain':
-        action_set_drain()
-    case 'remove-drain':
-        action_remove_drain()
-    case 'list':
-        action_list(with_titles=SRE.args.with_titles, include_exam_only=SRE.args.include_exam_only,
-                    with_readmes=SRE.args.with_readmes)
-    case 'make-titles':
-        action_make_titles(SRE.args.directory, SRE.args.output_file, SRE.args.recursive,
-                           SRE.args.directories)
-    case 'start':
-        action_start()
-    case 'check':
-        action_check()
-    case 'connect':
-        action_connect()
-    case 'exec':
-        action_exec()
-    case 'state':
-        action_state()
-    case 'eval':
-        action_eval()
-    case 'eval-all':
-        action_eval_all()
-    case 'stop':
-        action_stop()
-    case 'stop-all':
-        action_stop_all()
-    case 'save':
-        action_save()
-    case 'restore':
-        action_restore()
-    case 'eval-exam':
-        action_eval_exam()
-    case 'set-exam':
-        action_set_exam()
-    case 'del-exam':
-        action_del_exam()
-    case 'pre-start-exam':
-        action_pre_start_exam()
-    case 'start-exam':
-        action_start_exam()
-    case 're-eval':
-        action_re_eval()
-    case 'check-eval':
-        action_check_eval()
-    case 'watch':
-        action_watch()
-    case 'sheet':
-        action_sheet()
-    case 'cat':
-        action_cat()
-    case 'export':
-        action_export()
-    case 'end-exam':
-        action_end_exam()
-    case 'outline':
-        action_outline()
-    case 'report':
-        action_report()
-    case 'save-records':
-        action_save_records()
-    case 'preload-images':
-        action_preload_images()
-    case 'set-instructor-mode':
-        action_set_instructor_mode()
-    case 'remove-instructor-mode':
-        action_remove_instructor_mode()
-    case 'update':
-        action_update()
+try:
+    match SRE.args.action:
+        case 'wipe':
+            action_wipe()
+        case 'wipe-local':
+            action_wipe_local()
+        case 'status':
+            action_status(as_json=SRE.args.json)
+        case 'set-drain':
+            action_set_drain()
+        case 'remove-drain':
+            action_remove_drain()
+        case 'list':
+            action_list(with_titles=SRE.args.with_titles, include_exam_only=SRE.args.include_exam_only,
+                        with_readmes=SRE.args.with_readmes)
+        case 'make-titles':
+            action_make_titles(SRE.args.directory, SRE.args.output_file, SRE.args.recursive,
+                               SRE.args.directories)
+        case 'start':
+            action_start()
+        case 'check':
+            action_check()
+        case 'connect':
+            action_connect()
+        case 'exec':
+            action_exec()
+        case 'state':
+            action_state()
+        case 'eval':
+            action_eval()
+        case 'eval-all':
+            action_eval_all()
+        case 'stop':
+            action_stop()
+        case 'stop-all':
+            action_stop_all()
+        case 'save':
+            action_save()
+        case 'restore':
+            action_restore()
+        case 'eval-exam':
+            action_eval_exam()
+        case 'set-exam':
+            action_set_exam()
+        case 'del-exam':
+            action_del_exam()
+        case 'pre-start-exam':
+            action_pre_start_exam()
+        case 'start-exam':
+            action_start_exam()
+        case 're-eval':
+            action_re_eval()
+        case 'check-eval':
+            action_check_eval()
+        case 'watch':
+            action_watch()
+        case 'sheet':
+            action_sheet()
+        case 'cat':
+            action_cat()
+        case 'export':
+            action_export()
+        case 'end-exam':
+            action_end_exam()
+        case 'outline':
+            action_outline()
+        case 'report':
+            action_report()
+        case 'save-records':
+            action_save_records()
+        case 'preload-images':
+            action_preload_images()
+        case 'set-instructor-mode':
+            action_set_instructor_mode()
+        case 'remove-instructor-mode':
+            action_remove_instructor_mode()
+        case 'update':
+            action_update()
+except EngineError as e:
+    # the container engine cannot do what was asked: its message is the error, no traceback
+    error_quit(str(e))
 
 # lab = Lab(name='a', path="/home/etudiant/tp-arp")
 # Kathara.get_instance().deploy_lab(lab)

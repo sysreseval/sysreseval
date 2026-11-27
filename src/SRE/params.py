@@ -2,6 +2,7 @@ import grp
 import os
 import pwd
 import re
+import socket
 import stat
 from datetime import datetime
 from typing import Literal
@@ -64,7 +65,11 @@ docker_socket_path = "/var/run/docker.sock"   # absent: no Docker daemon on this
 self_update_allowed = None   # None: True (checkout), False (fhs: the package is updated with apt); `sre update`
 network_plugin_hint = None   # None: how to install the network plugin with the switch types, by layout
 kathara_hint = None          # None: how to get a Kathara with the switch modes, by layout
-web_dir = None               # None: main_sre_dir/web (checkout), /usr/share/sysreseval/web (fhs): templates and static files of sre-web
+container_engine = "kathara"   # what runs the machines: "kathara" (Docker through Kathara) or "podman" (rootless Podman under sre_user, set up by `make podman-setup`; non-privileged machines on hub networks only for now)
+container_engine_by_host = {}  # host name -> engine, for the hosts that differ from container_engine: {"s17": "podman"}
+podman_dir = None            # None: sre_pub_dir/podman: configuration and image store of the Podman engine (a local disk, never NFS)
+podman_uid_ranges = 32       # Podman engine: each project runs in a uid range of its own, so this is how many projects a host runs at once (1: they all share one range)
+web_dir = None              # None: main_sre_dir/web (checkout), /usr/share/sysreseval/web (fhs): templates and static files of sre-web
 web_config_file = None       # None: /etc/sreweb/web.toml (checkout), /etc/sysreseval/web.toml (fhs): configuration of sre-web
 agent_config_file = None     # None: /etc/sreweb/agent.toml (checkout), /etc/sysreseval/agent.toml (fhs): configuration of sre-agent
 # Site parameters file: a Python file executed into this module after the parameters above (any
@@ -303,6 +308,8 @@ if network_plugin_hint is None:
                            else f"Install it with `make network-plugin` in {main_sre_dir} (see the installation guide).")
 if kathara_hint is None:
     kathara_hint = "upgrade the python3-kathara package" if _fhs else "install it again with `make venv`"
+if podman_dir is None:
+    podman_dir = sre_pub_dir + "/podman"
 if web_dir is None:
     web_dir = "/usr/share/sysreseval/web" if _fhs else main_sre_dir + "/web"
 if web_config_file is None:
@@ -404,6 +411,30 @@ default_host_network_edge_relative_length = 1.0
 # Module-level `ipv6` lab option: None = leave Kathara's own enable_ipv6 setting (False by default),
 # True/False = force IPv6 on/off in every machine; Machine(ipv6=...) overrides it per machine.
 default_ipv6 = None
+
+# Container engines (values of `container_engine` and of `container_engine_by_host`)
+container_engine_kathara = "kathara"
+container_engine_podman = "podman"
+container_engines = (container_engine_kathara, container_engine_podman)
+
+
+def host_container_engine(hostname: str | None = None) -> str:
+    """The container engine of this host (of *hostname*): its entry of `container_engine_by_host`,
+    looked up by the name the machine gives itself, then by that name cut at its first dot, else
+    `container_engine`.  ValueError, naming the parameter, when the value is not an engine."""
+    if hostname is None:
+        hostname = socket.gethostname()
+    for name in (hostname, hostname.split('.')[0]):
+        if name in container_engine_by_host:
+            engine, source = container_engine_by_host[name], f"container_engine_by_host[{name!r}]"
+            break
+    else:
+        engine, source = container_engine, "container_engine"
+    if engine not in container_engines:
+        raise ValueError(f"{source} = {engine!r} in params.py: not a container engine "
+                         f"({', '.join(container_engines)})")
+    return engine
+
 
 # Switch type of a network (`mode` of a `_network_specs` entry, Kathara collision domain mode):
 # a hub sends every frame to every machine, a switch learns the MAC addresses, a managed switch

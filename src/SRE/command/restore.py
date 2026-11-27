@@ -65,6 +65,7 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
             start_projet=True, lab_cli_arg=lab_cli_arg, path=None)
     if not getattr(module_rvlab, 'allow_save_restore', False):
         error_quit("save/restore is not allowed for this lab (set allow_save_restore = True in the lab file)")
+    get_engine().require_save_restore()
     check_grade_class(module_rvlab, current_srelab_file)
 
     save_key = get_save_key(module_rvlab)

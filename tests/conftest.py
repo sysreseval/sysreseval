@@ -44,6 +44,16 @@ def mock_sre_args():
 
 
 @pytest.fixture(autouse=True)
+def kathara_engine_selected(monkeypatch):
+    """The engine of the tests is the Kathara one (stubbed above), whatever the host and its site
+    parameters say; a test of the choice sets the two parameters itself.  A module read at
+    collection (before any fixture) still sees the choice of the host."""
+    from SRE import params
+    monkeypatch.setattr(params, 'container_engine', params.container_engine_kathara)
+    monkeypatch.setattr(params, 'container_engine_by_host', {})
+
+
+@pytest.fixture(autouse=True)
 def reset_instructor_context():
     """instructor() follows a thread-local flag set by NetScheme0 / Grade0: every test starts
     and ends outside the instructor mode."""

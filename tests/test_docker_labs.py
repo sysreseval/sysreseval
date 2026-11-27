@@ -19,6 +19,10 @@ package), the SRE images (a missing one is pulled by `sre start`), no exam confi
 host.  Excluded from `make tests`; run with `make docker-tests`, or one lab alone with
 `pytest tests/test_docker_labs.py -k dhcp`.  About two minutes for the six labs on a 12-core
 workstation that has the images.
+
+On a host whose engine is Podman (`make podman-tests`) the same procedure runs on Podman: what
+is left of a project is asked of that engine, and a lab it cannot run yet (a privileged machine,
+a switch...) is skipped with the reason `sre start` gives.
 """
 import json
 import os
@@ -36,8 +40,19 @@ if os.geteuid() != 0:
     pytest.skip("Docker lab tests must run as root", allow_module_level=True)
 
 from SRE.answers import answers_lock, consume_cheat_file, load_answers, merge_cheat, save_answers  # noqa: E402
-from test_docker_lifecycle import (  # noqa: E402, F401  (docker_client, projects, no_exam: fixtures)
-    PROJECTS, _containers, _lab_hash, _networks, _project_dirs, _sre, docker_client, no_exam, projects)
+from test_docker_lifecycle import PROJECTS, _lab_hash, _project_dirs, _sre, no_exam  # noqa: E402, F401  (no_exam: a fixture)
+
+# The engine of the host, read when the module is collected (the fixture of conftest.py gives
+# every test the Kathara one): it says who is asked what a stopped project left.
+try:
+    PODMAN = params.host_container_engine() == params.container_engine_podman
+except ValueError:      # `sre start` will say it
+    PODMAN = False
+if PODMAN:
+    from test_podman_lifecycle import _leftovers, projects  # noqa: E402, F401  (projects: a fixture)
+else:
+    from test_docker_lifecycle import _containers, _networks, docker_client, projects  # noqa: E402, F401  (fixtures)
+PODMAN_REFUSAL = "with the Podman engine yet"   # the end of what the engine says of a lab it cannot run
 
 LABS_DIR = Path(params.lab_dir) / params.shipped_lab_link_name
 # the file labs of the directory itself: `glob` does not enter the sub-directories
@@ -75,6 +90,8 @@ def _start(projects, lab):
     shared host somebody else may start a project meanwhile."""
     before = _project_dirs()
     r = _sre('start', f'{params.shipped_lab_link_name}/{lab}', timeout=START_TIMEOUT)
+    if PODMAN and r.returncode != 0 and PODMAN_REFUSAL in r.stderr:
+        pytest.skip(r.stderr.strip().splitlines()[-1])
     assert r.returncode == 0, f"sre start failed:\n{r.stderr[-3000:]}"
     running_lab_name = _created_project(r.stderr)
     if running_lab_name is None:
@@ -131,12 +148,22 @@ def _short_of_maximum(elements):
     return [e for e in elements if e['grade'] != pytest.approx(e['max_grade'])]
 
 
+@pytest.fixture
+def leftovers(request):
+    """``leftovers(lab_hash)``: what still carries the hash of a project, asked of the engine of
+    the host (skipped without a reachable Docker daemon when the engine is Kathara)."""
+    if PODMAN:
+        return _leftovers
+    client = request.getfixturevalue('docker_client')
+    return lambda lab_hash: _containers(client, lab_hash) + _networks(client, lab_hash)
+
+
 def test_the_labs_are_found():
     assert LABS, f"no lab file in {LABS_DIR}"
 
 
 @pytest.mark.parametrize('lab', LABS)
-def test_final_state_gives_every_point(docker_client, projects, no_exam, lab):
+def test_final_state_gives_every_point(leftovers, projects, no_exam, lab):
     if not params.allow_privileged_machines and PRIVILEGED_MACHINE.search((LABS_DIR / lab).read_text()):
         pytest.skip("params.allow_privileged_machines is False")
     running_lab_name, lab_hash = _start(projects, lab)
@@ -168,5 +195,5 @@ def test_final_state_gives_every_point(docker_client, projects, no_exam, lab):
 
     r = _sre('stop', running_lab_name)
     assert r.returncode == 0, r.stderr
-    assert _containers(docker_client, lab_hash) == [] and _networks(docker_client, lab_hash) == []
+    assert leftovers(lab_hash) == []
     assert not (PROJECTS / running_lab_name).exists()

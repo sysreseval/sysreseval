@@ -47,9 +47,14 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 The CLI reaches the containers through one object, the engine (`engine.get_engine()`), and through it only: no other module of `src/SRE` imports Kathara or the Docker SDK, nor runs the `docker` command (`tests/test_engine.py` checks it).
 
 - `engine/base.py` is the contract: what an engine provides (describing a project, deploying and undeploying it, finding a running one, running a command or opening a terminal in a machine, the console of the managed switches, save and restore, pulling an image, reporting progress) and the three attributes of a lab object the rest of the code relies on: `hash`, `shared_path`, and `machines`, each machine with an `api_object` offering `exec_run`, `put_archive` and `get_archive`.
-- `engine/kathara_engine.py` is the one engine: Kathara over Docker.
+- `engine/kathara_engine.py` is the default engine: Kathara over Docker.
+- `engine/podman_engine.py` is the Podman engine: rootless Podman containers of the `sre` account, linked by VDE hubs the engine runs itself (non-privileged machines on hub networks for now; see [Podman engine](installation.md#podman-engine-rootless-containers)).
 
-An engine method runs with the privileges its caller set up: the choreography described above (`utils_privileges.py`) stays in the commands.
+`get_engine()` creates the engine `params.host_container_engine()` names for the host (`container_engine`, `container_engine_by_host`) and imports its module then, so a host needs the software of its own engine only. What an engine cannot do is an `EngineError`, whose one-line message `sre` prints as its error.
+
+The Podman engine in short. A network is a hub, one `vde_plug null:// hub://<dir>/ctl` (the hub of vdeplug4, which carries frames of up to 9 kB; Debian's `vde_switch` loses those above 1500 bytes) in a directory of the account's runtime directory. A machine is created with `podman create --network none`, stopped before its first process with `podman init`, given its interfaces (taps created in its network namespace, each joined to its hub by a `vde_plug`), then started: the interfaces exist before anything runs. Hubs and plugs are transient units of the account's user manager (`srelab-<hash>-…`); a machine whose plug could not join its hub fails the deployment. Every project runs in a uid range of its own, taken under a lock from the `podman_uid_ranges` ranges of the account; id 0 of a machine is never the account itself, so a setuid file a machine leaves in `shared/` gives nothing on the host. Every external command goes through one method, `PodmanEngine.run()`, which runs it as the account with the group `docker_gid`, from `podman_dir`, with an environment built from scratch, whatever the privileges of the caller. Before a `podman` command the engine checks that the user namespace of the account exists (its pause process runs) and otherwise has a unit of the user manager make it: `newuidmap` refuses a process whose group is not the primary group of the account. The handle of a container (`exec_run`, `put_archive`, `get_archive`) is `podman exec`, the archives going through `tar` in the machine; the values of the variables given to a command travel in Podman's environment, not on its command line, which every user of the host can read.
+
+A method of the Kathara engine runs with the privileges its caller set up: the choreography described above (`utils_privileges.py`) stays in the commands.
 
 ## Filesystem layout
 
@@ -100,6 +105,10 @@ An engine method runs with the privileges its caller set up: the choreography de
 | `docker_gid` | `988` | GID of the `docker` group |
 | `check_project_owner` | `True` | User mode: a caller only sees and drives their own projects and those started by root or the `sre` user (`False`: every project of the host) |
 | `max_docker_concurrency` | `16` | Max parallel Docker API calls during eval |
+| `container_engine` | `"kathara"` | Container engine of the site: `"kathara"` (Docker through Kathara) or `"podman"` |
+| `container_engine_by_host` | `{}` | Host name → engine, for the hosts that differ from `container_engine` |
+| `podman_dir` | `sre_pub_dir/podman` | Podman engine: its configuration and image store (a local disk) |
+| `podman_uid_ranges` | `32` | Podman engine: uid ranges of the `sre` account, one per running project |
 | `default_eval_interval_during_exams` | `60` | Default auto-eval period (s) |
 | `default_exam_duration` | `90` | Default exam duration (min), used if `duration` absent from `exam.json` |
 | `default_inactivity_threshold_in_watch_command` | `90` | `sre watch` inactivity alert threshold |

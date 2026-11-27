@@ -73,6 +73,7 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
     module_rvlab, net_scheme = set_all_variables_for_action(running_lab_name=running_lab_name)
     if not getattr(module_rvlab, 'allow_save_restore', False):
         error_quit("save/restore is not allowed for this lab (set allow_save_restore = True in the lab file)")
+    get_engine().require_save_restore()
     save_key = get_save_key(module_rvlab)
     owner = params.get_username_from_running_lab_name(running_lab_name)
 

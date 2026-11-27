@@ -359,10 +359,14 @@ class TestPrivilegedCgroupNamespace:
 SRC = Path(__file__).parent.parent / 'src'
 
 
+# the programs only an engine runs (the first word of a command line)
+ENGINE_COMMANDS = ('docker', 'podman', 'systemd-run', 'nsenter', 'vde_switch', 'vde_plug')
+
+
 def _engine_names(source: str) -> list[str]:
-    """What a source text takes from Kathara, the Docker SDK or the `docker` command:
+    """What a source text takes from Kathara, the Docker SDK or the programs of an engine:
     `"<line>: <what>"` for every import of one of the two packages and every list or tuple
-    starting with the word `docker` (a command line)."""
+    starting with the name of one of the programs (a command line)."""
     found = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
@@ -374,14 +378,15 @@ def _engine_names(source: str) -> list[str]:
         found += [f"{node.lineno}: import of {module}" for module in modules
                   if module.split('.')[0] in ('Kathara', 'docker')]
         if (isinstance(node, (ast.List, ast.Tuple)) and node.elts
-                and isinstance(node.elts[0], ast.Constant) and node.elts[0].value == 'docker'):
-            found.append(f"{node.lineno}: docker command")
+                and isinstance(node.elts[0], ast.Constant) and node.elts[0].value in ENGINE_COMMANDS):
+            found.append(f"{node.lineno}: {node.elts[0].value} command")
     return found
 
 
 class TestOnlyTheEngineNamesKatharaAndDocker:
     """Outside `src/SRE/engine/`, no file of the CLI imports Kathara or the Docker SDK, nor
-    builds a `docker` command: another engine is added in that package and nowhere else.
+    builds a command of `docker`, `podman` or the programs the Podman engine wires the networks
+    with: an engine is added in that package and nowhere else.
     (`src/sreweb/agent/usage.py`, which lists the containers of a host for the web site, is
     not covered: the web agent is not part of the CLI.)"""
 
@@ -389,10 +394,12 @@ class TestOnlyTheEngineNamesKatharaAndDocker:
         source = ("import os\nimport docker.errors\nfrom Kathara.manager.Kathara import Kathara\n"
                   "def f():\n    from docker.models import containers\n"
                   "    run(['docker', 'pull', image])\n    run(('docker', 'ps'))\n"
-                  "    names = ['kathara', 'docker']\n    from . import docker\n")
+                  "    names = ['kathara', 'docker']\n    from . import docker\n"
+                  "    run(['podman', 'ps'])\n    run(enter + ['vde_plug', tap])\n"
+                  "    run(['systemctl', '--user', 'stop', unit])\n")
         assert _engine_names(source) == ['2: import of docker.errors', '3: import of Kathara.manager.Kathara',
                                          '5: import of docker.models', '6: docker command',
-                                         '7: docker command']
+                                         '7: docker command', '10: podman command', '11: vde_plug command']
 
     def test_the_cli(self):
         engine = SRC / 'SRE' / 'engine'
@@ -403,5 +410,6 @@ class TestOnlyTheEngineNamesKatharaAndDocker:
                  if (names := _engine_names(path.read_text(encoding='utf-8')))}
         assert found == {}
 
-    def test_the_engine_itself_does(self):
-        assert _engine_names((SRC / 'SRE' / 'engine' / 'kathara_engine.py').read_text(encoding='utf-8'))
+    def test_the_engines_themselves_do(self):
+        for engine in ('kathara_engine.py', 'podman_engine.py'):
+            assert _engine_names((SRC / 'SRE' / 'engine' / engine).read_text(encoding='utf-8')), engine

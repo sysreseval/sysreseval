@@ -34,7 +34,7 @@ from ipaddress import (
 )
 
 from . import params
-from .engine import get_engine, SwitchModesUnsupported
+from .engine import get_engine, EngineError, SwitchModesUnsupported
 from .form_spec import FIELD_RE as _FORM_SPEC_FIELD_RE, form_fields as _form_fields
 from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoMachine, InfoLab, InfoInterface,
                      InfoSwitch, TranslatedText, _tt_hash_str)
@@ -1377,7 +1377,10 @@ class NetScheme0:
             ipv6 = self.machine_ipv6_enabled(m)
             if ipv6 is not None:
                 machine_kwargs['ipv6'] = ipv6
-            engine.add_machine(lab, m.name, **machine_kwargs)
+            try:
+                engine.add_machine(lab, m.name, **machine_kwargs)
+            except EngineError as e:
+                error_quit(f"machine '{m.name}': {e}")
             for net, netAdapter in m.net_adapters.items():
                 # the VLANs of a port of a managed switch, when the lab declared some
                 engine.connect_machine(lab, m.name, net.name, interface=netAdapter.interface,

@@ -340,6 +340,7 @@ systemctl enable --now sre-wipe-at-shutdown.service
 | `make sre-wrapper` | `bin/sre-wrapper` (small C helper that escalates via `sudo`). |
 | `make install` | `check-debug-mode` + `sre-wrapper` + `wrappers`. |
 | `make network-plugin` | Kathara VDE network plugin with the switch types, built from the fork and installed in place of the stock plugin (see [Network plugin for the switch types](#network-plugin-for-the-switch-types)). |
+| `make podman-setup` | Prepares the host for the Podman engine, as root: subordinate uids of the `sre` account, its user manager, the directory of the engine (see [Podman engine](#podman-engine-rootless-containers)). |
 | `make translations` | Compile Qt `.ts → .qm` and gettext `.po → .mo`. |
 | `make docs` | API docs (pdoc) + main docs (Sphinx) → `docs/html/main/`, `docs/html/api/`, `docs/documentation.pdf`. |
 | `make set-debug-mode` / `make remove-debug-mode` | Flip `debug_mode` in `src/SRE/params.py`. |
@@ -355,6 +356,7 @@ make functional-tests               # functional tests (test_functional.py)
 make exam-tests                     # exam-mode integration tests (requires debug_mode=True)
 make web-exam-tests                 # the same GUI following an exam of the web site: exam.json written by the web agent on the portal's orders (requires debug_mode=True and the web dependencies; thirteen scenarios, about fourteen minutes)
 make docker-tests                   # the Docker integration tests, left out of make tests and run by make all-tests (root, real containers: start/stop, save/restore, every lab of lab/sre/ from 0 to all its points with its `final` state, the connection log's database on a MariaDB container)
+make podman-tests                   # the same on a host whose engine is Podman (root, real containers: the life of a project checked on Podman, then the labs of lab/sre/ the engine can run), left out of make tests and of make all-tests
 make all-tests                      # tests + docker-tests + exam-tests + web-exam-tests
 ```
 
@@ -419,6 +421,43 @@ docker plugin inspect kathara/katharanp_vde:amd64 --format '{{.Settings.Env}}'  
 ```
 
 Without it `sre start` of a lab that uses a switch fails — Kathara's message (*the Kathara Network Plugin ... does not support it*) followed by the networks concerned and a reminder of `make network-plugin` — and nothing is left running. The management console of a managed switch is a unix socket the plugin gives to the group of `/var/run/docker.sock`: the `sre` user reaches it as it reaches Docker.
+
+### Podman engine (rootless containers)
+
+By default the machines of a lab are Docker containers started through Kathara, and the root of a machine is root on the host. With the **Podman engine** they are rootless Podman containers of the `sre` account: the root of a machine is an unprivileged uid of the host (one of the *subordinate* uids of the account, a different range for each running project), the networks are VDE hubs run by SRE itself, and neither the Docker daemon nor Kathara takes part.
+
+The engine is chosen in `params.py`, for the whole site or host by host:
+
+```python
+container_engine = "kathara"            # the engine of the site: "kathara" or "podman"
+container_engine_by_host = {"s17": "podman", "s18": "podman"}   # the hosts that differ
+```
+
+A host is looked up by the name it gives itself (`hostname`), then by that name cut at its first dot. The second parameter is what lets one `params.py`, shared by every workstation of a room, put a few of them on Podman first. An unknown engine name, in either parameter, ends every `sre` command with a message naming the parameter.
+
+**For now the Podman engine runs non-privileged machines on hub networks.** `sre start` refuses, with one line and before anything is created, a lab that has a privileged machine, a machine with an outside interface (`bridged`) or published ports, or a network that is a switch or a managed switch; `sre save` and `sre restore` are refused too. Everything else is the same for the students and for the web site: `start`, `connect`, `exec`, `state`, `eval`, `stop`, the same `info.json`.
+
+A host is prepared once, as root:
+
+```bash
+apt install podman uidmap vdeplug
+make podman-setup            # scripts/podman-setup.sh
+```
+
+The script reads `sre_user`, `podman_dir` and `podman_uid_ranges` in `params.py` (or `PODMAN_USER`, `PODMAN_DIR`, `PODMAN_UID_RANGES` in its environment) and changes nothing when run again:
+
+- it gives the account a range of subordinate uids and gids in `/etc/subuid` and `/etc/subgid`, large enough for `podman_uid_ranges` projects (32 by default: this is how many projects a host runs at once, `sre start` refusing the next one), starting at 20000000 or above the ranges other accounts already have (`PODMAN_SUBID_FIRST` to choose);
+- it starts the systemd user manager of the account at boot (`loginctl enable-linger`): the hubs of the networks are units of that manager, so they outlive the `sre` command that started them and are stopped with their project, and that manager makes the user namespace of Podman again after each boot (see below);
+- it creates `podman_dir` (`/var/lib/sre/podman` by default; a local disk, never NFS), which holds the configuration of the engine (`config/containers/containers.conf`) and its image store. A registry mirror goes in `config/containers/registries.conf`, written by the administrator;
+- it creates the user namespace of the account and checks that Podman answers with the group the `sre` command runs with (`docker_gid`), and that the user manager runs a unit.
+
+The images of the labs are downloaded into the store of the engine, which is not Docker's: `sre preload-images` fills it, and a missing image is pulled by `sre start` (the progress of that download is not shown). A project started with a uid range the image was never used with takes a few seconds more, the time to copy the image for that range (about two seconds and little disk on btrfs, where the copy shares its blocks; not measured on ext4, where it is probably a full copy of the image).
+
+Nothing else of `params.py` changes on a Podman host: the `sre` command still drops to `sre_uid` and `docker_gid`. Rootless Podman keeps one user namespace per account, made by its first command after a boot, and `newuidmap` only makes it for a process whose group is the primary group of the account, which `docker_gid` usually is not; the engine therefore has the user manager of the account make the namespace when it is missing, and every command then joins it whatever its group.
+
+While the `sre` account is a member of the `docker` group, what runs as that account can still reach the Docker daemon (the script says so). On a host that only uses the Podman engine, take the account out of that group and set `docker_gid` to its own group: nothing of the engine then has access to Docker.
+
+Known limit of this engine, beside the kinds of labs it refuses: a machine cannot serve NFS from the kernel (the NFS lab does not work). The hubs carry frames of up to 9000 bytes, for the labs that raise the MTU of their links.
 
 ### Dependencies
 

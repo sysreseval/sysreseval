@@ -25,7 +25,12 @@ gain and drop root around each call (``utils_privileges``).
 from abc import ABC, abstractmethod
 
 
-class SwitchModesUnsupported(Exception):
+class EngineError(Exception):
+    """The engine cannot do what it was asked.  Its message is one line meant for the user:
+    `sre` prints it as its error, without a traceback."""
+
+
+class SwitchModesUnsupported(EngineError):
     """The engine cannot make a network anything but a hub; the message says what is missing."""
 
 
@@ -58,7 +63,8 @@ class Engine(ABC):
     def add_machine(self, lab, name: str, **options):
         """Add the machine *name* to *lab*.  *options*: ``image``, ``privileged``, ``bridged``,
         ``ports``, ``envs``, ``sysctls``, ``ulimits``, ``volumes``, ``entrypoint``, ``shell``,
-        ``exec_commands`` and, when the lab says so, ``ipv6``."""
+        ``exec_commands`` and, when the lab says so, ``ipv6``.  Raises :class:`EngineError` for
+        an option the engine cannot honour."""
 
     @abstractmethod
     def connect_machine(self, lab, machine: str, network: str, interface: int, mac: str | None,
@@ -136,6 +142,11 @@ class Engine(ABC):
         networks of the lab could not be created with their mode."""
 
     # ---- save and restore ---------------------------------------------------------------
+
+    @abstractmethod
+    def require_save_restore(self):
+        """Raise :class:`EngineError` when the engine cannot save and restore a project (asked
+        before anything of a save or a restore is done)."""
 
     @abstractmethod
     def save(self, archive_path: str, lab_hash: str, filesystem_diff: bool, temp_dir: str):

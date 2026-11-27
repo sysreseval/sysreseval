@@ -442,3 +442,40 @@ class TestRefusals:
         result = sre_cli(['--user', 'stop-all'], real=('action_stop_all',))
         assert result.code == 1 and result.events == ['temporary drop']
         assert 'not allowed to run this command in exam mode' in capsys.readouterr().err
+
+
+class TestEngineErrors:
+    """What the container engine cannot do ends a command with one line, like the other errors
+    of the CLI, not with a traceback."""
+
+    def test_an_engine_error_raised_by_an_action(self, sre_cli, capsys, monkeypatch):
+        from SRE.command import stop
+        from SRE.engine import EngineError
+
+        def action_stop():
+            raise EngineError("save / restore is not available with the Podman engine yet")
+
+        monkeypatch.setattr(stop, 'action_stop', action_stop)
+        result = sre_cli(['stop', 'some-project'], real=('action_stop',))
+        assert result.code == 1
+        assert capsys.readouterr().err == "sre: save / restore is not available with the Podman engine yet\n"
+
+    def test_any_other_exception_still_goes_up(self, sre_cli, monkeypatch):
+        from SRE.command import stop
+
+        def action_stop():
+            raise RuntimeError("a bug")
+
+        monkeypatch.setattr(stop, 'action_stop', action_stop)
+        with pytest.raises(RuntimeError, match="a bug"):
+            sre_cli(['stop', 'some-project'], real=('action_stop',))
+
+    def test_an_engine_that_does_not_exist(self, sre_cli, capsys, monkeypatch):
+        import SRE.engine as engine_package
+
+        monkeypatch.setattr(engine_package, '_engine', None)
+        monkeypatch.setattr(params, 'container_engine', 'lxc')
+        result = sre_cli(['list'])
+        assert result.code == 1 and result.events == []
+        assert capsys.readouterr().err == ("sre: container_engine = 'lxc' in params.py: not a container engine "
+                                           "(kathara, podman)\n")

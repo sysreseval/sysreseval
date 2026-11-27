@@ -2,7 +2,7 @@
 SHELL:=/bin/bash
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-.PHONY: venv fonts network-plugin deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests web-tests test functional-tests exam-tests web-exam-tests docker-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
+.PHONY: venv fonts network-plugin podman-setup deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests web-tests test functional-tests exam-tests web-exam-tests docker-tests podman-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
 # The images with their own version (the `VERSION_<image> := <version>` lines of images/Makefile), as
@@ -125,6 +125,12 @@ network-plugin:
 	NETWORK_PLUGIN_NAME="$(NETWORK_PLUGIN_NAME)" NETWORK_PLUGIN_IMAGE="$(NETWORK_PLUGIN_IMAGE)" \
 	NETWORK_PLUGIN_MODES_ENV="$(NETWORK_PLUGIN_MODES_ENV)" NETWORK_PLUGIN_DIR="$(NETWORK_PLUGIN_DIR)" \
 	FORCE="$(FORCE)" BUILD="$(BUILD)" $(ROOT_DIR)/scripts/network-plugin.sh
+
+# Prepare this host for the Podman engine (container_engine / container_engine_by_host of
+# params.py): subordinate uids of the sre account, its user manager started at boot, the
+# directory of the engine, the user namespace.  As root, once; the recipe is scripts/podman-setup.sh.
+podman-setup:
+	@$(ROOT_DIR)/scripts/podman-setup.sh
 
 # Debian packages (python3-kathara, sysreseval, sysreseval-doc, and python3-fs on forky) built in
 # a debian:$(DIST) container by scripts/build-deb.sh and checked by an installation in a second
@@ -257,10 +263,12 @@ PYTEST = SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) SRE_TEST_JS=$(SRE_TEST_JS) ${ROOT_DIR}
 # the Docker tests of `make docker-tests` (real containers, root), which `make all-tests` runs
 # after these.  The same ignore list serves `make test`: pytest's --ignore spares the paths given
 # on the command line, so `make test FILE=test_docker_lifecycle.py` still runs that file.
+# The Podman tests of `make podman-tests` (real containers too) are left out the same way.
 DOCKER_TESTS = ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_docker_labs.py \
 	${ROOT_DIR}/tests/test_web_accessdb_live.py
+PODMAN_TESTS = ${ROOT_DIR}/tests/test_podman_lifecycle.py
 TESTS_IGNORE = --ignore=${ROOT_DIR}/tests/test_exam_mode.py --ignore=${ROOT_DIR}/tests/test_exam_mode_web.py \
-	$(addprefix --ignore=,$(DOCKER_TESTS))
+	$(addprefix --ignore=,$(DOCKER_TESTS) $(PODMAN_TESTS))
 tests:
 	$(PYTEST) ${ROOT_DIR}/tests/ $(TESTS_IGNORE)
 
@@ -337,6 +345,13 @@ web-exam-tests:
 SRE_TEST_MYSQL ?= docker
 docker-tests:
 	$(PYTEST) $(DOCKER_TESTS)
+
+# The same with the Podman engine, on a host that chose it (container_engine or
+# container_engine_by_host of params.py, after `make podman-setup`; as root, skipped otherwise):
+# the life of a project checked on Podman itself, then the lab files of lab/sre/ as above, a lab
+# the engine cannot run yet (privileged machine, switch...) being skipped with its reason.
+podman-tests:
+	$(PYTEST) $(PODMAN_TESTS) ${ROOT_DIR}/tests/test_docker_labs.py
 
 # `make tests` already runs the functional tests; the Docker tests need root and a Docker daemon,
 # the exam tests (the two series) root and debug_mode = True.
