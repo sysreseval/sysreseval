@@ -16,6 +16,7 @@ import pytest
 
 from SRE import params
 from SRE.command import save as save_cmd
+from SRE.engine import kathara_engine
 
 
 class _FakeNetScheme:
@@ -80,7 +81,7 @@ def _run_save(privileged, monkeypatch, snapshot, tmp_pub_dir):
     kathara = MagicMock()
     kathara.get_instance.return_value.save_lab.side_effect = \
         lambda archive_path, **kw: (snapshot('save_lab'), open(archive_path, 'wb').close())
-    monkeypatch.setattr(save_cmd, 'Kathara', kathara)
+    monkeypatch.setattr(kathara_engine, 'Kathara', kathara)
     monkeypatch.setattr(save_cmd, 'write_header', lambda out, meta: (snapshot('write_header'), 'hdr')[1])
     monkeypatch.setattr(save_cmd, 'write_payload', lambda *a, **kw: snapshot('write_payload'))
 

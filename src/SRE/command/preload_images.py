@@ -1,12 +1,12 @@
 import ast
 import random
-import subprocess
 import sys
 import time
 import warnings
 from pathlib import Path
 
 from .. import params
+from ..engine import get_engine
 from ..params import SRE
 from ..progress import emit_preload
 from ..utils import user_not_allowed, error_quit
@@ -147,13 +147,9 @@ def _extract_images_from_file(path: Path) -> set[str]:
 def _pull_image(image: str) -> bool:
     """Pull a single docker image. Return True on success, False on failure."""
     print(f"  pulling {image} …", flush=True)
-    result = subprocess.run(
-        ['docker', 'pull', image],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    if result.returncode != 0:
-        print(f"  ERROR pulling {image}:\n{result.stdout.decode(errors='replace')}", file=sys.stderr)
+    pulled, output = get_engine().pull_image(image)
+    if not pulled:
+        print(f"  ERROR pulling {image}:\n{output}", file=sys.stderr)
         return False
     return True
 

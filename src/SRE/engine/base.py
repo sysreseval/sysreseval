@@ -1,0 +1,161 @@
+"""What a container engine gives SRE.
+
+An engine deploys the machines of a project as containers, links them by the networks of the
+lab, and lets SRE act on them afterwards.  The rest of SRE reaches the containers through
+:func:`SRE.engine.get_engine` only.
+
+**The lab object.**  ``new_lab()`` returns the engine's own description of a project, filled
+by ``set_network_mode()``, ``add_machine()`` and ``connect_machine()`` and handed back to
+``deploy()`` or ``restore()``; ``get_lab()`` returns the one of a running project.  Outside
+the engine only three of its attributes are used:
+
+* ``hash``: the identifier of the project for the engine, stored in ``info.json``;
+* ``shared_path``: the host directory every machine mounts at ``/shared``, set before the
+  deployment (``None``: no shared directory);
+* ``machines``: ``{machine name: machine}`` once deployed, each machine having an
+  ``api_object``, the handle of its container:
+
+  - ``exec_run(command, environment=..., workdir=..., ...)`` returns ``(exit code, output)``;
+  - ``put_archive(path, tar)`` unpacks a tar archive at *path*;
+  - ``get_archive(path)`` returns ``(chunks of a tar archive, stat)``.
+
+**Privileges.**  An engine method runs with the privileges the caller set up: the callers
+gain and drop root around each call (``utils_privileges``).
+"""
+from abc import ABC, abstractmethod
+
+
+class SwitchModesUnsupported(Exception):
+    """The engine cannot make a network anything but a hub; the message says what is missing."""
+
+
+class Engine(ABC):
+    """A container engine (see the module documentation)."""
+
+    @abstractmethod
+    def capture_root_privileges(self):
+        """Called once at start-up while the process is still root, before it lowers its
+        effective uid: the engine notes that it may raise it again."""
+
+    # ---- description of a project -------------------------------------------------------
+
+    @abstractmethod
+    def new_lab(self, name: str):
+        """A new, empty lab object for the project *name* (its running lab name).  Nothing is
+        asked of the container daemon."""
+
+    @abstractmethod
+    def lab_hash(self, name: str) -> str:
+        """The ``hash`` of the lab object of the project *name*, without building it.  Nothing
+        is asked of the container daemon."""
+
+    @abstractmethod
+    def set_network_mode(self, lab, network: str, mode: str):
+        """Make *network* a switch or a managed switch (``params.network_mode_*``); a network
+        nothing is said about is a hub.  Raises :class:`SwitchModesUnsupported`."""
+
+    @abstractmethod
+    def add_machine(self, lab, name: str, **options):
+        """Add the machine *name* to *lab*.  *options*: ``image``, ``privileged``, ``bridged``,
+        ``ports``, ``envs``, ``sysctls``, ``ulimits``, ``volumes``, ``entrypoint``, ``shell``,
+        ``exec_commands`` and, when the lab says so, ``ipv6``."""
+
+    @abstractmethod
+    def connect_machine(self, lab, machine: str, network: str, interface: int, mac: str | None,
+                        vlan: int | None = None, tagged_vlans=None):
+        """Give *machine* the interface ``eth<interface>`` on *network*, with the address *mac*
+        when not ``None``.  On a managed switch, *vlan* is the untagged VLAN of the port and
+        *tagged_vlans* the VLANs it carries tagged."""
+
+    # ---- life of a project --------------------------------------------------------------
+
+    @abstractmethod
+    def deploy(self, lab):
+        """Create the networks and start the machines of *lab*."""
+
+    @abstractmethod
+    def undeploy(self, lab_hash: str):
+        """Stop and remove the machines and the networks of the project the calling user may
+        see; a project that has none is not an error."""
+
+    @abstractmethod
+    def remove_leftovers(self, lab_hash: str, errors: list[str]) -> list[str]:
+        """Force-remove the machines, then the networks, still carrying *lab_hash*, whoever
+        deployed them, and return their names.  What cannot be removed is appended to
+        *errors*; what is already gone is skipped."""
+
+    @abstractmethod
+    def wipe_all(self):
+        """Stop and remove the machines and the networks of every project of every user."""
+
+    @abstractmethod
+    def force_wipe(self):
+        """The same by the shortest way, when :meth:`wipe_all` failed or does not return."""
+
+    # ---- a running project --------------------------------------------------------------
+
+    @abstractmethod
+    def get_lab(self, lab_hash: str):
+        """The lab object of a running project, with its ``machines``."""
+
+    @abstractmethod
+    def machine_status(self, lab_hash: str, machine: str) -> str | None:
+        """The status of *machine* (``"running"`` when it runs), ``None`` when it does not
+        exist."""
+
+    @abstractmethod
+    def exec(self, lab_hash: str, machine: str, command: list[str]) -> tuple:
+        """Run *command* in *machine* and wait for it: ``(stdout, stderr, exit code)``, the
+        outputs as bytes."""
+
+    @abstractmethod
+    def connect_tty(self, lab_hash: str, machine: str, shell: str | None):
+        """Open a terminal on *machine* in the terminal of this process and return when the
+        session ends.  *shell*: the command to run (``None``: the shell of the machine)."""
+
+    # ---- managed switches ---------------------------------------------------------------
+
+    @abstractmethod
+    def require_switch_console(self):
+        """Raise ``RuntimeError`` when the engine has no console for managed switches."""
+
+    @abstractmethod
+    def switch_exec(self, lab_hash: str, network: str, command: str) -> str:
+        """Run one command on the console of the managed switch *network* and return what it
+        printed.  A command the switch refuses raises an exception with a ``code`` (1000 + the
+        error number of the switch) and a ``message``."""
+
+    @abstractmethod
+    def switch_ports(self, lab_hash: str, network: str) -> dict:
+        """The ports of the managed switch *network*: ``{port number: {'endpoints':
+        ['<machine>:eth<N>', ...], ...}}``."""
+
+    @abstractmethod
+    def is_network_plugin_error(self, error: BaseException) -> bool:
+        """Whether a failed deployment, of which *error* is the exception, failed because the
+        networks of the lab could not be created with their mode."""
+
+    # ---- save and restore ---------------------------------------------------------------
+
+    @abstractmethod
+    def save(self, archive_path: str, lab_hash: str, filesystem_diff: bool, temp_dir: str):
+        """Write the filesystems of the machines of a running project to *archive_path*: what
+        each machine changed in its image (*filesystem_diff*), or whole images.  Temporary
+        files go to *temp_dir*."""
+
+    @abstractmethod
+    def restore(self, archive_path: str, lab, temp_dir: str):
+        """Deploy *lab* with the filesystems saved in *archive_path*.  Temporary files go to
+        *temp_dir*."""
+
+    # ---- images and progress ------------------------------------------------------------
+
+    @abstractmethod
+    def pull_image(self, image: str) -> tuple[bool, str]:
+        """Download *image*: ``(whether it succeeded, the output of the download)``."""
+
+    @abstractmethod
+    def register_progress_handlers(self, pull, deploy):
+        """Have the engine report the downloads of a deployment to *pull* (``started()``,
+        ``progress(progress=...)``, ``ended()``) and the start of the machines to *deploy*
+        (``started(items=...)``, ``update(item=...)``, ``ended()``)."""

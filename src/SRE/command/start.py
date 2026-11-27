@@ -9,10 +9,9 @@ import struct
 import subprocess
 import sys
 
-from Kathara.manager.Kathara import Kathara
-
 from .state import do_action_state
 from .. import access, params
+from ..engine import get_engine
 from ..origin import project_origin, write_origin
 from ..params import SRE
 from ..progress import register_progress_handlers, emit_project_created
@@ -23,33 +22,6 @@ from ..utils_privileges import drop_privileges_permanently, gain_privileges_if_n
     drop_privileges_permanently_if_not_needed, set_sudo_uid_for_username, drop_privileges_temporarily, \
     gain_privileges
 from ..wipe import remove_lab_leftovers
-
-
-def _install_privileged_cgroupns_patch():
-    """Force a private cgroup namespace for privileged containers.
-
-    The SRE init images (init12, init13) run `/sbin/init` (systemd PID 1) for privileged
-    machines. Docker's recommended setting for systemd-in-container is
-    `--cgroupns=private` so systemd sees only its own cgroup subtree
-    instead of the host's full tree (smaller inotify footprint, no risk
-    of accidentally managing host cgroups). Kathara doesn't pass this
-    through, so we inject it at the Docker SDK level.
-    """
-    from docker.models.containers import ContainerCollection
-    if getattr(ContainerCollection.create, '_sre_cgroupns_patched', False):
-        return
-    _orig_create = ContainerCollection.create
-
-    def _patched_create(self, image, command=None, **kwargs):
-        if kwargs.get('privileged'):
-            kwargs.setdefault('cgroupns', 'private')
-        return _orig_create(self, image, command=command, **kwargs)
-
-    _patched_create._sre_cgroupns_patched = True
-    ContainerCollection.create = _patched_create
-
-
-_install_privileged_cgroupns_patch()
 
 
 def _read_xauth_cookie_from_file(path):
@@ -255,7 +227,7 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
 
         set_sudo_uid_for_username(SRE.username)
         gain_privileges_if_needed(net_scheme)
-        Kathara.get_instance().deploy_lab(lab)
+        get_engine().deploy(lab)
         setup.lab_deployed = True
 
         finalize_project(setup, module_rvlab, net_scheme, lab, data,
@@ -378,7 +350,7 @@ def quit_if_no_switch_modes(net_scheme, error):
     """A deployment failed and was rolled back: when Kathara's network plugin is the cause and
     the lab has networks that are not hubs, quit with what is missing and how to get it instead
     of Kathara's traceback (the stock plugin only knows hubs).  Returns otherwise."""
-    if net_scheme is None or type(error).__name__ != 'DockerPluginError':
+    if net_scheme is None or not get_engine().is_network_plugin_error(error):
         return
     switches = [net.name for net in net_scheme.get_networks()
                 if net.net_adapters and net.mode != params.network_mode_hub]
@@ -398,7 +370,7 @@ def rollback_project(setup: ProjectSetup, multi_project: bool = False):
         lab_hash = setup.net_scheme.get_lab_hash()
         try:
             gain_privileges_if_needed(setup.net_scheme)
-            Kathara.get_instance().undeploy_lab(lab_hash)
+            get_engine().undeploy(lab_hash)
         except Exception:
             pass
         # Kathara's undeploy only sees the containers labelled with the current user: after the

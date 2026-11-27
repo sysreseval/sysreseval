@@ -4,7 +4,7 @@ import shlex
 import shutil
 import sys
 
-from Kathara.manager.Kathara import Kathara
+from ..engine import get_engine
 from ..utils import error_quit, set_all_variables_for_action, user_not_allowed, in_user_mode, resolve_running_lab_name, \
     should_record_sessions
 from ..utils_privileges import drop_privileges_permanently_if_not_needed, set_sudo_uid_for_username, \
@@ -116,12 +116,11 @@ def action_connect():
         return
 
     gain_privileges_if_needed(net_scheme)
-    kathara = Kathara.get_instance()
+    engine = get_engine()
 
-    s = next(kathara.get_machine_stats(lab_hash=net_scheme.get_lab_hash(),
-                                       machine_name=device), None)
+    status = engine.machine_status(net_scheme.get_lab_hash(), device)
     drop_privileges_temporarily()
-    if s is None or s.status != "running":
+    if status != "running":
         error_quit("Machine not running")
 
     exec_cmd = SRE.args.exec_cmd if SRE.args.exec_cmd else None
@@ -140,9 +139,7 @@ def action_connect():
         exec_shell = SRE.args.shell if SRE.args.shell is not None else params.default_exec_shell
         command = [exec_shell, '-c', shlex.join(exec_cmd)]
         gain_privileges_if_needed(net_scheme)
-        stdout_bytes, stderr_bytes, rc = kathara.exec(
-            device, command, lab_hash=net_scheme.get_lab_hash(), wait=True, stream=False
-        )
+        stdout_bytes, stderr_bytes, rc = engine.exec(net_scheme.get_lab_hash(), device, command)
         if stdout_bytes:
             sys.stdout.buffer.write(stdout_bytes)
             sys.stdout.buffer.flush()
@@ -151,15 +148,5 @@ def action_connect():
             sys.stderr.buffer.flush()
         sys.exit(rc)
 
-    import urllib3.response as _ur
-    _orig_close = _ur.HTTPResponse.close
-
-    def _close_no_valueerror(self):
-        try:
-            _orig_close(self)
-        except ValueError:
-            pass
-
-    _ur.HTTPResponse.close = _close_no_valueerror
     gain_privileges_if_needed(net_scheme)
-    kathara.connect_tty(device, lab_hash=net_scheme.get_lab_hash(), wait=True, shell=shell)
+    engine.connect_tty(net_scheme.get_lab_hash(), device, shell)

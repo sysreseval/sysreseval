@@ -150,7 +150,6 @@ def functional_env(tmp_path, monkeypatch):
     monkeypatch.setattr(_stop_all_cmd, 'drop_privileges_permanently',         noop)
     import SRE.command.save    as _save_cmd
     import SRE.command.restore as _restore_cmd
-    import SRE.wipe            as _wipe_mod
     monkeypatch.setattr(_save_cmd,    'gain_privileges',                          noop)
     monkeypatch.setattr(_save_cmd,    'drop_privileges_temporarily',              noop)
     monkeypatch.setattr(_save_cmd,    'set_sudo_uid_for_username',                noop_u)
@@ -172,19 +171,14 @@ def functional_env(tmp_path, monkeypatch):
     args.output = None
     args.full_images = False
 
-    # Import Lab and Kathara from lib_sre's own namespace so we patch the
-    # exact mock objects that lib_sre uses — independent of test ordering.
+    # Lab and Kathara are taken from the namespace of the engine, the one module that names
+    # them: the exact mock objects every command reaches — independent of test ordering.
     # (test_net_config.py replaces sys.modules stubs, creating new mocks;
-    # lib_sre keeps its original imports, so sys.modules may diverge.)
-    from SRE import lib_sre as _lib_sre
-    _lib_sre.Lab.return_value.hash = "fake-lab-hash-1234"
+    # the engine keeps its original imports, so sys.modules may diverge.)
+    from SRE.engine import kathara_engine as _engine
+    _engine.Lab.return_value.hash = "fake-lab-hash-1234"
 
-    kathara_instance = _lib_sre.Kathara.get_instance()
-    # save.py / restore.py / start.py import Kathara themselves; make them use the same mock
-    monkeypatch.setattr(_save_cmd,    'Kathara', _lib_sre.Kathara)
-    monkeypatch.setattr(_restore_cmd, 'Kathara', _lib_sre.Kathara)
-    monkeypatch.setattr(_start_cmd,   'Kathara', _lib_sre.Kathara)
-    monkeypatch.setattr(_wipe_mod,    'Kathara', _lib_sre.Kathara)
+    kathara_instance = _engine.Kathara.get_instance()
     kathara_instance.save_lab.reset_mock(side_effect=True)
     kathara_instance.restore_lab.reset_mock(side_effect=True)
     kathara_instance.undeploy_lab.reset_mock()
@@ -542,8 +536,8 @@ class Grade:
         Kathara's undeploy, which cannot see a privileged lab's containers after the permanent
         drop, plus the force-removal of whatever still carries the lab hash."""
         import SRE.command.start as _start_cmd
-        from SRE import lib_sre as _lib_sre
-        kathara_instance = _lib_sre.Kathara.get_instance()
+        from SRE.engine import kathara_engine as _engine
+        kathara_instance = _engine.Kathara.get_instance()
         container, network = MagicMock(), MagicMock()
         kathara_instance.get_machines_api_objects.return_value = [container]
         kathara_instance.get_links_api_objects.return_value = [network]
@@ -583,8 +577,8 @@ def _write_fake_kathara_tar(archive_path, **_kwargs):
 
 @pytest.fixture
 def save_restore_env(functional_env):
-    from SRE import lib_sre as _lib_sre
-    kathara_instance = _lib_sre.Kathara.get_instance()
+    from SRE.engine import kathara_engine as _engine
+    kathara_instance = _engine.Kathara.get_instance()
     kathara_instance.save_lab.side_effect = _write_fake_kathara_tar
     kathara_instance.restore_lab.side_effect = lambda archive_path, lab=None, **kw: lab
     return functional_env
@@ -635,9 +629,9 @@ class TestSaveRestore:
         assert not (dest / 'mnt').exists()
 
     def test_save_lab_called_with_hash_and_diff_mode(self, save_restore_env, started_lab, tmp_path):
-        from SRE import lib_sre as _lib_sre
+        from SRE.engine import kathara_engine as _engine
         do_action_save(started_lab, out_fileobj=io.BytesIO())
-        kwargs = _lib_sre.Kathara.get_instance().save_lab.call_args.kwargs
+        kwargs = _engine.Kathara.get_instance().save_lab.call_args.kwargs
         assert kwargs['lab_hash'] == 'fake-lab-hash-1234'
         assert kwargs['filesystem_diff'] is True
 
@@ -729,7 +723,7 @@ class TestSaveRestore:
         assert (Path(params.sre_projects_dir) / new_rln / '.private' / 'srelab').resolve() == lab.resolve()
 
     def test_restore_creates_new_project(self, save_restore_env, started_lab, tmp_path, monkeypatch):
-        from SRE import lib_sre as _lib_sre
+        from SRE.engine import kathara_engine as _engine
         import SRE.command.start as _start_cmd
         proj = Path(params.sre_projects_dir) / started_lab
         (proj / 'answers' / 'answers.json').write_text('{"q1": "42"}')
@@ -756,16 +750,16 @@ class TestSaveRestore:
         assert info['allow_save_restore'] is True
         assert (new_proj / '.private' / 'srelab').resolve() == _LAB_PATH.resolve()
         assert (new_proj / '.private' / 'user_public_dir').resolve().is_dir()
-        call = _lib_sre.Kathara.get_instance().restore_lab.call_args
+        call = _engine.Kathara.get_instance().restore_lab.call_args
         assert call.args[0].endswith(params.save_kathara_name)
         assert call.kwargs['lab'] is not None
         assert states == [params.restore_state_name]
 
     def test_restore_rollback_on_failure(self, save_restore_env, started_lab, tmp_path):
-        from SRE import lib_sre as _lib_sre
+        from SRE.engine import kathara_engine as _engine
         out = tmp_path / 'p.sre'
         do_action_save(started_lab, output=str(out))
-        kathara_instance = _lib_sre.Kathara.get_instance()
+        kathara_instance = _engine.Kathara.get_instance()
         kathara_instance.restore_lab.side_effect = RuntimeError('boom')
         home_before = sorted(p.name for p in Path(params.sre_user_public_dir).iterdir())
         with open(out, 'rb') as f, pytest.raises(RuntimeError):
@@ -1463,13 +1457,18 @@ _SWITCH_VLANS = """VLAN 0010
 
 
 class _FakeSwitchKathara:
-    """Kathara manager stand-in for the console of the managed switches."""
+    """Kathara manager stand-in for the console of the managed switches; anything else is asked
+    of *manager*, the mock the labs of these tests are started with."""
 
-    def __init__(self):
+    def __init__(self, manager):
         self.commands = []
+        self._manager = manager
 
     def get_instance(self):
         return self
+
+    def __getattr__(self, name):
+        return getattr(self._manager, name)
 
     def exec_link(self, link_name, command, lab_hash=None):
         self.commands.append((link_name, command))
@@ -1481,9 +1480,9 @@ class _FakeSwitchKathara:
 
 @pytest.fixture
 def switch_console_kathara(monkeypatch):
-    from SRE import switch_console
-    fake = _FakeSwitchKathara()
-    monkeypatch.setattr(switch_console, 'Kathara', fake)
+    from SRE.engine import kathara_engine
+    fake = _FakeSwitchKathara(kathara_engine.Kathara.get_instance())
+    monkeypatch.setattr(kathara_engine, 'Kathara', fake)
     return fake
 
 
@@ -1507,8 +1506,8 @@ class TestSwitchTypes:
         assert info['switches'] == [{'name': 'lan', 'mode': 'hub', 'allow_connection': True}]
 
     def test_lab_deployed_with_modes_and_vlans(self, instructor_env):
-        from SRE import lib_sre as _lib_sre
-        lab = _lib_sre.Lab.return_value
+        from SRE.engine import kathara_engine as _engine
+        lab = _engine.Lab.return_value
         lab.connect_machine_to_link.reset_mock()
         _start_instructor_lab(False, _SWITCH_LAB_PATH)
         connections = {(c.args[0], c.args[1]): c.kwargs for c in lab.connect_machine_to_link.call_args_list}
@@ -1549,8 +1548,8 @@ class TestStartWithoutSwitchModes:
         # Not monkeypatch.setattr() on the mock: since pytest 9.2 the undo deletes an attribute
         # the mock created on the fly (it was not in its __dict__), and a MagicMock remembers a
         # deleted attribute: every later `deploy_lab` would raise AttributeError.
-        from SRE import lib_sre as _lib_sre
-        deploy_lab = _lib_sre.Kathara.get_instance().deploy_lab
+        from SRE.engine import kathara_engine as _engine
+        deploy_lab = _engine.Kathara.get_instance().deploy_lab
 
         def fail_with(error):
             deploy_lab.side_effect = error

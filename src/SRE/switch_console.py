@@ -1,8 +1,8 @@
 """Management console of the managed switches of a project.
 
 A network declared with ``'mode': 'managed'`` is a Kathara collision domain in ``managed`` mode: a
-``vde_switch`` with VLANs and a management console, reached through ``Kathara.exec_link()``.  This
-module is the one place where SRE talks to that console:
+``vde_switch`` with VLANs and a management console, reached through the engine (``switch_exec()``,
+Kathara's ``exec_link()``).  This module is the one place where SRE talks to that console:
 
 * :class:`SwitchConsole` runs one command and returns ``(output, code)`` like a container command
   (``NetScheme.switch_cmd()``, ``Grade.test_switch()``, ``sre exec``, ``sre connect --exec``);
@@ -11,16 +11,15 @@ module is the one place where SRE talks to that console:
   Unlike the shell of a machine, which dies with its container, nothing ends this prompt when
   the project is closed: it watches the project and ends by itself.
 
-The callers set the privileges and Kathara's user label as for any other Kathara call
+The callers set the privileges and Kathara's user label as for any other call of the engine
 (``set_sudo_uid_for_username`` + ``gain_privileges_if_needed``).
 """
 import signal
 import sys
 import threading
 
-from Kathara.manager.Kathara import Kathara
-
 from . import params
+from .engine import get_engine
 
 _VDE_SUCCESS_CODE = 1000  # status of the console: 1000 = success, 1000 + errno = error
 
@@ -66,7 +65,7 @@ class SwitchConsole:
         if adapter is None:
             raise ValueError(f"'{machine_name}' is not a machine of network '{network_name}'")
         if network_name not in self._ports:
-            ports = Kathara.get_instance().get_link_ports(network_name, lab_hash=self._net_scheme.get_lab_hash())
+            ports = get_engine().switch_ports(self._net_scheme.get_lab_hash(), network_name)
             self._ports[network_name] = {endpoint: number
                                          for number, port in ports.items()
                                          for endpoint in port.get('endpoints', [])}
@@ -95,12 +94,11 @@ class SwitchConsole:
         when the command could not be run.  Never raises.
         """
         try:
-            kathara = Kathara.get_instance()
-            if not hasattr(kathara, 'exec_link'):
-                raise RuntimeError(f"this Kathara has no switch console ({params.kathara_hint})")
+            engine = get_engine()
+            engine.require_switch_console()
             if resolve_ports:
                 command = self.resolve(network_name, command)
-            output = kathara.exec_link(network_name, command, lab_hash=self._net_scheme.get_lab_hash())
+            output = engine.switch_exec(self._net_scheme.get_lab_hash(), network_name, command)
         except Exception as e:
             return _error_result(e)
         return output or '', 0

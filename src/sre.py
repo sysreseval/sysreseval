@@ -7,10 +7,7 @@ import logging
 from pathlib import Path
 
 from SRE import access, params
-
-# Kathara sets Docker connection pool size = cpu_count(), but SRE runs up to
-# max_docker_concurrency concurrent operations — suppress the harmless overflow warning.
-logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
+from SRE.engine import get_engine
 from SRE.utils import error_quit
 from SRE.utils_privileges import drop_privileges_temporarily, drop_privileges_permanently
 
@@ -474,12 +471,9 @@ if access.launched_by_sudo(os.environ, params.sre_exe):
         error_quit(_("must be launched via sre-wrapper"))
 
 if uid == 0:
-    # Kathara's PrivilegeHandler is a singleton that captures os.geteuid() on first
-    # instantiation. If it initialises after we drop euid to sre_uid, raise_privileges()
-    # will only ever restore to sre_uid — never to root. Force it now, while still root.
-    from Kathara.auth.PrivilegeHandler import PrivilegeHandler
-
-    PrivilegeHandler.get_instance()
+    # The engine must see the process as root before the effective uid is lowered below, or it
+    # could never raise it again for a lab with privileged machines.
+    get_engine().capture_root_privileges()
 
 # `update` writes the root-owned tree: root stays available to it whatever allow_privileged_machines says
 if SRE.args.action == 'update' or (

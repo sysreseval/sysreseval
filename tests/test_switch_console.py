@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from SRE import params, switch_console
+from SRE.engine import kathara_engine
 from SRE.lib_sre import Data0, NetScheme0
 from SRE.params import SRE
 from SRE.switch_console import SwitchConsole, interactive, is_user_command_allowed, print_result
@@ -55,7 +56,7 @@ class FakeKathara:
 @pytest.fixture
 def kathara(monkeypatch):
     fake = FakeKathara()
-    monkeypatch.setattr(switch_console, 'Kathara', fake)
+    monkeypatch.setattr(kathara_engine, 'Kathara', fake)
     return fake
 
 
@@ -133,7 +134,7 @@ class TestSwitchConsole:
 
     def test_kathara_without_console(self, monkeypatch):
         old = SimpleNamespace(get_instance=lambda: SimpleNamespace())
-        monkeypatch.setattr(switch_console, 'Kathara', old)
+        monkeypatch.setattr(kathara_engine, 'Kathara', old)
         output, code = SwitchConsole(Scheme()).run('lan', 'vlan/print')
         assert code == -2
         assert 'no switch console' in output
@@ -452,7 +453,7 @@ class TestConnectSwitch:
         kathara.get_machine_stats.return_value = iter([SimpleNamespace(status='running')])
         # The module attribute, not `get_instance` of the shared Kathara mock: since pytest 9.2 the
         # undo of monkeypatch.setattr() deletes an attribute a mock created on the fly, for good.
-        monkeypatch.setattr(connect, 'Kathara', SimpleNamespace(get_instance=lambda: kathara))
+        monkeypatch.setattr(kathara_engine, 'Kathara', SimpleNamespace(get_instance=lambda: kathara))
         cli.set_args('pc1')
         connect.action_connect()
         assert kathara.connect_tty.call_args.args[0] == 'pc1'

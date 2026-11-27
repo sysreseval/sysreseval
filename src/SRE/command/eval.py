@@ -9,7 +9,6 @@ import time
 from dataclasses import asdict
 
 from pathlib import Path
-from Kathara.manager.Kathara import Kathara
 
 from ..utils import error_quit, set_all_variables_for_action, user_not_allowed_in_exam_mode, exam_mode_is_on, \
     resolve_running_lab_name, dedup_preserve_order

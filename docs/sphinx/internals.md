@@ -42,6 +42,15 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 - **Non-privileged projects** (no machine has `privileged=True`): privileges are dropped **permanently** at start via `setuid(sre_uid)` / `setgid(docker_gid)` — the process can never regain root for the rest of its life.
 - **Privileged projects** (at least one machine has `privileged=True`): privileges are dropped **temporarily** via `seteuid`/`setegid` only. Kathara requires the deploy/connect/exec paths to run as genuine root (to mount cgroups, attach a TTY to `/sbin/init`, etc.), so the CLI raises the effective uid back to 0 around those operations and lowers it again afterwards. Host-side subprocesses still drop to `sre_uid` in the child via `preexec_drop_to_sre()`, so user code on the host never runs as root.
 
+### Container engine (`src/SRE/engine/`)
+
+The CLI reaches the containers through one object, the engine (`engine.get_engine()`), and through it only: no other module of `src/SRE` imports Kathara or the Docker SDK, nor runs the `docker` command (`tests/test_engine.py` checks it).
+
+- `engine/base.py` is the contract: what an engine provides (describing a project, deploying and undeploying it, finding a running one, running a command or opening a terminal in a machine, the console of the managed switches, save and restore, pulling an image, reporting progress) and the three attributes of a lab object the rest of the code relies on: `hash`, `shared_path`, and `machines`, each machine with an `api_object` offering `exec_run`, `put_archive` and `get_archive`.
+- `engine/kathara_engine.py` is the one engine: Kathara over Docker.
+
+An engine method runs with the privileges its caller set up: the choreography described above (`utils_privileges.py`) stays in the commands.
+
 ## Filesystem layout
 
 | Path | Description                                                                                                                                                                                                    |

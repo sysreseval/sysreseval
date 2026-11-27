@@ -12,7 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from SRE import lib_sre, params, switch_console
+from SRE import lib_sre, params
+from SRE.engine import kathara_engine
 from SRE.lib_sre import (Data0, Grade0, NetScheme0, Network, _HostCmdOp, _SwitchCmdOp, parse_port_vlans,
                          sre_state)
 from SRE.command import state as state_cmd
@@ -64,7 +65,7 @@ PORTS = {
 @pytest.fixture
 def kathara(monkeypatch):
     fake = FakeKathara(ports=PORTS)
-    monkeypatch.setattr(switch_console, 'Kathara', fake)
+    monkeypatch.setattr(kathara_engine, 'Kathara', fake)
     return fake
 
 
@@ -254,7 +255,7 @@ def _new_lab(scheme, monkeypatch):
     lab = MagicMock()
     links = {}
     lab.get_or_new_link.side_effect = lambda name: links.setdefault(name, MagicMock(mode=None))
-    monkeypatch.setattr(lib_sre, 'Lab', MagicMock(return_value=lab))
+    monkeypatch.setattr(kathara_engine, 'Lab', MagicMock(return_value=lab))
     scheme.get_new_lab_from_scheme()
     return lab, links
 
@@ -313,7 +314,7 @@ class TestLabFromScheme:
         monkeypatch.delitem(sys.modules, 'srelab', raising=False)
         lab = MagicMock()
         lab.get_or_new_link.side_effect = lambda name: OldLink()
-        monkeypatch.setattr(lib_sre, 'Lab', MagicMock(return_value=lab))
+        monkeypatch.setattr(kathara_engine, 'Lab', MagicMock(return_value=lab))
         with patch.object(lib_sre, 'error_quit', side_effect=SystemExit) as error_quit:
             with pytest.raises(SystemExit):
                 _scheme_with({'lan': {'mode': 'switch'}}).get_new_lab_from_scheme()

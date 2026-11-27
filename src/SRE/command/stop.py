@@ -1,7 +1,7 @@
 from pathlib import Path
-from Kathara.manager.Kathara import Kathara
 
 from .. import params
+from ..engine import get_engine
 from ..utils import set_all_variables_for_action, user_not_allowed_in_exam_mode, resolve_running_lab_name, \
     error_quit, remove_tree, cannot_remove_message
 from ..params import SRE
@@ -67,7 +67,7 @@ def stop_running_lab(running_lab_name: str, lab_hash: str = None, multi_project:
     try:
         for user in undeploy_users(running_lab_name, privileged):
             set_sudo_uid_for_username(user)
-            Kathara.get_instance().undeploy_lab(lab_hash)
+            get_engine().undeploy(lab_hash)
         remove_lab_leftovers(lab_hash, errors)
         remove_project_directories(running_lab_name, errors)
     finally:

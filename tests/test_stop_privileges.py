@@ -19,8 +19,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from SRE import params
-from SRE import wipe as wipe_mod
 from SRE.command import stop as stop_cmd
+from SRE.engine import kathara_engine
 
 RLN = '20260101000000@@@test_lab@@@em'
 SRE_UID = 1100
@@ -83,8 +83,7 @@ def privilege_simulator(monkeypatch, tmp_path):
     monkeypatch.setattr(stop_cmd, 'gain_privileges', fake_gain_privileges)
     monkeypatch.setattr(stop_cmd, 'drop_privileges_permanently', fake_drop_perm)
     monkeypatch.setattr(stop_cmd, 'drop_privileges_temporarily', fake_drop_temp)
-    monkeypatch.setattr(stop_cmd, 'Kathara', kathara)
-    monkeypatch.setattr(wipe_mod, 'Kathara', kathara)
+    monkeypatch.setattr(kathara_engine, 'Kathara', kathara)
     monkeypatch.setattr(shutil, 'rmtree', recording_rmtree)
     monkeypatch.setattr(params, 'sre_projects_dir', str(state['projects']))
     monkeypatch.setattr(params, 'sre_user_public_dir', str(state['home_sre']))

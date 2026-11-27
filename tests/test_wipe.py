@@ -16,6 +16,7 @@ import pytest
 
 from SRE import params
 from SRE import wipe as wipe_mod
+from SRE.engine import kathara_engine
 
 SRE_UID = 1100
 
@@ -174,7 +175,7 @@ class _FakeDockerObject:
 @pytest.fixture
 def kathara_instance(monkeypatch):
     kathara = MagicMock()
-    monkeypatch.setattr(wipe_mod, 'Kathara', kathara)
+    monkeypatch.setattr(kathara_engine, 'Kathara', kathara)
     return kathara.get_instance.return_value
 
 

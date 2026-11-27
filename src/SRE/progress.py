@@ -1,5 +1,5 @@
 """
-Progress reporting for long-running Kathara operations.
+Progress reporting for the long-running operations of the engine.
 Emits JSON lines to stderr so callers (GUI or CLI) can parse and display them.
 
 Format:
@@ -19,7 +19,7 @@ Format:
 import json
 import sys
 
-from Kathara.event.EventDispatcher import EventDispatcher
+from .engine import get_engine
 from .params import SRE
 
 
@@ -108,13 +108,7 @@ def emit_preload(status: str, **fields):
 
 
 def register_progress_handlers():
-    dispatcher = EventDispatcher.get_instance()
-    pull = _PullHandler()
-    deploy = _DeployHandler()
-
-    dispatcher.register("docker_pull_started",   pull,   "started")
-    dispatcher.register("docker_pull_progress",  pull,   "progress")
-    dispatcher.register("docker_pull_ended",     pull,   "ended")
-    dispatcher.register("machines_deploy_started", deploy, "started")
-    dispatcher.register("machine_deployed",        deploy, "update")
-    dispatcher.register("machines_deploy_ended",   deploy, "ended")
+    """The engine reports the image downloads and the start of the machines of the deployments
+    to come to two new handlers, which print the lines above (they read the events as Kathara
+    gives them: the progress of a Docker pull, the machine just deployed)."""
+    get_engine().register_progress_handlers(pull=_PullHandler(), deploy=_DeployHandler())

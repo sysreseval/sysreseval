@@ -3,8 +3,6 @@ import json
 import shutil
 from pathlib import Path
 
-from Kathara.manager.Kathara import Kathara
-
 from .stop import stop_running_lab
 from .. import params
 from ..utils import error_quit, user_not_allowed, cannot_remove_message, in_user_mode

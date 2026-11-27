@@ -1,7 +1,7 @@
 import shlex
 import sys
 
-from Kathara.manager.Kathara import Kathara
+from ..engine import get_engine
 from ..utils import error_quit, set_all_variables_for_action, in_user_mode, resolve_running_lab_name
 from ..utils_privileges import drop_privileges_permanently_if_not_needed, set_sudo_uid_for_username, \
     drop_privileges_temporarily, gain_privileges_if_needed
@@ -37,21 +37,18 @@ def action_exec():
         error_quit(f"device {device} is unknown")
 
     gain_privileges_if_needed(net_scheme)
-    kathara = Kathara.get_instance()
+    engine = get_engine()
 
-    s = next(kathara.get_machine_stats(lab_hash=net_scheme.get_lab_hash(),
-                                       machine_name=device), None)
+    status = engine.machine_status(net_scheme.get_lab_hash(), device)
     drop_privileges_temporarily()
-    if s is None or s.status != "running":
+    if status != "running":
         error_quit("Machine not running")
 
     exec_shell = SRE.args.shell if SRE.args.shell is not None else params.default_exec_shell
     command = [exec_shell, '-c', shlex.join(SRE.args.command)]
 
     gain_privileges_if_needed(net_scheme)
-    stdout_bytes, stderr_bytes, rc = kathara.exec(
-        device, command, lab_hash=net_scheme.get_lab_hash(), wait=True, stream=False
-    )
+    stdout_bytes, stderr_bytes, rc = engine.exec(net_scheme.get_lab_hash(), device, command)
     if stdout_bytes:
         sys.stdout.buffer.write(stdout_bytes)
         sys.stdout.buffer.flush()

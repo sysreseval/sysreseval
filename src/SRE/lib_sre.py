@@ -33,10 +33,8 @@ from ipaddress import (
     IPv4Network, IPv6Network
 )
 
-from Kathara.manager.Kathara import Kathara
-from Kathara.model.Lab import Lab
-
 from . import params
+from .engine import get_engine, SwitchModesUnsupported
 from .form_spec import FIELD_RE as _FORM_SPEC_FIELD_RE, form_fields as _form_fields
 from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoMachine, InfoLab, InfoInterface,
                      InfoSwitch, TranslatedText, _tt_hash_str)
@@ -1302,7 +1300,8 @@ class NetScheme0:
         return None if default is None else bool(default)
 
     def get_new_lab_from_scheme(self):
-        lab = Lab(name=self.running_lab_name)
+        engine = get_engine()
+        lab = engine.new_lab(self.running_lab_name)
         # Type of switch of the networks.  Nothing is said about a hub, so that a lab with hubs
         # only makes the same Kathara calls as before (it also runs with a Kathara or a network
         # plugin that knows no switch mode).
@@ -1310,10 +1309,9 @@ class NetScheme0:
             if net.mode == params.network_mode_hub or not net.net_adapters:
                 continue
             try:
-                lab.get_or_new_link(net.name).mode = net.mode
-            except AttributeError:
-                error_quit(f"network '{net.name}': mode '{net.mode}' needs a Kathara with switch modes "
-                           f"({params.kathara_hint})")
+                engine.set_network_mode(lab, net.name, net.mode)
+            except SwitchModesUnsupported as e:
+                error_quit(f"network '{net.name}': {e}")
         abb_lab_name = params.get_abbreviated_lab_name_from_running_lab_name(self.running_lab_name)
         _used_ports: set = set()
         xauth_cookie = _resolve_xauth_cookie()
@@ -1379,30 +1377,24 @@ class NetScheme0:
             ipv6 = self.machine_ipv6_enabled(m)
             if ipv6 is not None:
                 machine_kwargs['ipv6'] = ipv6
-            lab.new_machine(m.name, **machine_kwargs)
+            engine.add_machine(lab, m.name, **machine_kwargs)
             for net, netAdapter in m.net_adapters.items():
-                # VLANs of a port of a managed switch: only passed when the lab declared some
-                vlan_kwargs = {}
-                if netAdapter.vlan is not None:
-                    vlan_kwargs['vlan'] = netAdapter.vlan
-                if netAdapter.tagged_vlans:
-                    vlan_kwargs['tagged_vlans'] = list(netAdapter.tagged_vlans)
-                lab.connect_machine_to_link(m.name, net.name, machine_iface_number=netAdapter.interface,
-                                            mac_address=str(netAdapter.mac).replace('-',
-                                                                                    ':').lower() if netAdapter.mac is not None else None,
-                                            **vlan_kwargs)
+                # the VLANs of a port of a managed switch, when the lab declared some
+                engine.connect_machine(lab, m.name, net.name, interface=netAdapter.interface,
+                                       mac=str(netAdapter.mac).replace('-',
+                                                                       ':').lower() if netAdapter.mac is not None else None,
+                                       vlan=netAdapter.vlan, tagged_vlans=netAdapter.tagged_vlans)
         self.lab_hash = lab.hash
         return lab
 
     def get_lab_hash(self):
         if self.lab_hash is None:
-            lab = Lab(name=self.running_lab_name)
-            self.lab_hash = lab.hash
+            self.lab_hash = get_engine().lab_hash(self.running_lab_name)
         return self.lab_hash
 
     def get_lab_from_kathara(self):
         lab_hash = self.get_lab_hash()
-        return Kathara.get_instance().get_lab_from_api(lab_hash=lab_hash)
+        return get_engine().get_lab(lab_hash)
 
     def get_public_lab_dir(self):
         return params.public_lab_dir(self.running_lab_name)
@@ -2253,23 +2245,22 @@ class Grade0:
             visible_machines = [m for m in self.net_scheme.get_machines() if not m.hidden]
         lab_hash = self.net_scheme.get_lab_hash()
 
-        def _get_stats(m):
-            s = next(Kathara.get_instance().get_machine_stats(lab_hash=lab_hash, machine_name=m.name), None)
-            return m, s
+        def _get_status(m):
+            return m, get_engine().machine_status(lab_hash, m.name)
 
-        stats_map = {}
+        status_map = {}
         with ThreadPoolExecutor(max_workers=min(params.max_docker_concurrency, len(visible_machines))) as executor:
-            for m, s in executor.map(_get_stats, visible_machines):
-                stats_map[m.name] = (m, s)
+            for m, status in executor.map(_get_status, visible_machines):
+                status_map[m.name] = (m, status)
 
         info_machines = []
         for m in visible_machines:
-            m, s = stats_map[m.name]
+            m, status = status_map[m.name]
             interfaces = []
             for net, netAdapter in m.net_adapters.items():
                 interfaces.append(InfoInterface(network=net.name, interface_name=f"eth{netAdapter.interface}"))
             info_machines.append(
-                InfoMachine(name=m.name, status=s.status if s is not None else "", hidden=m.hidden,
+                InfoMachine(name=m.name, status=status if status is not None else "", hidden=m.hidden,
                             bridged=m.bridged,
                             x11_host=m.x11_host,
                             ports=m.ports,

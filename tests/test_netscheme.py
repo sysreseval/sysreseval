@@ -1090,6 +1090,7 @@ import sys  # noqa: E402
 import types  # noqa: E402
 
 from SRE import lib_sre  # noqa: E402
+from SRE.engine import kathara_engine  # noqa: E402
 from SRE.lib_sre import lab_ipv6_default  # noqa: E402
 
 
@@ -1111,7 +1112,7 @@ def _ipv6_kwargs(scheme, monkeypatch, module_attrs=None):
     else:
         monkeypatch.setitem(sys.modules, 'srelab', types.SimpleNamespace(**module_attrs))
     lab_cls = MagicMock()
-    monkeypatch.setattr(lib_sre, 'Lab', lab_cls)
+    monkeypatch.setattr(kathara_engine, 'Lab', lab_cls)
     scheme.get_new_lab_from_scheme()
     return {c.args[0]: c.kwargs.get('ipv6', '-') for c in lab_cls.return_value.new_machine.call_args_list}
 
@@ -1146,7 +1147,7 @@ class TestIpv6Flag:
     def test_other_kwargs_still_passed(self, monkeypatch):
         monkeypatch.delitem(sys.modules, 'srelab', raising=False)
         lab_cls = MagicMock()
-        monkeypatch.setattr(lib_sre, 'Lab', lab_cls)
+        monkeypatch.setattr(kathara_engine, 'Lab', lab_cls)
         FullScheme(MockData()).get_new_lab_from_scheme()
         kwargs = lab_cls.return_value.new_machine.call_args_list[0].kwargs
         assert {'exec_commands', 'sysctls', 'envs', 'ports', 'ulimits', 'volumes', 'shell', 'image', 'bridged',
@@ -1179,7 +1180,7 @@ def _x11_envs(monkeypatch, env: dict) -> dict:
     for name, value in env.items():
         monkeypatch.setenv(name, value)
     lab_cls = MagicMock()
-    monkeypatch.setattr(lib_sre, 'Lab', lab_cls)
+    monkeypatch.setattr(kathara_engine, 'Lab', lab_cls)
     X11Scheme(MockData()).get_new_lab_from_scheme()
     return {c.args[0]: {e for e in c.kwargs['envs'] if not e.startswith(params.sre_name_env_variable + '=')}
             for c in lab_cls.return_value.new_machine.call_args_list}
@@ -1328,7 +1329,7 @@ class TestWeight:
     def test_the_weight_is_no_argument_of_the_kathara_machine(self, monkeypatch):
         """A weight limits nothing: Kathara never hears of it."""
         lab_cls = MagicMock()
-        monkeypatch.setattr(lib_sre, 'Lab', lab_cls)
+        monkeypatch.setattr(kathara_engine, 'Lab', lab_cls)
         WeightScheme(MockData()).get_new_lab_from_scheme()
         calls = lab_cls.return_value.new_machine.call_args_list
         assert len(calls) == 5
