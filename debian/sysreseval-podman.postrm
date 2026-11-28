@@ -2,7 +2,8 @@
 # postrm of sysreseval-podman: what sysreseval-podman-setup wrote into the configuration of
 # systemd goes with the package (the unit that gives the host the address of the machines'
 # gateway, the drop-ins ordering the services of SysResEval after the user manager of the sre
-# user and giving that manager its resource controllers).  Kept: the subordinate ids of the sre
+# user and giving that manager its resource controllers), and so do the lines it added to the
+# site file of the AppArmor profile of tcpdump.  Kept: the subordinate ids of the sre
 # user, its linger, and /var/lib/sre/podman (the images), like the other data of /var/lib/sre.
 set -e
 
@@ -25,6 +26,17 @@ case "$1" in
         done
         if [ -n "$changed" ] && [ -d /run/systemd/system ]; then
             systemctl daemon-reload || true
+        fi
+        # the lines the setup script added to the site file of the AppArmor profile of tcpdump
+        site=/etc/apparmor.d/local/usr.bin.tcpdump
+        if [ -f "$site" ] && grep -q '^# written by sysreseval-podman-setup of SRE: ' "$site"; then
+            sed -i -e '/^# written by sysreseval-podman-setup of SRE: /d' \
+                -e '/^signal (receive) peer=crun,$/d' -e '/^signal (receive) peer=runc,$/d' "$site"
+            if [ -f /etc/apparmor.d/usr.bin.tcpdump ] && [ ! -e /etc/apparmor.d/disable/usr.bin.tcpdump ] \
+                    && [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = Y ] \
+                    && command -v apparmor_parser >/dev/null 2>&1; then
+                apparmor_parser -r /etc/apparmor.d/usr.bin.tcpdump >/dev/null 2>&1 || true
+            fi
         fi
         ;;
 esac

@@ -24,7 +24,13 @@
 #     of the bridge of Docker) is given to an interface of its own by a unit started at boot
 #     (sre-host-address.service).  With Docker installed the unit is removed: the bridge has it
 #     (PODMAN_HOST_ADDRESS=yes: the unit all the same, for a Docker that does not use that
-#     address; no: never, the administrator gives the host the address).
+#     address; no: never, the administrator gives the host the address);
+#   - on a host with the AppArmor profile of tcpdump (the package tcpdump of Debian and Ubuntu),
+#     the site file of that profile (/etc/apparmor.d/local/usr.bin.tcpdump) gets two lines: a
+#     tcpdump run in a machine is under that profile, which takes signals from unconfined
+#     processes only, and those of a machine carry the label of the container runtime; without
+#     the lines nothing in a machine ends a tcpdump (timeout, kill).  A site file that already
+#     names a line, even commented out, keeps it as it is.
 # It also says what the engine would refuse on this host: a lab with a switch without the switch
 # program, a machine with an outside interface without pasta or without the host address.
 #
@@ -44,10 +50,14 @@ RANGE_SIZE=65536
 CONTROLLERS="cpu cpuset io memory pids"
 ADDRESS_INTERFACE=sre-host
 ADDRESS_UNIT=sre-host-address.service
+APPARMOR_DIR=/etc/apparmor.d
+APPARMOR_ENABLED=/sys/module/apparmor/parameters/enabled
+# the AppArmor labels the processes of a machine carry: the profile of the container runtime
+MACHINE_LABELS="crun runc"
 
 case "${1:-}" in
     -h|--help)
-        sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
         echo "usage: $(basename "$0")"
         exit 0;;
 esac
@@ -282,6 +292,36 @@ elif [ -e "$address_unit" ] || ! on_another_interface; then
         systemctl start "$ADDRESS_UNIT" || fail "$ADDRESS_UNIT did not start (systemctl status $ADDRESS_UNIT)"
     fi
 fi
+
+# ---- AppArmor: a tcpdump run in a machine -----------------------------------------------
+# A program of a machine whose path has a profile on the host runs under that profile.  The
+# one of tcpdump takes signals from "unconfined" processes only, and the processes of a machine
+# carry the label of the container runtime: `timeout 5 tcpdump` never ends there, `kill` does
+# nothing (Ctrl-C in a terminal works: that signal comes from the kernel).  The site file of
+# the profile gets a line per label; one it already names, even commented out, is left alone.
+tcpdump_signals() {
+    local profile="$APPARMOR_DIR/usr.bin.tcpdump" site="$APPARMOR_DIR/local/usr.bin.tcpdump" label rule added=
+    [ -f "$profile" ] || return 0
+    grep -q '<local/usr.bin.tcpdump>' "$profile" || return 0        # a profile without a site file
+    for label in $MACHINE_LABELS; do
+        rule="signal (receive) peer=$label,"
+        ! grep -qsF "$rule" "$site" || continue
+        if [ -z "$added" ]; then
+            install -d -m 0755 "$(dirname "$site")"
+            echo "# written by $(basename "$0") of SRE: a machine of the Podman engine may end its tcpdump (timeout, kill)" >> "$site"
+            added=1
+        fi
+        echo "$rule" >> "$site"
+    done
+    [ -n "$added" ] || return 0
+    echo "written: $site"
+    # loaded again where AppArmor is on and the profile in use
+    if [ "$(cat "$APPARMOR_ENABLED" 2>/dev/null)" = Y ] && [ ! -e "$APPARMOR_DIR/disable/usr.bin.tcpdump" ] \
+            && command -v apparmor_parser >/dev/null 2>&1; then
+        apparmor_parser -r "$profile" || note "the AppArmor profile of tcpdump was not loaded again (apparmor_parser -r $profile): a tcpdump run in a machine cannot be ended there until it is."
+    fi
+}
+tcpdump_signals
 
 # ---- what a lab may need on top ---------------------------------------------------------
 switch="$(param vde_switch_program)"

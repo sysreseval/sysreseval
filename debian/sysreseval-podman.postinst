@@ -5,18 +5,31 @@
 # sysreseval-podman-setup, which changes nothing when run again: an upgrade runs it too.
 # A host it cannot prepare now (no systemd running: the build of an image, a container) is
 # prepared by running the command once the host has booted.
+#
+# The setup needs sysreseval configured: its postinst creates the sre user.  dpkg may configure
+# this package first (sysreseval names it among its alternatives to Docker, which leaves the
+# order of the two open: seen on a first install).  So sysreseval activates the trigger
+# `sysreseval-configured` at the end of its postinst, and the setup is run here either at once,
+# when the user exists already, or when that trigger is processed.
 set -e
+
+setup() {
+    if [ ! -d /run/systemd/system ]; then
+        echo "sysreseval-podman: systemd is not running here: run sysreseval-podman-setup as root once the host has booted" >&2
+    elif ! sysreseval-podman-setup; then
+        echo "sysreseval-podman: this host is not ready for the Podman engine: fix what is reported above, then run sysreseval-podman-setup" >&2
+    fi
+}
 
 case "$1" in
     configure)
         sysctl -q -p /usr/lib/sysctl.d/60-sysreseval-podman.conf >/dev/null 2>&1 || true
-        if [ -d /run/systemd/system ]; then
-            if ! sysreseval-podman-setup; then
-                echo "sysreseval-podman: this host is not ready for the Podman engine: fix what is reported above, then run sysreseval-podman-setup" >&2
-            fi
-        else
-            echo "sysreseval-podman: systemd is not running here: run sysreseval-podman-setup as root once the host has booted" >&2
+        if getent passwd sre >/dev/null; then
+            setup
         fi
+        ;;
+    triggered)
+        setup
         ;;
 esac
 

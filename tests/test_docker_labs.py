@@ -22,10 +22,20 @@ workstation that has the images.
 
 On a host whose engine is Podman (`make podman-tests`) the same procedure runs on Podman: what
 is left of a project is asked of that engine.
+
+Two environment variables, for a campaign over the labs (both engines, the drafts):
+- `SRE_TEST_LABS=_DRAFT_misc` runs the lab files of that sub-directory of `lab/sre/` in place of
+  the labs the students open;
+- `SRE_TEST_LAB_RESULTS=<file>` appends one JSON line per lab to that file: the grade elements
+  of both evaluations, the errors the commands logged, the time of each step, and the names a
+  measure taken beside the test needs (the hash of the project, when it was at its `final`
+  state).  The procedure then goes to its end before the test fails, where it otherwise stops
+  at the first thing that is wrong: the verdict is the same, and the line is complete.
 """
 import json
 import os
 import re
+import socket
 import time
 from pathlib import Path
 
@@ -52,9 +62,19 @@ if PODMAN:
 else:
     from test_docker_lifecycle import _containers, _networks, docker_client, projects  # noqa: E402, F401  (fixtures)
 
-LABS_DIR = Path(params.lab_dir) / params.shipped_lab_link_name
+# The labs: those the students open, or with SRE_TEST_LABS those of one sub-directory of them.
+LABS_SUBDIR = os.environ.get('SRE_TEST_LABS', '').strip('/')
+if LABS_SUBDIR and any(part in ('', '.', '..') for part in LABS_SUBDIR.split('/')):
+    raise pytest.UsageError(f"SRE_TEST_LABS={LABS_SUBDIR!r}: a sub-directory of the labs is expected")
+# the name `sre start` knows the directory by, and the directory itself
+CATALOG = '/'.join(part for part in (params.shipped_lab_link_name, LABS_SUBDIR) if part)
+LABS_DIR = Path(params.lab_dir) / CATALOG
 # the file labs of the directory itself: `glob` does not enter the sub-directories
 LABS = sorted(p.name for p in LABS_DIR.glob('*.py') if p.is_file())
+# where the measures of each lab are recorded, if anywhere
+RESULTS_FILE = os.environ.get('SRE_TEST_LAB_RESULTS')
+LOGGED_ERRORS = 20          # lines of a command's stderr kept in a record, each cut at ...
+LOGGED_ERROR_LENGTH = 300   # ... this many characters
 
 FINAL_STATE = 'final'
 START_TIMEOUT = 1800        # seconds: the first start on a host may pull the images
@@ -83,11 +103,12 @@ def _created_project(stderr):
 
 
 def _start(projects, lab):
-    """`sre start sre/<lab>`, the project registered for the cleanup of the `projects` fixture.
-    The name comes from the progress event rather than from the projects directory alone: on a
-    shared host somebody else may start a project meanwhile."""
+    """`sre start sre/<lab>`, the project registered for the cleanup of the `projects` fixture:
+    its name, its hash, and the stderr of the command.  The name comes from the progress event
+    rather than from the projects directory alone: on a shared host somebody else may start a
+    project meanwhile."""
     before = _project_dirs()
-    r = _sre('start', f'{params.shipped_lab_link_name}/{lab}', timeout=START_TIMEOUT)
+    r = _sre('start', f'{CATALOG}/{lab}', timeout=START_TIMEOUT)
     assert r.returncode == 0, f"sre start failed:\n{r.stderr[-3000:]}"
     running_lab_name = _created_project(r.stderr)
     if running_lab_name is None:
@@ -96,7 +117,7 @@ def _start(projects, lab):
         running_lab_name = new.pop()
     lab_hash = _lab_hash(running_lab_name)
     projects.append((running_lab_name, lab_hash))
-    return running_lab_name, lab_hash
+    return running_lab_name, lab_hash, r.stderr
 
 
 def _evaluate(running_lab_name):
@@ -144,6 +165,29 @@ def _short_of_maximum(elements):
     return [e for e in elements if e['grade'] != pytest.approx(e['max_grade'])]
 
 
+def _logged_errors(stderr):
+    """The lines of a command's stderr that tell of an error (a command of a state that failed, a
+    test that could not run): the progress events of `sre start` are not among them."""
+    lines = []
+    for line in stderr.splitlines():
+        if 'error' not in line.lower() or line.lstrip().startswith('{"phase"'):
+            continue
+        lines.append(line[:LOGGED_ERROR_LENGTH])
+    return lines[:LOGGED_ERRORS]
+
+
+def _recorded(elements):
+    """The grade elements of an evaluation as a record keeps them."""
+    return [{'title': _title(e), 'grade': e['grade'], 'max_grade': e['max_grade'], 'bonus': bool(e.get('bonus'))}
+            for e in elements]
+
+
+def _write_record(record):
+    if RESULTS_FILE:
+        with open(RESULTS_FILE, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+
+
 @pytest.fixture
 def leftovers(request):
     """``leftovers(lab_hash)``: what still carries the hash of a project, asked of the engine of
@@ -162,34 +206,79 @@ def test_the_labs_are_found():
 def test_final_state_gives_every_point(leftovers, projects, no_exam, lab):
     if not params.allow_privileged_machines and PRIVILEGED_MACHINE.search((LABS_DIR / lab).read_text()):
         pytest.skip("params.allow_privileged_machines is False")
-    running_lab_name, lab_hash = _start(projects, lab)
+    record = {'lab': f'{CATALOG}/{lab}', 'host': socket.gethostname(), 'seconds': {}, 'errors': {},
+              'engine': params.container_engine_podman if PODMAN else params.container_engine_kathara}
+    try:
+        _from_nothing_to_every_point(leftovers, projects, lab, record)
+        record['outcome'] = 'passed'
+    except BaseException as e:      # the test failed, or was interrupted: its record says where it was
+        record['outcome'] = f"{type(e).__name__}: {str(e).strip().splitlines()[0] if str(e).strip() else ''}"[:LOGGED_ERROR_LENGTH]
+        raise
+    finally:
+        _write_record(record)
+
+
+def _from_nothing_to_every_point(leftovers, projects, lab, record):
+    """The procedure of one lab.  *record* receives what it measures on the way.  With a results
+    file it goes to its end whatever the evaluations give, and fails then."""
+    def timed(step, since):
+        record['seconds'][step] = round(time.monotonic() - since, 1)
+
+    since = time.monotonic()
+    running_lab_name, lab_hash, stderr = _start(projects, lab)
+    timed('start', since)
+    record.update(running_lab_name=running_lab_name, lab_hash=lab_hash)
+    record['errors']['start'] = _logged_errors(stderr)
 
     # nothing done: nothing earned, element by element (a penalty must not hide points given for nothing)
+    since = time.monotonic()
     elements, stderr = _evaluate(running_lab_name)
+    timed('untouched', since)
+    record['untouched'] = _recorded(elements)
+    record['errors']['untouched'] = _logged_errors(stderr)
     assert sum(e['max_grade'] for e in elements) > 0, f"nothing to earn:\n{_describe(elements)}"
     earned = [e for e in elements if e['grade'] != 0]
-    assert not earned, (f"points in a project nobody touched:\n{_describe(earned)}\n"
-                        f"--- sre eval\n{stderr[-STDERR_TAIL:]}")
+    untouched = (f"points in a project nobody touched:\n{_describe(earned)}\n"
+                 f"--- sre eval\n{stderr[-STDERR_TAIL:]}") if earned else None
+    assert RESULTS_FILE or not earned, untouched
 
     # the reference solution and the answers it gives
+    since = time.monotonic()
     r = _sre('state', running_lab_name, FINAL_STATE)
+    timed('state', since)
     assert r.returncode == 0, r.stderr
     state_stderr = r.stderr
-    deadline = time.monotonic() + SETTLE_TIMEOUT
+    record['errors']['state'] = _logged_errors(state_stderr)
+    applied = time.monotonic()
+    deadline = applied + SETTLE_TIMEOUT
+    evaluations = 0
     while True:
         _take_cheat_answers(running_lab_name)
+        since = time.monotonic()
         elements, stderr = _evaluate(running_lab_name)
+        evaluations += 1
         short = _short_of_maximum(elements)
         if not short or time.monotonic() >= deadline:
             break
         time.sleep(SETTLE_INTERVAL)
+    timed('final', since)                                   # the last evaluation ...
+    record['seconds']['settled'] = round(since - applied, 1)    # ... which began this long after the state
+    record.update(final=_recorded(elements), evaluations=evaluations, final_at=round(time.time(), 1))
+    record['errors']['final'] = _logged_errors(stderr)
     total, maximum = sum(e['grade'] for e in elements), sum(e['max_grade'] for e in elements)
-    assert not short, (f"{total} / {maximum} after the state '{FINAL_STATE}', short of their maximum:\n"
-                       f"{_describe(short)}\n"
-                       f"--- sre state {FINAL_STATE}\n{state_stderr[-STDERR_TAIL:]}\n"
-                       f"--- sre eval\n{stderr[-STDERR_TAIL:]}")
+    after_final = (f"{total} / {maximum} after the state '{FINAL_STATE}', short of their maximum:\n"
+                   f"{_describe(short)}\n"
+                   f"--- sre state {FINAL_STATE}\n{state_stderr[-STDERR_TAIL:]}\n"
+                   f"--- sre eval\n{stderr[-STDERR_TAIL:]}") if short else None
+    assert RESULTS_FILE or not short, after_final
 
+    record['stopping_at'] = round(time.time(), 1)
+    since = time.monotonic()
     r = _sre('stop', running_lab_name)
+    timed('stop', since)
     assert r.returncode == 0, r.stderr
     assert leftovers(lab_hash) == []
     assert not (PROJECTS / running_lab_name).exists()
+    # with a results file the procedure went to its end: the verdict is the one it would have had
+    problems = [problem for problem in (untouched, after_final) if problem]
+    assert not problems, '\n'.join(problems)

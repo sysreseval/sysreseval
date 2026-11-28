@@ -28,9 +28,11 @@ set in /etc/sysreseval/params.py:
 
 The package runs sysreseval-podman-setup when it is installed: the subordinate ids and the
 user manager of the sre user, /var/lib/sre/podman (the configuration and the images of the
-engine: a local disk, never NFS), the key quota of the machines that run systemd, and on a host
+engine: a local disk, never NFS), the key quota of the machines that run systemd, on a host
 without Docker the unit sre-host-address.service, which gives the host the address the machines
-reach it at (172.17.0.1, the one of the bridge of Docker).  The command changes nothing when
+reach it at (172.17.0.1, the one of the bridge of Docker), and on a host with the AppArmor
+profile of tcpdump two lines in /etc/apparmor.d/local/usr.bin.tcpdump, without which nothing in
+a machine can end a tcpdump (timeout, kill).  The command changes nothing when
 run again and says what the engine would refuse on the host; run it yourself after changing
 podman_dir or podman_uid_ranges, and on a host where systemd was not running when the package
 was installed (an image build).  The switch of the networks is /usr/lib/sysreseval/bin/sre-vde-switch.
@@ -47,7 +49,9 @@ files it may import) and
 `systemctl enable --now sysreseval-web` / `sysreseval-agent`.  The agent's unit starts the
 agent only when /etc/sysreseval/agent.toml exists and /etc/sysreseval/DO_NOT_START_AGENT does
 not (one image for a whole classroom may ship it enabled), and does not restart it after a
-configuration error (exit status 78: fix the file, then `systemctl restart`).  The reverse proxy examples
+configuration error (exit status 78: fix the file, then `systemctl restart`).  An upgrade of
+the packages restarts the daemon that runs (the projects of a host stay; the terminals open on
+them are closed and offer to reconnect) and starts neither when it does not.  The reverse proxy examples
 sre-web-nginx.conf and sre-web-apache.conf (this one authenticates the users against the LDAP
 directory itself) are next to web.toml.  See the "Web site" page of the documentation.
 

@@ -80,10 +80,15 @@ execute_after_dh_installdocs:
 override_dh_python3:
 	dh_python3 /usr/lib/sysreseval
 
+# The two daemons are neither enabled nor started by their package (each needs its configuration
+# file first).  --restart-after-upgrade: an upgrade restarts the one that runs (try-restart, after
+# the new files are in place) and starts nothing.  Without it debhelper stops the unit before the
+# upgrade (preinst) and never starts it again: the agent of a pool host stayed down until the
+# next boot.
 override_dh_installsystemd:
 	dh_installsystemd -p sysreseval --name=sysreseval-preload-images --no-enable --no-start
-	dh_installsystemd -p sysreseval-web --name=sysreseval-web --no-enable --no-start
-	dh_installsystemd -p sysreseval-agent --name=sysreseval-agent --no-enable --no-start
+	dh_installsystemd -p sysreseval-web --name=sysreseval-web --no-enable --no-start --restart-after-upgrade
+	dh_installsystemd -p sysreseval-agent --name=sysreseval-agent --no-enable --no-start --restart-after-upgrade
 
 execute_after_dh_fixperms:
 	chmod 0440 $(PKG)/etc/sudoers.d/sysreseval

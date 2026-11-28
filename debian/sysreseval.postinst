@@ -46,6 +46,9 @@ case "$1" in
             chown -R "$SRE_USER:$SRE_GROUP" "$d"
             chmod -R u=rX,g=rX,o= "$d"
         done
+        # sysreseval-podman prepares the host for the Podman engine once the sre user exists:
+        # dpkg may have configured it before this package (nothing happens without it)
+        dpkg-trigger --no-await sysreseval-configured || true
         ;;
 esac
 

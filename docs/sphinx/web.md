@@ -168,7 +168,10 @@ agent's with the conditions and restart rules above, on `/etc/sysreseval/agent.t
 `/etc/sysreseval/DO_NOT_START_AGENT`); the
 configuration files are `/etc/sysreseval/agent.toml` and `/etc/sysreseval/web.toml` (examples in
 `/usr/share/doc/sysreseval-*/examples/`); the postinst of `sysreseval-web` creates the `sre-web`
-user and protects `web.toml` and `web.d/*.toml` when they exist.
+user and protects `web.toml` and `web.d/*.toml` when they exist. An upgrade of the packages
+restarts the daemon that runs, once the new files are in place (the projects of a pool host
+stay; a terminal open on one is lost and offers to reconnect), and starts neither when it does
+not run.
 
 The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual X desktops;
 `tigervnc-standalone-server` and `openbox` are its Recommends (the Display tab is off until

@@ -1,5 +1,6 @@
 """The Debian packaging (debian/, packaging/, scripts/build-deb.sh) stays consistent with the code:
 the dependencies of control, the files of the install list, the version of the changelog."""
+import os
 import re
 import subprocess
 import sys
@@ -110,10 +111,18 @@ class TestFiles:
             assert f'debian/launchers/{launcher.name} usr/{bindir}/' in install, launcher.name
 
     def test_units_of_the_web_packages(self):
+        """Neither enabled nor started by the package, and restarted by an upgrade when they run.
+        Seen on a Debian 13 host: with `--no-enable --no-start` alone, debhelper (13.24) stops
+        the unit in the preinst of an upgrade and has nothing start it again; the agent stayed
+        down until the next boot.  `--restart-after-upgrade` makes it a try-restart in the
+        postinst instead (a unit that does not run stays stopped), and no stop before."""
+        rules = (DEBIAN / 'rules').read_text()
         for package, unit in (('sysreseval-web', 'sysreseval-web'), ('sysreseval-agent', 'sysreseval-agent')):
             text = (DEBIAN / f'{package}.{unit}.service').read_text()
             assert f'ExecStart=/usr/sbin/{unit.replace("sysreseval-", "sre-")}' in text
-            assert f'dh_installsystemd -p {package} --name={unit} --no-enable --no-start' in (DEBIAN / 'rules').read_text()
+            assert f'\tdh_installsystemd -p {package} --name={unit} --no-enable --no-start --restart-after-upgrade\n' in rules
+        # the preload of the images is a one-shot unit: an upgrade must not run it again
+        assert '\tdh_installsystemd -p sysreseval --name=sysreseval-preload-images --no-enable --no-start\n' in rules
         assert 'Depends: ${misc:Depends},\n         sysreseval (>= ${source:Version}),' in _stanza('sysreseval-agent')
 
     def test_agent_units_stop_before_the_network_file_systems(self):
@@ -280,6 +289,113 @@ class TestHostWithoutDocker:
         assert self.SETUP.count('.d/10-sre-podman.conf') >= 2 and '/etc/systemd/system/*.d/10-sre-podman.conf' in postrm
         postinst = (DEBIAN / 'sysreseval-podman.postinst').read_text()
         assert 'sysreseval-podman-setup' in postinst and '/run/systemd/system' in postinst
+
+    def test_the_setup_waits_for_the_account_of_sysreseval(self):
+        """The setup needs the sre user, which the postinst of sysreseval creates.  On a first
+        install dpkg configured sysreseval-podman BEFORE sysreseval (seen on a Debian 13 host:
+        "no account sre on this host", and the host was left unprepared): sysreseval names the
+        package among its alternatives to Docker, so the order of the two is open.  sysreseval
+        therefore activates a trigger once it is configured, and the setup runs at the configure
+        step only when the user is already there, else when the trigger is processed."""
+        assert (DEBIAN / 'sysreseval-podman.triggers').read_text() == 'interest-noawait sysreseval-configured\n'
+        activated = (DEBIAN / 'sysreseval.postinst').read_text()
+        assert 'dpkg-trigger --no-await sysreseval-configured' in activated
+        # after everything the postinst of sysreseval does (the user, the directories, the modes)
+        assert activated.index('adduser --system') < activated.index('chmod -R u=rX,g=rX,o=') \
+            < activated.index('dpkg-trigger --no-await sysreseval-configured')
+        postinst = (DEBIAN / 'sysreseval-podman.postinst').read_text()
+        configure = postinst.split('    configure)', 1)[1].split(';;', 1)[0]
+        triggered = postinst.split('    triggered)', 1)[1].split(';;', 1)[0]
+        assert 'if getent passwd sre >/dev/null; then\n            setup\n' in configure
+        assert triggered.strip() == 'setup'
+
+    TCPDUMP_PROFILE = 'profile tcpdump /usr/bin/tcpdump {\n  include <abstractions/base>\n' \
+                      '  include if exists <local/usr.bin.tcpdump>\n}\n'
+    TCPDUMP_RULES = ['signal (receive) peer=crun,', 'signal (receive) peer=runc,']
+
+    def _tcpdump_signals(self, tmp_path, enabled='Y'):
+        """The function of the setup script run on a directory of profiles of the test, with a
+        stand-in for apparmor_parser that writes its arguments to `loaded`."""
+        function = re.search(r'^tcpdump_signals\(\) \{\n.*?^\}\n', self.SETUP, re.M | re.S).group(0)
+        labels = re.search(r'^MACHINE_LABELS=.*$', self.SETUP, re.M).group(0)
+        programs = tmp_path / 'bin'
+        programs.mkdir(exist_ok=True)
+        parser = programs / 'apparmor_parser'
+        parser.write_text(f'#!/bin/sh\necho "$@" >> {tmp_path}/loaded\n')
+        parser.chmod(0o755)
+        (tmp_path / 'enabled').write_text(enabled + '\n')
+        script = tmp_path / 'sysreseval-podman-setup'       # the name the package gives the script
+        script.write_text(f'set -e\nnote() {{ echo "NOTE: $*"; }}\nAPPARMOR_DIR={tmp_path}/apparmor.d\n'
+                          f'APPARMOR_ENABLED={tmp_path}/enabled\n{labels}\n{function}tcpdump_signals\n')
+        result = subprocess.run(['bash', str(script)], capture_output=True, text=True,
+                                env=dict(os.environ, PATH=f'{programs}{os.pathsep}{os.environ["PATH"]}'))
+        assert result.returncode == 0, result.stderr
+        return result.stdout
+
+    def test_a_tcpdump_of_a_machine_can_be_ended_on_a_host_with_apparmor(self, tmp_path):
+        """Seen on a Debian 13 host with AppArmor: `timeout 3 tcpdump` in a machine never ended.
+        A tcpdump of a machine runs under the tcpdump profile of the host, which takes signals
+        from unconfined processes only, and those of a machine carry the label of the container
+        runtime.  The setup script adds one line per label to the site file of the profile, once,
+        and has the profile loaded again."""
+        profiles = tmp_path / 'apparmor.d'
+        profiles.mkdir()
+        site = profiles / 'local' / 'usr.bin.tcpdump'
+        # no such profile on the host (the package tcpdump is not installed): nothing is written
+        assert self._tcpdump_signals(tmp_path) == '' and not site.exists()
+        (profiles / 'usr.bin.tcpdump').write_text(self.TCPDUMP_PROFILE)
+        assert self._tcpdump_signals(tmp_path) == f'written: {site}\n'
+        lines = site.read_text().splitlines()
+        assert lines[0].startswith('# written by sysreseval-podman-setup of SRE: ') and lines[1:] == self.TCPDUMP_RULES
+        assert (tmp_path / 'loaded').read_text() == f'-r {profiles}/usr.bin.tcpdump\n'
+        # again: nothing written, nothing loaded
+        assert self._tcpdump_signals(tmp_path) == ''
+        assert site.read_text().splitlines() == lines and (tmp_path / 'loaded').read_text().count('\n') == 1
+
+    def test_the_site_file_of_the_tcpdump_profile_keeps_what_the_administrator_wrote(self, tmp_path):
+        """Lines are only added; one the file already names, even commented out, is left as it
+        is (how an administrator declines it); and the postrm of the package removes the lines
+        of the setup script and nothing else."""
+        profiles = tmp_path / 'apparmor.d'
+        (profiles / 'local').mkdir(parents=True)
+        (profiles / 'usr.bin.tcpdump').write_text(self.TCPDUMP_PROFILE)
+        site = profiles / 'local' / 'usr.bin.tcpdump'
+        own = '# site rules\n/srv/captures/** rw,\n# signal (receive) peer=crun,\n'
+        site.write_text(own)
+        assert self._tcpdump_signals(tmp_path) == f'written: {site}\n'
+        text = site.read_text()
+        assert text.startswith(own) and text.count('peer=crun,') == 1
+        added = text[len(own):].splitlines()
+        assert len(added) == 2 and added[0].startswith('# written by ') and added[1] == self.TCPDUMP_RULES[1]
+        # the postrm: its sed expressions, applied here to the lines of the file
+        postrm = (DEBIAN / 'sysreseval-podman.postrm').read_text()
+        assert 'site=/etc/apparmor.d/local/usr.bin.tcpdump' in postrm
+        expressions = re.findall(r"-e '/\^([^']*?)(\$?)/d'", postrm)
+        assert [e[0] for e in expressions] == ['# written by sysreseval-podman-setup of SRE: '] + self.TCPDUMP_RULES
+
+        def removed(line):
+            return any(line == start if whole else line.startswith(start) for start, whole in expressions)
+        assert [line for line in text.splitlines() if not removed(line)] == own.splitlines()
+
+    @pytest.mark.parametrize('enabled, disabled', [('N', False), ('Y', True)])
+    def test_the_tcpdump_profile_is_not_loaded_where_it_is_not_in_use(self, tmp_path, enabled, disabled):
+        """AppArmor off on the host (apparmor=0), or the profile disabled: the lines are written,
+        for the day the profile is used, and nothing is loaded."""
+        profiles = tmp_path / 'apparmor.d'
+        (profiles / 'disable').mkdir(parents=True)
+        (profiles / 'usr.bin.tcpdump').write_text(self.TCPDUMP_PROFILE)
+        if disabled:
+            (profiles / 'disable' / 'usr.bin.tcpdump').symlink_to(profiles / 'usr.bin.tcpdump')
+        assert self._tcpdump_signals(tmp_path, enabled=enabled).startswith('written: ')
+        assert (profiles / 'local' / 'usr.bin.tcpdump').read_text().splitlines()[1:] == self.TCPDUMP_RULES
+        assert not (tmp_path / 'loaded').exists()
+
+    def test_the_tcpdump_step_runs_and_a_profile_without_site_file_is_left_alone(self, tmp_path):
+        assert re.search(r'^tcpdump_signals$', self.SETUP, re.M)        # defined and called
+        profiles = tmp_path / 'apparmor.d'
+        profiles.mkdir()
+        (profiles / 'usr.bin.tcpdump').write_text('profile tcpdump /usr/bin/tcpdump {\n}\n')
+        assert self._tcpdump_signals(tmp_path) == '' and not (profiles / 'local').exists()
 
     def test_the_host_address_unit(self):
         """Written only where Docker is not installed (its bridge has the address), and the unit
