@@ -180,6 +180,34 @@ def _resolve_port(spec: str, used: set) -> str:
     error_quit(f"no free {proto} port in range {base}-{base + range_size - 1}")
 
 
+def prepare_volume_directory(base: str, name: str) -> str:
+    """Make the directory *name* of a volume under *base* (the public directory of the project,
+    or its private mount directory), open to the machines that mount it (0o777), and return
+    its path.  Every part of *name* must be a real directory, made here when missing: a link is
+    never followed (a restored project comes from a file its student wrote, and a link in the
+    place of a volume would open, and mount in the machine, the directory it points at).
+    ``OSError`` otherwise."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, 'O_CLOEXEC', 0)
+    parts = [part for part in Path(name).parts if part not in ('', '.')]
+    if not parts or '..' in parts or Path(name).is_absolute():
+        raise OSError(f"'{name}' is not a directory name under '{base}'")
+    os.makedirs(base, exist_ok=True)
+    fd = os.open(base, flags)
+    try:
+        for part in parts:
+            try:
+                os.mkdir(part, dir_fd=fd)
+            except FileExistsError:
+                pass
+            below = os.open(part, flags | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = below
+        os.fchmod(fd, 0o777)
+    finally:
+        os.close(fd)
+    return os.path.join(base, *parts)
+
+
 def _lab_module():
     """The imported srelab module (``sys.modules['srelab']``), or ``None`` when no lab is loaded
     (unit tests, GUI)."""
@@ -1343,19 +1371,21 @@ class NetScheme0:
                             f"Machine '{m.name}': private mount dir '{private_mount_dir}' is on the root partition (disable_volume_mount_on_root_partition=True)")
 
                 for v in m.volumes:
+                    base = None
                     if len(v) > 2 and v[3] == 'private':
                         if v[0].startswith('/'):
                             error_quit(f"volume {v[0]} is private and have an absolute path")
-                        v_host = f"{self.get_private_mount_dir()}/{v[0]}"
-                        os.makedirs(v_host, exist_ok=True)
-                        os.chmod(v_host, 0o777)
+                        base = str(self.get_private_mount_dir())
+                    elif v[0].startswith('/'):
+                        v_host = v[0]
                     else:
-                        if v[0].startswith('/'):
-                            v_host = v[0]
-                        else:
-                            v_host = f"{self.get_user_public_dir()}/{v[0]}"
-                            os.makedirs(v_host, exist_ok=True)
-                            os.chmod(v_host, 0o777)
+                        base = str(self.get_user_public_dir())
+                    if base is not None:
+                        try:
+                            v_host = prepare_volume_directory(base, v[0])
+                        except OSError as e:
+                            error_quit(f"Machine '{m.name}': the directory of its volume '{v[0]}' cannot be "
+                                       f"used: {e.strerror or e}")
                     if v[2] not in ['rw', 'ro']:
                         error_quit(f"volume mode {v[2]} not supported (only rw and ro)")
 

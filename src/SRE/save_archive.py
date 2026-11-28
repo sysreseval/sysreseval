@@ -246,10 +246,29 @@ def write_payload(fileobj, data_json_path: str, kathara_tar_path: str,
                 _add_tree(tar, src, member, machine_owner if member in _OWNED_TOP_LEVEL else None)
 
 
+# The members whose content SRE itself made, never a student nor a machine: no link belongs there
+_NO_LINK_TOP_LEVEL = frozenset({params.answer_dir_name, params.files_dir_name})
+
+
 def _restore_filter(member: tarfile.TarInfo, dest_path: str):
-    top = member.name.split('/', 1)[0]
+    parts = os.path.normpath(member.name).split('/')
+    top = parts[0]
     if top not in _PAYLOAD_TOP_LEVEL:
         log_error(f"restore: skipping unexpected member '{member.name}'")
+        return None
+    # A save file is the student's to write.  What SRE works in afterwards with more rights than
+    # the student must be what SRE would have made:
+    # - the first level of user_public/ and mnt/ holds shared/ and the directories of the
+    #   volumes, which the start of the project opens to its machines and mounts in them, and
+    #   what the lab itself put there: a link there would be followed, to a directory the
+    #   student chose (deeper, the links are the machines' own business);
+    # - answers/ and .private/files hold files only: a link there would be read or written
+    #   through by the commands of the lab that run on the host.
+    if top in _OWNED_TOP_LEVEL and len(parts) == 2 and (member.issym() or member.islnk()):
+        log_error(f"restore: skipping '{member.name}': no link at the first level of {top}/")
+        return None
+    if top in _NO_LINK_TOP_LEVEL and (member.issym() or member.islnk()):
+        log_error(f"restore: skipping '{member.name}': no link in {top}/")
         return None
     try:
         return tarfile.data_filter(member, dest_path)

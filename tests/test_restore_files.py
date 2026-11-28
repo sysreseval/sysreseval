@@ -27,6 +27,7 @@ from SRE.command import restore as restore_cmd
 from SRE.command import save as save_cmd
 from SRE.command.start import ProjectSetup
 from SRE.engine.base import MachineIds
+from SRE.lib_sre import prepare_volume_directory
 
 RLN = '20260101000000@@@sre@lab.py@@@alice'
 # the machines of the restored project: their root is uid 20131073 of the host, their gids start elsewhere
@@ -381,3 +382,130 @@ class TestTheWalkNeverFollowsALink:
         finally:
             os.close(fd)
         assert _mode(directory / 'a') == 0o600
+
+
+# ---------------------------------------------------------------------------
+# a save file is the student's to write: what it may not put in the new project
+# ---------------------------------------------------------------------------
+
+def _crafted(members: dict) -> bytes:
+    """A payload with the members *members*: ``{name: bytes}`` a file, ``{name: ('sym', target)}``
+    a symbolic link, ``{name: ('hard', name of another member)}`` a hard link; the directories
+    they lie in are added."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode='w', format=tarfile.PAX_FORMAT) as tar:
+        members = {'data.json': b'{}', 'kathara.tar': b'x', **members}
+        for directory in sorted({str(p) for name in members for p in Path(name).parents if str(p) != '.'}):
+            info = tarfile.TarInfo(directory)
+            info.type, info.mode = tarfile.DIRTYPE, 0o755
+            tar.addfile(info)
+        for name, content in members.items():
+            info = tarfile.TarInfo(name)
+            if isinstance(content, bytes):
+                info.size = len(content)
+                tar.addfile(info, io.BytesIO(content))
+            else:
+                info.type = tarfile.SYMTYPE if content[0] == 'sym' else tarfile.LNKTYPE
+                info.linkname = content[1]
+                tar.addfile(info)
+    return buf.getvalue()
+
+
+class TestASaveFileCannotPlantALink:
+    """The start of a restored project opens the directories of its volumes to the machines and
+    mounts them, by their names under the public directory of the project and under
+    `.private/mnt`; the commands of the lab that run on the host work in `.private/files`.  A
+    link there, brought by the save file, was followed: `mnt/data -> ..` made the private
+    directory of the project mode 0777 and the volume of the machine."""
+
+    def test_links_are_skipped_where_sre_works_and_kept_where_the_machines_do(self, tmp_path, capsys):
+        out = tmp_path / 'out'
+        out.mkdir()
+        sa.extract_payload(io.BytesIO(_crafted({
+            'mnt/data': ('sym', '..'),                              # the private directory of the project
+            'user_public/vol': ('sym', '../other'),                 # the public directory of another project
+            'user_public/again': ('hard', 'data.json'),
+            'files/key': ('sym', '../data.json'),
+            'answers/answers.json': ('sym', '../data.json'),
+            'files/real': b'kept',
+            'user_public/README': b'a file the lab put there',
+            'user_public/shared/link': ('sym', 'anywhere'),         # in shared/: the machines' own business
+            'mnt/vol2/deep': ('sym', '..'),
+        })), str(out))
+        kept = sorted(str(p.relative_to(out)) for p in out.rglob('*') if not p.is_dir() or p.is_symlink())
+        assert kept == ['data.json', 'files/real', 'kathara.tar', 'mnt/vol2/deep', 'user_public/README',
+                        'user_public/shared/link']
+        messages = capsys.readouterr().err
+        for name in ('mnt/data', 'user_public/vol', 'user_public/again', 'files/key', 'answers/answers.json'):
+            assert f"skipping '{name}'" in messages, name
+
+    def test_the_volume_of_a_restored_project_is_a_directory_of_its_own(self, tmp_pub_dir, tmp_path):
+        """The whole way: the save file, the copy, the volumes prepared as the start does."""
+        extracted = tmp_path / 'extracted'
+        extracted.mkdir()
+        sa.extract_payload(io.BytesIO(_crafted({'mnt/data': ('sym', '..'), 'user_public/vol': ('sym', '../other')})),
+                           str(extracted))
+        private = Path(params.private_lab_dir(RLN))
+        private.mkdir(parents=True)
+        os.chmod(private, 0o700)
+        Path(params.answers_dir(RLN)).mkdir()
+        other = tmp_pub_dir / 'home' / 'other'
+        other.mkdir(parents=True)
+        os.chmod(other, 0o700)
+        setup = ProjectSetup(running_lab_name=RLN)
+        setup.user_public_dir = str(tmp_pub_dir / 'home' / 'lab')
+        os.makedirs(setup.user_public_dir)
+        restore_cmd._copy_saved_project_files(str(extracted), setup)
+        data = prepare_volume_directory(params.private_mount_dir(RLN), 'data')
+        vol = prepare_volume_directory(setup.user_public_dir, 'vol')
+        for directory in (data, vol):
+            assert not os.path.islink(directory) and _mode(directory) == 0o777
+        assert os.path.realpath(data) == os.path.join(os.path.realpath(params.private_mount_dir(RLN)), 'data')
+        assert _mode(private) == 0o700 and _mode(other) == 0o700
+
+
+class TestVolumeDirectories:
+    def test_made_and_opened_to_the_machines(self, tmp_path):
+        base = tmp_path / 'project' / 'mnt'
+        path = prepare_volume_directory(str(base), 'data')
+        assert path == str(base / 'data') and _mode(base / 'data') == 0o777
+        # again, and one that exists closed: opened
+        (base / 'closed').mkdir(mode=0o700)
+        assert prepare_volume_directory(str(base), 'data') == path
+        prepare_volume_directory(str(base), 'closed')
+        assert _mode(base / 'closed') == 0o777
+        # a name with several parts: only the directory of the volume is opened
+        prepare_volume_directory(str(base), 'a/b')
+        assert _mode(base / 'a' / 'b') == 0o777 and _mode(base / 'a') != 0o777
+
+    def test_a_link_in_the_place_of_the_volume_is_refused(self, tmp_path):
+        target = tmp_path / 'private'
+        target.mkdir(mode=0o700)
+        base = tmp_path / 'mnt'
+        base.mkdir()
+        os.symlink(target, base / 'data')
+        with pytest.raises(OSError):
+            prepare_volume_directory(str(base), 'data')
+        assert _mode(target) == 0o700
+
+    def test_a_link_on_the_way_is_refused(self, tmp_path):
+        elsewhere = tmp_path / 'elsewhere'
+        elsewhere.mkdir(mode=0o700)
+        base = tmp_path / 'public'
+        base.mkdir()
+        os.symlink(elsewhere, base / 'a')
+        with pytest.raises(OSError):
+            prepare_volume_directory(str(base), 'a/b')
+        assert list(elsewhere.iterdir()) == [] and _mode(elsewhere) == 0o700
+
+    def test_a_file_in_the_place_of_the_volume_is_refused(self, tmp_path):
+        (tmp_path / 'data').write_text('x')
+        with pytest.raises(OSError):
+            prepare_volume_directory(str(tmp_path), 'data')
+        assert _mode(tmp_path / 'data') != 0o777
+
+    @pytest.mark.parametrize('name', ['', '.', '..', '../x', 'a/../../x', '/etc'])
+    def test_names_that_are_not_under_the_base(self, tmp_path, name):
+        with pytest.raises(OSError):
+            prepare_volume_directory(str(tmp_path / 'base'), name)
+        assert not (tmp_path / 'x').exists()
