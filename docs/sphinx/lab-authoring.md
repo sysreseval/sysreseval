@@ -665,6 +665,30 @@ def restore(self):
 - On a machine started with `entrypoint: "/sbin/init"`, systemd boots again on restore and may start a service at boot before the addresses exist. Run `WAIT_FOR_SYSTEMD_CMD`, stop the service (`systemctl stop …; pkill -x …`), and only then call `restart_saved_daemons()`.
 - `lab/sre/dhcp.py` uses all of this: dhcpd on srv1 / srv2, dhcrelay on r1 (step 2), the clients (step 3).
 
+What the students set **in the kernel** of a machine is lost the same way: a route typed with `ip route`, a parameter set with `sysctl -w`, what a counter of nftables has counted. `save_network_state()` records it in `save()` and `restore_network_state()` puts it back in `restore()`, on a step after the one that redoes the configuration of the lab:
+
+```python
+from state_helpers import save_network_state, restore_network_state
+
+@sre_state(user_allowed=False)
+def save(self):
+    for m in self.get_machine_names():
+        save_network_state(self, m, sysctls=('net.ipv4.ip_default_ttl',),
+                           nft_tables=['probes'] if m == 'fw' else [])
+
+@sre_state(user_allowed=False)
+def restore(self):
+    self._configure_network()          # the addresses, the routes and the tables of the start
+    for m in self.get_machine_names():
+        restore_network_state(self, m, step=2)
+```
+
+- The record is the directory `/var/lib/sre_saved_network` (`SAVED_NETWORK_DIR`) of the machine: `routes` (its IPv4 routes that are not those of its addresses, one per line as `ip route replace` takes them back), `sysctls` (`name = value`, loaded with `sysctl -p`) and one file per table of `nft_tables` (a name for an `ip` table, or a `(family, name)` pair), which `nft -f` loads in place of the table of the same name, counters included. The restored project removes it once it is put back; in the project that was saved it stays in the machines, and the next save writes it again.
+- At the restore the routes the machine has by then, those `restore()` has just set again, are removed first and the recorded ones put back: a route the student had deleted stays deleted. A route that cannot be put back (its gateway is on a network the machine no longer has) is reported and the others are set.
+- A machine without a record is left as `restore()` made it: a save file made before the lab recorded anything still restores, as it did.
+- Not kept: the addresses, the IPv6 routes, the rules of a table that is not named.
+- `lab/sre/traceroute.py` uses it on every machine: the routes of its loop, the two kernel parameters of its last part and, on its firewall, the counter that tells a probe went through. Without it a project with every point came back with 74 of 100.
+
 Lifecycle states are never user-allowed, never listed in the GUI, and `sre check` runs `save()` / `restore()` when the lab allows save/restore. `<srelab_dir>/save/` and `<srelab_dir>/restore/` are therefore reserved state-file directories (see [State file transfer](internals.md)).
 
 ### `@sre_state` decorator

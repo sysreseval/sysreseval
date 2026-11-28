@@ -24,6 +24,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src' / 'tools'))
 
 import traceroute as trc  # noqa: E402
+from state_helpers import (  # noqa: E402
+    SAVED_NETWORK_DIR, restore_nft_tables_cmd, restore_routes_cmd, restore_sysctls_cmd, save_nft_table_cmd,
+    save_routes_cmd, save_sysctls_cmd,
+)
 
 _LAB_PATH = Path(__file__).parent.parent / 'lab' / 'sre' / 'traceroute.py'
 
@@ -380,12 +384,40 @@ class TestStates:
 
         def summary(ops):
             return {k: (_cmds(ops, *k), _files(ops, *k)) for k in ops}
-        assert set(initial) == set(restore)
+        # step 1: the configuration of the start, as `initial` makes it
+        first = {k: v for k, v in restore.items() if k[0] == 1}
+        assert set(initial) == set(first)
         for k in initial:
-            assert summary(initial)[k] == summary(restore)[k], k
+            assert summary(initial)[k] == summary(first)[k], k
+        # step 2, on every machine: what save() recorded is put back over it, and the record removed
+        machines = set(ns.get_machine_names())
+        assert {k for k in restore if k[0] != 1} == {(2, m) for m in machines}
+        for m in machines:
+            assert _cmds(restore, 2, m) == [restore_nft_tables_cmd(), restore_sysctls_cmd(), restore_routes_cmd(),
+                                            f"rm -rf {SAVED_NETWORK_DIR}"], m
+            assert not _files(restore, 2, m), m
         # no user state: the lifecycle states and the reference solution only
         states = {name for name in dir(lab.NetScheme) if getattr(getattr(lab.NetScheme, name), '_is_sre_state', False)}
         assert states == {'initial', 'save', 'restore', 'final'}
+
+    def test_save_records_what_lives_in_the_kernel(self, lab, data):
+        """After a save and a restore the lab gave 74 points of 100 where it had 100 (both
+        engines): the routes of the loop, the kernel parameters of part 4 and the probe counter
+        of fw are set by commands, and a save keeps files.  save() records them on every machine
+        (the student may type a route anywhere), the table of the counter on fw alone."""
+        ns = lab.NetScheme(data=data, running_lab_name=_running_name())
+        ops = _state_ops(ns, 'save')
+        machines = set(ns.get_machine_names())
+        assert set(ops) == {(1, m) for m in machines}
+        for m in machines:
+            commands = _cmds(ops, 1, m)
+            assert commands[:3] == [f"rm -rf {SAVED_NETWORK_DIR}", save_routes_cmd(),
+                                    save_sysctls_cmd(lab.SAVED_SYSCTLS)], m
+            assert commands[3:] == ([save_nft_table_cmd(lab.TTLFW_TABLE)] if m == 'fw' else []), m
+        # every kernel parameter the final state sets, hence every one the grade reads, is recorded
+        final = _state_ops(lab.NetScheme(data=data, running_lab_name=_running_name()), 'final')
+        set_by_final = {c.split()[2].split('=')[0] for k in final for c in _cmds(final, *k) if c.startswith('sysctl -w ')}
+        assert set_by_final == set(lab.SAVED_SYSCTLS)
 
     def test_final(self, lab, data):
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())

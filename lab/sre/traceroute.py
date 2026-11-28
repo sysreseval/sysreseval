@@ -52,7 +52,7 @@ from bridging import get_sysctl_int
 from firewall import setup_http_server
 from ips import random_ipv4networks, random_ips_from_topology
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward, set_sysctl, eval_net_config
-from state_helpers import create_hosts_file
+from state_helpers import create_hosts_file, save_network_state, restore_network_state
 
 default_language = 'fr'
 tr = make_tr(default_language)
@@ -83,6 +83,8 @@ TTLFW_RULES = "/root/ttlfw.nft"
 PROBE_TTL_LIMIT = 8                # fw counts the probes below this TTL (target2 is at hop 4 to 6)
 PROBE_COUNTER = "probes"
 PROBE_TTL = 3                      # TTL of the UDP probe sent by the final state
+# the kernel parameters the student sets (part 4, and m1 / m2 for their own probes): kept by a save
+SAVED_SYSCTLS = ('net.ipv4.icmp_errors_use_inbound_ifaddr', 'net.ipv4.ip_default_ttl')
 FAR_NETWORK = IPv4Network("203.0.113.0/24")   # the unrouted destination of the loop (TEST-NET-3)
 CYCLE = ('r1', 'r2', 'r3')         # the loop, in the imposed direction
 ISLAND_B = ('inj', 'r1', 'r2', 'r3', 'srv')
@@ -554,7 +556,7 @@ erreurs ICMP, qui désignent l'interface par laquelle chaque routeur **retourne*
 
     def _configure_network(self):
         """Runtime configuration, applied at start and again after a restore (addresses, routes,
-        nft tables and daemons do not survive it)."""
+        nft tables and daemons do not survive it; restore() then puts back what save() recorded)."""
         d = self.data
         for m, nc in self.net_config.items():
             set_net_config_entry(net_scheme=self, machine_name=m, nc_entry=nc)
@@ -592,8 +594,21 @@ erreurs ICMP, qui désignent l'interface par laquelle chaque routeur **retourne*
         self._configure_network()
 
     @sre_state(user_allowed=False)
+    def save(self):
+        """A save keeps files only, and the work of parts 2 to 4 is in the kernel of the machines:
+        the routes and the two kernel parameters of every machine, and on fw the table whose
+        counter tells that a probe went through, are recorded for restore()."""
+        for m in self.get_machine_names():
+            save_network_state(self, m, sysctls=SAVED_SYSCTLS, nft_tables=[TTLFW_TABLE] if m == 'fw' else [])
+
+    @sre_state(user_allowed=False)
     def restore(self):
+        """The configuration of the start, then (step 2) what save() recorded on each machine:
+        the routes of the student in place of those of the start, the kernel parameters, the
+        counter of fw.  A project saved before the record existed comes back as it starts."""
         self._configure_network()
+        for m in self.get_machine_names():
+            restore_network_state(self, m, step=2)
 
     @sre_state(user_allowed=False)
     def final(self):
@@ -762,8 +777,9 @@ pare-feu `fw`, les routes de `inj`, `r1`, `r2`, `r3` et deux paramètres du noya
 - L'état `final` (onglet *Appliquer une configuration*) applique la solution des parties 3 et 4
   (routes de la boucle sur `inj`, `r1`, `r2`, `r3`, `icmp_errors_use_inbound_ifaddr=1` sur `r2` et
   `r3`, `ip_default_ttl={inj_ttl}` sur `inj`), envoie depuis `m2` un datagramme UDP de TTL
-  {probe_ttl} vers `target2` (le compteur de `fw` n'est plus nul ; après une restauration du projet
-  il faut renvoyer une sonde) et remplit tous les formulaires. Rien à configurer pour la partie 1.
+  {probe_ttl} vers `target2` (le compteur de `fw` n'est plus nul) et remplit tous les formulaires.
+  Rien à configurer pour la partie 1. Une sauvegarde du projet garde les routes, ces deux
+  paramètres du noyau et le compteur de `fw`.
 - Évaluation : compteur de `fw` ; `ip route` de `inj`, `r1`, `r2`, `r3` ; depuis `inj` : `ping -t 64`
   et `ping -t {ttl_b}` vers `{far}` (adresse source du *time exceeded*) ; `sysctl` sur `r2`, `r3`,
   `inj` ; les formulaires.
@@ -1364,8 +1380,9 @@ _TRANSLATIONS = {
 - L'état `final` (onglet *Appliquer une configuration*) applique la solution des parties 3 et 4
   (routes de la boucle sur `inj`, `r1`, `r2`, `r3`, `icmp_errors_use_inbound_ifaddr=1` sur `r2` et
   `r3`, `ip_default_ttl={inj_ttl}` sur `inj`), envoie depuis `m2` un datagramme UDP de TTL
-  {probe_ttl} vers `target2` (le compteur de `fw` n'est plus nul ; après une restauration du projet
-  il faut renvoyer une sonde) et remplit tous les formulaires. Rien à configurer pour la partie 1.
+  {probe_ttl} vers `target2` (le compteur de `fw` n'est plus nul) et remplit tous les formulaires.
+  Rien à configurer pour la partie 1. Une sauvegarde du projet garde les routes, ces deux
+  paramètres du noyau et le compteur de `fw`.
 - Évaluation : compteur de `fw` ; `ip route` de `inj`, `r1`, `r2`, `r3` ; depuis `inj` : `ping -t 64`
   et `ping -t {ttl_b}` vers `{far}` (adresse source du *time exceeded*) ; `sysctl` sur `r2`, `r3`,
   `inj` ; les formulaires.
@@ -1396,8 +1413,9 @@ _TRANSLATIONS = {
 - The `final` state (*Apply Configuration* tab) applies the solution of parts 3 and 4
   (routes of the loop on `inj`, `r1`, `r2`, `r3`, `icmp_errors_use_inbound_ifaddr=1` on `r2` and
   `r3`, `ip_default_ttl={inj_ttl}` on `inj`), sends a UDP datagram of TTL {probe_ttl} from `m2`
-  towards `target2` (the counter of `fw` is no longer zero; after a restore of the project a probe
-  must be sent again) and fills every form. Nothing to configure for part 1.
+  towards `target2` (the counter of `fw` is no longer zero) and fills every form. Nothing to
+  configure for part 1. A save of the project keeps the routes, these two kernel parameters and
+  the counter of `fw`.
 - Evaluation: counter of `fw`; `ip route` of `inj`, `r1`, `r2`, `r3`; from `inj`: `ping -t 64`
   and `ping -t {ttl_b}` towards `{far}` (source address of the *time exceeded*); `sysctl` on `r2`, `r3`,
   `inj`; the forms.

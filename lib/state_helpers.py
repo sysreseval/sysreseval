@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from ipaddress import IPv4Address, IPv4Interface, IPv6Address, IPv6Interface, IPv6Network
 
 from SRE.lib_sre import NetScheme0
-from net_config import remount_proc_sys, set_ipv6_forward
+from net_config import REMOUNT_PROC_SYS_CMD, remount_proc_sys, set_ipv6_forward
 
 
 def set_unbound_server(net_scheme: NetScheme0, machine: str):
@@ -490,3 +490,115 @@ def forget_saved_daemons(net_scheme: NetScheme0, machine: str, step: int = 1,
                          path: str = SAVED_DAEMONS_FILE) -> None:
     """Remove the record of *machine* (last step of restore())."""
     net_scheme.cmd(machine, f"rm -f {shlex.quote(path)}", step=step)
+
+
+# ---------------------------------------------------------------------------
+# Kernel network state kept across `sre save` / `sre restore`
+# ---------------------------------------------------------------------------
+# What a student sets with `ip route` or `sysctl -w`, and what a counter of nftables has
+# counted, lives in the kernel of the machine: a save, which captures files, keeps none of it.
+# save() records it in files of the machine (save_network_state); restore() puts it back once
+# the lab has redone its own configuration, on a later step (restore_network_state), and the
+# record is removed.  IPv4 routes only.  Not kept: the addresses, the neighbour tables, the
+# rules of a table that is not named.
+
+SAVED_NETWORK_DIR = '/var/lib/sre_saved_network'
+
+# One route per line as `ip route replace` takes it back: a multipath route on one line
+# (`ip -o` ends its lines with a backslash), without the words that tell the state of a link.
+# The routes of the addresses themselves (proto kernel) come back with the addresses.
+_LIST_ROUTES = ("ip -o -4 route show | sed -e 's/\\\\//g' -e 's/ linkdown//g' -e 's/ dead//g' "
+                "| grep -v ' proto kernel '")
+
+_SYSCTL_NAME_RE = re.compile(r'[A-Za-z0-9_]+(\.[A-Za-z0-9_-]+)+')
+_NFT_FAMILIES = ('ip', 'ip6', 'inet', 'arp', 'bridge', 'netdev')
+_NFT_TABLE_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+
+
+def save_routes_cmd(directory: str = SAVED_NETWORK_DIR) -> str:
+    """The command recording the IPv4 routes of a machine that are not those of its addresses."""
+    d = shlex.quote(directory)
+    return f"mkdir -p {d} && {{ {_LIST_ROUTES}; true; }} > {d}/routes"
+
+
+def restore_routes_cmd(directory: str = SAVED_NETWORK_DIR) -> str:
+    """The command putting the recorded routes back: the routes the machine has by then (those
+    the lab has just set again) are removed first, so that a route the student had deleted stays
+    deleted.  Nothing is done without a record.  Its status is 1 when a route was refused."""
+    f = shlex.quote(directory) + '/routes'
+    return (f"( [ -f {f} ] || exit 0; set -f; rc=0; "
+            f"{_LIST_ROUTES} | while read -r route; do ip -4 route del $route; done; "
+            f'while read -r route; do [ -z "$route" ] || ip -4 route replace $route || rc=1; done < {f}; '
+            "exit $rc )")
+
+
+def save_sysctls_cmd(names, directory: str = SAVED_NETWORK_DIR) -> str:
+    """The command recording the kernel parameters *names* of a machine, as `sysctl -p` reads
+    them (`name = value`); a parameter the kernel does not have is left out."""
+    names = list(names)
+    for name in names:
+        if not isinstance(name, str) or not _SYSCTL_NAME_RE.fullmatch(name):
+            raise ValueError(f"not a kernel parameter name: {name!r}")
+    if not names:
+        raise ValueError("no kernel parameter to record")
+    d = shlex.quote(directory)
+    return f"mkdir -p {d} && {{ sysctl -e {' '.join(names)} 2>/dev/null; true; }} > {d}/sysctls"
+
+
+def restore_sysctls_cmd(directory: str = SAVED_NETWORK_DIR) -> str:
+    """The command setting the recorded kernel parameters again (`/proc/sys` made writable
+    first, as for any `sysctl -w` of a state).  Nothing is done without a record."""
+    f = shlex.quote(directory) + '/sysctls'
+    return f"[ ! -s {f} ] || {{ {REMOUNT_PROC_SYS_CMD}; sysctl -q -p {f}; }}"
+
+
+def _nft_table(table) -> tuple:
+    """``(family, name)`` of a table given by its name (an `ip` table) or as that pair."""
+    family, name = ('ip', table) if isinstance(table, str) else tuple(table)
+    if family not in _NFT_FAMILIES or not isinstance(name, str) or not _NFT_TABLE_RE.fullmatch(name):
+        raise ValueError(f"not a table of nftables: {table!r}")
+    return family, name
+
+
+def save_nft_table_cmd(table, directory: str = SAVED_NETWORK_DIR) -> str:
+    """The command recording a table of nftables with what its counters have counted: a file
+    `nft -f` loads in place of the table of the same name.  No record for a table that is not
+    there."""
+    family, name = _nft_table(table)
+    d = shlex.quote(directory)
+    f = f"{d}/nft-{family}-{name}"
+    return (f"mkdir -p {d} && {{ echo 'table {family} {name}'; echo 'delete table {family} {name}'; "
+            f"nft list table {family} {name}; }} > {f} 2>/dev/null || rm -f {f}; true")
+
+
+def restore_nft_tables_cmd(directory: str = SAVED_NETWORK_DIR) -> str:
+    """The command loading every recorded table again, each in place of the table the lab has
+    just made.  Its status is 1 when a table was refused."""
+    d = shlex.quote(directory)
+    return f'( rc=0; for f in {d}/nft-*; do [ ! -f "$f" ] || nft -f "$f" || rc=1; done; exit $rc )'
+
+
+def save_network_state(net_scheme: NetScheme0, machine: str, sysctls=(), nft_tables=(), step: int = 1,
+                       directory: str = SAVED_NETWORK_DIR) -> None:
+    """Record on *machine* what a save does not keep of its network (call it from the save()
+    state): its IPv4 routes, the kernel parameters *sysctls*, and the tables *nft_tables* of
+    nftables (names of `ip` tables, or `(family, name)` pairs) with their counters."""
+    d = shlex.quote(directory)
+    net_scheme.cmd(machine, f"rm -rf {d}", step=step)       # nothing of an earlier save
+    net_scheme.cmd(machine, save_routes_cmd(directory), step=step)
+    if sysctls:
+        net_scheme.cmd(machine, save_sysctls_cmd(sysctls, directory), step=step)
+    for table in nft_tables:
+        net_scheme.cmd(machine, save_nft_table_cmd(table, directory), step=step)
+
+
+def restore_network_state(net_scheme: NetScheme0, machine: str, step: int = 1,
+                          directory: str = SAVED_NETWORK_DIR) -> None:
+    """Put back on *machine* what save_network_state() recorded, then remove the record.  Call
+    it from restore() on a step after the one that redoes the configuration of the lab: the
+    routes need the addresses, and a table loaded here replaces the one the lab has made.  A
+    machine without a record (a save file older than the record) is left as the lab made it."""
+    net_scheme.cmd(machine, restore_nft_tables_cmd(directory), step=step)
+    net_scheme.cmd(machine, restore_sysctls_cmd(directory), step=step)
+    net_scheme.cmd(machine, restore_routes_cmd(directory), step=step)
+    net_scheme.cmd(machine, f"rm -rf {shlex.quote(directory)}", step=step)

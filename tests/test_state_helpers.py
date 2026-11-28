@@ -882,3 +882,218 @@ class TestSavedDaemons:
         s = _make_bare()
         restart_saved_daemons(s, 'host', SavedDaemons())
         assert _cmd_ops(s, 'host') == []
+
+
+# ---------------------------------------------------------------------------
+# Kernel network state kept across sre save / sre restore
+# ---------------------------------------------------------------------------
+
+import os  # noqa: E402
+import shlex  # noqa: E402
+
+from state_helpers import (  # noqa: E402
+    SAVED_NETWORK_DIR, restore_network_state, restore_nft_tables_cmd, restore_routes_cmd, restore_sysctls_cmd,
+    save_network_state, save_nft_table_cmd, save_routes_cmd, save_sysctls_cmd,
+)
+
+# What the stand-ins of ip, sysctl, nft and mount do: they answer from files of $FAKE and
+# write what they were asked to change to $FAKE/log, one line per call.
+_FAKE_PROGRAMS = {
+    'ip': """#!/bin/sh
+case "$*" in
+    "-o -4 route show") cat "$FAKE/routes" 2>/dev/null;;
+    "-4 route del "*) shift 3; echo "del $*" >> "$FAKE/log";;
+    "-4 route replace "*)
+        case "$*" in *192.0.2.99*) echo "Error: Nexthop has invalid gateway." >&2; exit 2;; esac
+        shift 3; echo "replace $*" >> "$FAKE/log";;
+    *) echo "unexpected: ip $*" >> "$FAKE/log"; exit 9;;
+esac
+""",
+    'sysctl': """#!/bin/sh
+if [ "$1" = -e ]; then
+    shift
+    for name; do grep "^$name = " "$FAKE/sysctls" 2>/dev/null; done
+    exit 0
+fi
+if [ "$1 $2" = "-q -p" ]; then echo "sysctl -p: $(tr '\\n' ';' < "$3")" >> "$FAKE/log"; exit 0; fi
+echo "unexpected: sysctl $*" >> "$FAKE/log"; exit 9
+""",
+    'nft': """#!/bin/sh
+if [ "$1 $2" = "list table" ]; then
+    [ -f "$FAKE/table-$3-$4" ] || { echo "Error: No such file or directory" >&2; exit 1; }
+    cat "$FAKE/table-$3-$4"; exit 0
+fi
+if [ "$1" = -f ]; then
+    if grep -q refused "$2"; then echo "Error: syntax error" >&2; exit 1; fi
+    echo "nft -f: $(tr '\\n' ';' < "$2")" >> "$FAKE/log"; exit 0
+fi
+echo "unexpected: nft $*" >> "$FAKE/log"; exit 9
+""",
+    'mount': """#!/bin/sh
+echo "mount $*" >> "$FAKE/log"
+""",
+}
+
+# `ip -o -4 route show` of a router: the route of an address, two routes typed by hand (one over
+# a link that is down), a multipath route (one line, cut with backslashes by -o)
+_ROUTES_SHOWN = ("default via 10.0.1.1 dev eth0 \n"
+                 "10.0.1.0/24 dev eth0 proto kernel scope link src 10.0.1.2 \n"
+                 "10.9.0.0/16 via 10.0.2.7 dev eth1 linkdown \n"
+                 "10.8.0.0/16 \\\tnexthop via 10.0.1.5 dev eth0 weight 1 \\\tnexthop via 10.0.2.5 dev eth1 weight 2 \n")
+_TABLE = ('table ip ttlfw {\n\tchain prerouting {\n\t\ttype filter hook prerouting priority raw; policy accept;\n'
+          '\t\tiifname "eth0" ip ttl < 8 counter packets 3 bytes 87 comment "probes"\n\t}\n}\n')
+
+
+class TestSavedNetworkState:
+    """The routes, the kernel parameters and the nftables counters of a machine are in its
+    kernel: a save keeps none of them.  The commands that record them and put them back are run
+    here by sh, against stand-ins of ip, sysctl, nft and mount."""
+
+    @pytest.fixture
+    def fake(self, tmp_path):
+        """Run a command of the helpers; `fake.dir` holds what the stand-ins answer from,
+        `fake.saved` is the directory of the record, `fake.log()` what they were asked to change."""
+        programs = tmp_path / 'bin'
+        programs.mkdir()
+        for name, script in _FAKE_PROGRAMS.items():
+            (programs / name).write_text(script)
+            (programs / name).chmod(0o755)
+        state = tmp_path / 'kernel'
+        state.mkdir()
+
+        class Fake:
+            dir = state
+            saved = tmp_path / 'saved record'       # a space: the paths are quoted
+
+            def __call__(self, command):
+                return subprocess.run(['sh', '-c', command], capture_output=True, text=True, env=dict(
+                    os.environ, FAKE=str(state), PATH=f'{programs}{os.pathsep}{os.environ["PATH"]}'))
+
+            def log(self):
+                return (state / 'log').read_text().splitlines() if (state / 'log').exists() else []
+        return Fake()
+
+    def test_the_routes_are_recorded_as_ip_takes_them_back(self, fake):
+        (fake.dir / 'routes').write_text(_ROUTES_SHOWN)
+        assert fake(save_routes_cmd(str(fake.saved))).returncode == 0
+        assert (fake.saved / 'routes').read_text().splitlines() == [
+            'default via 10.0.1.1 dev eth0 ',
+            '10.9.0.0/16 via 10.0.2.7 dev eth1 ',                                  # without "linkdown"
+            '10.8.0.0/16 \tnexthop via 10.0.1.5 dev eth0 weight 1 \tnexthop via 10.0.2.5 dev eth1 weight 2 ']
+        assert fake.log() == []
+        # a machine with the routes of its addresses only: an empty record, which restore still applies
+        (fake.dir / 'routes').write_text("10.0.1.0/24 dev eth0 proto kernel scope link src 10.0.1.2 \n")
+        assert fake(save_routes_cmd(str(fake.saved))).returncode == 0
+        assert (fake.saved / 'routes').read_text() == ''
+
+    def test_the_routes_of_the_restored_machine_are_replaced_by_the_recorded_ones(self, fake):
+        """restore() has set the routes of the start again by then: they go first, so that a
+        route the student had deleted or changed does not come back beside the recorded one."""
+        fake.saved.mkdir()
+        (fake.saved / 'routes').write_text('default via 10.0.2.1 dev eth1 \n'
+                                           '10.8.0.0/16 \tnexthop via 10.0.1.5 dev eth0 weight 1 \tnexthop via 10.0.2.5 dev eth1 weight 2 \n')
+        (fake.dir / 'routes').write_text("default via 10.0.1.1 dev eth0 \n"
+                                         "10.0.1.0/24 dev eth0 proto kernel scope link src 10.0.1.2 \n"
+                                         "10.7.0.0/16 via 10.0.1.9 dev eth0 \n")
+        result = fake(restore_routes_cmd(str(fake.saved)))
+        assert result.returncode == 0, result.stderr
+        assert fake.log() == ['del default via 10.0.1.1 dev eth0', 'del 10.7.0.0/16 via 10.0.1.9 dev eth0',
+                              'replace default via 10.0.2.1 dev eth1',
+                              'replace 10.8.0.0/16 nexthop via 10.0.1.5 dev eth0 weight 1 nexthop via 10.0.2.5 dev eth1 weight 2']
+
+    def test_a_route_that_cannot_be_put_back_is_reported_and_the_others_are_set(self, fake):
+        fake.saved.mkdir()
+        (fake.saved / 'routes').write_text('10.5.0.0/16 via 192.0.2.99 dev eth0 \ndefault via 10.0.2.1 dev eth1 \n')
+        result = fake(restore_routes_cmd(str(fake.saved)))
+        assert result.returncode == 1 and 'invalid gateway' in result.stderr
+        assert fake.log() == ['replace default via 10.0.2.1 dev eth1']
+
+    def test_an_empty_record_removes_the_routes_and_no_record_changes_nothing(self, fake):
+        (fake.dir / 'routes').write_text("default via 10.0.1.1 dev eth0 \n")
+        # a save file made before the lab recorded anything: the machine stays as the lab made it
+        assert fake(restore_routes_cmd(str(fake.saved))).returncode == 0 and fake.log() == []
+        # the student had removed every route
+        fake.saved.mkdir()
+        (fake.saved / 'routes').write_text('')
+        assert fake(restore_routes_cmd(str(fake.saved))).returncode == 0
+        assert fake.log() == ['del default via 10.0.1.1 dev eth0']
+
+    def test_a_route_is_never_expanded_as_a_file_pattern(self, fake, tmp_path):
+        fake.saved.mkdir()
+        (fake.saved / 'routes').write_text('default via 10.0.2.1 dev * \n')
+        result = subprocess.run(['sh', '-c', f'cd {shlex.quote(str(tmp_path))} && ' + restore_routes_cmd(str(fake.saved))],
+                                capture_output=True, text=True,
+                                env=dict(os.environ, FAKE=str(fake.dir), PATH=f'{tmp_path / "bin"}{os.pathsep}{os.environ["PATH"]}'))
+        assert result.returncode == 0 and fake.log() == ['replace default via 10.0.2.1 dev *']
+
+    def test_kernel_parameters(self, fake):
+        (fake.dir / 'sysctls').write_text('net.ipv4.ip_default_ttl = 12\nnet.ipv4.icmp_errors_use_inbound_ifaddr = 1\n'
+                                          'net.ipv4.ip_forward = 1\n')
+        names = ('net.ipv4.icmp_errors_use_inbound_ifaddr', 'net.ipv4.ip_default_ttl', 'net.ipv4.not_in_this_kernel')
+        assert fake(save_sysctls_cmd(names, str(fake.saved))).returncode == 0
+        record = fake.saved / 'sysctls'
+        assert record.read_text() == 'net.ipv4.icmp_errors_use_inbound_ifaddr = 1\nnet.ipv4.ip_default_ttl = 12\n'
+        assert fake(restore_sysctls_cmd(str(fake.saved))).returncode == 0
+        log = fake.log()
+        # /proc/sys made writable first where it is not (REMOUNT_PROC_SYS_CMD), then the record loaded
+        assert log[-1] == 'sysctl -p: net.ipv4.icmp_errors_use_inbound_ifaddr = 1;net.ipv4.ip_default_ttl = 12;'
+        assert log[:-1] in ([], ['mount -o rw,remount /proc/sys'])
+        assert REMOUNT_PROC_SYS_CMD in restore_sysctls_cmd()
+
+    def test_kernel_parameters_without_a_record(self, fake):
+        assert fake(restore_sysctls_cmd(str(fake.saved))).returncode == 0 and fake.log() == []
+
+    @pytest.mark.parametrize('names', [[], ['net.ipv4.ip_forward; reboot'], ['ip_forward'], [12], ['net.ipv4.x y']])
+    def test_kernel_parameter_names_are_checked(self, names):
+        with pytest.raises(ValueError):
+            save_sysctls_cmd(names)
+
+    def test_a_table_is_recorded_with_its_counters_and_loaded_in_place_of_the_new_one(self, fake):
+        (fake.dir / 'table-ip-ttlfw').write_text(_TABLE)
+        assert fake(save_nft_table_cmd('ttlfw', str(fake.saved))).returncode == 0
+        record = fake.saved / 'nft-ip-ttlfw'
+        # "table x" then "delete table x": the file replaces the table whether it exists or not
+        assert record.read_text() == 'table ip ttlfw\ndelete table ip ttlfw\n' + _TABLE
+        assert 'counter packets 3 bytes 87 comment "probes"' in record.read_text()
+        assert fake(restore_nft_tables_cmd(str(fake.saved))).returncode == 0
+        assert fake.log() == ['nft -f: ' + record.read_text().replace('\n', ';')]
+
+    def test_a_table_that_is_not_there_leaves_no_record(self, fake):
+        assert fake(save_nft_table_cmd(('inet', 'filter'), str(fake.saved))).returncode == 0
+        assert list(fake.saved.iterdir()) == []
+        assert fake(restore_nft_tables_cmd(str(fake.saved))).returncode == 0 and fake.log() == []
+
+    def test_a_refused_table_is_reported_and_the_others_are_loaded(self, fake):
+        fake.saved.mkdir()
+        (fake.saved / 'nft-ip-a').write_text('refused\n')
+        (fake.saved / 'nft-ip-b').write_text('table ip b\n')
+        result = fake(restore_nft_tables_cmd(str(fake.saved)))
+        assert result.returncode == 1 and fake.log() == ['nft -f: table ip b;']
+
+    @pytest.mark.parametrize('table', ['ttl fw', 'x; reboot', ('ip', 'a', 'b'), ('ipx', 'filter'), 12, ''])
+    def test_table_names_are_checked(self, table):
+        with pytest.raises((ValueError, TypeError)):
+            save_nft_table_cmd(table)
+
+    @pytest.mark.parametrize('command', [
+        save_routes_cmd(), restore_routes_cmd(), save_sysctls_cmd(['net.ipv4.ip_default_ttl']), restore_sysctls_cmd(),
+        save_nft_table_cmd('ttlfw'), restore_nft_tables_cmd()])
+    def test_commands_parse_as_sh(self, command):
+        assert subprocess.run(['sh', '-n', '-c', command]).returncode == 0
+        assert SAVED_NETWORK_DIR in command
+
+    def test_save_and_restore_of_a_machine(self):
+        s = _make_bare()
+        save_network_state(s, 'host', sysctls=['net.ipv4.ip_default_ttl'], nft_tables=['ttlfw', ('inet', 'filter')], step=3)
+        assert _cmd_ops(s, 'host', step=3) == [
+            f"rm -rf {SAVED_NETWORK_DIR}",                  # nothing of an earlier save
+            save_routes_cmd(), save_sysctls_cmd(['net.ipv4.ip_default_ttl']),
+            save_nft_table_cmd('ttlfw'), save_nft_table_cmd(('inet', 'filter'))]
+        restore_network_state(s, 'host', step=2)
+        assert _cmd_ops(s, 'host', step=2) == [restore_nft_tables_cmd(), restore_sysctls_cmd(), restore_routes_cmd(),
+                                               f"rm -rf {SAVED_NETWORK_DIR}"]
+
+    def test_save_of_a_machine_with_routes_only(self):
+        s = _make_bare()
+        save_network_state(s, 'host')
+        assert _cmd_ops(s, 'host') == [f"rm -rf {SAVED_NETWORK_DIR}", save_routes_cmd()]
