@@ -18,7 +18,7 @@ from ..agent.occupancy import SESSION_PREFIX
 from ..agent.runner import (PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED,
                             LAB_README_KEY)
 from ..agent.usage import (STATUS_CPUS, STATUS_MEM_TOTAL, STATUS_CPU_BUSY, STATUS_USAGE, USAGE_NAME, USAGE_LAB,
-                           USAGE_CONTAINERS, USAGE_MEM, USAGE_CPU, USAGE_SETTLED)
+                           USAGE_CONTAINERS, USAGE_MEM, USAGE_CPU, USAGE_SETTLED, USAGE_ENGINE)
 from ..config import (HostConfig, Priority, host_config_from_dict, host_entry, check_priority,
                       check_usable_capacity, ConfigError, CAPACITY_PROJECTS, CAPACITY_RESOURCES,
                       DEFAULT_USABLE_CAPACITY, USABLE_CAPACITY_KEY)
@@ -324,7 +324,8 @@ def project_name_fields(value) -> list | None:
 def usage_fields(value, cpus: int | None, mem_total_mb: int | None) -> list:
     """The ``usage`` of a status as the portal keeps it: one ``costs.Usage`` per entry that is
     an object naming a project and its lab (the lab in the form of the lab list), one per
-    project, at most ``MAX_USAGE``.  A figure that is no number is ``None``, and none says more
+    project, at most ``MAX_USAGE``, with the engine that runs it when the agent names one (``''``
+    otherwise).  A figure that is no number is ``None``, and none says more
     than the host has (*cpus*, *mem_total_mb*, when it tells them): a broken or hostile agent
     cannot make a lab look larger than a whole machine in the costs the pool learns."""
     if not isinstance(value, list):
@@ -343,8 +344,10 @@ def usage_fields(value, cpus: int | None, mem_total_mb: int | None) -> list:
         if processors is not None and cpus:
             processors = min(processors, float(cpus))
         containers = figure(entry.get(USAGE_CONTAINERS))
+        engine = entry.get(USAGE_ENGINE)
         rows[name] = Usage(name=name, lab=lab_key(lab), containers=int(containers) if containers is not None else None,
-                           mem_mb=memory, cpu=processors, settled=entry.get(USAGE_SETTLED) is True)
+                           mem_mb=memory, cpu=processors, settled=entry.get(USAGE_SETTLED) is True,
+                           engine=engine if isinstance(engine, str) and engine in CONTAINER_ENGINES else '')
         if len(rows) >= MAX_USAGE:
             break
     return list(rows.values())
@@ -1151,7 +1154,8 @@ class Pool:
 
     def load_of(self, name: str) -> HostLoad | None:
         """The load of *name* in memory and processors (``costs.host_load``) from its last
-        status: its projects counted for the cost of their lab, the starts in flight for theirs
+        status: its projects counted for the cost of their lab with the engine that runs them, the
+        starts in flight for theirs
         (a reservation counts until a status asked after the end of its start, as for the number
         of projects), the host counting as a machine ``total_usable_capacity`` percent of its
         size.  ``None`` for a host that is unreachable or whose agent does not tell its
@@ -1160,7 +1164,8 @@ class Pool:
         if not st.reachable:
             return None
         return host_load(cpus=st.cpus, mem_total_mb=st.mem_total_mb, mem_available_mb=st.mem_available_mb,
-                         cpu_busy=st.cpu_busy, committed_cpu=sum(self.costs.cost(row.lab).cpu for row in st.usage),
+                         cpu_busy=st.cpu_busy,
+                         committed_cpu=sum(self.costs.cost(row.lab, row.engine).cpu for row in st.usage),
                          in_flight=[r.cost or self.costs.default for r in self._reservations[name]],
                          reserve_mb=self.memory_reserve_mb, cpu_target=self.cpu_target,
                          share=self.runtime[name].total_usable_capacity / DEFAULT_USABLE_CAPACITY)
@@ -1272,7 +1277,7 @@ class Pool:
         ``cpu_room``, the spare capacity of the elastic pool): the mean of the costs of the labs
         of the projects running now on the hosts the students use, the default cost without
         any — "room for N more projects like those running"."""
-        costs = [self.costs.cost(row.lab) for h in self.hosts.values() if not h.instructors_only
+        costs = [self.costs.cost(row.lab, row.engine) for h in self.hosts.values() if not h.instructors_only
                  for row in (self.status[h.name].usage if self.status[h.name].reachable else ())]
         if not costs:
             return self.costs.default
@@ -1366,6 +1371,16 @@ class Pool:
             return engine in allowed
         return accepted is None or any(candidate in allowed for candidate in accepted)
 
+    def _engine_on(self, name: str, accepted: tuple | None, engine: str | None) -> str | None:
+        """The engine a project of a lab that accepts *accepted* (``None``: every engine) would
+        run with on the host *name*: *engine* when one is asked for, else the first engine of
+        the host that the lab accepts (the rule ``sre start`` applies there); ``None`` for a host
+        whose agent tells no engine, or that has none for the lab."""
+        if engine is not None:
+            return engine
+        return next((candidate for candidate in self.status[name].engines
+                     if accepted is None or candidate in accepted), None)
+
     def pick(self, identity: Identity | None = None, host: str | None = None, *, lab: str | None = None,
              need_saves: bool = False, engine: str | None = None) -> tuple:
         """The host of a new project and its reservation.  Without *host*: the host of a local
@@ -1385,7 +1400,9 @@ class Pool:
         without identity.  With *host* (an instructor naming one on the Open page): that host,
         when the identity may use it (403 otherwise), it is available to them (503) and has room
         (503).  The caller releases the reservation when the start is over.  *lab*: the lab of
-        the project, whose cost (``costs.CostBook``) the reservation carries.  *need_saves*
+        the project, whose cost (``costs.CostBook``) the reservation carries: the cost of the lab
+        with the engine the project would run with on each host (``_engine_on``), so that two
+        hosts of different engines are judged each by its own.  *need_saves*
         (the restore of a saved project): only a host whose agent has the saved projects.
         *engine* (an instructor naming one on the Open page): only a host that allows that
         container engine; in every case only a host that allows an engine the lab accepts
@@ -1393,8 +1410,11 @@ class Pool:
         host starts the project with the first of its engines that the lab accepts."""
         instructor = identity is not None and identity.is_instructor
         now = time.monotonic()
-        cost = self.costs.cost(lab)
         accepted = self.lab_engines(lab)
+
+        def cost_on(name: str) -> Cost:
+            return self.costs.cost(lab, self._engine_on(name, accepted, engine))
+
         if engine is not None and accepted is not None and engine not in accepted:
             raise PoolError(409, f"this lab does not accept the engine {engine}")
         if host is not None:
@@ -1411,6 +1431,7 @@ class Pool:
                 raise PoolError(503, f"the host {host} is not available", retry_after=60)
             if self.status[host].projects >= chosen.max_projects:
                 raise PoolError(503, f"the host {host} is full", retry_after=60)
+            cost = cost_on(host)
             load = self._resources(host)
             if load is None:
                 if self.memory_room(host) == 0:
@@ -1431,6 +1452,7 @@ class Pool:
             if need_saves and not self.status[h.name].saves:
                 continue
             available, placement = self._available_to(h, identity, state)
+            cost = cost_on(h.name)
             if not available or not self._has_room(h, cost):
                 continue
             if not self._engines_fit(h.name, accepted, engine):
@@ -1443,7 +1465,7 @@ class Pool:
             # the order only tells the hosts without project apart: the least loaded host is one
             # of them whenever there is one, and the loaded hosts are settled by their load
             candidates.append((placement != PLACEMENT_SESSION, priority.group, fill,
-                               priority.order if st.projects == 0 else 0, load, h.name, h, placement))
+                               priority.order if st.projects == 0 else 0, load, h.name, h, placement, cost))
         if not candidates:
             if waking:
                 raise PoolError(503, "a host is starting, please retry in a moment", retry_after=30)
@@ -1455,7 +1477,7 @@ class Pool:
                                 else "no host available for this lab", retry_after=60)
             raise PoolError(503, "no host available for a new project", retry_after=60)
         candidates.sort(key=lambda c: c[:6])
-        return self._reserve(candidates[0][6], candidates[0][7], cost)
+        return self._reserve(candidates[0][6], candidates[0][7], candidates[0][8])
 
     def _available_to(self, h: HostConfig, identity: Identity | None, state: str) -> tuple:
         """Whether a new project of *identity* may go on *h*, in *state*, and what the placement

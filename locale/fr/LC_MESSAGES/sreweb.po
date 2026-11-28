@@ -886,6 +886,15 @@ msgstr "déclaré"
 msgid "default"
 msgstr "par défaut"
 
+msgid "as the lab"
+msgstr "celui du TP"
+
+msgid "Too few projects were measured with this engine yet: the cost is the one of the lab"
+msgstr "Trop peu de projets ont encore été mesurés avec ce moteur : le coût est celui du TP"
+
+msgid "The container engine the row is about: a lab measured with two engines has a row for each"
+msgstr "Le moteur de conteneurs de la ligne : un TP mesuré avec deux moteurs a une ligne pour chacun"
+
 msgid "{memory} MiB, {cpu} core"
 msgstr "{memory} Mio, {cpu} cœur"
 

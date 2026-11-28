@@ -43,6 +43,8 @@ COLUMNS = [('name', 'NAME'), ('state', 'STATE'), ('projects', 'PROJECTS'), ('loa
 # `costs`: what a project of each lab costs a host (the rows are formatted by cost_rows())
 COSTS_COLUMNS = [('lab', 'LAB'), ('weight', 'WEIGHT'), ('containers', 'CONTAINERS'), ('memory', 'MEMORY'),
                  ('cpu', 'CPU'), ('samples', 'PROJECTS'), ('source', 'SOURCE')]
+# the column added after LAB on a pool that measured projects with two container engines
+COSTS_ENGINE_COLUMN = ('engine', 'ENGINE')
 
 
 class CallError(Exception):
@@ -171,11 +173,20 @@ def _figure(value, form: str) -> str:
 def cost_rows(labs: list) -> list:
     """The rows of ``GET /api/pool/costs`` as `costs` prints them (``COSTS_COLUMNS``): the weight
     the lab declares, the containers its projects had, the memory and the cores one more project
-    is counted for, the projects that were measured, and where the cost comes from."""
-    return [{'lab': str(row.get('lab', '')), 'weight': _figure(row.get('weight'), '{:g}'),
+    is counted for, the projects that were measured, and where the cost comes from; ``engine``
+    is empty for the row of the lab itself and names the engine of a row that follows it."""
+    return [{'lab': str(row.get('lab', '')), 'engine': str(row.get('engine') or ''),
+             'weight': _figure(row.get('weight'), '{:g}'),
              'containers': _figure(row.get('containers'), '{:.0f}'), 'memory': _figure(row.get('mem_mb'), '{:.0f}M'),
              'cpu': _figure(row.get('cpu'), '{:.3f}'), 'samples': _figure(row.get('samples'), '{:.0f}'),
              'source': str(row.get('source', ''))} for row in labs if isinstance(row, dict)]
+
+
+def cost_columns(rows: list) -> list:
+    """The columns of the table of `costs`: with ENGINE after LAB when a row names an engine."""
+    if any(row.get('engine') for row in rows):
+        return [COSTS_COLUMNS[0], COSTS_ENGINE_COLUMN, *COSTS_COLUMNS[1:]]
+    return COSTS_COLUMNS
 
 
 def cost_lines(costs: dict) -> list:
@@ -470,7 +481,8 @@ def _dispatch(client: PoolClient, args) -> int:
             print(json.dumps(costs, indent=2))
         else:
             print('\n'.join(cost_lines(costs)))
-            print(table(cost_rows(costs.get('labs') or []), COSTS_COLUMNS))
+            rows = cost_rows(costs.get('labs') or [])
+            print(table(rows, cost_columns(rows)))
     elif args.command == 'add':
         body = {'name': args.name, 'url': args.host_url, 'token': args.host_token, 'max_projects': args.max_projects,
                 'mac': args.mac, 'wake_command': args.wake_command, 'power': args.power,

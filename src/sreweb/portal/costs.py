@@ -7,7 +7,10 @@ The cost of a lab comes, in this order, from:
 * what its projects really used (**measured**): the agents measure their running projects
   (``agent/usage.py``) and the book keeps, per lab, what its last ``MAX_SAMPLES`` projects used;
   from ``MIN_SAMPLES`` projects on, the cost is the ``QUANTILE`` of them (most projects of the
-  lab need no more);
+  lab need no more).  **Per container engine**: a project does not cost the same with Docker
+  and with Podman, so each sample says which engine ran its project, and the cost of a lab on
+  an engine is measured on the projects of that engine once ``MIN_SAMPLES`` of them ran;
+  until then it is the cost of the lab, every engine together;
 * the weight the lab declares (**declared**): ``sre make-titles`` stores it and the lab list
   carries it; one unit of weight stands for ``CostBook.unit`` (``[pool] weight_memory_mb`` /
   ``weight_cpu``).  With one or two projects measured, the larger of this and of what they used;
@@ -34,6 +37,7 @@ class Usage(NamedTuple):
     mem_mb: float | None
     cpu: float | None           # the mean since the project settled (None: not yet)
     settled: bool
+    engine: str = ''            # the container engine that runs it ('': the agent does not tell)
 
 
 class Sample(NamedTuple):
@@ -42,14 +46,18 @@ class Sample(NamedTuple):
     cpu: float          # its mean since it settled
     containers: int
     at: float           # wall-clock time of the measure
+    engine: str = ''    # the container engine that ran the project ('': not known)
 
 
 SOURCE_MEASURED = 'measured'
 SOURCE_DECLARED = 'declared'
 SOURCE_DEFAULT = 'default'
+#: The source of the row of one engine of a lab (``CostBook.rows``) while too few projects ran
+#: with that engine: its cost is the one of the lab.
+SOURCE_LAB = 'lab'
 
 MIN_SAMPLES = 3         # the projects of a lab measured before their figures alone make its cost
-MAX_SAMPLES = 40        # the projects kept per lab: the last ones measured
+MAX_SAMPLES = 40        # the projects kept per lab and engine: the last ones measured
 QUANTILE = 0.8          # the cost of a measured lab: this share of its projects need no more
 MAX_LABS = 1000         # the labs kept: the ones seen last (a debug project started by path is a lab of its own)
 DEFAULT_MEMORY_MB = 512.0   # a lab without weight, never measured (``[pool] project_memory_mb`` when it is set)
@@ -72,7 +80,10 @@ SAMPLE_MEM = 'mem_mb'
 SAMPLE_CPU = 'cpu'
 SAMPLE_CONTAINERS = 'containers'
 SAMPLE_AT = 'at'
+SAMPLE_ENGINE = 'engine'
 MAX_NAME = 300          # the longest lab or project name kept
+MAX_ENGINE_NAME = 32    # the longest engine name kept (the pool only passes the names it knows)
+MAX_ENGINES_IN_A_FILE = 4   # the samples read from a file per lab: MAX_SAMPLES times this at most
 
 
 def lab_key(name: str) -> str:
@@ -107,8 +118,13 @@ def at_least(cost: Cost, floor: Cost = MIN_COST) -> Cost:
 class LabRecord:
     """What the book knows of one lab."""
     weight: float | None = None                     # the weight it declares (None: none known)
-    samples: dict = field(default_factory=dict)     # project name -> Sample, the one measured last at the end
+    #: project name -> Sample, the one measured last at the end; of every engine together
+    samples: dict = field(default_factory=dict)
     seen: float = 0.0                               # wall-clock time it was last declared or measured
+
+    def of(self, engine: str) -> list:
+        """The samples of the projects *engine* ran."""
+        return [sample for sample in self.samples.values() if sample.engine == engine]
 
 
 class CostBook:
@@ -121,7 +137,7 @@ class CostBook:
         self.labs: dict[str, LabRecord] = {}
         #: Something changed since the last ``to_json()``: the pool saves the file again.
         self.dirty = False
-        self._resolved: dict[str, tuple] = {}       # lab -> (Cost, source), until the lab changes
+        self._resolved: dict[tuple, tuple] = {}     # (lab, engine) -> (Cost, source), until the lab changes
 
     # -- what feeds the book --------------------------------------------------------------------
 
@@ -131,10 +147,15 @@ class CostBook:
             if len(self.labs) >= MAX_LABS:
                 oldest = min(self.labs, key=lambda name: self.labs[name].seen)
                 del self.labs[oldest]
-                self._resolved.pop(oldest, None)
+                self._forget(oldest)
             record = self.labs[lab] = LabRecord()
         record.seen = max(record.seen, at)
         return record
+
+    def _forget(self, lab: str):
+        """The costs resolved for *lab*, whatever the engine, are to be computed again."""
+        for key in [key for key in self._resolved if key[0] == lab]:
+            del self._resolved[key]
 
     def declare(self, entries, at: float = 0.0):
         """The weights of a lab list (the ``lab`` entries of ``Pool.labs`` that have a
@@ -151,43 +172,53 @@ class CostBook:
             if record.weight != weight:
                 record.weight = weight
                 self.dirty = True
-                self._resolved.pop(lab, None)
+                self._forget(lab)
 
     def observe(self, usage, at: float):
         """The ``usage`` of one host status (``Usage`` entries): every settled project with its
         figures is the newest sample of its lab — its memory the most it was seen using, its
-        processors the mean it tells."""
+        processors the mean it tells, and the engine that runs it.  At most ``MAX_SAMPLES`` are
+        kept per engine: the many projects of one engine never push out the few of another."""
         for row in usage:
             if not row.settled or row.mem_mb is None or row.cpu is None:
                 continue
             record = self._record(row.lab, at)
             known = record.samples.pop(row.name, None)
             sample = Sample(mem_mb=max(row.mem_mb, known.mem_mb) if known else row.mem_mb, cpu=row.cpu,
-                            containers=row.containers or 0, at=at)
+                            containers=row.containers or 0, at=at, engine=row.engine)
             record.samples[row.name] = sample           # the one measured last at the end
-            while len(record.samples) > MAX_SAMPLES:
-                del record.samples[next(iter(record.samples))]
-            if known is None or known[:3] != sample[:3]:
+            same = [name for name, other in record.samples.items() if other.engine == sample.engine]
+            for name in same[:max(0, len(same) - MAX_SAMPLES)]:
+                del record.samples[name]
+            if known is None or (known[:3], known.engine) != (sample[:3], sample.engine):
                 self.dirty = True
-                self._resolved.pop(row.lab, None)
+                self._forget(row.lab)
 
     # -- what the book answers ------------------------------------------------------------------
 
-    def resolve(self, lab: str | None) -> tuple:
+    def resolve(self, lab: str | None, engine: str | None = None) -> tuple:
         """``(Cost, source)`` of one more project of *lab* (``None``, or a lab the book never
-        heard of: the default)."""
+        heard of: the default) run by *engine*: measured on the projects of that engine once
+        ``MIN_SAMPLES`` of them were, else (and without *engine*) the cost of the lab, every
+        engine together."""
         if not lab:
             return self.default, SOURCE_DEFAULT
         lab = lab_key(lab)
-        found = self._resolved.get(lab)
+        key = (lab, engine or '')
+        found = self._resolved.get(key)
         if found is None:
-            found = self._resolved[lab] = self._resolve(self.labs.get(lab))
+            found = self._resolved[key] = self._resolve(self.labs.get(lab), engine or '')
         return found
 
-    def _resolve(self, record: LabRecord | None) -> tuple:
+    def _resolve(self, record: LabRecord | None, engine: str = '') -> tuple:
         if record is None:
             return self.default, SOURCE_DEFAULT
-        samples = list(record.samples.values())
+        if engine:
+            own = record.of(engine)
+            if len(own) >= MIN_SAMPLES:
+                return at_least(Cost(quantile([s.mem_mb for s in own], QUANTILE),
+                                     quantile([s.cpu for s in own], QUANTILE))), SOURCE_MEASURED
+        samples = list(record.samples.values())     # too few with that engine: the lab as a whole
         if len(samples) >= MIN_SAMPLES:
             return at_least(Cost(quantile([s.mem_mb for s in samples], QUANTILE),
                                  quantile([s.cpu for s in samples], QUANTILE))), SOURCE_MEASURED
@@ -199,8 +230,13 @@ class CostBook:
             cost = Cost(max(cost.mem_mb, max(s.mem_mb for s in samples)), max(cost.cpu, max(s.cpu for s in samples)))
         return at_least(cost), source
 
-    def cost(self, lab: str | None) -> Cost:
-        return self.resolve(lab)[0]
+    def cost(self, lab: str | None, engine: str | None = None) -> Cost:
+        return self.resolve(lab, engine)[0]
+
+    def engines(self) -> list:
+        """The engines the book has samples of, by name."""
+        return sorted({sample.engine for record in self.labs.values() for sample in record.samples.values()
+                       if sample.engine})
 
     def measured_unit(self) -> Cost | None:
         """What one unit of weight really stood for on this pool: over the labs that declare a
@@ -219,8 +255,14 @@ class CostBook:
 
     def rows(self, titles: dict | None = None) -> list:
         """One row per lab of the book, by name: its declared weight, the containers its projects
-        had (the most seen), its cost and where that comes from, the projects measured."""
+        had (the most seen), its cost and where that comes from, the projects measured: the lab,
+        every engine together.  Once the book has samples of two engines, each lab is followed by
+        one row per engine it was measured with, which names it (``engine``): the projects
+        measured with that engine and what one more would be counted for there (the source
+        ``measured``, or ``lab`` while fewer than ``MIN_SAMPLES`` ran with it: the cost is then
+        the one of the lab).  A pool with one engine has the rows it always had."""
         titles = titles or {}
+        per_engine = len(self.engines()) > 1
         rows = []
         for lab in sorted(self.labs):
             record = self.labs[lab]
@@ -229,6 +271,15 @@ class CostBook:
                          'containers': max((s.containers for s in record.samples.values()), default=None),
                          'mem_mb': round(cost.mem_mb, 1), 'cpu': round(cost.cpu, 3),
                          'samples': len(record.samples), 'source': source})
+            if not per_engine:
+                continue
+            for engine in sorted({sample.engine for sample in record.samples.values() if sample.engine}):
+                own = record.of(engine)
+                cost = self.cost(lab, engine)
+                rows.append({'lab': lab, 'engine': engine, 'title': titles.get(lab), 'weight': record.weight,
+                             'containers': max(s.containers for s in own),
+                             'mem_mb': round(cost.mem_mb, 1), 'cpu': round(cost.cpu, 3), 'samples': len(own),
+                             'source': SOURCE_MEASURED if len(own) >= MIN_SAMPLES else SOURCE_LAB})
         return rows
 
     # -- the file -------------------------------------------------------------------------------
@@ -239,7 +290,8 @@ class CostBook:
         return {KEY_VERSION: COSTS_VERSION, KEY_SAVED_AT: round(saved_at), KEY_LABS: {
             lab: {LAB_WEIGHT: record.weight, LAB_SEEN: round(record.seen), LAB_SAMPLES: [
                 {SAMPLE_PROJECT: name, SAMPLE_MEM: round(s.mem_mb, 1), SAMPLE_CPU: round(s.cpu, 4),
-                 SAMPLE_CONTAINERS: s.containers, SAMPLE_AT: round(s.at)} for name, s in record.samples.items()]}
+                 SAMPLE_CONTAINERS: s.containers, SAMPLE_AT: round(s.at),
+                 **({SAMPLE_ENGINE: s.engine} if s.engine else {})} for name, s in record.samples.items()]}
             for lab, record in self.labs.items()}}
 
     def load(self, data) -> bool:
@@ -254,14 +306,17 @@ class CostBook:
                 continue
             record = LabRecord(weight=figure(entry.get(LAB_WEIGHT)), seen=figure(entry.get(LAB_SEEN)) or 0.0)
             samples = entry.get(LAB_SAMPLES)
-            for item in (samples if isinstance(samples, list) else [])[-MAX_SAMPLES:]:
+            # a file holds at most MAX_SAMPLES per engine: those of a known engine, and those without
+            for item in (samples if isinstance(samples, list) else [])[-MAX_SAMPLES * MAX_ENGINES_IN_A_FILE:]:
                 if not isinstance(item, dict):
                     continue
                 name, memory, processors = item.get(SAMPLE_PROJECT), figure(item.get(SAMPLE_MEM)), figure(item.get(SAMPLE_CPU))
                 if not isinstance(name, str) or not name or len(name) > MAX_NAME or memory is None or processors is None:
                     continue
+                engine = item.get(SAMPLE_ENGINE)    # none in a file of before: the sample counts for the lab alone
+                engine = engine if isinstance(engine, str) and 0 < len(engine) <= MAX_ENGINE_NAME and engine.isidentifier() else ''
                 record.samples[name] = Sample(memory, processors, int(figure(item.get(SAMPLE_CONTAINERS)) or 0),
-                                              figure(item.get(SAMPLE_AT)) or 0.0)
+                                              figure(item.get(SAMPLE_AT)) or 0.0, engine)
             if record.weight is not None or record.samples:
                 self.labs[lab_key(lab)] = record
         self._resolved.clear()

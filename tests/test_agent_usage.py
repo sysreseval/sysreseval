@@ -631,6 +631,23 @@ def both_sampler(docker, podman, reg, clock=None):
                         podman_slices=str(podman.slices), clock=clock or Clock())
 
 
+class TestTheEngineOfARow:
+    """Each row names the engine that runs its project, when the agent can tell: the portal
+    keeps the cost of a lab per engine."""
+
+    def test_the_engine_of_the_project_else_the_default_one_of_the_host(self):
+        recorded = SimpleNamespace(rln=RLN, lab_name='sre@dhcp.py', info={}, engine='kathara')
+        older = SimpleNamespace(rln=OTHER, lab_name='sre@nfs.py', info={}, engine='')
+        sampler = UsageSampler(registry(recorded, older), UsageConfig(), docker_socket='', default_engine='podman')
+        assert {row['name']: row['engine'] for row in sampler.rows()} == {RLN: 'kathara', OTHER: 'podman'}
+
+    def test_no_key_when_nothing_tells_the_engine(self):
+        """An agent whose host names no engine and a project without record: the row of before."""
+        sampler = UsageSampler(registry(project()), UsageConfig(), docker_socket='')
+        assert sampler.rows() == [{'name': RLN, 'lab': 'sre@dhcp.py', 'containers': None, 'mem_mb': None,
+                                   'cpu': None, 'settled': False}]
+
+
 class TestAHostWithBothEngines:
     """Both sources given: a project is found in one of them (its hash is the same with either
     engine), and both are read at each measure."""

@@ -1,13 +1,17 @@
 // What a project of a lab is counted for on a host, as GET /api/pool/costs tells it ({default,
-// weight_unit, measured_unit, error, labs: [{lab, title, weight, containers, mem_mb, cpu, samples,
-// source}]}): the titles and the texts of the two displays the Open page gives an instructor, the
-// columns beside the labs of the tree (open.js) and the table of every lab the pool heard of
-// (lab_costs_dialog.js).  One definition for both.
+// weight_unit, measured_unit, error, labs: [{lab, engine, title, weight, containers, mem_mb, cpu,
+// samples, source}]}): the titles and the texts of the two displays the Open page gives an
+// instructor, the columns beside the labs of the tree (open.js) and the table of every lab the
+// pool heard of (lab_costs_dialog.js).  One definition for both.
+// A row without engine is the lab itself, every container engine together; on a pool that
+// measured projects with two engines it is followed by one row per engine (the cost of the lab
+// with that engine), which only the table shows.
 // Pure (no document): tests/test_web_templates.py runs it under node or bun.
 
 import {_, format} from './i18n.js';
 
 const SOURCE_DEFAULT = 'default';
+const SOURCE_LAB = 'lab';     // the row of one engine, too few projects measured with it: the cost of the lab
 export const NOTE_SEPARATOR = ' — ';   // between the pieces of costNote() on one line
 
 function isNumber(value) {
@@ -17,8 +21,26 @@ function isNumber(value) {
 // where the cost of a lab comes from, translated (the map is built here: the catalog is loaded
 // by the page, nothing at module level)
 export function sourceLabel(raw) {
-  const labels = {measured: _('measured'), declared: _('declared'), [SOURCE_DEFAULT]: _('default')};
+  const labels = {measured: _('measured'), declared: _('declared'), [SOURCE_DEFAULT]: _('default'),
+                  [SOURCE_LAB]: _('as the lab')};
   return Object.hasOwn(labels, raw) ? labels[raw] : String(raw || '');
+}
+
+// the tooltip of a source that needs one ('' otherwise)
+export function sourceTip(raw) {
+  return raw === SOURCE_LAB
+    ? _('Too few projects were measured with this engine yet: the cost is the one of the lab') : '';
+}
+
+// The engine a row is about ('' for the row of the lab itself), and whether an answer has rows
+// of engines at all (a pool that ran projects with one engine has none).
+export function engineOf(row) {
+  return row && typeof row.engine === 'string' ? row.engine : '';
+}
+
+export function hasEngineRows(costs) {
+  const labs = costs && Array.isArray(costs.labs) ? costs.labs : [];
+  return labs.some((row) => engineOf(row) !== '');
 }
 
 export function costPair(value) {   // "16 MiB, 0.005 core"
@@ -75,7 +97,9 @@ export function costCells(row) {
 // counts for it (CostBook.resolve of the portal).
 export function costRowOf(costs, lab) {
   const answer = costs && typeof costs === 'object' ? costs : {};
-  const found = (Array.isArray(answer.labs) ? answer.labs : []).find((row) => row && row.lab === lab);
+  // the row of the lab itself, never the one of an engine
+  const found = (Array.isArray(answer.labs) ? answer.labs : []).find(
+    (row) => row && row.lab === lab && engineOf(row) === '');
   if (found) {
     return found;
   }

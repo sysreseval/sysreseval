@@ -229,9 +229,9 @@ class TestOccupancyAndPower:
                     assert st['cpu_busy'] == pytest.approx(1.5, rel=0.01)
                     assert {row['name']: row for row in st['usage']} == {
                         web: {'name': web, 'lab': 'sre@dhcp.py', 'containers': 2, 'mem_mb': 50.0, 'cpu': None,
-                              'settled': True},
+                              'settled': True, 'engine': 'kathara'},
                         local: {'name': local, 'lab': 's4@tp_ssh', 'containers': 2, 'mem_mb': 35.0, 'cpu': None,
-                                'settled': True}}
+                                'settled': True, 'engine': 'kathara'}}
         run(go())
 
     def test_usage_of_the_projects_of_a_podman_host(self, tmp_path, monkeypatch):
@@ -293,7 +293,7 @@ class TestOccupancyAndPower:
                 st = await (await h.client.get('/v1/status', headers=headers())).json()
                 assert st['cpu_busy'] is None and isinstance(st['cpus'], int)
                 assert st['usage'] == [{'name': rln, 'lab': 'sre@dhcp.py', 'containers': None, 'mem_mb': None,
-                                        'cpu': None, 'settled': False}]
+                                        'cpu': None, 'settled': False, 'engine': 'kathara'}]
         run(go())
 
     def test_users_in_the_qt_gui(self, tmp_path, monkeypatch):
@@ -2590,6 +2590,28 @@ class TestContainerEngines:
                 assert [rows[rln]['container_engine'] for rln in (plain, chosen, debug)] == ['', '', 'podman']
                 mine = await (await h.client.get('/v1/projects', headers=headers())).json()
                 assert [row['container_engine'] for row in mine] == ['']
+        run(go())
+
+    def test_the_usage_rows_name_the_engine_of_each_project(self, tmp_path):
+        """For the portal alone, which learns what a lab costs with each engine: the engine a
+        project records, else (a project older than the record) the default engine of the host."""
+        async def go():
+            async with Harness(tmp_path, mock_env=BOTH_ENGINES) as h:
+                by_default = await h.started()
+                chosen = await h.started(PROF_NOVIEW, engine='kathara')
+                older = await h.started(PROF, lab='s4/tp_ssh')
+                record = h.pub / 'projects' / older / '.private' / 'origin.json'
+                content = json.loads(record.read_text())
+                del content['engine']
+                record.write_text(json.dumps(content))
+                h.agent.registry.projects[older].read_markers()
+                assert h.agent.registry.projects[older].engine == ''
+                status = await (await h.client.get('/v1/status', headers={'Authorization': f'Bearer {TOKEN}'})).json()
+                engines = {row['name']: row.get('engine') for row in status['usage']}
+                assert engines == {by_default: 'podman', chosen: 'kathara', older: 'podman'}
+                # nothing of it in what a page is given of a project
+                page = await (await h.client.get(f'/v1/projects/{chosen}', headers=headers(PROF))).json()
+                assert page['project']['container_engine'] == ''
         run(go())
 
     def test_an_info_json_that_names_an_engine_without_being_a_debug_project(self):

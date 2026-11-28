@@ -901,6 +901,15 @@ msgstr "angegeben"
 msgid "default"
 msgstr "Standard"
 
+msgid "as the lab"
+msgstr "wie das Labor"
+
+msgid "Too few projects were measured with this engine yet: the cost is the one of the lab"
+msgstr "Mit dieser Engine wurden noch zu wenige Projekte gemessen: die Kosten sind die des Labors"
+
+msgid "The container engine the row is about: a lab measured with two engines has a row for each"
+msgstr "Die Container-Engine der Zeile: ein mit zwei Engines gemessenes Labor hat eine Zeile für jede"
+
 msgid "{memory} MiB, {cpu} core"
 msgstr "{memory} MiB, {cpu} Kern"
 

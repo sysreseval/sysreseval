@@ -51,6 +51,7 @@ USAGE_CONTAINERS = 'containers'     # its running containers (None: not measured
 USAGE_MEM = 'mem_mb'                # the memory they use, in MiB (None: not measured)
 USAGE_CPU = 'cpu'                   # the cores they used on average since the project settled (None: not yet)
 USAGE_SETTLED = 'settled'           # the set of its containers has been the same for SETTLE_AFTER seconds
+USAGE_ENGINE = 'engine'             # the container engine that runs it (no key when the agent cannot tell)
 
 SETTLE_AFTER = 120.0        # seconds without a change of the containers of a project before it is settled
 MEAN_AFTER = 60.0           # seconds measured after that before a mean is told (a shorter one says little)
@@ -210,11 +211,13 @@ class UsageSampler:
     still lists its projects, without figures); *clock*: injectable for the tests."""
 
     def __init__(self, registry, cfg: UsageConfig, *, docker_socket: str, podman_slices: str = '',
-                 clock=time.monotonic):
+                 default_engine: str = '', clock=time.monotonic):
         self.registry = registry
         self.cfg = cfg
         self.docker_socket = docker_socket
         self.podman_slices = podman_slices
+        # the engine of a project that records none (older than the record): the default one of the host
+        self.default_engine = default_engine
         self.clock = clock
         self.cpu_busy: float | None = None      # the cores the host uses, smoothed over BUSY_TAU
         self._tracks: dict[str, _Track] = {}
@@ -357,16 +360,20 @@ class UsageSampler:
     def rows(self) -> list:
         """The ``usage`` of the status: every project of the registry now, with the figures of
         the last measure (``None`` before its first one: a project just created is listed at
-        once, the portal counts it by the cost of its lab meanwhile)."""
+        once, the portal counts it by the cost of its lab meanwhile), and the engine that runs
+        it (the one its origin file records, else the default engine of the host)."""
         rows = []
         for project in self.registry.projects.values():
             track = self._tracks.get(project.rln)
+            # which engine runs it: the portal learns the cost of a lab per engine
+            engine = getattr(project, 'engine', '') or self.default_engine
             rows.append({
                 USAGE_NAME: project.rln, USAGE_LAB: project.lab_name,
                 USAGE_CONTAINERS: track.containers if track else None,
                 USAGE_MEM: round(track.mem_mb, 1) if track and track.mem_mb is not None else None,
                 USAGE_CPU: round(track.cpu, 4) if track and track.cpu is not None else None,
                 USAGE_SETTLED: bool(track and track.settled),
+                **({USAGE_ENGINE: engine} if engine else {}),
             })
         return rows
 

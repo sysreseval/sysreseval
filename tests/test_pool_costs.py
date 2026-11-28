@@ -366,6 +366,14 @@ class TestUsageCoercion:
         assert usage_fields('x', 8, 16000) == [] and usage_fields(None, 8, 16000) == []
         assert len(usage_fields([project(f'p{i}') for i in range(MAX_USAGE + 20)], 8, 16000)) == MAX_USAGE
 
+    def test_the_engine_of_a_row(self):
+        """The engine that runs the project, when the agent names one of the engines; nothing
+        else is kept (an older agent names none)."""
+        rows = usage_fields([{**project('p1'), 'engine': 'podman'}, {**project('p2'), 'engine': 'kathara'},
+                             project('p3'), {**project('p4'), 'engine': 'lxc'}, {**project('p5'), 'engine': ['podman']},
+                             {**project('p6'), 'engine': None}], 8, 16000)
+        assert [row.engine for row in rows] == ['podman', 'kathara', '', '', '', '']
+
     def test_without_the_size_of_the_host(self):
         row = usage_fields([project('p', mem=50000, cpu=64)], None, None)[0]
         assert (row.mem_mb, row.cpu) == (50000.0, 64.0)
@@ -805,3 +813,206 @@ class TestResourcesElasticPool:
         assert {v.name: (v.memory_room, v.cpu_room) for v in manager.views()} == {'a': (None, None), 'b': (None, None)}
         status = manager.status()
         assert (status['capacity'], status['cpu_full'], status['spare_projects']) == ('projects', [], 21 + 25)
+
+
+# ---------------------------------------------------------------------------------------------
+# the cost of a lab per container engine
+# ---------------------------------------------------------------------------------------------
+
+def ran(name, engine, **more):
+    """The usage row of a settled project *engine* runs."""
+    return usage(name, **more)._replace(engine=engine)
+
+
+def two_engines(b=None, *, podman=3):
+    """A book that measured the lab with both engines: three Docker projects around 100 MiB and
+    0.1 core, *podman* Podman ones around 3000 MiB and 0.5 core."""
+    b = b or book()
+    b.declare([{'name': LAB, 'weight': 5}])
+    b.observe([ran(f'k{i}', 'kathara', mem=100 + i, cpu=0.1) for i in range(3)]
+              + [ran(f'p{i}', 'podman', mem=3000 + i, cpu=0.5) for i in range(podman)], 1000)
+    return b
+
+
+KATHARA_COST, PODMAN_COST = Cost(101.6, 0.1), Cost(3001.6, 0.5)      # the 0.8 quantile of three projects each
+
+
+class TestCostPerEngine:
+    """A project does not cost the same with Docker and with Podman: the cost of a lab is kept
+    per engine, measured on the projects of that engine once three of them ran."""
+
+    def test_each_engine_has_its_own_cost(self):
+        b = two_engines()
+        assert b.resolve(LAB, 'kathara') == (pytest.approx(KATHARA_COST), SOURCE_MEASURED)
+        assert b.resolve(LAB, 'podman') == (pytest.approx(PODMAN_COST), SOURCE_MEASURED)
+        # the lab, every engine together: the figure of before, which leans towards the dearer engine
+        assert b.resolve(LAB) == (pytest.approx(Cost(3001.0, 0.5)), SOURCE_MEASURED)
+        assert b.cost(LAB, '') == b.cost(LAB) == b.cost(LAB, None)
+
+    def test_too_few_projects_with_an_engine_is_the_cost_of_the_lab(self):
+        b = two_engines(podman=2)
+        assert b.cost(LAB, 'kathara') == pytest.approx(KATHARA_COST)
+        assert b.cost(LAB, 'podman') == b.cost(LAB)                  # five samples together
+        b.observe([ran('p9', 'podman', mem=3009, cpu=0.5)], 1100)   # the third one
+        assert b.cost(LAB, 'podman') != b.cost(LAB)
+        assert b.cost(LAB, 'podman').mem_mb == pytest.approx(3005.8)
+
+    def test_a_pool_with_one_engine_has_the_costs_it_always_had(self):
+        b = book()
+        b.observe([ran(f'k{i}', 'kathara', mem=100 + 10 * i, cpu=0.1) for i in range(5)], 1000)
+        assert b.resolve(LAB, 'kathara') == b.resolve(LAB) and b.resolve(LAB)[1] == SOURCE_MEASURED
+        assert b.cost(LAB, 'podman') == b.cost(LAB)                  # an engine never seen: the lab
+
+    def test_samples_that_name_no_engine_count_for_the_lab_alone(self):
+        """An older agent, a costs file of before."""
+        b = book()
+        b.observe([usage(f'o{i}', mem=500 + i, cpu=0.2) for i in range(3)], 1000)
+        b.observe([ran(f'k{i}', 'kathara', mem=100 + i, cpu=0.1) for i in range(2)], 1100)
+        assert b.cost(LAB, 'kathara') == b.cost(LAB) and b.cost(LAB).mem_mb > 400
+        b.observe([ran('k2', 'kathara', mem=102, cpu=0.1)], 1200)
+        assert b.cost(LAB, 'kathara') == pytest.approx(KATHARA_COST)
+
+    def test_a_lab_never_seen_and_a_declared_one(self):
+        b = book()
+        assert b.resolve('other.py', 'podman') == (Cost(512.0, 0.2), SOURCE_DEFAULT)
+        b.declare([{'name': 'other.py', 'weight': 10}])
+        assert b.resolve('other.py', 'podman') == (Cost(160.0, 0.1), SOURCE_DECLARED)
+        assert b.resolve(None, 'podman') == (Cost(512.0, 0.2), SOURCE_DEFAULT)
+
+    def test_the_many_projects_of_one_engine_do_not_push_out_the_few_of_the_other(self):
+        b = book()
+        b.observe([ran(f'p{i}', 'podman', mem=3000 + i, cpu=0.5) for i in range(3)], 1000)
+        b.observe([ran(f'k{i}', 'kathara', mem=100, cpu=0.1) for i in range(MAX_SAMPLES + 25)], 1100)
+        record = b.labs[LAB]
+        assert len(record.of('kathara')) == MAX_SAMPLES and len(record.of('podman')) == 3
+        assert 'k0' not in record.samples and f'k{MAX_SAMPLES + 24}' in record.samples
+        assert b.cost(LAB, 'podman') == pytest.approx(PODMAN_COST)
+
+    def test_a_weight_or_a_sample_changes_the_cost_of_every_engine(self):
+        """What was resolved is forgotten for the lab, whatever the engine."""
+        b = two_engines()
+        before = b.cost(LAB, 'kathara')
+        b.observe([ran('k9', 'kathara', mem=900, cpu=0.1)], 1100)
+        assert b.cost(LAB, 'kathara') != before
+        b = two_engines(podman=0)
+        b.observe([ran('k0', 'kathara', mem=1, cpu=0.01)], 1100)      # nothing new: the most it was seen using stays
+        assert b.cost(LAB, 'kathara') == pytest.approx(KATHARA_COST)
+
+    def test_the_rows(self):
+        """The row of the lab as before, then one per engine it was measured with."""
+        b = two_engines(podman=2)
+        b.declare([{'name': 'w.py', 'weight': 3}])
+        rows = b.rows({LAB: 'DHCP'})
+        assert [(row['lab'], row.get('engine')) for row in rows] == [
+            (LAB, None), (LAB, 'kathara'), (LAB, 'podman'), ('w.py', None)]
+        lab, kathara, podman, declared = rows
+        assert (lab['samples'], lab['source'], lab['weight'], lab['title']) == (5, SOURCE_MEASURED, 5, 'DHCP')
+        assert (kathara['samples'], kathara['source'], kathara['mem_mb'], kathara['cpu']) == (3, SOURCE_MEASURED, 101.6, 0.1)
+        # too few with Podman yet: the cost of the lab, and the row says so
+        assert (podman['samples'], podman['source'], podman['mem_mb']) == (2, C.SOURCE_LAB, lab['mem_mb'])
+        assert (declared['samples'], declared['source']) == (0, SOURCE_DECLARED)
+
+    def test_no_row_per_engine_on_a_pool_with_one_engine(self):
+        b = book()
+        b.observe([ran(f'k{i}', 'kathara', mem=100 + i, cpu=0.1) for i in range(3)], 1000)
+        assert [(row['lab'], 'engine' in row) for row in b.rows()] == [(LAB, False)]
+        assert b.engines() == ['kathara'] and two_engines().engines() == ['kathara', 'podman']
+
+    def test_the_file_keeps_the_engine_of_each_sample(self):
+        b = two_engines()
+        data = json.loads(json.dumps(b.to_json(2000)))
+        assert data['version'] == 1
+        assert [sample.get('engine') for sample in data['labs'][LAB]['samples']] == ['kathara'] * 3 + ['podman'] * 3
+        again = book()
+        assert again.load(data)
+        assert again.cost(LAB, 'kathara') == pytest.approx(KATHARA_COST, abs=0.1)
+        assert again.cost(LAB, 'podman') == pytest.approx(PODMAN_COST, abs=0.1)
+
+    def test_a_file_of_before_and_a_damaged_one(self):
+        """Samples without engine count for the lab; an engine that is no name is none."""
+        b = book()
+        assert b.load({'version': 1, 'labs': {LAB: {'weight': 5, 'samples': [
+            {'project': 'old1', 'mem_mb': 200, 'cpu': 0.1, 'containers': 5, 'at': 1},
+            {'project': 'odd1', 'mem_mb': 200, 'cpu': 0.1, 'engine': 5},
+            {'project': 'odd2', 'mem_mb': 200, 'cpu': 0.1, 'engine': 'x' * 40},
+            {'project': 'odd3', 'mem_mb': 200, 'cpu': 0.1, 'engine': '../etc'},
+            {'project': 'new1', 'mem_mb': 100, 'cpu': 0.1, 'engine': 'kathara'}]}}})
+        assert [sample.engine for sample in b.labs[LAB].samples.values()] == ['', '', '', '', 'kathara']
+        assert b.cost(LAB, 'kathara') == b.cost(LAB)
+
+
+def engine_host(engines, rows=(), *, available=3000, **more):
+    """The status of a host of 8 processors and 16 GiB that allows *engines* and runs the
+    projects *rows* (``(name, engine)`` of the lab): 2000 MiB left for projects by default."""
+    usage_rows = [Usage(name=name, lab=LAB, containers=3, mem_mb=None, cpu=None, settled=False, engine=engine)
+                  for name, engine in rows]
+    return HostStatus(reachable=True, projects=len(usage_rows), cpus=8, mem_total_mb=16000, mem_available_mb=available,
+                      cpu_busy=0.0, usage=usage_rows, engines=list(engines), default_engine=engines[0] if engines else '',
+                      **more)
+
+
+class TestPlacementPerEngine:
+    """With ``capacity = "resources"`` each host is judged by what the lab costs with the engine
+    the project would run with there."""
+
+    @staticmethod
+    def pool(**statuses):
+        pool = resources(tuple(statuses))
+        two_engines(pool.costs)
+        pool.status.update(statuses)
+        return pool
+
+    def test_each_host_is_judged_by_the_cost_with_its_own_engine(self):
+        """2000 MiB left on each host: room for the lab with Docker (100 MiB), not with Podman
+        (3000 MiB).  With one cost for the lab, the one of before, neither host had room."""
+        pool = self.pool(d=engine_host(['kathara'], [('d0', 'kathara')]), p=engine_host(['podman'], [('p0', 'podman')]))
+        host, reservation = pool.pick(lab=LAB)
+        assert host.name == 'd' and reservation.cost == pytest.approx(KATHARA_COST)
+        assert not pool.load_of('d').fits(pool.costs.cost(LAB))
+        with pytest.raises(PoolError) as e:
+            self.pool(p=engine_host(['podman'], [('p0', 'podman')])).pick(lab=LAB)
+        assert e.value.status == 503 and 'no host available' in e.value.message
+
+    def test_the_engine_an_instructor_asks_for(self):
+        prof = Identity(login='prof', role=ROLE_INSTRUCTOR)
+        pool = self.pool(b=engine_host(['podman', 'kathara'], [('b0', 'podman')]))
+        with pytest.raises(PoolError):                          # the host would run it with Podman: no room
+            pool.pick(prof, lab=LAB)
+        host, reservation = pool.pick(prof, lab=LAB, engine='kathara')
+        assert host.name == 'b' and reservation.cost == pytest.approx(KATHARA_COST)
+        # a host named: judged the same way
+        pool = self.pool(b=engine_host(['podman', 'kathara'], [('b0', 'podman')]))
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, host='b', lab=LAB)
+        assert 'not enough free memory' in e.value.message
+        assert pool.pick(prof, host='b', lab=LAB, engine='kathara')[0].name == 'b'
+
+    def test_a_lab_that_accepts_one_engine_on_a_host_whose_default_is_the_other(self):
+        pool = self.pool(b=engine_host(['podman', 'kathara'], [('b0', 'podman')]))
+        pool._lab_engines[LAB] = ('kathara',)
+        assert pool._engine_on('b', ('kathara',), None) == 'kathara' and pool._engine_on('b', None, None) == 'podman'
+        host, reservation = pool.pick(lab=LAB)
+        assert host.name == 'b' and reservation.cost == pytest.approx(KATHARA_COST)
+
+    def test_a_host_that_tells_no_engine_is_judged_by_the_cost_of_the_lab(self):
+        """An older agent."""
+        pool = self.pool(o=engine_host([], [], available=12000))
+        assert pool._engine_on('o', None, None) is None
+        assert pool.pick(lab=LAB)[1].cost == pool.costs.cost(LAB)
+
+    def test_the_load_of_a_host_counts_each_project_with_its_engine(self):
+        rows = [('k0', 'kathara'), ('k1', 'kathara'), ('p0', 'podman'), ('p1', 'podman'), ('o0', '')]
+        pool = self.pool(b=engine_host(['podman', 'kathara'], rows, available=12000))
+        # two at 0.1 core, two at 0.5, and one whose engine is not told: the cost of the lab (0.5)
+        assert pool.load_of('b').cpu_used == pytest.approx(2 * 0.1 + 2 * 0.5 + 0.5)
+
+    def test_the_reference_project_is_the_mean_of_what_runs(self):
+        pool = self.pool(b=engine_host(['podman', 'kathara'], [('k0', 'kathara'), ('p0', 'podman')], available=12000))
+        assert pool.reference_cost() == pytest.approx(Cost((101.6 + 3001.6) / 2, 0.3))
+
+    def test_counting_projects_is_unchanged(self):
+        """The default mode: the costs are learned per engine and decide nothing."""
+        pool = resources(('d', 'p'), capacity='projects')
+        two_engines(pool.costs)
+        pool.status.update(d=engine_host(['kathara'], [('d0', 'kathara')]), p=engine_host(['podman']))
+        assert pool.pick(lab=LAB)[0].name == 'p'                # the emptier host, whatever the lab costs there

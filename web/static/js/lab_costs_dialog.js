@@ -4,12 +4,14 @@
 // declares, or the default) — GET /api/pool/costs, asked when the dialog opens and every
 // REFRESH_INTERVAL while it is open.  Above the table, what a lab never seen costs and what one
 // unit of weight stands for.  The titles and the texts are those of lab_costs.js, shared with
-// the columns the Lab costs button shows beside the labs of the tree.
+// the columns the Lab costs button shows beside the labs of the tree.  On a pool that measured
+// projects with two container engines, each lab is followed by one row per engine (the Engine
+// column, hidden otherwise): what one more project of the lab is counted for with that engine.
 
 import * as api from './api.js';
 import {el, clear} from './ui.js';
 import {_, resolveText} from './i18n.js';
-import {costColumns, costCells, costNote, NOTE_SEPARATOR} from './lab_costs.js';
+import {costColumns, costCells, costNote, engineOf, hasEngineRows, sourceTip, NOTE_SEPARATOR} from './lab_costs.js';
 
 const REFRESH_INTERVAL = 5000;
 
@@ -29,13 +31,17 @@ export function createCostsDialog() {
       return;
     }
     clear(c.body);
+    c.table.classList.toggle('with-engines', hasEngineRows(costs));
     for (const lab of labs) {
       const cells = costCells(lab);
       const source = cells.pop();
-      c.body.append(el('tr', {dataset: {lab: lab.lab || ''}},
-        el('td', {title: resolveText(lab.title) || ''}, lab.lab || ''),
+      const engine = engineOf(lab);
+      // the row of an engine comes under the row of its lab: the name is not said twice
+      c.body.append(el('tr', {class: engine ? 'of-engine' : '', dataset: {lab: lab.lab || '', engine}},
+        el('td', {title: resolveText(lab.title) || ''}, engine ? '' : lab.lab || ''),
+        el('td', {class: 'engine'}, engine),
         ...cells.map((text) => el('td', {class: 'num'}, text)),
-        el('td', {class: `source ${lab.source || ''}`}, source)));
+        el('td', {class: `source ${lab.source || ''}`, title: sourceTip(lab.source)}, source)));
     }
   }
 
@@ -64,16 +70,17 @@ export function createCostsDialog() {
     }
     const columns = costColumns();
     const note = el('p', {class: 'lab-costs-note muted'});
-    const body = el('tbody', {}, el('tr', {}, el('td', {colspan: columns.length + 1, class: 'muted'}, _('Loading…'))));
+    const body = el('tbody', {}, el('tr', {}, el('td', {colspan: columns.length + 2, class: 'muted'}, _('Loading…'))));
     const table = el('table', {class: 'grid watch'},
       el('thead', {}, el('tr', {}, el('th', {}, _('Lab')),
+                         el('th', {class: 'engine', title: _('The container engine the row is about: a lab measured with two engines has a row for each')}, _('Engine')),
                          ...columns.map((column) => el('th', {title: column.tip}, column.title)))),
       body);
     const close = el('button', {type: 'button'}, _('Close'));
     const dialog = el('dialog', {class: 'modal lab-costs-table'},
       el('h2', {}, _('Lab costs')), note, table, el('div', {class: 'buttons'}, close));
     close.addEventListener('click', () => dialog.close());
-    const opened = {dialog, note, body, columns: columns.length + 1, timer: 0};
+    const opened = {dialog, note, body, table, columns: columns.length + 2, timer: 0};
     dialog.addEventListener('close', () => {
       window.clearInterval(opened.timer);
       dialog.remove();

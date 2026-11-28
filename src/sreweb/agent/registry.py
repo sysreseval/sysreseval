@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from SRE import params
+from SRE.origin import recorded_engine
 from SRE.utils import canonical_lab_name
 from sysreseval.util import load_projects, load_info
 
@@ -82,6 +83,10 @@ class Project:
     info_mtime: float
     debug: bool = False
     instructor: bool = False
+    #: The container engine that runs the project, as its origin file records it (``''``: a
+    #: project older than the record).  For the portal alone: the usage of the project is
+    #: counted in the cost of its lab with that engine (``usage.py``); no page is told.
+    engine: str = ''
     #: The lab file the project really runs, symlinks resolved, in the form of ``lab_name``
     #: (``SRE.utils.canonical_lab_name``): what the summaries of the Watch page group by, so
     #: that a lab and a course directory's link to it are one lab.
@@ -192,6 +197,7 @@ class Project:
     def read_markers(self):
         self.debug = (self.private_dir / params.debug_project_marker_name).exists()
         self.instructor = (self.private_dir / params.instructor_mode_marker_name).exists()
+        self.engine = recorded_engine(self.private_dir / params.origin_json_name) or ''
 
     def terminal_count(self) -> int:
         """The live sessions (a browser joining a session opens no new one)."""

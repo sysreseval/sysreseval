@@ -2005,6 +2005,21 @@ machines weigh the same. `[pool] capacity = "resources"` replaces the count by t
   that: its weight by `weight_memory_mb` and `weight_cpu` (and never less than what one or two
   measured projects used). A lab without weight that was never seen: `project_memory_mb`
   (512 MiB when it is 0) and 0.2 core.
+- The cost is kept **per container engine** on a pool whose hosts do not all run the projects
+  with the same one (*Both engines on one host* in *Installation*). Each measure says which
+  engine runs its project (the one the project records, else the default engine of its host),
+  and a project that would run with an engine is counted for the 80th percentile of the last
+  forty projects of the lab measured **with that engine**, once three of them were; until
+  then for the cost of the lab, every engine together. The weight a lab declares stays one
+  per lab. The two engines do not charge a project the same memory: the file pages of an
+  image are charged to the first project that reads them, which is one project per host with
+  Docker, and with Podman the first project of each uid range of the host, each range having
+  its own copy of the image. On four workstations just set up (`sre/dhcp.py`, twelve machines
+  running systemd): seven Docker projects of eight used 117 to 120 MiB and the first one of a
+  host 515, the four Podman projects 522 to 525 MiB each, every one of them the first of its
+  range (a later project of a range that had run the lab: 98 MiB); the cost of the lab was
+  120 MiB with Docker and 525 MiB with Podman, where one cost for the lab gave 524 MiB on
+  every host. A pool with one engine has the costs it always had.
 
 The load of a host is then, from the last status of its agent:
 
@@ -2016,8 +2031,12 @@ cpu capacity = its processors x cpu_target
 fill         = max(1 - memory free / (MemTotal - memory_reserve_mb), cpu used / cpu capacity)
 ```
 
-A host takes a project when it is below its `max_projects`, its free memory holds the memory of
-the lab and its processors the cores of the lab; **a host without project always takes one** (a
+The costs of the labs of its projects are taken each with the engine that runs the project. A
+host takes a project when it is below its `max_projects`, its free memory holds the memory of
+the lab and its processors the cores of the lab, with the engine the project would run with
+there (the one an instructor asked for, else the first engine of the host that the lab
+accepts): two hosts of different engines are judged each by its own cost.
+**A host without project always takes one** (a
 lab larger than every host still starts, and an idle pool never refuses more than the count
 did). The hosts of a group are ranked by their `fill` in place of `projects / max_projects`, a
 host without project counting for 0, so that the order of the priorities still tells the empty
@@ -2072,13 +2091,19 @@ The measures, the costs and their display do not wait for the key: they are on i
 `sre-web-tool costs` and, for an instructor, the *Costs table…* button of the Open page list
 every lab the pool heard of with its declared weight, the containers its projects had, its cost
 and where it comes from (`measured`, `declared`, `default`); the *Lab costs* button next to it
-shows the same columns beside each lab they may start; `sre-web-tool list` and the Pool page
+shows the same columns beside each lab they may start. Once the pool has measured projects with
+two container engines, the table and the tool get an *Engine* column (`ENGINE`), and each lab
+is followed by one row per engine it was measured with: the projects measured with that engine
+and what one more is counted for there (its source is `measured`, or `lab`, shown *as the lab*,
+while fewer than three projects ran with it); the columns beside the labs of the tree keep the
+row of the lab, every engine together. `sre-web-tool list` and the Pool page
 have a CPU column
 (the cores the projects of the host are counted for / those they may use). So: leave
 `capacity = "projects"`, let a few classes run, read the costs, set `weight_memory_mb` and
 `weight_cpu` from the line `one unit of weight: … (measured on this pool: …)`, then switch. The
 costs are kept in `pool-costs.json` beside the state file of the pool (a cache: written at most
-once a minute and when the portal stops; lost, they are learned again). On a real host,
+once a minute and when the portal stops; lost, they are learned again; each measure there names
+its engine, and those of a file written before that count for the lab alone). On a real host,
 `docker stats --no-stream $(docker ps -q --filter label=lab_hash=<the lab_hash of info.json>)`
 gives the figures of one project to compare with the `usage` of `GET /v1/status` of its agent.
 
@@ -2601,8 +2626,10 @@ What an instructor gets:
   click hides the columns again. *Costs table…*, next to it, opens the table of every lab the
   pool heard of, with the same columns: also the labs that are not in the tree shown (the
   drafts and the exam-only labs outside the debug mode, a lab started by its path), kept up to
-  date while it is open. The students have neither button, and `GET /api/pool/costs` answers
-  403 to them.
+  date while it is open. On a pool that measured projects with two container engines, the
+  table has an *Engine* column and each lab is followed by the cost it has with each engine
+  (*as the lab* while too few projects ran with that engine). The students have neither
+  button, and `GET /api/pool/costs` answers 403 to them.
 - **Present**: the *Present* button of a project page (the instructor's own project, or a
   student's) opens the list of the users connected to the site (a text filter, the groups of
   every kind with the number of their members connected: the departments, the directory groups

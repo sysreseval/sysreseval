@@ -276,7 +276,8 @@ class Agent:
         # the Docker images of the labs, pulled when the portal gives this host its turn
         self.preloader = Preloader(self.runner, cfg.preload, default_paths=_lab_directories())
         # what the running projects use, measured for the portal
-        self.usage = UsageSampler(self.registry, cfg.usage, **usage_sources(cfg.usage, pub_dir, self.engines))
+        self.usage = UsageSampler(self.registry, cfg.usage, default_engine=self.engines[0] if self.engines else '',
+                                  **usage_sources(cfg.usage, pub_dir, self.engines))
         # the drain asked on the host itself (`sre set-drain`), told to the portal in the status
         self.local_drain = LocalDrain(self.pub_dir, cfg.allow_local_drain)
         # the saved projects: a directory shared by the pool hosts ([saves] of agent.toml)

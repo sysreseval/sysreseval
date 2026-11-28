@@ -1528,6 +1528,43 @@ class TestPlacement:
         assert out['offered'] == [True, False, False, True, False, True, True, False]
 
 
+LAB_COSTS_ENGINES_RUNNER = """\
+import {costRowOf, costCells, engineOf, hasEngineRows, sourceLabel, sourceTip} from './lab_costs.js';
+
+const input = JSON.parse(process.argv[2]);
+process.stdout.write(JSON.stringify({
+  found: input.labs.map((lab) => costRowOf(input.costs, lab)),
+  engines: input.costs.labs.map(engineOf),
+  mixed: [hasEngineRows(input.costs), hasEngineRows(input.one), hasEngineRows({}), hasEngineRows(null)],
+  cells: input.costs.labs.map(costCells),
+  label: [sourceLabel('lab'), sourceLabel('measured')],
+  tips: [sourceTip('lab') !== '', sourceTip('measured'), sourceTip(undefined)],
+}));
+"""
+
+
+class TestLabCostsPerEngine:
+    """The rows of one engine of a lab (a pool that measured projects with two container
+    engines): only the costs table shows them; the columns beside the labs of the tree keep the
+    row of the lab itself."""
+
+    def test_the_row_of_a_lab_is_never_the_one_of_an_engine(self, tmp_path, js):
+        runner = js_project(tmp_path, LAB_COSTS_ENGINES_RUNNER, 'lab_costs.js', 'i18n.js')
+        whole = {'lab': 'sre/dhcp.py', 'title': None, 'weight': 15, 'containers': 12, 'mem_mb': 301.0, 'cpu': 0.02,
+                 'samples': 6, 'source': 'measured'}
+        kathara = {**whole, 'engine': 'kathara', 'mem_mb': 106.0, 'cpu': 0.01, 'samples': 3}
+        podman = {**whole, 'engine': 'podman', 'samples': 3, 'source': 'lab'}
+        # the rows of the engines first: the row of the lab is found all the same
+        costs = {'default': {'mem_mb': 512.0, 'cpu': 0.2}, 'labs': [kathara, podman, whole]}
+        out = json.loads(js.run(tmp_path, runner, json.dumps({
+            'costs': costs, 'one': {'labs': [whole]}, 'labs': ['sre/dhcp.py', 'sre/new.py']})))
+        assert out['found'][0] == whole and out['found'][1]['source'] == 'default'
+        assert out['engines'] == ['kathara', 'podman', ''] and out['mixed'] == [True, False, False, False]
+        assert out['cells'][0] == ['15', '12', '106 MiB', '0.010', '3', 'measured']
+        assert out['cells'][1][-1] == 'as the lab' and out['label'] == ['as the lab', 'measured']
+        assert out['tips'] == [True, '', '']
+
+
 class TestLabCosts:
     """The pure helpers of lab_costs.js, the one definition of what the Open page shows an
     instructor of ``GET /api/pool/costs``, in the columns beside the labs of the tree and in the

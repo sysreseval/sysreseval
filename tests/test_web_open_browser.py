@@ -466,9 +466,13 @@ COSTS_TABLE = '#costs-table'
 DIALOG = "document.querySelector('dialog.lab-costs-table[open]')"
 DIALOG_OPEN = f"({DIALOG} !== null)"
 DIALOG_GONE = "(document.querySelector('dialog.lab-costs-table') === null)"
-DIALOG_TITLES = f"[...{DIALOG}.querySelectorAll('thead th')].map((th) => [th.textContent, th.title !== ''])"
+# the titles and the cells an instructor sees: the Engine column is hidden unless the pool
+# measured projects with two container engines
+SHOWN_CELLS = "filter((cell) => getComputedStyle(cell).display !== 'none')"
+DIALOG_TITLES = (f"[...{DIALOG}.querySelectorAll('thead th')].{SHOWN_CELLS}"
+                 ".map((th) => [th.textContent, th.title !== ''])")
 DIALOG_ROWS = (f"JSON.stringify([...{DIALOG}.querySelectorAll('tbody tr[data-lab]')]"
-               ".map((tr) => [...tr.children].map((td) => td.textContent)))")
+               f".map((tr) => [...tr.children].{SHOWN_CELLS}.map((td) => td.textContent)))")
 DIALOG_NOTE = f"{DIALOG}.querySelector('.lab-costs-note').textContent"
 DIALOG_BODY = f"[{DIALOG}.querySelector('tbody').textContent.trim(), {DIALOG}.querySelector('tbody td').className]"
 DIALOG_CLOSE = 'dialog.lab-costs-table[open] .buttons button'
@@ -649,6 +653,43 @@ class TestLabCosts:
                 await page.click(COSTS_TABLE)
                 await page.wait_for(f"{DIALOG_OPEN} && {DIALOG_BODY}[0] !== 'Loading…'", what="the empty costs table")
                 assert await page.evaluate(DIALOG_BODY) == ['No lab measured or declared yet.', 'muted']
+        P.run(go())
+
+    def test_costs_table_per_engine(self, tmp_path):
+        """A pool that measured projects with two container engines: the table gets an Engine
+        column, and each lab is followed by one row per engine it was measured with; the
+        columns beside the labs of the tree keep one cost per lab."""
+        from sreweb.portal.costs import Usage
+
+        async def go():
+            async with browser_of(tmp_path, PROF, mock_env=COSTS_ENV) as (h, browser, url):
+                pool = h.portal.pool
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                pool.costs.observe(
+                    [Usage(name=f'k{i}', lab=DHCP, containers=12, mem_mb=100.0, cpu=0.01, settled=True, engine='kathara')
+                     for i in range(3)]
+                    + [Usage(name=f'p{i}', lab=DHCP, containers=12, mem_mb=300.0, cpu=0.02, settled=True, engine='podman')
+                       for i in range(2)], time.time())
+                await page.click(COSTS_TABLE)
+                await page.wait_for(f"{DIALOG_OPEN} && {DIALOG_ROWS}.includes('kathara')", what="the rows of the engines")
+                assert [title for title, _tip in await page.evaluate(DIALOG_TITLES)] == [
+                    'Lab', 'Engine', 'Weight', 'Containers', 'Memory', 'CPU', 'Measured projects', 'Source']
+                rows = json.loads(await page.evaluate(DIALOG_ROWS))
+                assert rows == [
+                    [DEEP, '', '4', '', '20 MiB', '0.010', '0', 'declared'],
+                    [DHCP, '', '15', '12', '300 MiB', '0.020', '5', 'measured'],
+                    # under the row of their lab, whose name is not said twice
+                    ['', 'kathara', '15', '12', '100 MiB', '0.010', '3', 'measured'],
+                    ['', 'podman', '15', '12', '300 MiB', '0.020', '2', 'as the lab']]
+                tip = await page.evaluate(f"{DIALOG}.querySelector('tr[data-engine=\"podman\"] td.source').title")
+                assert tip == 'Too few projects were measured with this engine yet: the cost is the one of the lab'
+                await page.click(DIALOG_CLOSE)
+                await page.wait_for(DIALOG_GONE, what="the dialog closed")
+                # beside the lab of the tree: the lab itself, every engine together
+                await page.click(COSTS_TOGGLE)
+                await page.wait_for(shows(DHCP, ['15', '12', '300 MiB', '0.020', '5', 'measured']),
+                                    what="the cost of the lab in the tree")
         P.run(go())
 
     def test_students_have_no_costs(self, tmp_path):

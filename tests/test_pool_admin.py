@@ -1226,3 +1226,32 @@ class TestCli:
         assert sorted(failures) == ['b02: did not come back within 0 s',
                                     'c03: did not restart within 0 s (agent up for 501 s)']
         assert rows[0]['agent_uptime'] == 0 and rows[2]['agent_uptime'] == 501 and client.calls >= 2
+
+
+class TestCostsPerEngine:
+    """`sre-web-tool costs` on a pool that measured projects with two container engines: an
+    ENGINE column, empty on the row of the lab itself."""
+
+    def test_the_rows_and_the_column(self):
+        from sreweb.portal import poolctl
+        labs = [{'lab': 'sre/dhcp.py', 'weight': 15, 'containers': 12, 'mem_mb': 301.0, 'cpu': 0.02, 'samples': 6,
+                 'source': 'measured'},
+                {'lab': 'sre/dhcp.py', 'engine': 'kathara', 'weight': 15, 'containers': 12, 'mem_mb': 106.0, 'cpu': 0.01,
+                 'samples': 3, 'source': 'measured'},
+                {'lab': 'sre/dhcp.py', 'engine': 'podman', 'weight': 15, 'containers': 12, 'mem_mb': 301.0, 'cpu': 0.02,
+                 'samples': 3, 'source': 'lab'}]
+        rows = poolctl.cost_rows(labs)
+        assert [row['engine'] for row in rows] == ['', 'kathara', 'podman']
+        columns = poolctl.cost_columns(rows)
+        assert [title for _key, title in columns] == ['LAB', 'ENGINE', 'WEIGHT', 'CONTAINERS', 'MEMORY', 'CPU',
+                                                      'PROJECTS', 'SOURCE']
+        lines = poolctl.table(rows, columns).splitlines()
+        assert lines[0].split() == ['LAB', 'ENGINE', 'WEIGHT', 'CONTAINERS', 'MEMORY', 'CPU', 'PROJECTS', 'SOURCE']
+        assert lines[2].split() == ['sre/dhcp.py', 'kathara', '15', '12', '106M', '0.010', '3', 'measured']
+        assert lines[3].split()[-1] == 'lab'
+
+    def test_no_column_on_a_pool_with_one_engine(self):
+        from sreweb.portal import poolctl
+        rows = poolctl.cost_rows([{'lab': 'sre/dhcp.py', 'weight': 15, 'mem_mb': 75.0, 'cpu': 0.015, 'samples': 0,
+                                   'source': 'declared'}])
+        assert poolctl.cost_columns(rows) == poolctl.COSTS_COLUMNS
