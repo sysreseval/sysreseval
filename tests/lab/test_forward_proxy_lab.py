@@ -59,6 +59,18 @@ def data(lab):
     return d
 
 
+def _other_instance(lab, data, values):
+    """An instance whose *values(d)* all differ from those of *data*.  A course holding no value of
+    the instance is the same text for both, whatever addresses it prints: searching it for the
+    address of the news site, drawn in 203.0.113.0/24, found the 203.0.113.9 of its sample log
+    line once in 254 runs."""
+    while True:
+        other = lab.Data.generate()
+        other.compute_post_generate()
+        if all(a != b for a, b in zip(values(other), values(data))):
+            return other
+
+
 def _running_name():
     return params.get_running_lab_name(lab_name=_LAB_PATH.name, instance_start_date=datetime(2000, 1, 1),
                                        username='check')
@@ -350,10 +362,14 @@ class TestTexts:
             'proxies', 'squid', 'acl', 'auth', 'https', 'intercept', 'clients', 'cache', 'further']
         text = _text(course)
         assert '@@' not in text
-        # no value of the instance and no summary of the questions in the course
-        for value in (str(data.nets.lan.network_address), lab.site_ip(data, lab.SITE_NEWS), data.realm, data.block_code,
-                      data.pw('alice'), data.ldap_service_password, 'Partie 1', 'webstaff', 'CORP Proxy CA'):
+        # no summary of the questions in the course ...
+        for value in ('Partie 1', 'webstaff', 'CORP Proxy CA'):
             assert value not in text, value
+        # ... and no value of the instance: it is the text of an instance that drew another
+        # network, other site addresses, another realm, other codes and passwords
+        other = _other_instance(lab, data, lambda d: (
+            d.nets.lan, lab.site_ip(d, lab.SITE_NEWS), d.realm, d.block_code, d.pw('alice'), d.ldap_service_password))
+        assert _text(_texts(lab, other, tmp_pub_dir)[0]) == text
 
     def test_instructor_translations(self, lab):
         """Every tr() text is translated (the markup is checked for every lab of the directory by

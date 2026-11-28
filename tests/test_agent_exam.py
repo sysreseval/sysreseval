@@ -40,8 +40,11 @@ def iso(seconds: float, origin: datetime | None = None) -> str:
 
 
 def exam_body(start: float = -60, end: float | None = 3600, **over) -> dict:
-    body = {'id': EXAM_ID, 'title': 'Partiel', 'started_at': iso(start) if start is not None else None,
-            'end_at': iso(end) if end is not None else None, 'eval_interval': 60}
+    # both instants from one reading of the clock: the duration is counted in minutes rounded up,
+    # and a second passing between two readings would make it a minute longer
+    now = datetime.now(timezone.utc)
+    body = {'id': EXAM_ID, 'title': 'Partiel', 'started_at': iso(start, now) if start is not None else None,
+            'end_at': iso(end, now) if end is not None else None, 'eval_interval': 60}
     body.update(over)
     return body
 
@@ -358,8 +361,11 @@ class TestExamAnswers:
         assert data[params.sysreseval_exam_mode] is True and data[params.sysreseval_exam_started_at] == p.exam['started_at']
         assert data[params.sysreseval_exam_duration] == 60 and 3470 <= data[params.sysreseval_exam_time_remaining] <= 3480
         assert data[params.login_keyword] == 'alice' and data[params.fullname_keyword] == 'Alice A'
-        # the end moved: rewrite_kept keeps the identity and refreshes the exam fields
-        p.exam['end_at'] = iso(7080)
+        # the end moved, to two hours after the start (counted from the start itself: counted
+        # from the clock again it was 7201 s after it, hence 121 minutes, whenever a second had
+        # passed since the start was written); rewrite_kept keeps the identity and refreshes
+        # the exam fields
+        p.exam['end_at'] = iso(7200, datetime.fromisoformat(p.exam['started_at']))
         data = run(store.rewrite_kept(p))
         assert data[params.sysreseval_exam_duration] == 120 and data[params.fullname_keyword] == 'Alice A'
         assert data[params.language_keyword] == 'fr'
