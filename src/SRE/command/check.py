@@ -74,6 +74,46 @@ def _run_state_method(net_scheme, state_name: str) -> dict:
     return ops
 
 
+def _short(command, limit: int = 70) -> str:
+    text = ' '.join(str(command).split())
+    return repr(text if len(text) <= limit else text[:limit - 1] + '…')
+
+
+def _host_operations(net_scheme, state_name: str) -> list[str]:
+    """What the state just run does **on the host** with what a project holds, one line per
+    operation: the commands it runs there (`host_cmd()`), the Python it calls there
+    (`host_callback()`), the files of the project's host directory it copies into a machine
+    (`cp_from_host()` with a relative source).  Not the console commands of the switches (SRE's
+    own), nor a file of a fixed place of the host."""
+    from ..lib_sre import _CpFromHostOp, _HostCallbackOp, _HostCmdOp
+    files_dir = Path(params.files_dir(net_scheme.running_lab_name))
+    found = []
+    for step in sorted(net_scheme._host_ops):
+        for op in net_scheme._host_ops[step]:
+            if isinstance(op, _HostCmdOp):
+                found.append(f"host_cmd() in {state_name}(): {_short(op.command)}")
+            elif isinstance(op, _HostCallbackOp):
+                found.append(f"host_callback() in {state_name}(): {getattr(op.callback, '__name__', repr(op.callback))}")
+    for step in sorted(net_scheme._ops):
+        for machine, machine_ops in net_scheme._ops[step].items():
+            for op in machine_ops:
+                if isinstance(op, _CpFromHostOp) and Path(op.src_path).is_relative_to(files_dir):
+                    found.append(f"cp_from_host() in {state_name}(): "
+                                 f"{Path(op.src_path).relative_to(files_dir)} -> {machine}")
+    return found
+
+
+def _host_tests(grade) -> list[str]:
+    """The commands the grade runs on the host (`test_host()`), one line each."""
+    return [f"test_host() in grade(): {_short(command)}"
+            for step in sorted(grade._host_tests) for command, _timeout in grade._host_tests[step]]
+
+
+def _state_names(net_scheme) -> list[str]:
+    scheme_class = type(net_scheme)
+    return sorted(name for name in dir(scheme_class) if getattr(getattr(scheme_class, name), '_is_sre_state', False))
+
+
 def _network_details(net) -> str:
     """Type of switch and declared VLANs of a network that is not a hub ('' for a hub)."""
     if net.mode == params.network_mode_hub:
@@ -204,6 +244,9 @@ def action_check():
         raise
     total_ops = _print_ops(ops)
     _ok(f"initial() produced {total_ops} operation(s) across {len(ops)} machine(s)")
+    # what the lab does on the host, state by state (see the last check)
+    host_operations = _host_operations(net_scheme, params.initial_state_name)
+    states_run = {params.initial_state_name}
 
     if getattr(module, 'allow_save_restore', False):
         for lifecycle_state in (params.save_state_name, params.restore_state_name):
@@ -213,6 +256,8 @@ def action_check():
                 _fail(f"NetScheme.{lifecycle_state}() raised an exception:")
                 raise
             _ok(f"{lifecycle_state}() produced {_print_ops(ops)} operation(s) (allow_save_restore)")
+            host_operations += _host_operations(net_scheme, lifecycle_state)
+            states_run.add(lifecycle_state)
 
     # ── Step 5 (optional): run extra state ────────────────────────────
     if extra_state:
@@ -224,6 +269,8 @@ def action_check():
             raise
         total_ops = _print_ops(ops)
         _ok(f"{extra_state}() produced {total_ops} operation(s) across {len(ops)} machine(s)")
+        host_operations += _host_operations(net_scheme, extra_state)
+        states_run.add(extra_state)
 
     # ── Step 5 or 6: instantiate Grade and call grade() ────────────────
     grade_step = 6 if extra_state else 5
@@ -247,5 +294,40 @@ def action_check():
                       f"{field}: {exc}")
                 raise
     _ok(f"{len(grade.get_questions_ordered())} question(s): references to the course resolved")
+
+    # ── Save files and the host ───────────────────────────────────────
+    # Without save_key a save file is the student's to write: the Data and the host files
+    # (.private/files) of a restored project are theirs.  A lab that uses them in what it does
+    # on the host (a command, a callback, a file copied into a machine, a host test of the
+    # grade) would do it with the student's content, as the sre account.
+    if getattr(module, 'allow_save_restore', False):
+        from .save import get_save_key
+        if get_save_key(module) is not None:
+            _ok("allow_save_restore with save_key: the save files are encrypted, only the lab writes them")
+        else:
+            host_operations += _host_tests(grade)
+            for state_name in _state_names(net_scheme):
+                if state_name in states_run:
+                    continue
+                try:
+                    _run_state_method(net_scheme, state_name)
+                except Exception as exc:
+                    # not this check's matter (`sre check <lab> <state>` shows it): say what was not seen
+                    print(f"  --  state {state_name}() could not be run here ({type(exc).__name__}: {exc}): "
+                          f"what it does on the host was not looked at")
+                    continue
+                host_operations += _host_operations(net_scheme, state_name)
+            host_operations = list(dict.fromkeys(host_operations))      # a file copied twice: one line
+            if host_operations:
+                _fail("allow_save_restore = True without save_key, in a lab that works on the host:")
+                for line in host_operations[:10]:
+                    print(f"         {line}")
+                if len(host_operations) > 10:
+                    print(f"         … and {len(host_operations) - 10} more")
+                print("         A student may change the Data and the host files of a save file before restoring it:\n"
+                      "         these operations would then run with that content.  Set save_key (the save files are\n"
+                      "         then encrypted and only the lab writes them), or do not allow saving.")
+                error_quit("the lab allows saving without save_key and works on the host")
+            _ok("allow_save_restore without save_key: nothing of the lab runs on the host")
 
     print("\nAll checks passed.")

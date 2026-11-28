@@ -192,3 +192,98 @@ class TestCheckWeight:
         with pytest.raises(ValueError, match="machine 'router': invalid weight 'heavy'"):
             action_check()
         assert "FAIL  NetScheme() raised an exception" in capsys.readouterr().out
+
+
+_INIT = ("    def __init__(self, data, running_lab_name):\n"
+         "        super().__init__(data=data, running_lab_name=running_lab_name)\n")
+_FIRST_TEST = "        route_out, route_code = self.test('router', 'ip route', step=1, timeout=10)\n"
+
+
+def _with_state(name, body):
+    """The fixture lab with one more state *name* whose body is the line *body*."""
+    def transform(text):
+        assert _INIT in text
+        return text.replace(_INIT, _INIT + f"\n    @sre_state()\n    def {name}(self):\n        {body}\n")
+    return transform
+
+
+class TestASavableLabDoesNotWorkOnTheHost:
+    """Without `save_key` a student can change anything in a save file before restoring it: the
+    `Data` and the host files (`.private/files`) of the restored project are theirs.  A lab that
+    uses them in what it does on the host, as the sre account, is refused by `sre check` unless
+    its save files are encrypted (the fixture lab allows saving and has no key)."""
+
+    def test_nothing_on_the_host(self, check_env, capsys):
+        check_env('plain.py', lambda t: t)
+        action_check()
+        out = capsys.readouterr().out
+        assert "ok  allow_save_restore without save_key: nothing of the lab runs on the host" in out
+        assert "All checks passed." in out
+
+    @pytest.mark.parametrize('transform, named', [
+        # a command on the host, built with a value of the Data
+        (_with_state('initial', "self.host_cmd(f'openssl genrsa -out ca-{self.data.value}.key 2048')"),
+         "host_cmd() in initial(): 'openssl genrsa -out ca-42.key 2048'"),
+        # in a state `sre check` does not run otherwise
+        (_with_state('final', "self.host_cmd('make -C /srv/www')"), "host_cmd() in final(): 'make -C /srv/www'"),
+        (_with_state('restore', "self.host_callback(print)"), "host_callback() in restore(): print"),
+        # a file of the project's host directory copied into a machine
+        (_with_state('initial', "self.cp_from_host('pki/ca.crt', 'router', '/etc/ssl/ca.crt')"),
+         "cp_from_host() in initial(): pki/ca.crt -> router"),
+        # a command the grade runs on the host
+        (lambda t: t.replace(_FIRST_TEST, _FIRST_TEST + "        self.test_host('ls -l results', step=1)\n"),
+         "test_host() in grade(): 'ls -l results'"),
+    ])
+    def test_refused(self, check_env, capsys, transform, named):
+        check_env('host.py', transform)
+        with pytest.raises(SystemExit) as failure:
+            action_check()
+        assert failure.value.code != 0
+        captured = capsys.readouterr()
+        assert "FAIL  allow_save_restore = True without save_key, in a lab that works on the host:" in captured.out
+        assert named in captured.out
+        assert "Set save_key" in captured.out and "All checks passed." not in captured.out
+        assert "allows saving without save_key and works on the host" in captured.err
+
+    def test_with_a_key(self, check_env, capsys):
+        check_env('keyed.py', lambda t: _with_state('initial', "self.host_cmd('openssl version')")(t)
+                  + '\nsave_key = "s3cret"\n')
+        action_check()
+        out = capsys.readouterr().out
+        assert "ok  allow_save_restore with save_key" in out and "All checks passed." in out
+
+    def test_a_lab_that_does_not_allow_saving(self, check_env, capsys):
+        check_env('unsaved.py', lambda t: _with_state('initial', "self.host_cmd('openssl version')")(t).replace(
+            'allow_save_restore = True', ''))
+        action_check()
+        out = capsys.readouterr().out
+        assert "save_key" not in out and "All checks passed." in out
+
+    def test_a_file_of_a_fixed_place_of_the_host_is_no_such_operation(self, check_env, capsys):
+        """What a save file brings is the project's own host directory, not /etc of the host."""
+        check_env('fixed.py', _with_state('initial', "self.cp_from_host('/etc/hostname', 'router', '/tmp/host')"))
+        action_check()
+        assert "nothing of the lab runs on the host" in capsys.readouterr().out
+
+    def test_a_state_that_cannot_be_run_is_named(self, check_env, capsys):
+        """Only `sre check <lab> <state>` judges a state: here it is said that it was not looked at."""
+        check_env('broken.py', _with_state('later', "raise RuntimeError('needs a running project')"))
+        action_check()
+        out = capsys.readouterr().out
+        assert ("--  state later() could not be run here (RuntimeError: needs a running project): "
+                "what it does on the host was not looked at") in out
+        assert "All checks passed." in out
+
+    def test_a_state_named_on_the_command_line_counts_once(self, check_env, capsys, mock_sre_args):
+        check_env('named.py', _with_state('final', "self.host_cmd('make')"))
+        mock_sre_args.state = 'final'
+        with pytest.raises(SystemExit):
+            action_check()
+        assert capsys.readouterr().out.count("host_cmd() in final(): 'make'") == 1
+
+    def test_a_bad_key(self, check_env, capsys):
+        check_env('badkey.py', lambda t: t + '\nsave_key = ""\n')
+        with pytest.raises(SystemExit):
+            action_check()
+        assert "save_key must be a non-empty string" in capsys.readouterr().err
+
