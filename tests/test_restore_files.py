@@ -31,6 +31,8 @@ from SRE.engine.base import MachineIds
 RLN = '20260101000000@@@sre@lab.py@@@alice'
 # the machines of the restored project: their root is uid 20131073 of the host, their gids start elsewhere
 NEW_MACHINES = MachineIds([(0, 20131073, 65536)], [(0, 30131073, 65536)])
+# with Docker: the ids of the host
+MACHINES_OF_DOCKER = MachineIds([(0, 0, 2 ** 32)], [(0, 0, 2 ** 32)])
 
 
 def _mode(path) -> int:
@@ -275,8 +277,23 @@ class TestTheFilesOfAMachineGoBackToTheMachines:
         assert _mode(r.mnt / 'vol' / 'database') == 0o600
 
     def test_with_an_engine_whose_machines_have_the_ids_of_the_host(self, restored):
-        """Kathara: as before, everything of shared/ to the student, the modes and the volumes
-        as the extraction left them."""
+        """Docker: a file of the root of a machine is root's again, a file of www-data belongs to
+        uid 33 again (everything went to the student, and www-data could no longer read its own
+        640 file), and the modes of the save file come back."""
+        r = restored
+        restore_cmd._hand_over_restored_files(r.setup, r.saved, MACHINES_OF_DOCKER)
+        owner = {name: ids[:2] for name, ids in r.owners.items()}
+        assert owner['key.pem'] == owner['made_by_router'] == owner['capture.pcap'] == (0, 0)
+        assert owner['of_a_daemon.log'] == (33, 4) and owner['database'] == (999, 999)
+        assert owner['too_far.txt'] == (70000, 0)       # any id of the host may be a user of a Docker machine
+        assert owner['notes.txt'] == owner['answers.json'] == owner['shared'] == r.student
+        assert 'kept_by_sre' not in owner and 'vol' not in owner
+        assert _mode(r.shared / 'key.pem') == 0o600 and _mode(r.shared / 'made_by_router') == 0o700
+        assert _mode(r.shared / 'notes.txt') == 0o664 and _mode(r.mnt / 'vol' / 'database') == 0o600
+
+    def test_with_an_engine_that_cannot_tell(self, restored):
+        """No ids: everything of shared/ to the student, the modes and the volumes as the
+        extraction left them (what a restore did before the save files said who owned what)."""
         r = restored
         before = {p: _mode(p) for p in (r.shared / 'key.pem', r.shared / 'made_by_router', r.mnt / 'vol' / 'database')}
         restore_cmd._hand_over_restored_files(r.setup, r.saved, None)
@@ -285,7 +302,7 @@ class TestTheFilesOfAMachineGoBackToTheMachines:
             'too_far.txt')}
         assert {p: _mode(p) for p in before} == before
 
-    @pytest.mark.parametrize('machine_ids', [NEW_MACHINES, None])
+    @pytest.mark.parametrize('machine_ids', [NEW_MACHINES, MACHINES_OF_DOCKER, None])
     def test_the_project_is_opened_last(self, restored, machine_ids, monkeypatch):
         """answers/ and shared/ are closed while owners and modes are set, open afterwards."""
         r = restored

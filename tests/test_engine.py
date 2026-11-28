@@ -289,9 +289,12 @@ class TestIdsOfTheMachines:
         assert ids.to_host(1000, 1000) == (1000, 1000)
         assert kathara.mock_calls == []
 
-    def test_a_restore_with_kathara_translates_nothing(self, engine, kathara):
-        """None: the restored files stay with the owners the restore always gave them."""
-        assert engine.reserve_machine_ids() is None
+    def test_the_machines_a_restore_with_kathara_makes_have_them_too(self, engine, kathara):
+        """Nothing to choose nor to keep for the deployment: the same ids for every project.  A
+        file of www-data of a saved machine goes to uid 33 of the host, which is www-data in the
+        new one (it went to the student: the user of the machine could no longer read it)."""
+        ids = engine.reserve_machine_ids()
+        assert ids.to_host(0, 0) == (0, 0) and ids.to_host(33, 4) == (33, 4)
         assert kathara.mock_calls == []
 
 

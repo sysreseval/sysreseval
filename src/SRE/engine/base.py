@@ -119,9 +119,10 @@ class Engine(ABC):
     def reserve_machine_ids(self) -> MachineIds | None:
         """Called by a restore before its ``restore()``, while the files of the new project are
         still closed: the ids on the host of the users of the machines the next deployment of
-        this process will make, kept for it until then.  ``None`` with an engine whose machines
-        have the ids of the host: the restored files then stay with the owners the restore
-        gives them."""
+        this process will make, kept for it until then (an engine whose machines have the ids
+        of the host has nothing to keep).  The restore gives each file a saved machine owned
+        to the same user of the new ones.  ``None``: the engine cannot tell; every restored
+        file then goes to the student."""
 
     # ---- description of a project -------------------------------------------------------
 

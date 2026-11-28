@@ -840,7 +840,7 @@ class TestSaveRestore:
         with open(out, 'rb') as f:
             new_rln = do_action_restore(f)
         assert seen['before the copy'] == seen['after the copy'] == (0o700, 0o700)
-        assert seen['ids'] is None      # Kathara: nothing to translate
+        assert seen['ids'].to_host(33, 4) == (33, 4)     # Kathara: its machines have the ids of the host
         new_proj = Path(params.sre_projects_dir) / new_rln
         new_shared = (new_proj / '.private' / 'user_public_dir').resolve() / params.shared_dir_name
         assert stat.S_IMODE(new_shared.stat().st_mode) == 0o777

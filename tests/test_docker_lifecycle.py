@@ -24,6 +24,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -641,6 +642,52 @@ class TestSaveRestore:
         assert _containers(docker_client, third_hash) == []
         assert docker_client.images.list(name=_save_repository(third_hash)) == [], "images of a restore left by sre stop"
         assert left == [], f"images of a restore left by sre stop: {left}"
+
+    def test_what_a_user_of_a_machine_owned_in_shared_is_that_users_again(self, docker_client, labs_dir, projects,
+                                                                          tmp_path):
+        """A restore gave everything of shared/ to the student and left the files of the volumes
+        to the sre account.  The root of a machine, root on the host, read them all the same;
+        another user of a machine could no longer read its own file (www-data and its 640 file:
+        Permission denied), and the modes of the directories were lost.  A save records who owned
+        what in the machines and the restore gives it back: with Docker, the same uid and gid."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'shared.py')
+        make = ' && '.join(
+            f'echo secret-{d} > /{d}/key && chmod 600 /{d}/key && mkdir -m 700 /{d}/private && echo deep > /{d}/private/f'
+            f' && echo log > /{d}/of-www && chown 33:4 /{d}/of-www && chmod 640 /{d}/of-www' for d in ('shared', 'data'))
+        r = _sre('exec', running_lab_name, 'router', 'sh', '-c', make)
+        assert r.returncode == 0, r.stderr
+        # a file that is nobody's in the machines: the sre account's, as SRE itself leaves some
+        shared = _user_public_dir(running_lab_name) / params.shared_dir_name
+        (shared / 'notes').write_text('from the host\n')
+        os.chown(shared / 'notes', params.sre_uid, params.sre_uid)
+        os.chmod(shared / 'notes', 0o664)
+        save_file = tmp_path / 'project.sre'
+        r = _sre('save', running_lab_name, '-o', str(save_file))
+        assert r.returncode == 0, r.stderr
+
+        before = _project_dirs()
+        r = _sre('restore', str(save_file))
+        assert r.returncode == 0, r.stderr[-3000:]
+        (restored,) = _project_dirs() - before
+        restored_hash = _lab_hash(restored)
+        projects.append((restored, restored_hash))
+        seen = ('for d in shared data; do cat /$d/key /$d/private/f && stat -c "%u:%g %a" /$d/key /$d/private /$d/of-www; '
+                'done; su -s /bin/sh www-data -c "cat /shared/of-www /data/of-www"')
+        r = _sre('exec', restored, 'router', 'sh', '-c', seen)
+        expected = ''.join(f'secret-{d}\ndeep\n0:0 600\n0:0 700\n33:4 640\n' for d in ('shared', 'data')) + 'log\nlog\n'
+        assert (r.returncode, r.stdout) == (0, expected), r.stderr
+        new_shared = _user_public_dir(restored) / params.shared_dir_name
+        of_www = (new_shared / 'of-www').stat()
+        assert (of_www.st_uid, of_www.st_gid) == (33, 4)
+        # the file that was nobody's in the machines: to whoever restores (root here), its mode kept
+        notes = (new_shared / 'notes').stat()
+        assert notes.st_uid == 0 and stat.S_IMODE(notes.st_mode) == 0o664
+        assert stat.S_IMODE(new_shared.stat().st_mode) == 0o777
+        for name, project_hash in ((restored, restored_hash), (running_lab_name, lab_hash)):
+            r = _sre('stop', name)
+            assert r.returncode == 0, r.stderr
+            assert _containers(docker_client, project_hash) == [] and not (PROJECTS / name).exists()
+        assert not new_shared.exists()
 
     def test_a_save_made_with_the_podman_engine_restores_here(self, docker_client, labs_dir, projects, tmp_path):
         """A pool may have hosts of both engines, and a saved project restores on any of them."""

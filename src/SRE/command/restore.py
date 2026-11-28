@@ -111,8 +111,8 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
 
             net_scheme = module_rvlab.NetScheme(data=data, running_lab_name=running_lab_name)
             setup.net_scheme = net_scheme
-            # the ids the new machines will have on the host, where they are not those of the
-            # host: the files the saved machines owned go to the same users of the new ones
+            # the ids the users of the new machines will have on the host: the files the saved
+            # machines owned go to the same users of the new ones
             _hand_over_restored_files(setup, saved, get_engine().reserve_machine_ids())
             drop_privileges_permanently_if_not_needed(net_scheme)
 
@@ -199,11 +199,12 @@ def _hand_over_restored_files(setup: ProjectSetup, saved: dict, machine_ids):
     bits, and the files were copied as the sre account.  When running as root:
 
     - ``answers/`` and the user public dir (``shared/``, the volumes) go to the student;
-    - with *machine_ids* (an engine whose machines have ids of their own on the host: the ids
-      of the machines about to be made), a file or directory of ``shared/`` or of a volume that
-      the save recorded as a machine's goes to the same user of the new machines, and every
-      entry the save describes gets its saved mode back.  Without it the machines read such a
-      file again only if anybody may: their root is nobody special on the host.
+    - with *machine_ids* (the ids on the host of the users of the machines about to be made:
+      the same ids with Docker, those of the uid range of the new project with Podman), a file
+      or directory of ``shared/`` or of a volume that the save recorded as a machine's goes to
+      the same user of the new machines, and every entry the save describes gets its saved mode
+      back.  Otherwise a user of a machine reads its own file again only if anybody may: with
+      Podman its root is nobody special on the host, with Docker any user but root.
 
     Last of all the modes `sre start` uses: ``answers/`` 0o777 with 0o666 files, ``shared/`` and
     the volume directories 0o777.  Until then nobody but sre and root could enter them."""

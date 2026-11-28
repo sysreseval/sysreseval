@@ -224,7 +224,7 @@ class KatharaEngine(Engine):
         return MachineIds(every_id, every_id)
 
     def reserve_machine_ids(self):
-        return None     # nothing to translate: a restore gives the files back as it always did
+        return self.machine_ids(None)   # the same for every project: nothing to reserve
 
     def require_save_restore(self, full_images=False):
         pass
