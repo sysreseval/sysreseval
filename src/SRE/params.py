@@ -690,6 +690,10 @@ save_stdio_arg = "-"                    # `sre restore -` reads the save file fr
 save_tmp_dir = sre_pub_dir + "/tmp"     # not /tmp (may be a small tmpfs): full-image saves can be large
 save_kathara_name = "kathara.tar"       # payload member: the Kathara save archive
 save_user_public_member = "user_public" # payload member: contents of the user public dir (shared/, volumes)
+# payload: extended header records of a file the machines of the project own (their uid and gid
+# as the machines see them: the same save file restores with any engine)
+save_machine_uid_record = "SRE.machine_uid"
+save_machine_gid_record = "SRE.machine_gid"
 # keys of the cleartext JSON header line
 save_meta_format_version = "format_version"
 save_meta_sre_version = "sre_version"

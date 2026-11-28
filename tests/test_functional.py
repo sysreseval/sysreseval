@@ -806,6 +806,48 @@ class TestSaveRestore:
         assert call.kwargs['lab'] is not None
         assert states == [params.restore_state_name]
 
+    def test_restore_keeps_the_new_project_closed_until_its_files_are_in_place(self, save_restore_env, tmp_path,
+                                                                               monkeypatch):
+        """answers/ and shared/ of a running project are open to everybody.  A restore made them
+        so before it copied the saved files in (as the sre account) and changed their owners (as
+        root): a link planted there meanwhile sent the copy, or the change of owner, somewhere
+        else.  They are now closed from their creation until the files have their owners."""
+        import SRE.command.restore as _restore_cmd
+        lab = _lab_copy(tmp_path, 'shared.py', lambda t: t + '\nshared_path = True\n')
+        monkeypatch.setattr(params, 'authorized_src_dir', params.authorized_src_dir + [str(tmp_path)])
+        do_action_start(lab_cli_arg=str(lab), lab_cli_arg_is_path=True)
+        (rln,) = _project_dirs()
+        proj = Path(params.sre_projects_dir) / rln
+        shared = (proj / '.private' / 'user_public_dir').resolve() / params.shared_dir_name
+        assert stat.S_IMODE(shared.stat().st_mode) == 0o777      # a started project: open at once
+        (shared / 'sub').mkdir()
+        (shared / 'sub' / 'capture.pcap').write_bytes(b'pcap')
+        (proj / 'answers' / 'answers.json').write_text('{"q1": "42"}')
+        out = tmp_path / 'p.sre'
+        do_action_save(rln, output=str(out))
+
+        seen = {}
+
+        def modes(step, setup):
+            seen[step] = (stat.S_IMODE(os.stat(params.answers_dir(setup.running_lab_name)).st_mode),
+                          stat.S_IMODE(os.stat(setup.shared_dir).st_mode))
+        real_copy, real_hand_over = _restore_cmd._copy_saved_project_files, _restore_cmd._hand_over_restored_files
+        monkeypatch.setattr(_restore_cmd, '_copy_saved_project_files',
+                            lambda tmp, setup: (modes('before the copy', setup), real_copy(tmp, setup),
+                                                modes('after the copy', setup)))
+        monkeypatch.setattr(_restore_cmd, '_hand_over_restored_files',
+                            lambda setup, saved, ids: (seen.__setitem__('ids', ids), real_hand_over(setup, saved, ids)))
+        with open(out, 'rb') as f:
+            new_rln = do_action_restore(f)
+        assert seen['before the copy'] == seen['after the copy'] == (0o700, 0o700)
+        assert seen['ids'] is None      # Kathara: nothing to translate
+        new_proj = Path(params.sre_projects_dir) / new_rln
+        new_shared = (new_proj / '.private' / 'user_public_dir').resolve() / params.shared_dir_name
+        assert stat.S_IMODE(new_shared.stat().st_mode) == 0o777
+        assert stat.S_IMODE((new_proj / 'answers').stat().st_mode) == 0o777
+        assert stat.S_IMODE((new_proj / 'answers' / 'answers.json').stat().st_mode) == 0o666
+        assert (new_shared / 'sub' / 'capture.pcap').read_bytes() == b'pcap'
+
     def test_restore_rollback_on_failure(self, save_restore_env, started_lab, tmp_path):
         from SRE.engine import kathara_engine as _engine
         out = tmp_path / 'p.sre'

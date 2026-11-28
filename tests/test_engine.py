@@ -18,6 +18,7 @@ import pytest
 
 from SRE import params
 from SRE.engine import Engine, SwitchModesUnsupported, get_engine, kathara_engine
+from SRE.engine.base import MachineIds
 from SRE.engine.kathara_engine import KatharaEngine
 
 
@@ -251,6 +252,46 @@ class TestRoot:
     def test_what_its_machines_wrote_is_left_to_the_commands(self, engine, kathara):
         """They wrote as root: only a command that is root itself removes it."""
         assert engine.remove_files_of_machines(['/var/lib/sre/projects/x']) is None
+        assert kathara.mock_calls == []
+
+
+class TestIdsOfTheMachines:
+    """A file a machine wrote in shared/ belongs to a user of the machines.  With Docker that
+    user is the same uid on the host; with an engine that gives each project ids of its own
+    it is another uid for each project, and a restore must translate."""
+
+    def test_translation(self):
+        ids = MachineIds([(0, 20131073, 65536)], [(0, 30131073, 65536)])
+        assert ids.to_host(0, 0) == (20131073, 30131073) and ids.to_host(33, 4) == (20131106, 30131077)
+        assert ids.to_host(65535, 65535) == (20196608, 30196608)
+        assert ids.to_host(65536, 0) is None and ids.to_host(0, 65536) is None and ids.to_host(-1, 0) is None
+        assert ids.to_machine(20131073, 30131073) == (0, 0) and ids.to_machine(20131106, 30131077) == (33, 4)
+        # not a user of the machines: the student, the account, the root of the host, another project
+        for uid in (1000, 1100, 0, 20131072, 20196609):
+            assert ids.to_machine(uid, 30131073) is None, uid
+        # a group the machines do not have: their group 0
+        assert ids.to_machine(20131073, 1000) == (0, 0)
+
+    def test_ids_in_several_pieces(self):
+        """The subordinate ids of an account may come in several ranges."""
+        ids = MachineIds([(0, 100000, 10), (10, 500000, 65526)], [(0, 100000, 65536)])
+        assert ids.to_host(9, 0) == (100009, 100000) and ids.to_host(10, 0) == (500000, 100000)
+        assert ids.to_machine(500005, 100001) == (15, 1)
+
+    @pytest.mark.parametrize('value', [None, '0', 1.0, True])
+    def test_what_is_not_an_id(self, value):
+        ids = MachineIds([(0, 0, 2 ** 32)], [(0, 0, 2 ** 32)])
+        assert ids.to_host(value, 0) is None and ids.to_host(0, value) is None and ids.to_machine(value, 0) is None
+
+    def test_a_machine_of_kathara_has_the_ids_of_the_host(self, engine, kathara):
+        ids = engine.machine_ids('h')
+        assert ids.to_machine(0, 0) == (0, 0) and ids.to_machine(33, 33) == (33, 33)
+        assert ids.to_host(1000, 1000) == (1000, 1000)
+        assert kathara.mock_calls == []
+
+    def test_a_restore_with_kathara_translates_nothing(self, engine, kathara):
+        """None: the restored files stay with the owners the restore always gave them."""
+        assert engine.reserve_machine_ids() is None
         assert kathara.mock_calls == []
 
 

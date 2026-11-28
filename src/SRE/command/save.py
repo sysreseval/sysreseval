@@ -6,6 +6,7 @@ to the file chosen in the dialog); privileged users may use ``-o FILE``.
 """
 import datetime
 import os
+import pwd
 import secrets
 import sys
 import tempfile
@@ -106,6 +107,7 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
             # the engine's own temporary files (the filesystem diffs of the devices) go to tmp too
             get_engine().save(kathara_tar, lab_hash=net_scheme.get_lab_hash(),
                               filesystem_diff=not full_images, temp_dir=tmp)
+            machine_owner = _machine_owner(get_engine().machine_ids(net_scheme.get_lab_hash()), owner)
             if not root_throughout:
                 gain_privileges()
 
@@ -133,7 +135,8 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
                           answers_dir=params.answers_dir(running_lab_name),
                           files_dir=params.files_dir(running_lab_name),
                           user_public_dir=_user_public_dir(running_lab_name),
-                          mnt_dir=params.private_mount_dir(running_lab_name))
+                          mnt_dir=params.private_mount_dir(running_lab_name),
+                          machine_owner=machine_owner)
             if writer is not out:
                 writer.close()
             out.flush()
@@ -141,6 +144,25 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
             if out is not None and output is not None:
                 out.close()
             drop_privileges_temporarily()
+
+
+def _machine_owner(machine_ids, owner: str):
+    """What a save asks for each file of shared/ and of the volumes: its owner as the machines
+    of the project see it (*machine_ids*, the engine's), or ``None`` for a file that is not a
+    machine's.  The files of the student and of the sre account are theirs on the host whatever
+    the engine, also where the machines have the ids of the host.  Not root's: where the
+    machines have the ids of the host, a file of root in shared/ is one their root wrote,
+    whoever the project belongs to (elsewhere the engine says it is no machine's)."""
+    not_of_the_machines = {params.sre_uid}
+    try:
+        not_of_the_machines.add(pwd.getpwnam(owner).pw_uid)
+    except KeyError:
+        pass
+    not_of_the_machines.discard(0)
+
+    def machine_owner(uid: int, gid: int):
+        return None if uid in not_of_the_machines else machine_ids.to_machine(uid, gid)
+    return machine_owner
 
 
 def _open_output(output: str | None, out_fileobj):

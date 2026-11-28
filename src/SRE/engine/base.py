@@ -44,6 +44,47 @@ class SwitchCommandError(EngineError):
         self.message = message
 
 
+class MachineIds:
+    """How the uids and gids of the users of a project's machines appear on the host.
+
+    With an engine whose machines share the ids of the host the two are equal.  With an engine
+    that gives each project a range of ids of its own, the root of a machine is an ordinary uid
+    of the host, different for each project: a file a machine wrote must be given to the ids
+    of the *new* project when it is restored.
+
+    *uids* and *gids* are lists of ``(first id in the machines, first id on the host, count)``.
+    """
+
+    def __init__(self, uids: list[tuple[int, int, int]], gids: list[tuple[int, int, int]]):
+        self.uids = [tuple(int(v) for v in segment) for segment in uids]
+        self.gids = [tuple(int(v) for v in segment) for segment in gids]
+
+    @staticmethod
+    def _translate(value, segments, source: int, target: int):
+        if isinstance(value, bool) or not isinstance(value, int):
+            return None
+        for segment in segments:
+            if segment[source] <= value < segment[source] + segment[2]:
+                return segment[target] + value - segment[source]
+        return None
+
+    def to_host(self, uid, gid) -> tuple[int, int] | None:
+        """The owner on the host of a file whose owner in the machines is *uid* : *gid*;
+        ``None`` when the machines have no such user or group."""
+        ids = self._translate(uid, self.uids, 0, 1), self._translate(gid, self.gids, 0, 1)
+        return None if None in ids else ids
+
+    def to_machine(self, uid, gid) -> tuple[int, int] | None:
+        """The owner in the machines of a file of the host owned by *uid* : *gid*; ``None`` when
+        *uid* is not a user of the machines (the file is somebody else's: the student's, the
+        account's).  A group the machines do not have becomes their group 0."""
+        machine_uid = self._translate(uid, self.uids, 1, 0)
+        if machine_uid is None:
+            return None
+        machine_gid = self._translate(gid, self.gids, 1, 0)
+        return machine_uid, 0 if machine_gid is None else machine_gid
+
+
 class Engine(ABC):
     """A container engine (see the module documentation)."""
 
@@ -67,6 +108,20 @@ class Engine(ABC):
         included.  Nothing for an engine whose machines write as root: the commands remove
         those directories while they are root themselves.  What is left is the caller's to
         remove, or to report."""
+
+    @abstractmethod
+    def machine_ids(self, lab_hash: str) -> MachineIds:
+        """The ids of the users of the machines of a running project, as they are on the host
+        (asked by a save: the owner of a file the machines wrote is recorded as the machines
+        see it, so that the save file means the same with any engine)."""
+
+    @abstractmethod
+    def reserve_machine_ids(self) -> MachineIds | None:
+        """Called by a restore before its ``restore()``, while the files of the new project are
+        still closed: the ids on the host of the users of the machines the next deployment of
+        this process will make, kept for it until then.  ``None`` with an engine whose machines
+        have the ids of the host: the restored files then stay with the owners the restore
+        gives them."""
 
     # ---- description of a project -------------------------------------------------------
 

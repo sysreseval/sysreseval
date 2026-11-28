@@ -260,10 +260,15 @@ def check_grade_class(module_rvlab, current_srelab_file):
 
 
 def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab_file, debug_project: bool,
-                               instructor_mode: bool = False):
+                               instructor_mode: bool = False, open_to_the_student: bool = True):
     """Create the on-disk layout of a new project (public/private dirs, answers, files,
     srelab symlink, user public dir, shared dir, debug / instructor-mode markers, the origin
-    file read by ``sre status``).  Fills ``setup`` as it goes."""
+    file read by ``sre status``).  Fills ``setup`` as it goes.
+
+    *open_to_the_student*: ``answers/`` and ``shared/`` are made writable by everybody, as a
+    running project has them.  A restore asks for closed ones (0o700) and opens them itself once
+    the saved files are in place with their owners: nobody else may write there meanwhile."""
+    student_mode = 0o777 if open_to_the_student else 0o700
     running_lab_name = setup.running_lab_name
     os.makedirs(params.sre_projects_dir, mode=0o755, exist_ok=True)
 
@@ -301,7 +306,7 @@ def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab
         os.mkdir(params.answers_dir(running_lab_name))
     except FileExistsError:
         error_quit(f"cannot create directory '{params.answers_dir(running_lab_name)}'")
-    os.chmod(params.answers_dir(running_lab_name), 0o777)
+    os.chmod(params.answers_dir(running_lab_name), student_mode)
 
     os.symlink(current_srelab_file, params.srelab_link_filename(running_lab_name))
 
@@ -319,7 +324,7 @@ def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab
     if getattr(module_rvlab, 'shared_path', False):
         shared_dir = f"{user_public_dir}/{params.shared_dir_name}"
         os.makedirs(shared_dir)
-        os.chmod(shared_dir, 0o777)
+        os.chmod(shared_dir, student_mode)
         setup.shared_dir = shared_dir
 
 

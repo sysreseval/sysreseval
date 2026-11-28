@@ -18,6 +18,7 @@ import pytest
 from SRE import params
 from SRE.command import save as save_cmd
 from SRE.engine import kathara_engine
+from SRE.engine.base import MachineIds
 
 
 class _FakeNetScheme:
@@ -99,7 +100,9 @@ class TestSaveWithAnEngineThatNeedsNoRoot:
     def run(self, privileged, monkeypatch, snapshot):
         engine = SimpleNamespace(
             needs_root=False, require_save_restore=lambda full_images=False: None,
-            save=lambda path, lab_hash, filesystem_diff, temp_dir: (snapshot('engine_save'), open(path, 'wb').close()))
+            save=lambda path, lab_hash, filesystem_diff, temp_dir: (snapshot('engine_save'), open(path, 'wb').close()),
+            machine_ids=lambda lab_hash: (snapshot('engine_machine_ids'), MachineIds([(0, 20000001, 65536)],
+                                                                                    [(0, 20000001, 65536)]))[1])
         monkeypatch.setattr(save_cmd, 'get_engine', lambda: engine)
         opened = save_cmd._open_output
         monkeypatch.setattr(save_cmd, '_open_output', lambda *a: (snapshot('open_output'), opened(*a))[1])
@@ -109,7 +112,7 @@ class TestSaveWithAnEngineThatNeedsNoRoot:
         state, snap = privilege_simulator
         self.run(privileged, monkeypatch, snap)
         log = dict(state['log'])
-        for stage in ('get_lab_from_kathara', 'do_action_state', 'engine_save'):
+        for stage in ('get_lab_from_kathara', 'do_action_state', 'engine_save', 'engine_machine_ids'):
             assert log[stage]['euid'] == 1100, f"euid is {log[stage]['euid']} at {stage}"
 
     def test_root_for_the_files(self, privilege_simulator, monkeypatch, tmp_pub_dir, privileged):
@@ -124,8 +127,8 @@ class TestSaveWithAnEngineThatNeedsNoRoot:
         self.run(privileged, monkeypatch, snap)
         stages = [name for name, _ in state['log']]
         assert stages == ['set_sudo_uid', 'gain_privileges', 'open_output', 'drop_temp', 'get_lab_from_kathara',
-                          'do_action_state', 'engine_save', 'gain_privileges', 'write_header', 'write_payload',
-                          'drop_temp']
+                          'do_action_state', 'engine_save', 'engine_machine_ids', 'gain_privileges', 'write_header',
+                          'write_payload', 'drop_temp']
         assert all(s['uid'] == 0 for _, s in state['log']), "the real uid stays root's for the whole save"
 
 

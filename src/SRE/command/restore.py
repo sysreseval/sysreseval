@@ -6,6 +6,7 @@ import datetime
 import os
 import pwd
 import shutil
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -85,7 +86,7 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
 
     ensure_save_tmp_dir()
     with tempfile.TemporaryDirectory(dir=params.save_tmp_dir, prefix='restore-') as tmp:
-        extract_payload(source, tmp)
+        saved = extract_payload(source, tmp)
         if isinstance(source, DecryptingReader):
             source.finish()
 
@@ -101,13 +102,18 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
 
         setup = ProjectSetup(running_lab_name=running_lab_name)
         try:
+            # answers/ and shared/ stay closed until the saved files are there with their owners:
+            # in directories open to everybody, a link planted meanwhile would send the copy, or
+            # the change of owner made as root, somewhere else
             create_project_directories(setup, module_rvlab, current_srelab_file, debug_project=debug_project,
-                                       instructor_mode=instructor_mode)
+                                       instructor_mode=instructor_mode, open_to_the_student=False)
             _copy_saved_project_files(tmp, setup)
-            _fix_restored_permissions(setup)
 
             net_scheme = module_rvlab.NetScheme(data=data, running_lab_name=running_lab_name)
             setup.net_scheme = net_scheme
+            # the ids the new machines will have on the host, where they are not those of the
+            # host: the files the saved machines owned go to the same users of the new ones
+            _hand_over_restored_files(setup, saved, get_engine().reserve_machine_ids())
             drop_privileges_permanently_if_not_needed(net_scheme)
 
             lab = net_scheme.get_new_lab_from_scheme()
@@ -137,6 +143,8 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
 
 
 def _copy_saved_project_files(tmp: str, setup: ProjectSetup):
+    """Copy the extracted files into the directories of the new project, which nobody else can
+    write in yet (`create_project_directories(open_to_the_student=False)`)."""
     running_lab_name = setup.running_lab_name
     for member, dest in ((params.answer_dir_name, params.answers_dir(running_lab_name)),
                          (params.files_dir_name, params.files_dir(running_lab_name)),
@@ -145,25 +153,63 @@ def _copy_saved_project_files(tmp: str, setup: ProjectSetup):
         src = os.path.join(tmp, member)
         if dest and os.path.isdir(src):
             shutil.copytree(src, dest, symlinks=True, dirs_exist_ok=True)
+    # copytree gives a directory the mode of the one it copies: closed again until the hand-over
+    for closed in (params.answers_dir(running_lab_name), setup.shared_dir):
+        if closed and os.path.isdir(closed):
+            os.chmod(closed, 0o700)
 
 
-def _chown_tree(top: str, uid: int, gid: int):
-    """chown everything *under* top (not top itself); symlinks are not followed."""
-    for root, dirs, files in os.walk(top):
+def _set_mode(name: str, dir_fd: int, expected: os.stat_result, mode: int):
+    """chmod the file or directory *name* of the directory *dir_fd*, never a link put in its
+    place: it is opened without following links and must be what *expected* described."""
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_DIRECTORY if stat.S_ISDIR(expected.st_mode) else 0)
+    fd = os.open(name, flags, dir_fd=dir_fd)
+    try:
+        if os.path.samestat(os.fstat(fd), expected):
+            os.fchmod(fd, mode)
+    finally:
+        os.close(fd)
+
+
+def _set_owners_and_modes(top: str, choose):
+    """For every entry under *top* (not *top* itself): ``choose(relative path, lstat result)``
+    gives ``(owner, mode)``, the ``(uid, gid)`` and the permission bits to give it, each
+    ``None`` to leave it as it is.  Symbolic links are never followed, at any level: the tree
+    is walked by directory descriptors and every entry is changed relative to the directory it
+    was listed in.  The process may be root and part of the tree already somebody else's."""
+    for root, dirs, files, root_fd in os.fwalk(top, topdown=False, follow_symlinks=False):
+        relative_root = os.path.relpath(root, top)
         for name in dirs + files:
+            relative = name if relative_root == '.' else os.path.join(relative_root, name)
             try:
-                os.lchown(os.path.join(root, name), uid, gid)
+                st = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+                owner, mode = choose(relative, st)
+                if owner is not None:
+                    os.chown(name, owner[0], owner[1], dir_fd=root_fd, follow_symlinks=False)
+                if mode is not None and (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)):
+                    _set_mode(name, root_fd, st, mode)
             except OSError as e:
-                log_error(f"restore: cannot chown '{os.path.join(root, name)}': {e}")
+                log_error(f"restore: cannot set the owner or the mode of '{os.path.join(root, name)}': {e}")
 
 
-def _fix_restored_permissions(setup: ProjectSetup):
-    """The extraction (tarfile data filter) dropped owners and group/other write bits: give the
-    restored answers/ and user public dir contents back to the student (when running as root)
-    and re-apply the modes `sre start` uses (answers/ 0o777 with 0o666 files, shared/ and
-    volume dirs 0o777)."""
+def _hand_over_restored_files(setup: ProjectSetup, saved: dict, machine_ids):
+    """Give the restored files their owners and modes, then open the project to the student.
+
+    The extraction (tarfile data filter) dropped owners, directory modes and group/other write
+    bits, and the files were copied as the sre account.  When running as root:
+
+    - ``answers/`` and the user public dir (``shared/``, the volumes) go to the student;
+    - with *machine_ids* (an engine whose machines have ids of their own on the host: the ids
+      of the machines about to be made), a file or directory of ``shared/`` or of a volume that
+      the save recorded as a machine's goes to the same user of the new machines, and every
+      entry the save describes gets its saved mode back.  Without it the machines read such a
+      file again only if anybody may: their root is nobody special on the host.
+
+    Last of all the modes `sre start` uses: ``answers/`` 0o777 with 0o666 files, ``shared/`` and
+    the volume directories 0o777.  Until then nobody but sre and root could enter them."""
     running_lab_name = setup.running_lab_name
     answers_dir = params.answers_dir(running_lab_name)
+    mnt_dir = params.private_mount_dir(running_lab_name)
     student = None
     if os.getuid() == 0 and SRE.username:
         try:
@@ -171,25 +217,45 @@ def _fix_restored_permissions(setup: ProjectSetup):
             student = (pw.pw_uid, pw.pw_gid)
         except KeyError:
             student = None
+    as_root = os.getuid() == 0
+
+    def of_the_machines(member: str):
+        """(the owner on the host, the mode) the save file asks for *member*, each None when it
+        says nothing a machine with ids of its own would need."""
+        entry = saved.get(member) if machine_ids is not None else None
+        if entry is None:
+            return None, None
+        owner = machine_ids.to_host(*entry.machine_ids) if as_root and entry.machine_ids is not None else None
+        return owner, entry.mode
+
+    def in_answers(relative: str, st: os.stat_result):
+        return student, (0o666 if os.sep not in relative and stat.S_ISREG(st.st_mode) else None)
+
+    def in_user_public(relative: str, st: os.stat_result):
+        if os.sep not in relative:      # shared/, a volume: the student's, opened at the end
+            return student, None
+        owner, mode = of_the_machines(os.path.join(params.save_user_public_member, relative))
+        return owner or student, mode
+
+    def in_mnt(relative: str, st: os.stat_result):
+        if os.sep not in relative:
+            return None, None
+        return of_the_machines(os.path.join(params.private_mount_dir_name, relative))
+
     gain_privileges()
     try:
-        if student is not None:
-            for top in (answers_dir, setup.user_public_dir):
-                if top and os.path.isdir(top):
-                    _chown_tree(top, *student)
-        os.chmod(answers_dir, 0o777)
-        for entry in Path(answers_dir).iterdir():
-            if entry.is_file() and not entry.is_symlink():
-                entry.chmod(0o666)
+        _set_owners_and_modes(answers_dir, in_answers)
+        if setup.user_public_dir and os.path.isdir(setup.user_public_dir):
+            _set_owners_and_modes(setup.user_public_dir, in_user_public)
+        if os.path.isdir(mnt_dir):
+            _set_owners_and_modes(mnt_dir, in_mnt)
+        # opened last
+        for top in (setup.user_public_dir, mnt_dir):
+            if top and os.path.isdir(top):
+                _set_owners_and_modes(top, lambda relative, st: (
+                    None, 0o777 if os.sep not in relative and stat.S_ISDIR(st.st_mode) else None))
         if setup.user_public_dir and os.path.isdir(setup.user_public_dir):
             os.chmod(setup.user_public_dir, 0o755)
-            for entry in Path(setup.user_public_dir).iterdir():
-                if entry.is_dir() and not entry.is_symlink():
-                    entry.chmod(0o777)
-        mnt_dir = params.private_mount_dir(running_lab_name)
-        if os.path.isdir(mnt_dir):
-            for entry in Path(mnt_dir).iterdir():
-                if entry.is_dir() and not entry.is_symlink():
-                    entry.chmod(0o777)
+        os.chmod(answers_dir, 0o777)
     finally:
         drop_privileges_temporarily()

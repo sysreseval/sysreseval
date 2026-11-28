@@ -9,6 +9,11 @@ Layout of a save file (stream-friendly: ``sre restore -`` reads it from stdin)::
     <payload>                    tar stream containing data.json, kathara.tar, answers/, files/,
                                  user_public/ and mnt/ — encrypted when the lab defines ``save_key``
 
+In ``user_public/`` and ``mnt/`` a file or a directory that a machine of the project owns carries
+two extended header records, ``params.save_machine_uid_record`` and ``save_machine_gid_record``:
+its owner as the machines see it.  A restore gives it to the same user of the new machines where
+the engine has ids of its own for them; the other members go back to the student.
+
 Encryption: the payload tar stream is cut into chunks of ``params.save_cipher_chunk_size``
 bytes, each one sealed with AES-256-GCM (key derived from ``save_key`` with PBKDF2-HMAC-SHA256
 and the salt stored in the header).  Frame: ``[4-byte length][1-byte last flag][12-byte nonce]
@@ -16,12 +21,16 @@ and the salt stored in the header).  Frame: ``[4-byte length][1-byte last flag][
 last flag, so reordering, truncation or header tampering are detected.
 """
 import dataclasses
+import grp
 import hashlib
 import json
 import os
+import pwd
 import secrets
+import stat
 import struct
 import tarfile
+import typing
 
 from . import params
 from .utils import error_quit, log_error
@@ -134,6 +143,17 @@ _PAYLOAD_TOP_LEVEL = frozenset({
 })
 
 
+# The members whose owner and mode a restore puts back: what the machines and the student wrote
+_OWNED_TOP_LEVEL = frozenset({params.save_user_public_member, params.private_mount_dir_name})
+_MAX_ID = 2 ** 32 - 1
+
+
+class SavedEntry(typing.NamedTuple):
+    """What a save file says of a file or a directory of ``user_public/`` or ``mnt/``."""
+    mode: int                               # its permission bits (0o777 at most)
+    machine_ids: tuple[int, int] | None     # its owner in the machines; None: not a machine's
+
+
 def _member_filter(tarinfo: tarfile.TarInfo):
     """Skip device nodes and fifos when saving."""
     if tarinfo.ischr() or tarinfo.isblk() or tarinfo.isfifo():
@@ -141,27 +161,81 @@ def _member_filter(tarinfo: tarfile.TarInfo):
     return tarinfo
 
 
-def _add_tree(tar: tarfile.TarFile, src: str, member: str):
-    """Add the directory *src* as *member*, one entry at a time so that an unreadable file
-    is skipped with a warning instead of aborting the whole save.  Symlinks are stored as
-    symlinks (never followed)."""
-    tar.add(src, arcname=member, recursive=False, filter=_member_filter)
-    for root, dirs, files in os.walk(src):
+def _described(tar: tarfile.TarFile, arcname: str, st: os.stat_result, linkname: str = '') -> tarfile.TarInfo:
+    """The member of a directory or of a symbolic link whose status is *st*, as ``TarFile.gettarinfo``
+    describes one (which reads the status by path: not usable on a tree somebody else may change)."""
+    info = tar.tarinfo(arcname)
+    info.type = tarfile.DIRTYPE if stat.S_ISDIR(st.st_mode) else tarfile.SYMTYPE
+    info.mode, info.uid, info.gid, info.size, info.mtime = st.st_mode, st.st_uid, st.st_gid, 0, st.st_mtime
+    info.linkname = linkname
+    try:
+        info.uname = pwd.getpwuid(st.st_uid)[0]
+    except KeyError:
+        pass
+    try:
+        info.gname = grp.getgrgid(st.st_gid)[0]
+    except KeyError:
+        pass
+    return info
+
+
+def _add_tree(tar: tarfile.TarFile, src: str, member: str, machine_owner=None):
+    """Add the directory *src* as *member*.
+
+    The tree may belong to the student and be changed while it is read, by a process that is
+    root: it is walked by directory descriptors (``os.fwalk``) and every file is opened without
+    following a link, relative to the directory it was listed in.  An entry replaced by a link
+    meanwhile is stored as that link, never followed: nothing outside *src* is read.  Symbolic
+    links are stored as links; devices, fifos and sockets are left out; an unreadable file is
+    skipped with a warning instead of aborting the whole save.
+
+    *machine_owner*: ``(uid, gid) -> (uid, gid) in the machines``, or ``None`` for a file that
+    is not a machine's; the answer is recorded with the member."""
+    def record_owner(info: tarfile.TarInfo):
+        ids = machine_owner(info.uid, info.gid) if machine_owner is not None else None
+        if ids is not None:
+            info.pax_headers = {params.save_machine_uid_record: str(ids[0]),
+                                params.save_machine_gid_record: str(ids[1])}
+        return info
+
+    def on_error(error: OSError):
+        log_error(f"save: skipping '{error.filename}': {error.strerror or error}")
+
+    for root, dirs, files, root_fd in os.fwalk(src, onerror=on_error, follow_symlinks=False):
         rel = os.path.relpath(root, src)
-        for name in sorted(dirs) + sorted(files):
-            path = os.path.join(root, name)
-            arcname = os.path.join(member, name) if rel == '.' else os.path.join(member, rel, name)
+        base = member if rel == '.' else os.path.join(member, rel)
+        if rel == '.':
+            tar.addfile(_described(tar, member, os.fstat(root_fd)))
+        dirs.sort()         # the order they are walked in
+        for name in dirs + sorted(files):
+            arcname = os.path.join(base, name)
             try:
-                tar.add(path, arcname=arcname, recursive=False, filter=_member_filter)
+                st = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+                if stat.S_ISDIR(st.st_mode):
+                    tar.addfile(record_owner(_described(tar, arcname, st)))
+                elif stat.S_ISLNK(st.st_mode):
+                    tar.addfile(record_owner(_described(tar, arcname, st, os.readlink(name, dir_fd=root_fd))))
+                elif stat.S_ISREG(st.st_mode):
+                    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
+                    with os.fdopen(fd, 'rb') as f:
+                        info = tar.gettarinfo(arcname=arcname, fileobj=f)   # the status of the open file
+                        if info is None or not (info.isreg() or info.islnk()):
+                            continue        # it was replaced by something else meanwhile
+                        record_owner(info)
+                        if info.isreg():
+                            tar.addfile(info, f)
+                        else:
+                            tar.addfile(info)       # another name of a file already stored
             except OSError as e:
-                log_error(f"save: skipping '{path}': {e}")
+                log_error(f"save: skipping '{os.path.join(root, name)}': {e.strerror or e}")
 
 
 def write_payload(fileobj, data_json_path: str, kathara_tar_path: str,
                   answers_dir: str | None, files_dir: str | None,
-                  user_public_dir: str | None, mnt_dir: str | None):
-    """Write the payload tar stream to *fileobj* (a plain stream or an :class:`EncryptingWriter`)."""
-    with tarfile.open(fileobj=fileobj, mode='w|') as tar:
+                  user_public_dir: str | None, mnt_dir: str | None, machine_owner=None):
+    """Write the payload tar stream to *fileobj* (a plain stream or an :class:`EncryptingWriter`).
+    *machine_owner*: see :func:`_add_tree`; asked for the members of ``user_public/`` and ``mnt/``."""
+    with tarfile.open(fileobj=fileobj, mode='w|', format=tarfile.PAX_FORMAT) as tar:
         tar.add(data_json_path, arcname=params.data_json_name, filter=_member_filter)
         tar.add(kathara_tar_path, arcname=params.save_kathara_name, filter=_member_filter)
         for src, member in ((answers_dir, params.answer_dir_name),
@@ -169,7 +243,7 @@ def write_payload(fileobj, data_json_path: str, kathara_tar_path: str,
                             (user_public_dir, params.save_user_public_member),
                             (mnt_dir, params.private_mount_dir_name)):
             if src and os.path.isdir(src):
-                _add_tree(tar, src, member)
+                _add_tree(tar, src, member, machine_owner if member in _OWNED_TOP_LEVEL else None)
 
 
 def _restore_filter(member: tarfile.TarInfo, dest_path: str):
@@ -184,17 +258,43 @@ def _restore_filter(member: tarfile.TarInfo, dest_path: str):
         return None
 
 
-def extract_payload(fileobj, dest_dir: str):
+def _recorded_machine_ids(member: tarfile.TarInfo) -> tuple[int, int] | None:
+    """The owner in the machines a save recorded for *member*; ``None`` without both records,
+    or when one is not an id (the file is a student's: it is theirs to write)."""
+    ids = []
+    for key in (params.save_machine_uid_record, params.save_machine_gid_record):
+        value = (member.pax_headers or {}).get(key)
+        if not isinstance(value, str) or not value.isascii() or not value.isdigit() or int(value) > _MAX_ID:
+            return None
+        ids.append(int(value))
+    return ids[0], ids[1]
+
+
+def extract_payload(fileobj, dest_dir: str) -> dict[str, SavedEntry]:
     """Extract the payload tar stream into *dest_dir* (safe extraction: ``tarfile.data_filter``,
-    top-level whitelist); ``data.json`` and ``kathara.tar`` must be present."""
+    top-level whitelist); ``data.json`` and ``kathara.tar`` must be present.
+
+    That filter drops the owners and part of the modes.  What the save file says of the files and
+    directories of ``user_public/`` and ``mnt/`` is returned, by member name: the caller, who
+    knows where the files go and for whom, puts back what it sees fit."""
+    saved = {}
+
+    def extraction_filter(member: tarfile.TarInfo, dest_path: str):
+        filtered = _restore_filter(member, dest_path)
+        if (filtered is not None and member.name.split('/', 1)[0] in _OWNED_TOP_LEVEL
+                and (member.isreg() or member.isdir() or member.islnk()) and isinstance(member.mode, int)):
+            saved[os.path.normpath(member.name)] = SavedEntry(member.mode & 0o777, _recorded_machine_ids(member))
+        return filtered
+
     try:
         with tarfile.open(fileobj=fileobj, mode='r|') as tar:
-            tar.extractall(dest_dir, filter=_restore_filter)
+            tar.extractall(dest_dir, filter=extraction_filter)
     except tarfile.TarError as e:
         error_quit(f"invalid or truncated save file: {e}")
     for required in (params.data_json_name, params.save_kathara_name):
         if not os.path.isfile(os.path.join(dest_dir, required)):
             error_quit(f"invalid save file: '{required}' is missing")
+    return saved
 
 
 # ---------------------------------------------------------------------------

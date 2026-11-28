@@ -1048,6 +1048,102 @@ class TestUidRanges:
         assert events == [('lock', True, True), 'create', 'create', 'unlock', 'init', 'init']
 
 
+class TestIdsOfTheMachines:
+    """The root of a machine is a subordinate uid of the account, another one for each uid
+    range.  A save asks which uids of the host are the users of a project's machines; a restore
+    asks which ones the machines it is about to make will have, before it makes them."""
+    # the user namespace of the account: itself, then its subordinate ids
+    UID_MAP = [(0, 1100, 1), (1, 20000000, 2162688)]
+    GID_MAP = [(0, 1100, 1), (1, 30000000, 2162688)]
+
+    @pytest.fixture
+    def maps(self, engine, monkeypatch):
+        monkeypatch.setattr(engine, '_id_maps', lambda: (self.UID_MAP, self.GID_MAP))
+
+    def test_the_ids_of_a_range(self):
+        ids_of_range = podman_engine.ids_of_range
+        assert ids_of_range(self.UID_MAP, 1) == [(0, 20000000, 65536)]
+        assert ids_of_range(self.UID_MAP, 1 + 2 * 65536) == [(0, 20131072, 65536)]
+        # the last range the account has ids for, and one beyond
+        assert ids_of_range(self.UID_MAP, 1 + 32 * 65536) == [(0, 22097152, 65536)]
+        assert ids_of_range(self.UID_MAP, 1 + 33 * 65536) == []
+        # subordinate ids given in two pieces: the range is on both
+        assert ids_of_range([(0, 1100, 1), (1, 100000, 100), (101, 700000, 100000)], 1) == [
+            (0, 100000, 100), (100, 700000, 65436)]
+
+    def test_of_a_running_project(self, engine, maps):
+        engine.run.reply('podman', 'ps', stdout=listing(('r', 'running', 2), ('pc', 'running', 2)))
+        ids = engine.machine_ids(HASH)
+        assert engine.run.commands[-1][-2:] == ['--filter', f'label=lab_hash={HASH}']
+        assert ids.to_machine(20131072, 30131072) == (0, 0) and ids.to_machine(20131105, 30131076) == (33, 4)
+        assert ids.to_machine(1100, 1100) is None and ids.to_machine(1000, 1000) is None     # the account, a student
+        assert ids.to_machine(20000000, 30000000) is None                                    # another project
+
+    def test_of_a_project_without_machine(self, engine, maps):
+        with pytest.raises(EngineError, match="no machine of this project"):
+            engine.machine_ids(HASH)
+
+    def test_reserved_for_a_restore_then_taken_by_its_deployment(self, engine, maps, monkeypatch):
+        """The range is chosen, and the ranges locked, before the files of the restored project
+        get their owners; the deployment that follows takes that range and unlocks."""
+        events = []
+        monkeypatch.setattr(podman_engine.fcntl, 'flock', lambda fd, how: events.append('lock'))
+        real_close = os.close
+        monkeypatch.setattr(podman_engine.os, 'close', lambda fd: (events.append('unlock'), real_close(fd))[1])
+        engine.run.reply('podman', 'ps', stdout=json.dumps(
+            [{'Names': [f'sre_other{r}_m'], 'State': 'running', 'Labels': {'app': 'sre', 'uid_range': str(r)}}
+             for r in (0, 1)]).encode())
+        ids = engine.reserve_machine_ids()
+        assert ids.to_host(0, 0) == (20131072, 30131072) and ids.to_host(1000, 100) == (20132072, 30131172)
+        assert events == ['lock']
+        # the two other projects are gone meanwhile: the deployment keeps the range it reserved
+        engine.run.reply('podman', 'ps', stdout=b'[]')
+        engine.run.reply('podman', 'create', function=lambda argv: (events.append('create'), completed())[1])
+        engine.deploy(two_machines(engine))
+        argv = engine.run.starting_with('podman', 'create')[0].argv
+        assert argv[argv.index('--uidmap') + 1] == '0:131073:65536' and 'uid_range=2' in argv
+        assert events == ['lock', 'create', 'create', 'unlock']
+        # the next deployment of the process chooses for itself again
+        engine.deploy(two_machines(engine))
+        assert events == ['lock', 'create', 'create', 'unlock', 'lock', 'create', 'create', 'unlock']
+        assert 'uid_range=0' in engine.run.starting_with('podman', 'create')[-1].argv
+
+    def test_a_reservation_is_given_up_when_the_deployment_fails(self, engine, maps, monkeypatch):
+        closed = []
+        real_close = os.close
+        monkeypatch.setattr(podman_engine.os, 'close', lambda fd: (closed.append(fd), real_close(fd))[1])
+        engine.reserve_machine_ids()
+        lock = engine._reserved_range[0]
+        monkeypatch.setattr(engine, '_require_outside', lambda lab: (_ for _ in ()).throw(EngineError('no pasta')))
+        with pytest.raises(EngineError, match='no pasta'):
+            engine.deploy(two_machines(engine))
+        assert closed == [lock] and engine._reserved_range is None
+
+    def test_no_range_left_for_a_restore(self, engine, maps, monkeypatch):
+        monkeypatch.setattr(params, 'podman_uid_ranges', 1 + 1)
+        engine.run.reply('podman', 'ps', stdout=json.dumps(
+            [{'Names': [f'sre_other{r}_m'], 'State': 'running', 'Labels': {'app': 'sre', 'uid_range': str(r)}}
+             for r in (0, 1)]).encode())
+        closed = []
+        real_close = os.close
+        monkeypatch.setattr(podman_engine.os, 'close', lambda fd: (closed.append(fd), real_close(fd))[1])
+        with pytest.raises(EngineError, match="2 projects already run on this host"):
+            engine.reserve_machine_ids()
+        assert len(closed) == 1 and engine._reserved_range is None      # the ranges are not left locked
+
+    @pytest.mark.skipif(not os.path.exists('/proc/self/uid_map'), reason="needs /proc/<pid>/uid_map (Linux)")
+    def test_the_maps_are_read_from_the_namespace_of_the_account(self, engine, monkeypatch):
+        monkeypatch.setattr(engine, '_pause_pid', lambda: os.getpid())
+        uid_map, gid_map = engine._id_maps()
+        assert uid_map and gid_map and all(len(line) == 3 and all(isinstance(v, int) for v in line)
+                                           for line in uid_map + gid_map)
+
+    def test_maps_that_cannot_be_read(self, engine, monkeypatch):
+        monkeypatch.setattr(engine, '_pause_pid', lambda: 2 ** 31 - 1)
+        with pytest.raises(EngineError, match="cannot read the ids of the user namespace"):
+            engine._id_maps()
+
+
 # ---------------------------------------------------------------------------
 # Removing
 # ---------------------------------------------------------------------------

@@ -163,14 +163,14 @@ class TestPayload:
         The failure is simulated (root can read everything, so chmod 0 is not enough)."""
         secret = project_tree / 'files' / 'secret.txt'
         secret.write_text('x')
-        real_add = tarfile.TarFile.add
+        real_open = os.open
 
-        def failing_add(self, name, *args, **kwargs):
+        def failing_open(name, *args, **kwargs):
             if str(name).endswith('secret.txt'):
                 raise PermissionError(13, 'Permission denied', str(name))
-            return real_add(self, name, *args, **kwargs)
+            return real_open(name, *args, **kwargs)
 
-        monkeypatch.setattr(tarfile.TarFile, 'add', failing_add)
+        monkeypatch.setattr(os, 'open', failing_open)
         blob = _write_full(project_tree)
         monkeypatch.undo()
         dest = tmp_path / 'dest'

@@ -21,7 +21,7 @@ from Kathara.manager.Kathara import Kathara
 from Kathara.model.Lab import Lab
 
 from .. import params
-from .base import Engine, SwitchModesUnsupported
+from .base import Engine, MachineIds, SwitchModesUnsupported
 
 # Kathara's exception when its network plugin cannot do what a lab asks, recognised by its name
 _NETWORK_PLUGIN_ERROR = 'DockerPluginError'
@@ -218,6 +218,13 @@ class KatharaEngine(Engine):
 
     def remove_files_of_machines(self, paths):
         pass    # root's files: removed by the commands, as root
+
+    def machine_ids(self, lab_hash):
+        every_id = [(0, 0, 2 ** 32)]    # a machine of Docker has the uids and gids of the host
+        return MachineIds(every_id, every_id)
+
+    def reserve_machine_ids(self):
+        return None     # nothing to translate: a restore gives the files back as it always did
 
     def require_save_restore(self, full_images=False):
         pass

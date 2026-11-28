@@ -80,7 +80,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .. import params
 from . import save_format, vde_console
-from .base import Engine, EngineError, SwitchModesUnsupported
+from .base import Engine, EngineError, MachineIds, SwitchModesUnsupported
 
 # What Kathara gives a non-privileged machine, and the two capabilities of Docker's default set
 # that are not in Podman's.
@@ -266,6 +266,19 @@ def _message(output: bytes | None, first: bool = False) -> str:
     return (lines[0] if first else lines[-1]) if lines else ""
 
 
+def ids_of_range(id_map: list, first: int, size: int = _RANGE_SIZE) -> list[tuple[int, int, int]]:
+    """The *size* ids from *first* of a user namespace whose map is *id_map* (lines ``(id in the
+    namespace, id on the host, count)``), as ``(id in the machines, id on the host, count)``
+    segments: the machines of a project see the ids from *first* as their ids from 0.  A
+    part of the range the namespace does not map is left out."""
+    segments = []
+    for inside, outside, count in id_map:
+        low, high = max(inside, first), min(inside + count, first + size)
+        if low < high:
+            segments.append((low - first, outside + low - inside, high - low))
+    return sorted(segments)
+
+
 class PodmanLab:
     """The description of a project (see ``base``): ``hash``, ``shared_path``, ``machines``."""
 
@@ -368,6 +381,7 @@ class PodmanEngine(Engine):
         self._deploy_handler = None
         self._events_lock = threading.Lock()
         self._namespace_lock = threading.Lock()
+        self._reserved_range = None     # (lock on the ranges, uid range) kept for the next deploy()
 
     # ---- running a command ------------------------------------------------------------------
 
@@ -428,14 +442,39 @@ class PodmanEngine(Engine):
         except OSError as e:
             raise EngineError(f"cannot run {argv[0]}: {e.strerror or e} ({params.podman_setup_hint})") from None
 
-    def _namespace_alive(self) -> bool:
-        """Whether the user namespace of the account exists: its pause process runs."""
+    def _pause_pid(self) -> int | None:
+        """The process that holds the user namespace of the account, when it runs."""
         try:
             with open(f"{self._runtime_dir}/libpod/tmp/pause.pid") as f:
                 pid = int(f.read().strip())
-            return os.stat(f"/proc/{pid}").st_uid == params.sre_uid
+            return pid if os.stat(f"/proc/{pid}").st_uid == params.sre_uid else None
         except (OSError, ValueError):
-            return False
+            return None
+
+    def _namespace_alive(self) -> bool:
+        """Whether the user namespace of the account exists: its pause process runs."""
+        return self._pause_pid() is not None
+
+    def _id_maps(self) -> tuple[list, list]:
+        """The uid map and the gid map of the user namespace of the account, each a list of
+        ``(first id in the namespace, first id on the host, count)``: 0 is the account itself,
+        the ids from 1 are its subordinate ids."""
+        self._ensure_namespace()
+        pid = self._pause_pid()
+        maps = []
+        for name in ("uid_map", "gid_map"):
+            try:
+                with open(f"/proc/{pid}/{name}") as f:
+                    maps.append([tuple(int(v) for v in line.split()) for line in f if len(line.split()) == 3])
+            except (OSError, ValueError) as e:
+                raise EngineError(f"cannot read the ids of the user namespace of {params.sre_user}: {e}") from None
+        return maps[0], maps[1]
+
+    def _machine_ids_of(self, uid_range: int) -> MachineIds:
+        """The ids on the host of the users of the machines of a project in *uid_range*."""
+        uid_map, gid_map = self._id_maps()
+        first = 1 + uid_range * _RANGE_SIZE     # what `--uidmap 0:<first>:65536` names
+        return MachineIds(ids_of_range(uid_map, first), ids_of_range(gid_map, first))
 
     def _ensure_namespace(self):
         """Have the user namespace of the account made when it is missing (see the module
@@ -850,34 +889,41 @@ class PodmanEngine(Engine):
         return f"{entry['directory']}/mgmt"
 
     def deploy(self, lab):
-        self._require_setup()
-        machines = list(lab.machines.values())
-        workers = max(1, min(params.max_docker_concurrency, len(machines)))
+        # the range a restore reserved for this deployment (reserve_machine_ids), still locked
+        reserved, self._reserved_range = self._reserved_range, None
+        lock, uid_range = reserved if reserved is not None else (None, None)
         try:
-            self._require_outside(lab)
-            self._ensure_images(list(dict.fromkeys(qualified_image(m.options["image"]) for m in machines)))
-            networks = self._start_networks(lab)
-            # The ranges stay locked until every container of the project exists with its label:
-            # another `sre start` then sees the range as held.
-            lock = os.open(params.podman_dir, os.O_RDONLY)
+            self._require_setup()
+            machines = list(lab.machines.values())
+            workers = max(1, min(params.max_docker_concurrency, len(machines)))
             try:
-                fcntl.flock(lock, fcntl.LOCK_EX)
-                uid_range = self._free_uid_range()
+                self._require_outside(lab)
+                self._ensure_images(list(dict.fromkeys(qualified_image(m.options["image"]) for m in machines)))
+                networks = self._start_networks(lab)
+                # The ranges stay locked until every container of the project exists with its
+                # label: another `sre start` then sees the range as held.
+                if lock is None:
+                    lock = os.open(params.podman_dir, os.O_RDONLY)
+                    fcntl.flock(lock, fcntl.LOCK_EX)
+                    uid_range = self._free_uid_range()
                 with ThreadPoolExecutor(max_workers=workers) as pool:
                     list(pool.map(lambda m: self._create(lab, m, uid_range), machines))
-            finally:
                 os.close(lock)
-            self._report(self._deploy_handler, "started", items=[m.name for m in machines])
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                list(pool.map(lambda m: self._start_machine(lab, m, networks), machines))
-            self._report(self._deploy_handler, "ended")
-        except BaseException:
-            # the caller only undeploys a deployment that returned: undo this one here
-            try:
-                self._remove(lab.hash, [], run_hooks=False)
-            except Exception:
-                pass
-            raise
+                lock = None
+                self._report(self._deploy_handler, "started", items=[m.name for m in machines])
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    list(pool.map(lambda m: self._start_machine(lab, m, networks), machines))
+                self._report(self._deploy_handler, "ended")
+            except BaseException:
+                # the caller only undeploys a deployment that returned: undo this one here
+                try:
+                    self._remove(lab.hash, [], run_hooks=False)
+                except Exception:
+                    pass
+                raise
+        finally:
+            if lock is not None:
+                os.close(lock)
 
     def _remove(self, lab_hash: str, errors: list[str], run_hooks: bool) -> list[str]:
         """Remove the containers, the units and the directory of a project; the names of the
@@ -906,6 +952,35 @@ class PodmanEngine(Engine):
         self.run(["systemctl", "--user", "stop", self._unit(lab_hash, "*"), self._slice(lab_hash)])
         shutil.rmtree(self._network_dir(lab_hash), ignore_errors=True)
         return removed
+
+    def machine_ids(self, lab_hash):
+        for container in self._containers(lab_hash):
+            try:
+                return self._machine_ids_of(int(container["Labels"].get("uid_range")))
+            except (TypeError, ValueError):
+                continue
+        raise EngineError("no machine of this project: the ids of its machines are not known")
+
+    def reserve_machine_ids(self):
+        """The uid range the next deploy() of this process takes, the ranges staying locked
+        until its containers exist (or until the process ends)."""
+        self._require_setup()
+        self._release_reserved_range()
+        lock = os.open(params.podman_dir, os.O_RDONLY)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            uid_range = self._free_uid_range()
+            ids = self._machine_ids_of(uid_range)
+        except BaseException:
+            os.close(lock)
+            raise
+        self._reserved_range = (lock, uid_range)
+        return ids
+
+    def _release_reserved_range(self):
+        reserved, self._reserved_range = self._reserved_range, None
+        if reserved is not None:
+            os.close(reserved[0])
 
     def remove_files_of_machines(self, paths):
         """What a machine wrote belongs to a subordinate uid of the account, in directories the

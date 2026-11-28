@@ -24,6 +24,7 @@ import select
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tarfile
@@ -1304,6 +1305,50 @@ class TestSaveRestore:
         restored, restored_hash = _restore(projects, tmp_path / 'older.sre')
         assert _run(restored, 'router', read) == expected
         _stop(restored, restored_hash)
+        assert _left_running() == []
+
+    def test_what_a_machine_owned_in_shared_is_its_own_again(self, labs_dir, projects, tmp_path, no_exam):
+        """After a restore a machine could not read a mode-600 file it had itself written in its
+        shared directory or in a volume, nor write in a directory it had made there: everything
+        came back owned by the student, and the root of a machine is an ordinary uid of the
+        host.  The save records the owner as the machines see it, the restore gives the file to
+        the same user of the new machines (another uid range: other uids on the host)."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'shared.py')
+        make = ' && '.join(
+            f'echo secret-{d} > /{d}/key && chmod 600 /{d}/key && mkdir -m 700 /{d}/private && echo deep > /{d}/private/f'
+            f' && echo log > /{d}/of-www && chown 33:4 /{d}/of-www && chmod 640 /{d}/of-www' for d in ('shared', 'data'))
+        assert _run(running_lab_name, 'router', make) == (0, '')
+        # somebody else's file in shared/, as the student writes one from the host
+        shared = _user_public_dir(running_lab_name) / params.shared_dir_name
+        (shared / 'notes').write_text('of the student\n')
+        os.chown(shared / 'notes', 65534, 65534)
+        os.chmod(shared / 'notes', 0o664)
+        first_uid = _host_uid(lab_hash, 'router')
+        assert (shared / 'key').stat().st_uid == first_uid
+        _save(running_lab_name, tmp_path / 'p.sre')
+
+        # restored while the first project runs: the new machines are in another uid range
+        restored, restored_hash = _restore(projects, tmp_path / 'p.sre')
+        new_uid = _host_uid(restored_hash, 'router')
+        assert new_uid not in (first_uid, 0, params.sre_uid)
+        seen = 'for d in shared data; do cat /$d/key /$d/private/f && stat -c "%u:%g %a" /$d/key /$d/private /$d/of-www; done'
+        expected = ''.join(f'secret-{d}\ndeep\n0:0 600\n0:0 700\n33:4 640\n' for d in ('shared', 'data'))
+        assert _run(restored, 'router', seen) == (0, expected)
+        # the machine writes again in the directory it had made, and the other machine reads /shared/of-www as before
+        assert _run(restored, 'router', 'echo more > /shared/private/new && echo more > /data/private/new') == (0, '')
+        assert _run(restored, 'client', 'su -s /bin/sh www-data -c "cat /shared/of-www"') == (0, 'log\n')
+        new_shared = _user_public_dir(restored) / params.shared_dir_name
+        new_volume = Path(params.private_mount_dir(restored)) / 'data'
+        for path in (new_shared / 'key', new_shared / 'private', new_shared / 'private' / 'f', new_volume / 'key'):
+            assert path.stat().st_uid == new_uid, path
+        assert (new_shared / 'of-www').stat().st_uid == new_uid + 33
+        # the file that was nobody of the machines': to whoever restores (root here), mode kept
+        notes = (new_shared / 'notes').stat()
+        assert notes.st_uid == 0 and stat.S_IMODE(notes.st_mode) == 0o664
+        assert stat.S_IMODE(new_shared.stat().st_mode) == 0o777
+        _stop(restored, restored_hash)
+        assert not new_shared.exists()
+        _stop(running_lab_name, lab_hash)
         assert _left_running() == []
 
     def test_the_archive_the_docker_tests_restore(self, labs_dir, projects, tmp_path):
