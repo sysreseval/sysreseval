@@ -63,7 +63,7 @@ def _read_archive(path):
 
 def _make_archive(path, module, *, archived_count, stored_grade,
                   include_keyword=True, current_srelab_file=None,
-                  exam_json=None):
+                  exam_json=None, container_engine=None):
     """Build an archive whose grade_list element is locked at ``stored_grade``
     and whose answers section carries ``archived_count`` under
     ``params.auto_eval_count_keyword`` (unless ``include_keyword`` is False).
@@ -85,6 +85,7 @@ def _make_archive(path, module, *, archived_count, stored_grade,
         grade._answers[params.auto_eval_count_keyword] = archived_count
     if exam_json is not None:
         grade._exam_json = exam_json
+    grade._container_engine = container_engine      # what an evaluation notes of its project
     grade.save_tests_on_file(str(path))
 
 
@@ -373,6 +374,27 @@ class TestReEvalExamJson:
         # msgpack returns tuples for lists with use_list=False; compare as JSON.
         import json
         assert json.loads(json.dumps(archive[params.exam_json_keyword])) == self._EXAM_JSON
+
+    @pytest.mark.parametrize('engine', ['podman', 'kathara'])
+    def test_the_engine_of_the_evaluation_is_kept(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab,
+                                                  monkeypatch, engine):
+        """A re-evaluation runs no machine: the new archive says which engine ran the project
+        when it was evaluated, whatever the engine of the host that re-grades."""
+        monkeypatch.setattr(params, 'container_engine', 'kathara')
+        in_archive = tmp_path / f'{_ARCHIVE_STEM}.zst'
+        _make_archive(in_archive, module, archived_count=0, stored_grade=0, current_srelab_file=str(srelab),
+                      container_engine=engine)
+        assert _read_archive(in_archive)[params.archive_engine_keyword] == engine
+        archive = _read_archive(self._run_re_eval(mock_sre_args, tmp_path, srelab, in_archive))
+        assert archive[params.archive_engine_keyword] == engine
+
+    def test_no_engine_when_the_archive_lacks_it(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab):
+        """An archive written before the engine was recorded: the re-evaluation does not make one up."""
+        in_archive = tmp_path / f'{_ARCHIVE_STEM}.zst'
+        _make_archive(in_archive, module, archived_count=0, stored_grade=0, current_srelab_file=str(srelab))
+        assert params.archive_engine_keyword not in _read_archive(in_archive)
+        archive = _read_archive(self._run_re_eval(mock_sre_args, tmp_path, srelab, in_archive))
+        assert params.archive_engine_keyword not in archive
 
     def test_no_exam_json_when_archive_lacks_it(self, mock_sre_args, tmp_path,
                                                  tmp_pub_dir, module, srelab):

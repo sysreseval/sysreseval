@@ -28,7 +28,7 @@ from SRE import params
 from SRE.utils import canonical_lab_name
 from sysreseval.util import load_projects, load_info
 
-from .access import AccessError
+from .access import AccessError, engine_of_info
 from .exam import load_exam, view as exam_view, is_over as exam_is_over
 from ..identity import Identity
 
@@ -245,6 +245,8 @@ class Project:
             'title': self.info.get('title', ''),
             'debug_project': bool(self.info.get('debug_project', False)),
             'instructor_mode': bool(self.info.get('instructor_mode', False)),
+            # what info.json says: the engine of a debug project, '' for every other project
+            'container_engine': engine_of_info(self.info),
             'info_mtime': self.info_mtime,
             'terminals': self.terminal_count(),
             'managed': self.managed,

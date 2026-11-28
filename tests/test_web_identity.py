@@ -10,6 +10,14 @@ def test_login_regex_is_the_one_of_sre_access():
     assert ident.VALID_LOGIN.pattern == access._VALID_USERNAME.pattern
 
 
+def test_the_container_engines_are_those_of_sre():
+    """The portal does not import SRE: it has its own list of the engines, and the names of the
+    keys the CLI prints."""
+    from SRE import params
+    assert ident.CONTAINER_ENGINES == params.container_engines
+    assert ident.LAB_ENGINES_KEY == params.lab_list_engines_key
+
+
 class TestIdentity:
     def test_round_trip_through_headers(self):
         me = Identity(login='dupont', fullname='Émile Dupont', email='e.dupont@example.org', role='instructor',

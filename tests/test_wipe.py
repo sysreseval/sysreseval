@@ -25,8 +25,11 @@ class _FakeProcess:
     alive = False
     exitcode = 0
 
-    def __init__(self, target=None):
+    wiped = []      # the engine each process was started for
+
+    def __init__(self, target=None, args=()):
         self.killed = False
+        self.wiped.append(args[0] if args else None)
 
     def start(self):
         pass
@@ -69,7 +72,8 @@ def wipe_env(monkeypatch, tmp_path):
 
     monkeypatch.setattr(wipe_mod, 'gain_privileges', fake_gain_privileges)
     monkeypatch.setattr(wipe_mod, 'drop_privileges_permanently', fake_drop_perm)
-    monkeypatch.setattr(wipe_mod, '_docker_wipe', lambda: state['events'].append(('docker_wipe',)))
+    monkeypatch.setattr(wipe_mod, '_docker_wipe', lambda name=None: state['events'].append(('docker_wipe',)))
+    monkeypatch.setattr(_FakeProcess, 'wiped', [])
     monkeypatch.setattr(wipe_mod.multiprocessing, 'Process', _FakeProcess)
     monkeypatch.setattr(shutil, 'rmtree', recording_rmtree)
     monkeypatch.setattr(params, 'sre_projects_dir', str(state['projects']))
@@ -159,7 +163,7 @@ class TestWipe:
         monkeypatch.setattr(_FakeProcess, 'alive', alive)
         monkeypatch.setattr(_FakeProcess, 'exitcode', exitcode)
 
-        def fails():
+        def fails(name=None):
             wipe_env['events'].append(('docker_wipe',))
             raise RuntimeError("cannot run podman: no user manager")
         monkeypatch.setattr(wipe_mod, '_docker_wipe', fails)
@@ -249,3 +253,50 @@ class TestRemoveLabLeftovers:
         assert errors == []
         # Kathara's own undeploy saw every container: it has removed the images, nothing is asked again
         kathara_instance.undeploy_lab.assert_not_called()
+
+
+class TestWipeOfEveryEngine:
+    """A host may run projects with several engines: `sre wipe` wipes each of them, those the
+    host allows and those the projects still there record."""
+
+    def test_one_engine_by_default(self, wipe_env):
+        _populate(wipe_env)
+        wipe_mod.wipe()
+        assert _FakeProcess.wiped == ['kathara']
+
+    def test_the_engines_the_host_allows(self, wipe_env, monkeypatch):
+        monkeypatch.setattr(params, 'container_engine', 'podman')
+        monkeypatch.setattr(params, 'container_engines_allowed', ('kathara', 'podman'))
+        _populate(wipe_env)
+        wipe_mod.wipe()
+        assert _FakeProcess.wiped == ['podman', 'kathara']      # the default engine first
+        assert list(wipe_env['projects'].iterdir()) == []
+
+    def test_the_engine_of_a_project_the_host_no_longer_allows(self, wipe_env):
+        """The record is read before the directories go."""
+        from SRE import origin
+        layout = _populate(wipe_env)
+        origin.write_origin(params.origin_filename(layout['rln_a']), params.origin_local, 'em', engine='podman')
+        wipe_mod.wipe()
+        assert _FakeProcess.wiped == ['kathara', 'podman']
+        assert list(wipe_env['projects'].iterdir()) == []
+
+    def test_an_engine_that_cannot_be_wiped_does_not_keep_the_other_from_it(self, wipe_env, monkeypatch, capsys):
+        monkeypatch.setattr(params, 'container_engine', 'podman')
+        monkeypatch.setattr(params, 'container_engines_allowed', ('podman', 'kathara'))
+        monkeypatch.setattr(_FakeProcess, 'exitcode', 1)
+        forced = []
+
+        def forced_wipe(name=None):
+            forced.append(name)
+            if name == 'podman':
+                raise RuntimeError("cannot run podman: no user manager")
+        monkeypatch.setattr(wipe_mod, '_docker_wipe', forced_wipe)
+        _populate(wipe_env)
+        with pytest.raises(SystemExit) as exit_info:
+            wipe_mod.wipe()
+        assert exit_info.value.code == 1
+        assert _FakeProcess.wiped == ['podman', 'kathara'] and forced == ['podman', 'kathara']
+        assert ("the machines of the projects may still run: podman: cannot run podman: no user manager"
+                in capsys.readouterr().err)
+        assert list(wipe_env['projects'].iterdir()) == []        # the directories are removed all the same

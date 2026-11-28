@@ -16,6 +16,7 @@ from ..utils_privileges import drop_privileges_permanently_if_not_needed, drop_p
     drop_privileges_temporarily, gain_privileges_if_needed, gain_privileges, root_needed, set_sudo_uid_for_username
 from ..files_transfert import copy_state_files
 from .. import params
+from ..engine import EngineError, engine_of_project
 from ..params import SRE
 
 
@@ -53,6 +54,21 @@ def _append_auto_eval_timestamp(log_path: Path) -> None:
 def action_eval():
     user_not_allowed_in_exam_mode()
     do_eval(running_lab_name=resolve_running_lab_name(SRE.args.running_lab), print_result=True)
+
+
+def evaluation_groups(running_lab_names) -> list[list[str]]:
+    """The projects a command evaluates in threads, in the groups to run one after the other:
+    first those of an engine that needs root, then the others (a host with one engine has one
+    group).  The uids are those of the whole process: evaluated together, the code of a lab
+    whose engine needs no root would run while a thread of the first group holds root."""
+    with_root, without = [], []
+    for running_lab_name in running_lab_names:
+        try:
+            needs_root = engine_of_project(running_lab_name).needs_root
+        except EngineError:     # its own evaluation will say so
+            needs_root = True
+        (with_root if needs_root else without).append(running_lab_name)
+    return [group for group in (with_root, without) if group]
 
 
 def do_eval(running_lab_name, multiples_evals=False, print_result=False):

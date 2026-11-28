@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from .. import params
-from ..engine import get_engine
+from ..engine import engine_of_project
 from ..utils import set_all_variables_for_action, user_not_allowed_in_exam_mode, resolve_running_lab_name, \
     error_quit, remove_tree, cannot_remove_message
 from ..params import SRE
@@ -62,13 +62,14 @@ def stop_running_lab(running_lab_name: str, lab_hash: str = None, multi_project:
         module_rvlab, net_scheme = set_all_variables_for_action(running_lab_name=running_lab_name)
         lab_hash = net_scheme.get_lab_hash()
         privileged = net_scheme.has_privileged_machines()
+    engine = engine_of_project(running_lab_name)    # read before the directories go
     errors: list[str] = []
     gain_privileges()
     try:
         for user in undeploy_users(running_lab_name, privileged):
             set_sudo_uid_for_username(user)
-            get_engine().undeploy(lab_hash)
-        remove_lab_leftovers(lab_hash, errors)
+            engine.undeploy(lab_hash)
+        remove_lab_leftovers(lab_hash, errors, engine)
         remove_project_directories(running_lab_name, errors)
     finally:
         if multi_project:

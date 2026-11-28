@@ -1,7 +1,6 @@
 import shlex
 import sys
 
-from ..engine import get_engine
 from ..utils import error_quit, set_all_variables_for_action, in_user_mode, resolve_running_lab_name
 from ..utils_privileges import drop_privileges_permanently_if_not_needed, set_sudo_uid_for_username, \
     drop_privileges_temporarily, gain_privileges_if_needed
@@ -37,7 +36,7 @@ def action_exec():
         error_quit(f"device {device} is unknown")
 
     gain_privileges_if_needed(net_scheme)
-    engine = get_engine()
+    engine = net_scheme.engine
 
     status = engine.machine_status(net_scheme.get_lab_hash(), device)
     drop_privileges_temporarily()

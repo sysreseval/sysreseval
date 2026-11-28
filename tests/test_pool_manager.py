@@ -1616,3 +1616,156 @@ class TestLabs:
         async def go():
             return await asyncio.gather(*(pool.labs(bob) for _ in range(5)))
         assert run(go()) == [LABS_OUT] * 5 and len(self.asked(session)) == 1
+
+
+class TestContainerEngines:
+    """A host allows some container engines, a lab may accept only some: what the portal keeps
+    of both, and the placement of a project on a host that can run it."""
+
+    @staticmethod
+    def _pool(**engines):
+        """Three hosts up: a (Kathara alone), b (Podman by default, Kathara too), c (an agent
+        that tells no engine) unless *engines* says otherwise."""
+        hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in 'abc']
+        session = FakeSession()
+        pool = Pool(hosts, session)
+        told = {'a': ['kathara'], 'b': ['podman', 'kathara'], 'c': [], **engines}
+        for n in 'abc':
+            pool.status[n] = HostStatus(reachable=True, load1=0.5, engines=told[n],
+                                        default_engine=told[n][0] if told[n] else '')
+            session.labs[f'http://{n}'] = [
+                {'name': 'sre', 'kind': 'dir', 'sort': 'name', 'engines': ['kathara']},
+                {'name': 'sre/dhcp.py', 'title': 'DHCP', 'kind': 'lab', 'sort': 'name'},
+                {'name': 'sre/nfs.py', 'title': 'NFS', 'kind': 'lab', 'sort': 'name', 'engines': ['kathara']},
+                {'name': 'sre/odd.py', 'kind': 'lab', 'sort': 'name', 'engines': ['lxc', 7, 'podman', 'podman']},
+                {'name': 'sre/none.py', 'kind': 'lab', 'sort': 'name', 'engines': 'kathara'}]
+        return pool, session
+
+    def test_the_engines_of_a_status(self):
+        from sreweb.portal.pool import status_from_json
+        st = status_from_json(up(engines=['podman', 'kathara'], default_engine='podman'))
+        assert (st.engines, st.default_engine) == (['podman', 'kathara'], 'podman')
+        # the default one first, whatever the order sent
+        st = status_from_json(up(engines=['kathara', 'podman'], default_engine='podman'))
+        assert (st.engines, st.default_engine) == (['podman', 'kathara'], 'podman')
+        # an agent that tells none (an older one): nothing is known
+        st = status_from_json(up())
+        assert (st.engines, st.default_engine) == ([], '')
+
+    @pytest.mark.parametrize('engines, default, kept', [
+        (['kathara', 'lxc', 5, 'kathara'], 'kathara', (['kathara'], 'kathara')),
+        (['kathara', 'podman'], 'lxc', (['kathara', 'podman'], 'kathara')),      # a default that is none of them
+        (['kathara', 'podman'], None, (['kathara', 'podman'], 'kathara')),
+        ('kathara', 'kathara', ([], '')), (['lxc'], 'lxc', ([], '')), ([], '', ([], '')), (None, 'podman', ([], '')),
+    ])
+    def test_a_broken_agent_plants_nothing(self, engines, default, kept):
+        from sreweb.portal.pool import status_from_json
+        st = status_from_json(up(engines=engines, default_engine=default))
+        assert (st.engines, st.default_engine) == kept
+
+    def test_the_rows_of_the_pool_page(self):
+        pool, _ = self._pool()
+        rows = {row['name']: row for row in pool.summary()}
+        assert (rows['b']['engines'], rows['b']['default_engine']) == (['podman', 'kathara'], 'podman')
+        assert (rows['c']['engines'], rows['c']['default_engine']) == ([], '')
+
+    def test_the_engines_of_the_labs_are_for_instructors(self):
+        """The list of an instructor names the engines of a lab that restricts them (the Open
+        page); a student's list never does: a student is not told which engine runs a project."""
+        pool, _ = self._pool()
+        prof = run(pool.labs(Identity(login='prof', role=ROLE_INSTRUCTOR)))
+        by_name = {lab['name']: lab for lab in prof}
+        assert by_name['sre/nfs.py']['engines'] == ['kathara']
+        assert by_name['sre/odd.py']['engines'] == ['podman']          # the names that are engines, once
+        for name in ('sre', 'sre/dhcp.py', 'sre/none.py'):             # a directory, a lab that says nothing
+            assert 'engines' not in by_name[name], name
+        student = run(pool.labs(Identity(login='bob')))
+        assert [lab['name'] for lab in student] == [lab['name'] for lab in prof]
+        assert all('engines' not in lab for lab in student)
+
+    def test_the_placement_knows_them_whoever_fetched_the_list(self):
+        pool, _ = self._pool()
+        assert pool.lab_engines('sre/nfs.py') is None                  # no list fetched yet
+        run(pool.labs(Identity(login='bob')))
+        assert pool.lab_engines('sre/nfs.py') == ('kathara',) and pool.lab_engines('sre@nfs.py') == ('kathara',)
+        assert pool.lab_engines('sre/dhcp.py') is None and pool.lab_engines(None) is None
+
+    def test_a_lab_that_no_longer_restricts_its_engines(self):
+        pool, session = self._pool()
+        pool.labs_cache_ttl = 0
+        run(pool.labs(Identity(login='bob')))
+        for n in 'abc':
+            session.labs[f'http://{n}'] = [{'name': 'sre/nfs.py', 'kind': 'lab', 'sort': 'name'}]
+        run(pool.labs(Identity(login='bob')))
+        assert pool.lab_engines('sre/nfs.py') is None
+
+    def test_a_lab_goes_to_a_host_that_allows_one_of_its_engines(self):
+        pool, _ = self._pool(a=['podman'], c=['podman'])
+        run(pool.labs(Identity(login='bob')))
+        for _ in range(3):
+            assert pool.pick(Identity(login='bob'), lab='sre/nfs.py')[0].name == 'b'
+        # a lab that accepts every engine goes anywhere: the least loaded host
+        assert pool.pick(Identity(login='bob'), lab='sre/dhcp.py')[0].name == 'a'
+
+    def test_a_host_that_tells_no_engine_is_never_left_out(self):
+        """An older agent: `sre start` there decides."""
+        pool, _ = self._pool(a=['podman'], b=['podman'])
+        run(pool.labs(Identity(login='bob')))
+        assert pool.pick(Identity(login='bob'), lab='sre/nfs.py')[0].name == 'c'
+
+    def test_no_host_for_the_lab(self):
+        pool, _ = self._pool(a=['podman'], b=['podman'], c=['podman'])
+        run(pool.labs(Identity(login='bob')))
+        with pytest.raises(PoolError) as e:
+            pool.pick(Identity(login='bob'), lab='sre/nfs.py')
+        # a student is not told about engines
+        assert (e.value.status, e.value.message, e.value.retry_after) == (503, 'no host available for this lab', 60)
+        with pytest.raises(PoolError) as e:
+            pool.pick(Identity(login='prof', role=ROLE_INSTRUCTOR), lab='sre/nfs.py')
+        assert (e.value.status, e.value.message) == (503, 'no host available with an engine this lab accepts')
+        # a pool that is simply full says what it always said
+        for n in 'abc':
+            pool.status[n].projects = 10
+        with pytest.raises(PoolError) as e:
+            pool.pick(Identity(login='bob'), lab='sre/nfs.py')
+        assert e.value.message == 'no host available for a new project'
+
+    def test_an_instructor_asks_for_an_engine(self):
+        pool, _ = self._pool()
+        prof = Identity(login='prof', role=ROLE_INSTRUCTOR)
+        run(pool.labs(prof))
+        assert pool.pick(prof, lab='sre/dhcp.py', engine='podman')[0].name in ('b', 'c')    # c: not known
+        pool.status['c'] = HostStatus(reachable=True, load1=0.5, engines=['kathara'], default_engine='kathara')
+        for _ in range(3):
+            assert pool.pick(prof, lab='sre/dhcp.py', engine='podman')[0].name == 'b'
+        # an engine the lab does not accept: refused before any host is looked at
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, lab='sre/nfs.py', engine='podman')
+        assert (e.value.status, e.value.message) == (409, 'this lab does not accept the engine podman')
+        # no host allows it
+        pool.status['b'] = HostStatus(reachable=True, load1=0.5, engines=['kathara'], default_engine='kathara')
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, lab='sre/dhcp.py', engine='podman')
+        assert (e.value.status, e.value.message) == (503, 'no host available with the engine podman')
+
+    def test_a_host_named_with_an_engine_or_a_lab_it_cannot_run(self):
+        pool, _ = self._pool(c=['podman'])
+        prof = Identity(login='prof', role=ROLE_INSTRUCTOR)
+        run(pool.labs(prof))
+        assert pool.pick(prof, host='b', lab='sre/dhcp.py', engine='kathara')[0].name == 'b'
+        assert pool.pick(prof, host='a', lab='sre/nfs.py')[0].name == 'a'
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, host='a', lab='sre/dhcp.py', engine='podman')
+        assert (e.value.status, e.value.message) == (409, 'the host a does not allow the engine podman')
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, host='c', lab='sre/nfs.py')
+        assert (e.value.status, e.value.message) == (409, 'the host c allows no engine this lab accepts')
+        # nothing was reserved by a refused placement
+        assert pool.status['a'].projects == 1 and pool.status['c'].projects == 0
+
+    def test_the_restore_of_a_saved_project_goes_the_same_way(self):
+        pool, _ = self._pool(a=['podman'], c=['podman'])
+        run(pool.labs(Identity(login='bob')))
+        for n in 'abc':
+            pool.status[n].saves = True
+        assert pool.pick(Identity(login='bob'), lab='sre@nfs.py', need_saves=True)[0].name == 'b'

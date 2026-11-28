@@ -152,13 +152,13 @@ def is_button(selector: str, text: str, *, disabled: bool = False, title: str = 
 
 
 @contextlib.asynccontextmanager
-async def browser_of(tmp_path, state, host_over=None, agent_over=None):
+async def browser_of(tmp_path, state, host_over=None, agent_over=None, mock_env=None):
     """The harness (proxy mode, the real web directory, its only host disabled by the
     configuration unless *host_over* says otherwise, the state file *state*, *agent_over* in the
-    agent.toml of its agent), the identity proxy making the browser the instructor, and the
-    browser: ``(h, browser, url)``."""
+    agent.toml of its agent, *mock_env*: the ``MOCK_*`` variables of its fake ``sre``), the
+    identity proxy making the browser the instructor, and the browser: ``(h, browser, url)``."""
     over = {**P.PROXY_OVER, 'admin': {'token': ADMIN, 'state_file': str(state)}, 'pool': QUIET_POOL}
-    h = P.Harness(tmp_path, auth_mode='proxy', web_over=over, agent_over=agent_over,
+    h = P.Harness(tmp_path, auth_mode='proxy', web_over=over, agent_over=agent_over, mock_env=mock_env,
                   host_over={'enabled': False} if host_over is None else host_over)
     h.web_dir = WEB
     async with h:
@@ -692,4 +692,43 @@ class TestPoolPage:
                 row = h.portal.pool.summary()[0]
                 assert (row['saves_configured'], row['saves_error']) == (False, 'not configured')
                 assert page.errors == []
+        P.run(go())
+
+
+ENGINES = "document.querySelector('#pool tbody tr[data-host=\"a01\"] td.engines')"
+
+
+class TestEngines:
+    def test_the_engines_of_a_host(self, tmp_path):
+        """The Engines cell of a host: the container engines it may run a project with, the
+        default one first and in bold; nothing for an agent that does not tell them."""
+        async def go():
+            env = {'MOCK_ENGINES': '["podman", "kathara"]'}
+            async with browser_of(tmp_path, tmp_path / 'state' / 'pool.json', host_over={},
+                                  mock_env=env) as (h, browser, url):
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(f"{ENGINES} && {ENGINES}.textContent === 'podman, kathara'", what="the Engines cell")
+                assert await page.evaluate(f"[...{ENGINES}.querySelectorAll('strong')].map((e) => e.textContent)") == ['podman']
+                assert await page.evaluate(f"getComputedStyle({ENGINES}.querySelector('strong')).fontWeight") == '700'
+                assert await page.evaluate(f"{ENGINES}.title") == 'Default engine: podman'
+                # one cell per title, the new one after the version of the agent
+                titles = await page.evaluate("[...document.querySelectorAll('#pool thead th')].map((th) => th.textContent.trim())")
+                assert len(titles) == 18 and titles[titles.index('Version') + 1] == 'Engines'
+                assert await page.evaluate("document.querySelectorAll('#pool tbody tr[data-host=\"a01\"] td').length") == 18
+                assert await page.evaluate(f"[...{ENGINES}.parentNode.children].indexOf({ENGINES})") == titles.index('Engines')
+                # an agent that does not tell its engines (an older one): an empty cell
+                h.agent.engines = ()
+                await h.portal.pool.refresh()
+                await page.wait_for(f"{ENGINES} && {ENGINES}.textContent === ''", what="the empty Engines cell")
+                assert await page.evaluate(f"{ENGINES}.title") == ''
+        P.run(go())
+
+    def test_one_engine(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, tmp_path / 'state' / 'pool.json', host_over={}) as (h, browser, url):
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(f"{ENGINES} && {ENGINES}.textContent === 'kathara'", what="the Engines cell")
+                # the column sorts like the others
+                await page.click('#pool th[data-sort="engines"]')
+                await page.wait_for(f"{ENGINES} && {ENGINES}.textContent === 'kathara'", what="the row after the sort")
         P.run(go())

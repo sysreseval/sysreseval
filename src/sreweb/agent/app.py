@@ -57,7 +57,8 @@ from .terminals import (TerminalSession, MAX_CLIENTS_PER_SESSION, MAX_READONLY_C
                         PROBE_DELAY)  # noqa: F401  (PROBE_DELAY: the tests)
 from .. import savestore
 from ..config import AgentConfig
-from ..identity import Identity, IdentityError, IDENTITY_KEY, STATUS_PROJECT_NAMES
+from ..identity import (Identity, IdentityError, IDENTITY_KEY, STATUS_PROJECT_NAMES, STATUS_ENGINES,
+                        STATUS_DEFAULT_ENGINE, CONTAINER_ENGINES, START_ENGINE_KEY)
 from ..i18n import translator
 from ..projectview import sanitise, schema_svg, schema_pdf, lang_priority
 
@@ -207,33 +208,51 @@ def render_readmes(labs: list) -> list:
     return rendered
 
 
-def usage_sources(cfg, pub_dir) -> dict:
-    """Where the usage sampler finds the containers of the projects (its `docker_socket` and
-    `podman_slices`): what `[usage]` names, the slices of Podman before the socket of Docker;
-    else, for the agent of the machine, where the container engine of the host has them.  An
-    agent given its own projects directory (the tests, the fake pool) is not the agent of the
-    machine: it measures nothing of the workstation unless `[usage]` names something."""
-    if cfg.podman_slices:
-        return {'docker_socket': '', 'podman_slices': cfg.podman_slices}
-    if cfg.docker_socket or pub_dir is not None:
-        return {'docker_socket': cfg.docker_socket, 'podman_slices': ''}
+def host_engines() -> tuple:
+    """The container engines this host allows, its default one first
+    (`params.host_allowed_engines()`): what the status tells the portal, and what a start that
+    names an engine is checked against.  `()` when the parameters of the host do not say so
+    properly: `sre` itself says what is wrong with them."""
     try:
-        engine = params.host_container_engine()
+        return tuple(params.host_allowed_engines())
     except ValueError:
-        engine = params.container_engine_kathara     # `sre` itself says what is wrong with the parameter
-    if engine == params.container_engine_podman:
+        return ()
+
+
+def usage_sources(cfg, pub_dir, engines=None) -> dict:
+    """Where the usage sampler finds the containers of the projects (its `docker_socket` and
+    `podman_slices`): what `[usage]` names (one of them, or both); else, for the agent of the
+    machine, where the container engines the host allows (*engines*, `host_engines()` without
+    them) have them: the socket of Docker for Kathara, the slices of the projects for Podman,
+    both on a host that allows both.  An agent given its own projects directory (the tests, the
+    fake pool) is not the agent of the machine: it measures nothing of the workstation unless
+    `[usage]` names something."""
+    if cfg.podman_slices or cfg.docker_socket or pub_dir is not None:
+        return {'docker_socket': cfg.docker_socket, 'podman_slices': cfg.podman_slices}
+    if engines is None:
+        engines = host_engines()
+    if not engines:
+        engines = (params.container_engine_kathara,)    # `sre` itself says what is wrong with the parameters
+    sources = {'docker_socket': '', 'podman_slices': ''}
+    if params.container_engine_kathara in engines:
+        sources['docker_socket'] = params.docker_socket_path
+    if params.container_engine_podman in engines:
         from SRE.engine.podman_engine import project_slices
-        return {'docker_socket': '', 'podman_slices': project_slices(cfg.cgroup_root)}
-    return {'docker_socket': params.docker_socket_path, 'podman_slices': ''}
+        sources['podman_slices'] = project_slices(cfg.cgroup_root)
+    return sources
 
 
 class Agent:
     def __init__(self, cfg: AgentConfig, *, pub_dir: str | None = None, projects_dir: str | None = None,
                  localedirs=None, hostname: str | None = None, extra_env: dict | None = None,
-                 archive_dirs: list | None = None):
+                 archive_dirs: list | None = None, engines=None):
         """*archive_dirs*: where the evaluation archives are (``params.archive_dirs`` by default):
-        the last evaluation of each project shown to the instructors."""
+        the last evaluation of each project shown to the instructors.  *engines*: the container
+        engines the ``sre`` of this agent allows, the default one first (``host_engines()`` by
+        default: those of the machine; the tests and the fake pool give those of their fake
+        ``sre``)."""
         self.cfg = cfg
+        self.engines = tuple(engines) if engines is not None else host_engines()
         self.pub_dir = pub_dir or params.sre_pub_dir
         self.projects_dir = projects_dir or params.sre_projects_dir
         self.localedirs = list(localedirs if localedirs is not None else params.locale_dirs)
@@ -257,7 +276,7 @@ class Agent:
         # the Docker images of the labs, pulled when the portal gives this host its turn
         self.preloader = Preloader(self.runner, cfg.preload, default_paths=_lab_directories())
         # what the running projects use, measured for the portal
-        self.usage = UsageSampler(self.registry, cfg.usage, **usage_sources(cfg.usage, pub_dir))
+        self.usage = UsageSampler(self.registry, cfg.usage, **usage_sources(cfg.usage, pub_dir, self.engines))
         # the drain asked on the host itself (`sre set-drain`), told to the portal in the status
         self.local_drain = LocalDrain(self.pub_dir, cfg.allow_local_drain)
         # the saved projects: a directory shared by the pool hosts ([saves] of agent.toml)
@@ -629,6 +648,8 @@ class Agent:
         managed = sum(1 for p in self.registry.projects.values() if p.managed)
         return web.json_response({
             'hostname': self.hostname, 'sre_version': params.sre_version,
+            # the container engines a project may be started with here, the default one first
+            STATUS_ENGINES: list(self.engines), STATUS_DEFAULT_ENGINE: self.engines[0] if self.engines else '',
             'projects': self.registry.count(), 'managed_projects': managed,
             'local_projects': self.registry.count() - managed,
             # the running lab names: how the portal learns that a project is gone (its shared
@@ -850,6 +871,17 @@ class Agent:
         debug_project = bool(body.get('debug_project', False))
         if (instructor_mode or debug_project) and not identity.is_instructor:
             raise AccessError(403, "instructors only")
+        # the container engine an instructor chose for the project (the Open page): a privileged
+        # start too, with the instructor as owner; without one `sre start` takes the first
+        # engine of the host that the lab accepts, as it does for a student
+        engine = body.get(START_ENGINE_KEY)
+        if engine is not None:
+            if not identity.is_instructor:
+                raise AccessError(403, "instructors only")
+            if engine not in CONTAINER_ENGINES:
+                raise AccessError(400, "engine is not a container engine")
+            if engine not in self.engines:
+                raise AccessError(409, f"this host does not allow the engine {engine}")
         preset = body.get('flavor')
         flavor = body.get('flavor_json')
         if preset is not None:
@@ -862,6 +894,8 @@ class Agent:
         if lab not in self._lab_names(labs):
             raise AccessError(404, f"unknown lab {lab}")
         options = (['--debug-web-project'] if debug_project else []) + (['--instructor-mode'] if instructor_mode else [])
+        if engine is not None:
+            options += ['--engine', engine]
         if preset is not None:
             options += ['--set-flavor-name', preset]
         elif flavor is not None:
@@ -878,7 +912,8 @@ class Agent:
         try:
             return await self._stream_creation(request, identity, args, body.get('idle_timeout'),
                                                reservation=reservation,
-                                               privileged=instructor_mode or debug_project or exam is not None,
+                                               privileged=(instructor_mode or debug_project or exam is not None
+                                                           or engine is not None),
                                                exam=exam)
         finally:
             if reservation is not None:

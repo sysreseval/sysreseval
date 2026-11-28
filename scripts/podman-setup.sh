@@ -1,6 +1,6 @@
 #!/bin/bash
-# Prepare this host for the Podman engine of SRE (container_engine = "podman", or an entry of
-# container_engine_by_host, in params.py).  Run once as root; running it again changes nothing.
+# Prepare this host for the Podman engine of SRE (the default engine of the host, or one of its
+# container_engines_allowed, in params.py).  Run once as root; running it again changes nothing.
 #
 # The machines of a project are then rootless Podman containers of the account sre_user:
 #   - the account gets a range of subordinate uids and gids (/etc/subuid, /etc/subgid), large
@@ -334,5 +334,8 @@ if id -Gn "$user" | tr ' ' '\n' | grep -qx "$(getent group "$cli_gid" | cut -d: 
     note "On a host that only uses the Podman engine, take $user out of that group and set docker_gid to $gid."
 fi
 echo "The Podman engine is ready on this host: $ranges project(s) at a time, each in a uid range of its own."
-engine="$("$PYTHON" -W ignore -c 'import sys; sys.path.insert(0, sys.argv[1]); from SRE import params; print(params.host_container_engine())' "$SRC" 2>/dev/null || true)"
-[ "$engine" = podman ] || note "the engine of this host is still '${engine:-unknown}': set container_engine = \"podman\" (or an entry of container_engine_by_host) in $params_file."
+engines="$("$PYTHON" -W ignore -c 'import sys; sys.path.insert(0, sys.argv[1]); from SRE import params; print(" ".join(params.host_allowed_engines()))' "$SRC" 2>/dev/null || true)"
+case " $engines " in
+    *" podman "*) ;;
+    *) note "this host does not use the Podman engine yet (its engines: ${engines:-unknown}): set container_engine = \"podman\" (or an entry of container_engine_by_host), or add \"podman\" to container_engines_allowed, in $params_file." ;;
+esac

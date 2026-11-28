@@ -47,6 +47,19 @@ class TestCat:
         assert fields['errors'] == [{'category': 'WARNING', 'text': 'slow'}, {'category': 'ERROR', 'text': 'an old entry'}]
         assert fields['grades'][params.running_lab_name_keyword] == RLN and fields['grades']['total_grade_exo_eval'] == 1
 
+    def test_the_engine_of_the_evaluated_project(self, tmp_path, monkeypatch, capsys):
+        """Among the grades, with the date of the evaluation; null for an archive written before
+        the engine was recorded."""
+        with_engine = write_archive(tmp_path / 'a.zst', **{params.archive_engine_keyword: 'podman'})
+        older = write_archive(tmp_path / 'b.zst')
+        for path, engine in ((with_engine, 'podman'), (older, None)):
+            monkeypatch.setattr(params.SRE, 'args', args_for([path], json=True, grades=True))
+            cat.action_cat()
+            grades = json.loads(capsys.readouterr().out)['grades']
+            assert grades[params.archive_engine_keyword] == engine
+            assert list(grades)[:3] == [params.running_lab_name_keyword, params.eval_date_keyword,
+                                        params.archive_engine_keyword]
+
     def test_extract_files(self, tmp_path, monkeypatch, capsys):
         """--extract-files writes the saved files of the archive into the current directory
         (it raised a NameError: `os` was not imported)."""

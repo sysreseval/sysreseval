@@ -73,11 +73,19 @@ def action_state():
     else:
         cheat_path.unlink(missing_ok=True)
 
+# the states a project is created by (`sre start`, `sre restore`): the first section of its log
+_FIRST_STATES = (params.initial_state_name, params.restore_state_name)
+
+
 def do_action_state(lab, state, net_scheme, project_has_directory):
     srelab_dir = params.get_srelab_dir(running_lab_name=net_scheme.running_lab_name)
     # operations log of debug projects (GUI "Log" tab); a null object otherwise
     ops_log = getattr(net_scheme, 'ops_log', None) or OperationsLog.disabled()
     ops_log.begin(f"state {state}")
+    if state in _FIRST_STATES and getattr(net_scheme, 'debug_project', False):
+        # the first lines of the log of a debug project: which engine runs it (a debug project
+        # is the only one whose interface says so)
+        ops_log.lines([f"container engine: {net_scheme.get_engine_name()}\n"])
     if project_has_directory and srelab_dir is not None:
         pushed = copy_state_files(lab=lab, state=state, srelab_dir=srelab_dir)
         for machine_name, dirs in pushed.items():

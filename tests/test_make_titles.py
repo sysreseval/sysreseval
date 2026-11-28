@@ -2,6 +2,7 @@
 on an existing titles.json (its options, its order and its sub-directory entries kept, the labs
 no longer there dropped, the new ones appended), and ``--directories`` (the sub-directories of
 the lab tree listed in the titles.json of their parent)."""
+import ast
 import json
 import sys
 from pathlib import Path
@@ -611,3 +612,78 @@ class TestShippedWeights:
             if changed:
                 stale[str(path.parent.relative_to(SHIPPED_LABS.parent.parent))] = changed
         assert not stale, f"weights (stored, computed) to refresh with `sre make-titles`: {stale}"
+
+
+# --- the engines the labs accept ("@engines") ------------------------------------------------------
+
+class TestEngines:
+    """`sre make-titles` stores the engines of every lab that restricts them (its
+    `container_engines` attribute) under the "@engines" option of titles.json: what
+    `sre list --with-titles` gives the web portal, which places a project on a host that
+    allows one of them."""
+
+    @pytest.fixture(autouse=True)
+    def _table(self, monkeypatch):
+        monkeypatch.setattr(params, 'default_machine_weight', 1.0)
+        monkeypatch.setattr(params, 'image_weights', {})
+
+    def test_written_after_the_weights(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'a.py', _lab(head='title = "A"\ncontainer_engines = ("kathara",)\n'))
+        _write(tmp_lab_dir / 'b.py', _lab(head='title = "B"\n'))
+        _write(tmp_lab_dir / 'c.py', _lab(head='container_engines = ["podman", "kathara", "podman"]\n'))
+        _make(tmp_lab_dir)
+        path = tmp_lab_dir / 'titles.json'
+        assert _read_titles(path) == {"@weights": {"a.py": 2, "b.py": 2, "c.py": 2},
+                                      "@engines": {"a.py": ["kathara"], "c.py": ["podman", "kathara"]},
+                                      "a.py": "A", "b.py": "B"}
+        assert list(_read_titles(path))[:2] == ["@weights", "@engines"]
+
+    def test_no_key_when_no_lab_restricts_them(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'a.py', _lab(head='title = "A"\n'))
+        _make(tmp_lab_dir)
+        assert "@engines" not in _read_titles(tmp_lab_dir / 'titles.json')
+
+    def test_computed_never_kept_from_the_file(self, tmp_lab_dir):
+        """A lab that no longer restricts its engines, a lab that is gone: the option of the
+        file is replaced by what the labs say now."""
+        _write(tmp_lab_dir / 'a.py', _lab(head='title = "A"\n'))
+        _write(tmp_lab_dir / 'b.py', _lab(head='container_engines = ("podman",)\n'))
+        (tmp_lab_dir / 'titles.json').write_text(json.dumps(
+            {"@sort": "manual", "@engines": {"a.py": ["kathara"], "ghost.py": ["kathara"]}, "a.py": "Hand"}))
+        _make(tmp_lab_dir)
+        titles = _read_titles(tmp_lab_dir / 'titles.json')
+        assert titles["@engines"] == {"b.py": ["podman"]}
+        assert titles["@sort"] == "manual" and titles["a.py"] == "A"
+
+    def test_a_bad_attribute_is_warned_about_and_left_out(self, tmp_lab_dir, capsys):
+        _write(tmp_lab_dir / 'a.py', _lab(head='title = "A"\ncontainer_engines = "kathara"\n'))
+        _make(tmp_lab_dir)
+        err = capsys.readouterr().err
+        assert "no engines for" in err and "container_engines = 'kathara'" in err
+        assert "@engines" not in _read_titles(tmp_lab_dir / 'titles.json')
+
+    def test_a_lab_in_a_directory(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'tp' / 'srelab.py', _lab(head='title = "TP"\ncontainer_engines = ("kathara",)\n'))
+        _make(tmp_lab_dir)
+        assert _read_titles(tmp_lab_dir / 'titles.json')["@engines"] == {"tp": ["kathara"]}
+
+    def test_recursive_each_directory_has_its_own(self, tmp_lab_dir):
+        _write(tmp_lab_dir / 'a.py', _lab(head='container_engines = ("kathara",)\n'))
+        _write(tmp_lab_dir / 's4' / 'b.py', _lab(head='container_engines = ("podman",)\n'))
+        _make(tmp_lab_dir, recursive=True)
+        assert _read_titles(tmp_lab_dir / 'titles.json')["@engines"] == {"a.py": ["kathara"]}
+        assert _read_titles(tmp_lab_dir / 's4' / 'titles.json')["@engines"] == {"b.py": ["podman"]}
+
+    def test_the_labs_of_the_repository(self):
+        """The "@engines" stored in the tree are those the labs declare now."""
+        stale = {}
+        for path in sorted(SHIPPED_LABS.rglob(params.titles_file_name)):
+            stored = json.loads(path.read_text()).get(params.titles_engines_key, {})
+            declared = {}
+            for lab in sorted(path.parent.glob('*.py')):
+                for line in lab.read_text(errors='replace').splitlines():
+                    if line.startswith(f"{params.lab_engines_attribute} = "):
+                        declared[lab.name] = list(ast.literal_eval(line.split('=', 1)[1].strip()))
+            if stored != declared:
+                stale[str(path.parent.relative_to(SHIPPED_LABS.parent.parent))] = (stored, declared)
+        assert not stale, f"engines (stored, declared) to refresh with `sre make-titles`: {stale}"

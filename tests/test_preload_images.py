@@ -47,8 +47,8 @@ def pulls(monkeypatch):
     """The images asked to ``_pull_image``, in order; those of ``pulls.failing`` fail."""
     asked = []
 
-    def pull(image):
-        asked.append(image)
+    def pull(image, engine_name=None):
+        asked.append(image if engine_name is None else (engine_name, image))
         return image not in pull.failing
     pull.failing = set()
     pull.asked = asked
@@ -56,9 +56,9 @@ def pulls(monkeypatch):
     return pull
 
 
-def run(paths, *, progress=False, random_delay=0, user=False):
+def run(paths, *, progress=False, random_delay=0, user=False, engine=None):
     SRE.args = SimpleNamespace(paths=[str(p) for p in paths], progress=progress, random_delay=random_delay,
-                               user=user, debug=False)
+                               user=user, debug=False, engine=engine)
     preload_images.action_preload_images()
 
 
@@ -249,3 +249,45 @@ class TestAccess:
         with pytest.raises(SystemExit) as e:
             run([lab_dir], user=True)
         assert e.value.code == 1 and pulls.asked == []
+
+
+class TestEveryEngineOfTheHost:
+    """Each engine has an image store of its own: a host that allows several gets the images in
+    each of them."""
+
+    @pytest.fixture
+    def two_engines(self, monkeypatch):
+        monkeypatch.setattr(params, 'container_engine', params.container_engine_podman)
+        monkeypatch.setattr(params, 'container_engines_allowed', ('kathara', 'podman'))
+
+    def test_each_image_for_each_engine(self, lab_dir, pulls, capsys, two_engines):
+        run([lab_dir], progress=True)
+        assert pulls.asked == [('podman', image) for image in EXPECTED] + [('kathara', image) for image in EXPECTED]
+        captured = capsys.readouterr()
+        assert f"Found {len(EXPECTED)} image(s) across 2 file(s):" in captured.out
+        steps = events(captured.err)
+        assert steps[0] == {'phase': 'preload', 'status': 'start', 'total': 2 * len(EXPECTED)}
+        assert [step['current'] for step in steps if step['status'] == 'pull'] == list(range(1, 2 * len(EXPECTED) + 1))
+
+    def test_one_engine_asked_for(self, lab_dir, pulls, two_engines):
+        run([lab_dir], engine='kathara')
+        assert pulls.asked == [('kathara', image) for image in EXPECTED]
+
+    def test_an_engine_the_host_does_not_allow(self, lab_dir, pulls, capsys):
+        with pytest.raises(SystemExit) as exit_info:
+            run([lab_dir], engine='podman')
+        assert exit_info.value.code == 1 and pulls.asked == []
+        assert "this host does not allow the engine podman (it allows: kathara)" in capsys.readouterr().err
+
+    def test_a_host_with_one_engine_names_none(self, lab_dir, pulls, capsys):
+        """The output of before: the engine is the default one, named nowhere."""
+        run([lab_dir])
+        assert pulls.asked == EXPECTED
+
+    def test_the_engine_is_said_when_it_is_named(self, monkeypatch, capsys):
+        asked = []
+        monkeypatch.setattr(preload_images, 'get_engine',
+                            lambda name=None: SimpleNamespace(pull_image=lambda image: (asked.append(name), (True, ''))[1]))
+        assert preload_images._pull_image('debian:12', 'podman') and preload_images._pull_image('debian:12')
+        assert asked == ['podman', None]
+        assert capsys.readouterr().out == "  pulling debian:12 (podman) …\n  pulling debian:12 …\n"

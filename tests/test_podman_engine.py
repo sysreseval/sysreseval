@@ -254,7 +254,7 @@ class TestEngineOfTheHost:
 class TestGetEngine:
     @pytest.fixture(autouse=True)
     def no_engine_yet(self, monkeypatch):
-        monkeypatch.setattr(engine_package, '_engine', None)
+        monkeypatch.setattr(engine_package, '_engines', {})
 
     def test_kathara_by_default(self):
         assert isinstance(engine_package.get_engine(), KatharaEngine)
@@ -281,7 +281,8 @@ class TestGetEngine:
         with pytest.raises(EngineError) as error:
             engine_package.get_engine()
         assert str(error.value).startswith(
-            "the container engine of this host is Kathara (container_engine of params.py) and it is not installed (")
+            "the Kathara engine is asked for on this host (container_engine and container_engines_allowed of "
+            "params.py) and it is not installed (")
         assert str(error.value).endswith(params.kathara_missing_hint)
         assert 'container_engine = "podman"' in params.kathara_missing_hint
 
@@ -700,7 +701,7 @@ class TestDescription:
             accept(lab, name, **options)
 
         monkeypatch.setattr(engine, 'add_machine', add_machine)
-        monkeypatch.setattr(lib_sre, 'get_engine', lambda: engine)
+        monkeypatch.setattr(lib_sre, 'get_engine', lambda name=None: engine)
         with patch.object(lib_sre, 'error_quit', side_effect=SystemExit) as error_quit:
             with pytest.raises(SystemExit):
                 Scheme(data=Data(), running_lab_name=RUNNING_LAB).get_new_lab_from_scheme()
@@ -717,7 +718,7 @@ class TestDescription:
             pass
 
         monkeypatch.setattr(params, 'vde_switch_program', str(tmp_path / 'absent'))
-        monkeypatch.setattr(lib_sre, 'get_engine', lambda: engine)
+        monkeypatch.setattr(lib_sre, 'get_engine', lambda name=None: engine)
         with patch.object(lib_sre, 'error_quit', side_effect=SystemExit) as error_quit:
             with pytest.raises(SystemExit):
                 Scheme(data=Data(), running_lab_name=RUNNING_LAB).get_new_lab_from_scheme()
@@ -1543,15 +1544,14 @@ class TestSwitchConsole:
     def test_as_the_commands_of_sre_use_it(self, engine, running, monkeypatch):
         """Through `SwitchConsole`: the code of the switch minus 1000, and `@machine` replaced
         by the port of the machine."""
-        from SRE import switch_console
-        monkeypatch.setattr(switch_console, 'get_engine', lambda: engine)
+        from SRE.switch_console import SwitchConsole
         adapter = SimpleNamespace(switch_port_label=lambda: 'r1:eth0')
-        scheme = SimpleNamespace(get_lab_hash=lambda: HASH, get_machine=lambda name: name,
+        scheme = SimpleNamespace(engine=engine, get_lab_hash=lambda: HASH, get_machine=lambda name: name,
                                  get_network=lambda name: SimpleNamespace(net_adapters={'r1': adapter}))
         engine._console.outputs['port/allprint'] = ("Port 0003 untagged_vlan=0000 ACTIVE\n"
                                                     "  -- endpoint ID 0012 module unix prog   : kathara r1:eth0 user=root pid=1\n")
         engine._console.refused['vlan/create 10'] = SwitchCommandError(1017, 'File exists')
-        console = switch_console.SwitchConsole(scheme)
+        console = SwitchConsole(scheme)
         assert console.run('lan', 'vlan/create 10') == ('File exists', 17)
         assert console.run('lan', 'port/setvlan @r1 20') == ('', 0)
         assert engine._console.commands[-1] == (running, 'port/setvlan 3 20')
@@ -1912,8 +1912,8 @@ class TestSave:
 
     def test_sre_save_of_whole_images_stops_before_touching_the_project(self, engine, monkeypatch):
         module = SimpleNamespace(allow_save_restore=True)
-        monkeypatch.setattr(save_cmd, 'set_all_variables_for_action', lambda running_lab_name: (module, MagicMock()))
-        monkeypatch.setattr(save_cmd, 'get_engine', lambda: engine)
+        monkeypatch.setattr(save_cmd, 'set_all_variables_for_action',
+                            lambda running_lab_name: (module, MagicMock(engine=engine)))
         monkeypatch.setattr(save_cmd, 'ensure_save_tmp_dir', lambda: pytest.fail("the save went on"))
         with pytest.raises(EngineError, match="a save of whole images"):
             save_cmd.do_action_save(RUNNING_LAB, full_images=True)

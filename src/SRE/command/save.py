@@ -14,7 +14,6 @@ from pathlib import Path
 
 from .state import do_action_state
 from .. import params
-from ..engine import get_engine
 from ..params import SRE
 from ..save_archive import (SaveMeta, EncryptingWriter, derive_key, header_aad, write_header,
                             write_payload)
@@ -74,7 +73,8 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
     module_rvlab, net_scheme = set_all_variables_for_action(running_lab_name=running_lab_name)
     if not getattr(module_rvlab, 'allow_save_restore', False):
         error_quit("save/restore is not allowed for this lab (set allow_save_restore = True in the lab file)")
-    get_engine().require_save_restore(full_images=full_images)
+    engine = net_scheme.engine
+    engine.require_save_restore(full_images=full_images)
     save_key = get_save_key(module_rvlab)
     owner = params.get_username_from_running_lab_name(running_lab_name)
 
@@ -91,7 +91,7 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
         # for the files: to open the output, then to read the project, and neither the `save`
         # state of the lab nor the engine runs with it.
         set_sudo_uid_for_username(owner if net_scheme.has_privileged_machines() else params.sre_user)
-        root_throughout = get_engine().needs_root
+        root_throughout = engine.needs_root
         gain_privileges()
         out = None
         try:
@@ -105,9 +105,9 @@ def do_action_save(running_lab_name: str, output: str | None = None, full_images
                             project_has_directory=params.project_has_directory(running_lab_name))
 
             # the engine's own temporary files (the filesystem diffs of the devices) go to tmp too
-            get_engine().save(kathara_tar, lab_hash=net_scheme.get_lab_hash(),
-                              filesystem_diff=not full_images, temp_dir=tmp)
-            machine_owner = _machine_owner(get_engine().machine_ids(net_scheme.get_lab_hash()), owner)
+            engine.save(kathara_tar, lab_hash=net_scheme.get_lab_hash(),
+                        filesystem_diff=not full_images, temp_dir=tmp)
+            machine_owner = _machine_owner(engine.machine_ids(net_scheme.get_lab_hash()), owner)
             if not root_throughout:
                 gain_privileges()
 

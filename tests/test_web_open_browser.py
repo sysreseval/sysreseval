@@ -211,7 +211,8 @@ class TestOpenPage:
                 assert sorted(tuple(c) for c in await page.evaluate(CARDS)) == sorted([
                     ('card', '', 'Mode: Standard'),
                     ('card instructor', ' (instructor)', 'Mode: Instructor mode'),
-                    ('card debug', ' (debug)', 'Mode: Debug mode'),
+                    # a debug project also names its container engine (no other project does)
+                    ('card debug', ' (debug)', 'Mode: Debug mode (kathara)'),
                 ])
                 # the student: one standard card, without a Mode line (every project of theirs is standard)
                 proxy = IdentityProxy(f'http://127.0.0.1:{h.client.port}', ALICE)
@@ -781,4 +782,116 @@ class TestSubtitles:
                 assert await page.evaluate(tree_rows()) == [['dir', 'a'], ['dir', 's4'], ['dir', 'sre'],
                                                             ['leaf', 'top.py']]
                 assert await page.evaluate("document.querySelectorAll('#labs li.subtitle').length") == 0
+        P.run(go())
+
+
+# ---------------------------------------------------------------------------------------------
+# The Host and Engine selects of the instructors
+# ---------------------------------------------------------------------------------------------
+
+KATHARA_ONLY = 's4/tp_ssh'      # a lab of the catalog of the fake sre, told below to accept Kathara alone
+BOTH_ENGINES = {'MOCK_ENGINES': '["podman", "kathara"]', 'MOCK_LAB_ENGINES': json.dumps({KATHARA_ONLY: ['kathara']})}
+# [value, disabled] of every option of a select, and the value chosen
+OPTIONS = "((id) => [...document.getElementById(id).options].map((o) => [o.value, o.disabled]))"
+CHOSEN = "((id) => document.getElementById(id).value)"
+SHOWN = "((id) => { const e = document.getElementById(id); return e !== null && !e.hidden; })"
+
+
+def choose(element: str, value: str) -> str:
+    """Pick *value* in the select *element*, as a user does (a JavaScript statement)."""
+    return (f"(() => {{ const s = document.getElementById({json.dumps(element)}); s.value = {json.dumps(value)}; "
+            f"s.dispatchEvent(new Event('change', {{bubbles: true}})); }})()")
+
+
+def select_lab(name: str) -> str:
+    """Select the lab *name* of the tree, wherever its directory is (a JavaScript statement)."""
+    return f"document.querySelector({json.dumps(lab_button(name))}).click()"
+
+
+class TestHostAndEngine:
+    """An instructor may name the host and the container engine of a new project; both are
+    automatic by default, and only what the selected lab can run with is offered."""
+
+    def test_any_host_and_the_engines_of_the_pool(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, PROF, mock_env=BOTH_ENGINES) as (h, browser, url):
+                await h.portal.pool.refresh()
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                await page.wait_for(f"{SHOWN}('engine-option')", what="the Engine select")
+                # a host that is not reserved for instructors is listed too; automatic by default
+                assert await page.evaluate(f"{SHOWN}('host-option')")
+                assert await page.evaluate(f"{OPTIONS}('host')") == [['', False], ['a01', False]]
+                assert await page.evaluate(f"{OPTIONS}('engine')") == [['', False], ['podman', False], ['kathara', False]]
+                assert await page.evaluate(f"[{CHOSEN}('host'), {CHOSEN}('engine')]") == ['', '']
+                text = await page.evaluate("document.querySelector('#host option[value=\"a01\"]').textContent")
+                assert text == 'a01 (up, 0/3)'
+        P.run(go())
+
+    def test_only_what_the_selected_lab_can_run_with(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, PROF, mock_env=BOTH_ENGINES) as (h, browser, url):
+                await h.portal.pool.refresh()
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                await page.wait_for(f"{SHOWN}('engine-option')", what="the Engine select")
+                await page.click(lab_button(DHCP))
+                await page.evaluate(choose('engine', 'podman'))
+                assert await page.evaluate(f"{CHOSEN}('engine')") == 'podman'
+                # a lab that accepts Kathara alone: Podman is greyed, and the choice goes back to automatic
+                await page.evaluate(select_lab(KATHARA_ONLY))
+                await page.wait_for(f"{CHOSEN}('engine') === ''", what="the engine back to automatic")
+                assert await page.evaluate(f"{OPTIONS}('engine')") == [['', False], ['podman', True], ['kathara', False]]
+                assert await page.evaluate(f"{OPTIONS}('host')") == [['', False], ['a01', False]]
+                # back on a lab that accepts every engine: everything is offered again
+                await page.click(lab_button(DHCP))
+                await page.wait_for(f"JSON.stringify({OPTIONS}('engine')[1]) === '[\"podman\",false]'",
+                                    what="Podman offered again")
+        P.run(go())
+
+    def test_a_project_started_on_the_host_and_with_the_engine_chosen(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, PROF, mock_env=BOTH_ENGINES) as (h, browser, url):
+                await h.portal.pool.refresh()
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                await page.wait_for(f"{SHOWN}('engine-option')", what="the Engine select")
+                await page.click(lab_button(DHCP))
+                await page.evaluate(choose('host', 'a01'))
+                await page.evaluate(choose('engine', 'kathara'))
+                await page.click('#start-button')
+                await page.wait_for("location.pathname.includes('/projects/')", what="the page of the new project")
+                (project,) = (h.pub / 'projects').iterdir()
+                assert json.loads((project / '.private' / 'origin.json').read_text())['engine'] == 'kathara'
+        P.run(go())
+
+    def test_a_pool_with_one_engine_has_nothing_to_choose(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, PROF) as (h, browser, url):
+                await h.portal.pool.refresh()
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                await page.wait_for(f"{SHOWN}('host-option')", what="the Host select")
+                assert not await page.evaluate(f"{SHOWN}('engine-option')")
+                assert await page.evaluate(f"{OPTIONS}('engine')") == [['', False]]
+        P.run(go())
+
+    def test_a_reserved_host_is_said_so(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, PROF, host_over={'instructors_only': True}) as (h, browser, url):
+                await h.portal.pool.refresh()
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(f"{SHOWN}('host-option')", what="the Host select")
+                text = await page.evaluate("document.querySelector('#host option[value=\"a01\"]').textContent")
+                assert text == 'a01 (up, 0/3, reserved for instructors)'
+        P.run(go())
+
+    def test_students_have_neither(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, ALICE, mock_env=BOTH_ENGINES) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                assert await page.evaluate("document.getElementById('host') === null "
+                                           "&& document.getElementById('engine') === null")
+                assert 'ngine' not in await page.evaluate("document.body.textContent")
         P.run(go())

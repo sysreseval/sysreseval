@@ -14,8 +14,24 @@ from SRE.engine.kathara_engine import KatharaEngine
 from SRE.engine.podman_engine import PodmanEngine
 
 
+class _Lab:
+    """What the helpers ask of the scheme of a project: whether its lab has privileged
+    machines, and its engine (the one of the test, asked only when it is needed)."""
+    engine_of_the_test = None
+
+    def __init__(self, privileged):
+        self._privileged = privileged
+
+    def has_privileged_machines(self):
+        return self._privileged
+
+    @property
+    def engine(self):
+        return self.engine_of_the_test()
+
+
 def lab(privileged):
-    return SimpleNamespace(has_privileged_machines=lambda: privileged)
+    return _Lab(privileged)
 
 
 @pytest.fixture
@@ -32,7 +48,7 @@ def as_root(monkeypatch):
 @pytest.fixture
 def engine(monkeypatch):
     def choose(needs_root):
-        monkeypatch.setattr(utils_privileges, 'get_engine', lambda: SimpleNamespace(needs_root=needs_root))
+        monkeypatch.setattr(_Lab, 'engine_of_the_test', staticmethod(lambda: SimpleNamespace(needs_root=needs_root)))
     return choose
 
 
@@ -53,7 +69,7 @@ class TestRootNeeded:
 
     def test_the_engine_is_not_asked_for_a_plain_lab(self, monkeypatch):
         """A plain lab needs no engine to be told that: `sre check` runs without any."""
-        monkeypatch.setattr(utils_privileges, 'get_engine', lambda: pytest.fail("the engine was asked"))
+        monkeypatch.setattr(_Lab, 'engine_of_the_test', staticmethod(lambda: pytest.fail("the engine was asked")))
         assert utils_privileges.root_needed(lab(False)) is False
 
 

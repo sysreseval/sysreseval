@@ -19,7 +19,7 @@ Access is restricted to `root`, the `sre` user (`params.sre_uid = 1100`), member
 
 ## Dual commands
 
-### `sre start [-d data] [-p] [--flavor … | --flavor-json … | --set-flavor-name …] [--xauth-file <file>] [--instructor-mode] <lab> [data_version]`
+### `sre start [-d data] [-p] [--flavor … | --flavor-json … | --set-flavor-name …] [--xauth-file <file>] [--instructor-mode] [--engine <engine>] <lab> [data_version]`
 
 Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Imports `srelab.py`, runs `Data.generate(flavor)` (or loads `-d data.json`), builds `NetScheme`, pulls images, deploys via Kathara, applies the `initial` state, and writes `info.json`. See [Internals](internals.md) for file-transfer and progress mechanics.
 
@@ -34,6 +34,7 @@ Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Import
 | `--set-flavor-name <name>` | Use a named preset `Flavor` (privileged only). |
 | `--xauth-file <file>` | Read `SRE_XAUTH_COOKIE` from an X authority file instead of the env var (privileged only; for `x11_host=True` machines). |
 | `--instructor-mode` | Start the project in [instructor mode](#sre-set-instructor-mode-running_lab-and-sre-remove-instructor-mode-running_lab) (privileged only). |
+| `--engine <engine>` | The container engine of the project, `kathara` or `podman` (privileged only): one the host allows and the lab accepts, else the start is refused with the reason. Without it the project gets the first engine of the host, its default one first, that the lab accepts (see [Both engines on one host](installation.md#podman-engine-rootless-containers)). |
 | `--debug-project` | Start a debug project (see [Lab Authoring](lab-authoring.md); privileged only): `lab` is read as a path, `-p` implied. |
 | `--debug-web-project` | The same debug project, `lab` read as a lab name as for a normal start (the exam-only labs accepted), so that the project keeps the lab name of the catalog; privileged only, what the web agent runs; incompatible with `-p` and `--debug-project`. |
 
@@ -58,13 +59,15 @@ Saves a running project into a single save file (`.sre`): the filesystem of ever
 
 In user mode (`--user`, i.e. from the GUI) the file is always written to stdout. When the lab defines `save_key`, the payload is encrypted. See [Save file format](internals.md#save-file-format).
 
-### `sre restore [--instructor-mode] <save_file | ->`
+### `sre restore [--instructor-mode] [--engine <engine>] <save_file | ->`
 
 Restores a save file as a **new** running project (fresh timestamp, current user): loads the lab module named in the header (`allow_save_restore` required), recreates the project directories and copies the saved project files back, rebuilds the Kathara lab from the restored `data.json` (fresh host ports, X11 cookie, volumes, `/shared`), redeploys the containers from the saved filesystems (`Kathara.restore_lab(…, lab=…)`, or the Podman engine itself, which puts the files back before the first process of each machine; same `pull`/`deploy` progress events as `start`), refreshes `exetests.py`, applies the lab's `restore` state and writes `info.json`. On failure everything created so far is rolled back.
 
 `-` reads the save file from stdin — the only form accepted in user mode (the GUI opens the file as the student). Labs referenced by an absolute path (`sre start -p`) can only be restored by privileged users, unless the path lies inside the lab directory (`/opt/sre/lab`), in which case the save file is restored like any other lab of that directory. An encrypted file needs a lab with the same `save_key`; a cleartext file for a lab that defines `save_key` is refused in user mode (accepted with a warning otherwise).
 
 `--instructor-mode` (privileged only) puts the new project in instructor mode. A save file never carries the mode: without the option the restored project is a normal one, whatever the saved project was.
+
+`--engine <engine>` (privileged only) names the container engine of the new project, as for `sre start`. A save file does not carry an engine either: whatever engine made it, the new project gets the first engine of the host that its lab accepts.
 
 ### `sre wipe`
 
@@ -129,23 +132,24 @@ Both commands write `info.json` again; the question hashes do not depend on the 
 
 ### `sre status`
 
-Shows what runs on the machine: the version of SRE, whether the web agent (`sre-agent`, see [Web front-end](web.md)) is running, and every running project with its origin and the user who created it. Read-only, privileged only.
+Shows what runs on the machine: the version of SRE, whether the web agent (`sre-agent`, see [Web front-end](web.md)) is running, and every running project with its origin, the user who created it and its container engine. Read-only, privileged only.
 
 ```
 sre 0.17.0
 sre-agent: running (pid 812)
 local drain: allowed, not asked
 running projects: 3
-ORIGIN  USER   PROJECT
-web     alice  20261118091203@@@sre@dhcp.py@@@alice
-local   bob    20261118091540@@@sre@nftables-filter1.py@@@bob
-local   root   20261118100111@@@sre@static_routing.py@@@root
+ORIGIN  USER   ENGINE   PROJECT
+web     alice  podman   20261118091203@@@sre@dhcp.py@@@alice
+local   bob    podman   20261118091540@@@sre@nftables-filter1.py@@@bob
+local   root   kathara  20261118100111@@@sre@nfs.py@@@root
 ```
 
 - **`sre-agent`**: `running (pid N)`, `not running`, or `not running (no /etc/sreweb/agent.toml)` on a machine that is not a pool host (the path is the one of the layout). The agent is looked for among the processes (`/proc`), whatever started it: the systemd unit or a command typed by hand.
 - **`local drain`**: only on a pool host whose agent knows the drains asked on the host itself (`sre set-drain` below): `forbidden`, `allowed, not asked`, or `allowed, asked on 2026-11-19 at 17:02:10`.
 - **`ORIGIN`**: `local` for a project started on the machine itself (the GUI of a student, or `sre start` run by root), `web` for a project the web agent started for a browser user.
 - **`USER`**: the user who created the project: the login of the session for a local project (`root` for `sudo sre start`), the login of the web site for a web project.
+- **`ENGINE`**: the container engine that runs the project: the one recorded when it was created, else (a project started by an older version) the default engine of the host. It is the engine every command asks for that project. `--json`: the key `engine`.
 - **`PROJECT`**: the running lab name, as `sre stop`, `sre connect` and `sre eval` take it. The projects are listed in start order; `running projects: none` when there is none.
 
 The origin and the user are read from `.private/origin.json`, which `sre start` (as well as `sre restore` and `sre pre-start-exam`) writes when it creates the project. A project created by an older version has no such file: its origin shows as `?` and its user is the one of its name. The web agent names itself with the environment variable `SRE_ORIGIN=web` in every `sre` it runs; `sre` ignores the variable when it was launched through `sre-wrapper` and `sudo`, so a student cannot have a local project listed as a web one. An agent started before the update keeps writing `local` until it is restarted (`sre-web-tool restart --all`).
@@ -233,9 +237,9 @@ One row per **running project instance** on a host: hostname + lab + the start t
 
 Dismissals self-expire: inactivity alerts return on new archives, error alerts return when the count changes.
 
-### `sre preload-images [--random-delay <sec>] [--progress] <file_or_dir…>`
+### `sre preload-images [--random-delay <sec>] [--progress] [--engine <engine>] <file_or_dir…>`
 
-Reads the lab `.py` files and pulls each image they name, once, into the store of the container engine of the host (`docker pull`, or `podman pull` with the Podman engine: the two stores are apart). The files are parsed, never imported, and an image is found wherever the file writes it: every `sre_docker_image(...)` call with a literal name (in a machine spec, but also kept in a constant such as `SCAN_IMAGE = sre_docker_image("scan13")` used by the specs, assigned with `spec['image'] = ...`, or given to `default_image`), and every image written as a plain string where an image is expected (the `'image'` key of a spec, `Machine(image=...)`, `spec['image'] = ...`, `default_image`), directly or through a name of the file holding that string. A name computed when the lab runs (`sre_docker_image(name)` in a loop, an f-string) is not seen: write the names out for such a lab to be preloaded. A file that does not parse is reported on stderr and skipped. `--random-delay <sec>` waits 0–N seconds before pulling (smooths thundering-herd when invoked across many hosts). `--progress` also writes the steps as JSON lines on stderr (`{"phase": "preload", "status": "start", "total": N}`, then `"status": "pull"` with `image` / `current` / `total` before each pull and `"status": "error"` with `image` after a failed one); what is printed on stdout and the exit status are unchanged. It is what the agent of the web front-end runs when the portal gives its host a turn to preload (see [Pre-loading the images](web.md) in the pool section of the web front-end).
+Reads the lab `.py` files and pulls each image they name, once, into the store of the container engine of the host (`docker pull`, or `podman pull` with the Podman engine: the two stores are apart). On a host that allows both engines each image is pulled for each of them, the default engine first; `--engine <engine>` pulls for that one alone. The files are parsed, never imported, and an image is found wherever the file writes it: every `sre_docker_image(...)` call with a literal name (in a machine spec, but also kept in a constant such as `SCAN_IMAGE = sre_docker_image("scan13")` used by the specs, assigned with `spec['image'] = ...`, or given to `default_image`), and every image written as a plain string where an image is expected (the `'image'` key of a spec, `Machine(image=...)`, `spec['image'] = ...`, `default_image`), directly or through a name of the file holding that string. A name computed when the lab runs (`sre_docker_image(name)` in a loop, an f-string) is not seen: write the names out for such a lab to be preloaded. A file that does not parse is reported on stderr and skipped. `--random-delay <sec>` waits 0–N seconds before pulling (smooths thundering-herd when invoked across many hosts). `--progress` also writes the steps as JSON lines on stderr (`{"phase": "preload", "status": "start", "total": N}`, then `"status": "pull"` with `image` / `current` / `total` before each pull and `"status": "error"` with `image` after a failed one); what is printed on stdout and the exit status are unchanged. It is what the agent of the web front-end runs when the portal gives its host a turn to preload (see [Pre-loading the images](web.md) in the pool section of the web front-end).
 
 ### `sre make-titles [-o <file> | -r] [-d] <directory>`
 
@@ -358,7 +362,7 @@ Prints archive contents. Without a field option, all fields are shown.
 | `--tests` | Raw test results per machine |
 | `--errors` | Evaluation errors |
 | `--answers` | Student answers |
-| `--grades` | Grade list, total grade, total max |
+| `--grades` | Grade list, total grade, total max, and the container engine that ran the evaluated project (`container_engine`; `None` for an archive written before it was recorded) |
 | `--files` | Files saved in the archive |
 | `--extract-files` | Extract saved files to the current directory |
 | `--json` | Emit a single JSON dict per file on stdout |

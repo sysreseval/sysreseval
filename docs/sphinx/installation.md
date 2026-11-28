@@ -439,11 +439,13 @@ By default the machines of a lab are Docker containers started through Kathara, 
 The engine is chosen in `params.py`, for the whole site or host by host:
 
 ```python
-container_engine = "kathara"            # the engine of the site: "kathara" or "podman"
-container_engine_by_host = {"s17": "podman", "s18": "podman"}   # the hosts that differ
+container_engine = "kathara"            # the default engine of the site: "kathara" or "podman"
+container_engine_by_host = {"s17": "podman", "s18": "podman"}   # the hosts whose default engine differs
+container_engines_allowed = None        # the engines a host may use; None: its default engine alone
+container_engines_allowed_by_host = {}  # the hosts that differ: {"s17": ("podman", "kathara")}
 ```
 
-A host is looked up by the name it gives itself (`hostname`), then by that name cut at its first dot. The second parameter is what lets one `params.py`, shared by every workstation of a room, put a few of them on Podman first. An unknown engine name, in either parameter, ends every `sre` command with a message naming the parameter.
+A host is looked up by the name it gives itself (`hostname`), then by that name cut at its first dot. The `_by_host` parameters are what let one `params.py`, shared by every workstation of a room, put a few of them on Podman first. An unknown engine name, in any of the four parameters, ends every `sre` command with a message naming the parameter; so does a list of allowed engines that leaves the default engine of its host out. With the first two parameters alone a host has one engine, as before; the last two are for a host with both (*Both engines on one host* below).
 
 **Every command works with the Podman engine, and every lab starts: hubs, switches and managed switches with their console, machines with an outside interface, privileged machines, saved projects (a save file is the same with both engines).** For the students and for the web site the commands, the pages and `info.json` are the same; what a machine is differs in a few places, listed under *What differs from Docker* below.
 
@@ -511,12 +513,42 @@ While the `sre` account is a member of the `docker` group, what runs as that acc
 - a save made on a Docker host that holds a device node, or a file owned by an id above 65535, is not restored: a rootless machine can make neither. The restore names the machine and the file, and leaves nothing behind;
 - in a machine running systemd the journal (`/var/log/journal`) is a temporary filesystem and is not saved.
 
-**Changing the engine of a host.** Do it when the host runs no project (`sre wipe` first): `sre stop` and `sre wipe` act on the engine `params.py` gives the host now, and the machines the other engine still runs would be left, without their project.
+#### Both engines on one host
+
+A host may run projects with both engines at the same time. That is what lets a site whose default engine is Podman keep the few labs that need a machine whose root is root on the host (the two named under *The labs on both engines* below):
+
+```python
+container_engine = "podman"
+container_engines_allowed = ("podman", "kathara")     # or host by host: container_engines_allowed_by_host
+```
+
+Such a host needs what each engine needs: Docker, Kathara and the network plugin, and the setup of the Podman engine above.
+
+**One engine per project, chosen when it is created.** A lab says which engines it accepts with the module attribute `container_engines` (see [Lab Authoring](lab-authoring.md); a lab that says nothing accepts both). `sre start` and `sre restore` take:
+
+1. the engine a privileged caller names (`--engine podman`), which the host must allow and the lab accept;
+2. otherwise the first engine of the host, its default one then the others, that the lab accepts;
+3. and refuse the start when there is none (a lab that accepts Kathara alone on a host that allows Podman alone).
+
+The choice is recorded in the project (`.private/origin.json`, which a student cannot write), and every later command — `eval`, `state`, `connect`, `save`, `stop`… — asks the engine of the project, whatever the parameters say by then. A save file restores with either engine: the new project gets its engine by the same three rules.
+
+**What tells the engine of a project, and to whom.** `sre status` has an `ENGINE` column, and every evaluation archive records the engine of the evaluated project (`container_engine`, shown by `sre cat --grades`); both are for privileged users. A student is not told: neither the Qt interface nor the web site names the engine, and a start refused for want of an engine only says that the lab cannot be started on the host. The one exception is a **debug project**, whose `info.json` names its engine and whose log starts with it. This keeps the engine out of sight, not secret: a student who looks inside a machine can tell a rootless Podman machine from a Docker one.
+
+**What it costs.**
+- *Two image stores.* Each engine has its own: the lab images are on the disk twice, and `sre preload-images` pulls them for every engine the host allows (`--engine <name>` for one).
+- *The account reaches the Docker daemon.* The `sre` account must be able to ask Docker on such a host, so the isolation the Podman engine brings to a host (nothing of SRE can be root there) is that of the hosts that allow Podman **alone**.
+- *Several projects evaluated at once* (`sre eval-all`, `eval-exam`, `end-exam`): the projects of the engine that needs root are evaluated first, then the others, so that the code of a lab run with Podman never runs while root is held for a project run with Docker.
+
+`sre wipe` wipes every engine the host allows, and those of the projects still there. `sre update` skips its wipe only when none of the allowed engines is set up on the host.
+
+**Changing the engines of a host.** A project keeps the engine it was started with: it is still evaluated and stopped by that engine after the default engine of the host has changed, or after the host no longer allows it. Only the projects started by a version of SRE older than this record have none: they belong to the default engine of the host, so stop them (`sre wipe`) before giving the host another default.
 
 **The labs on both engines.** The 8 labs of `lab/sre` and the 60 drafts of `lab/sre/_DRAFT_misc` were run with Docker and with Podman on the same hosts and with the very same images (the store of Podman filled from the Docker daemon, image id for image id), from an untouched project to their `final` state, and every grade element of both evaluations compared (`tests/test_docker_labs.py` with `SRE_TEST_LABS` and `SRE_TEST_LAB_RESULTS`, see *Tests*). **66 of the 68 labs give the same result with both engines, element by element.** The two that do not:
 
 - `nfs.py` (34 of 64 with Podman): the NFS server of the kernel cannot be started in a rootless machine;
 - `quic.py` (86 of 107 with Podman): nginx does not start with `quic_bpf on`, which loads an eBPF program; the four elements of that server are lost.
+
+Both therefore declare `container_engines = ("kathara",)`: on a host that allows both engines they run with Docker without anyone choosing, and on a host that allows Podman alone `sre start` refuses them instead of starting a project that cannot earn its points.
 
 `kubernetes.py` gets every point with both since the setup script hands the `cpuset` controller down to the machines. Six drafts give an untouched project a point or more (`ipv6.py`, `lan-attacks.py`, `openvpn.py`, `tcp.py`, `vlan.py`, `wireguard.py`): the same elements and the same points with both engines. The two labs that allow saving keep, after a save and a restore, the same elements with both engines and across them (`dhcp.py` all of them; `traceroute.py` loses the same ten in the four combinations: its `restore` state does not redo what `final` did).
 

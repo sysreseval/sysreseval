@@ -1618,9 +1618,9 @@ session). The `start` line of the connection log says `placement=session`.
 `follow_local_sessions = false` restores the strict rule: nothing goes to an occupied host.
 
 **Reserved hosts.** A host with `instructors_only = true` never takes a student's project: an
-instructor's goes there when they name it on the Open page (the *Host* select lists the
-reserved hosts with their state and their projects) or by the automatic placement when it is
-the least loaded host they may use. It is outside the elastic pool: its free slots count
+instructor's goes there when they name it on the Open page (the *Host* select lists every
+host of the pool with its state and its projects, a reserved one said so) or by the automatic
+placement when it is the least loaded host they may use. It is outside the elastic pool: its free slots count
 neither as spare capacity nor towards `min_hosts_up`, the portal never wakes it by itself
 (`sre-web-tool wake`, or its own boot; an instructor finds it greyed while it is off) and
 powers it off when idle like any host with `power = true`, whatever the floor and the spare.
@@ -1957,6 +1957,24 @@ the key) is not checked either. `sre-web-tool list` shows the free memory of eve
 MEM) and `(memory full)` after the state of a host that takes no more project for want of memory;
 `sre-web-tool status` prints `memory per project: 2048 MiB (memory full: …)`;
 the Pool page has a *Free memory* column, the flag *memory full* and the same summary.
+
+**Container engines.** A pool host runs its projects with Docker (through Kathara), with
+rootless Podman, or with both: `container_engines_allowed` of the `params.py` of the hosts
+(*Both engines on one host* in *Installation*). The agent of each host tells the portal the
+engines it allows and its default one (`engines` and `default_engine` of its status), which
+the Pool page shows in its *Engines* column. A lab may accept only some engines (its
+`container_engines` attribute, given by the lab list once `sre make-titles` has stored it in
+`titles.json`), and the placement of a project then only looks at the hosts that allow one of
+them: on a pool where a few hosts keep Docker beside Podman, the labs that need it go there
+by themselves, for a student as for anybody. The portal never chooses the engine: the host
+starts the project with the first of its engines that the lab accepts, unless an instructor
+named one on the Open page. When no host can run the lab the start is refused, a student
+being only told that no host is available for this lab. A host whose agent tells no engine
+(an older version) is never left out. Two limits: the elastic pool does not look at engines
+(it does not wake a host because the hosts that are up lack one), and a start that names an
+engine does not ask the flavor form of the lab. The web site never tells a student which
+engine runs a project; an instructor reads it on the card and at the top of the log of a
+debug project, and `sre status` on the host names it for every project.
 
 **The load of a host.** `project_memory_mb` is one figure for every lab, sized on the heaviest
 one, and nothing counts the processors: a project of thirty routing daemons and one of four idle
@@ -2427,7 +2445,9 @@ What an instructor gets:
   for a host whose memory or processors hold no more project like those running), and where the preload of the Docker
   images is: *preload queued*, *preloading 2/5* with the image as tooltip, *preload failed* with
   the error, and *saves unusable* for a host whose directory of the saved projects is configured
-  and cannot be used, *Saved projects* above), the agent's version and its last error (for a
+  and cannot be used, *Saved projects* above), the agent's version, the container engines the
+  host may run a project with (the *Engines* column: the default one first and in bold; empty
+  for an agent older than the column), and its last error (for a
   host with *saves unusable*, what its agent found), the line
   of `sre-web-tool status` above the table (in red, with the reason, when the state file of the
   pool cannot be written: a restart of the portal would undo what is changed on the page);
@@ -2560,11 +2580,19 @@ What an instructor gets:
 - **Exams** (the link in the header, `/exams`): the exams of the web site, programmed for an
   audience of logins and/or groups and/or for machines of the pool (the exam of the Qt GUI
   there, without `sre set-exam`), followed and adjusted while they run (*Exams* above).
-- **The host of a project**: the *Host* select of the Open page (shown when the pool has a host
-  reserved for instructors, `instructors_only = true` in `[[hosts]]`) names one of them, with
-  its state and its projects (greyed when off or full), or leaves the automatic placement: the
-  least loaded host the instructor may use, reserved or shared. `POST /api/projects` takes the
-  optional `host`; a student sending one gets 403.
+- **The host and the engine of a project**: two selects of the Open page, both automatic by
+  default, so that an instructor who touches neither gets what a student gets. *Host* names a
+  host of the pool, with its state and its projects (a host reserved for instructors is said
+  so; greyed when it is off or full), or leaves the automatic placement: the least loaded host
+  the instructor may use. *Engine* names the container engine of the project, and is shown
+  only when the hosts of the pool allow two engines at least (*Container engines* in *A pool
+  of workstations*); *Automatic* lets the host choose, as it does for a student. Both only
+  offer what the selected lab can run with: an engine the lab does not accept, or that the
+  chosen host does not allow, is greyed, and so is a host that allows none of the engines
+  left. `POST /api/projects` takes the optional `host` and `engine`; a student sending either
+  gets 403. A project whose engine is named is started as an instructor-mode or a debug
+  project is, by a privileged start: a lab that asks its flavor form at startup starts with
+  its default flavor.
 - **The cost of a lab**: two buttons of the Open page. *Lab costs* shows, beside each lab of
   the tree, what one of its projects is counted for on a host: the weight the lab declares, the
   containers its projects had, the memory and the cores, the projects measured and where the

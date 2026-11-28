@@ -34,7 +34,7 @@ from ipaddress import (
 )
 
 from . import params
-from .engine import get_engine, EngineError, SwitchModesUnsupported
+from .engine import get_engine, engine_name_of_project, EngineError, SwitchModesUnsupported
 from .form_spec import FIELD_RE as _FORM_SPEC_FIELD_RE, form_fields as _form_fields
 from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoMachine, InfoLab, InfoInterface,
                      InfoSwitch, TranslatedText, _tt_hash_str)
@@ -827,6 +827,9 @@ class NetScheme0:
         """
         self.data = data
         self.running_lab_name = running_lab_name
+        # the container engine of the project: set by what creates it (`sre start`, `restore`),
+        # else read from the record of the project the first time the engine is asked
+        self.engine_name = None
         self.debug_project = os.path.exists(params.debug_project_marker_filename(running_lab_name))
         self.instructor_mode = os.path.exists(params.instructor_mode_marker_filename(running_lab_name))
         # instructor() texts of the lab's __init__ and grade() are kept for the projects of the
@@ -1327,8 +1330,22 @@ class NetScheme0:
         default = lab_ipv6_default()
         return None if default is None else bool(default)
 
+    def get_engine_name(self) -> str:
+        """The name of the container engine of this project: the one `sre start` / `sre restore`
+        chose (`engine_name`), else the one the project records, else the default engine of the
+        host (`engine_name_of_project`)."""
+        if self.engine_name is None:
+            self.engine_name = engine_name_of_project(self.running_lab_name)
+        return self.engine_name
+
+    @property
+    def engine(self):
+        """The container engine of this project (`get_engine_name`).  Never asked for a lab that
+        is only checked."""
+        return get_engine(self.get_engine_name())
+
     def get_new_lab_from_scheme(self):
-        engine = get_engine()
+        engine = self.engine
         lab = engine.new_lab(self.running_lab_name)
         # Type of switch of the networks.  Nothing is said about a hub, so that a lab with hubs
         # only makes the same Kathara calls as before (it also runs with a Kathara or a network
@@ -1422,12 +1439,12 @@ class NetScheme0:
 
     def get_lab_hash(self):
         if self.lab_hash is None:
-            self.lab_hash = get_engine().lab_hash(self.running_lab_name)
+            self.lab_hash = self.engine.lab_hash(self.running_lab_name)
         return self.lab_hash
 
     def get_lab_from_kathara(self):
         lab_hash = self.get_lab_hash()
-        return get_engine().get_lab(lab_hash)
+        return self.engine.get_lab(lab_hash)
 
     def get_public_lab_dir(self):
         return params.public_lab_dir(self.running_lab_name)
@@ -1785,6 +1802,9 @@ class Grade0:
         self.section_fmt = [('R', 1), ('N', 1), ('l', 2), ('N', 3)]
         self._eval_date = None
         self._re_eval_date = None
+        # the container engine of the evaluated project, for the archive: set by an evaluation,
+        # copied from the archive by a re-evaluation (None: an archive that did not record it)
+        self._container_engine = None
         self._default_language = 'en'
         self.auto_eval_count = 0
         self._exam_json = None
@@ -2278,8 +2298,10 @@ class Grade0:
             visible_machines = [m for m in self.net_scheme.get_machines() if not m.hidden]
         lab_hash = self.net_scheme.get_lab_hash()
 
+        engine = self.net_scheme.engine
+
         def _get_status(m):
-            return m, get_engine().machine_status(lab_hash, m.name)
+            return m, engine.machine_status(lab_hash, m.name)
 
         status_map = {}
         with ThreadPoolExecutor(max_workers=min(params.max_docker_concurrency, len(visible_machines))) as executor:
@@ -2435,6 +2457,9 @@ class Grade0:
                        export_kathara_project=export_kathara_project, allow_self_grade=allow_self_grade,
                        debug_project=debug_project,
                        instructor_mode=instructor_mode,
+                       # only a debug project says which engine runs it: info.json is what the
+                       # student's interface reads, and a student is not told the engine
+                       container_engine=self.net_scheme.get_engine_name() if debug_project else '',
                        eval_interval_without_exam_mode=eval_interval_without_exam_mode,
                        eval_before_exit=eval_before_exit,
                        allow_save_restore=allow_save_restore,
@@ -2508,6 +2533,7 @@ class Grade0:
         self._errors = []
         self.load_answers()
         self._eval_date = datetime.datetime.now().isoformat()
+        self._container_engine = self.net_scheme.get_engine_name()
         ops_log = self._ops_log()
         ops_log.begin("evaluation")
         switch_console = SwitchConsole(self.net_scheme)
@@ -2711,6 +2737,8 @@ class Grade0:
         }
         if self._exam_json is not None:
             archive[params.exam_json_keyword] = self._exam_json
+        if self._container_engine is not None:
+            archive[params.archive_engine_keyword] = self._container_engine
         cctx = zstd.ZstdCompressor(level=6)
         with tempfile.NamedTemporaryFile(
                 mode="wb",

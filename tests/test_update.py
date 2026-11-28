@@ -883,6 +883,24 @@ class TestActionUpdate:
         assert run_update(update_env) == 0
         assert 'wipe' in update_env.events
 
+    def test_a_host_with_two_engines_is_wiped_when_one_of_them_is_there(self, update_env, tmp_pub_dir, monkeypatch,
+                                                                        capsys):
+        (tmp_pub_dir / 'docker.sock').unlink()
+        monkeypatch.setattr(params, 'container_engines_allowed', ('kathara', 'podman'))
+        monkeypatch.setattr(params, 'podman_dir', str(tmp_pub_dir))
+        assert run_update(update_env) == 0
+        assert 'wipe' in update_env.events and "skipped" not in capsys.readouterr().err
+
+    def test_a_host_with_two_engines_and_neither_of_them_there(self, update_env, tmp_pub_dir, monkeypatch, capsys):
+        (tmp_pub_dir / 'docker.sock').unlink()
+        monkeypatch.setattr(params, 'container_engines_allowed', ('kathara', 'podman'))
+        monkeypatch.setattr(params, 'podman_dir', str(tmp_pub_dir / 'no-podman'))
+        assert run_update(update_env) == 0
+        assert 'wipe' not in update_env.events
+        error = capsys.readouterr().err
+        assert "no Docker daemon on this host" in error and "the Podman engine is not set up on this host" in error
+        assert "'sre wipe' skipped" in error
+
     def test_an_engine_that_is_none_stops_the_update(self, update_env, monkeypatch, capsys):
         monkeypatch.setattr(params, 'container_engine', 'lxc')
         assert run_update(update_env) == 1

@@ -1108,3 +1108,64 @@ class TestPreloadImages:
         assert completed.stderr.decode().strip() == f"sre: '{pub / 'nowhere'}' does not exist"
         completed = run_mock(pub, 'preload-images', str(pub), user=False, extra_env={'MOCK_FAIL': 'preload-images'})
         assert completed.returncode == 1 and completed.stderr.decode().strip() == 'sre: mock failure'
+
+
+BOTH_ENGINES = {'MOCK_ENGINES': '["podman", "kathara"]'}
+
+
+def recorded_engine(pub, running_lab_name):
+    record = project_dir(pub, running_lab_name) / params.private_dir_name / params.origin_json_name
+    return json.loads(record.read_text()).get(params.origin_engine_keyword)
+
+
+class TestEngines:
+    """The fake chooses and records the engine of a project as the real CLI does."""
+
+    def test_kathara_alone_by_default(self, pub):
+        assert recorded_engine(pub, start_project(pub, FIRST_LAB)) == 'kathara'
+
+    def test_the_default_engine_of_the_host(self, pub):
+        assert recorded_engine(pub, start_project(pub, FIRST_LAB, extra_env=BOTH_ENGINES)) == 'podman'
+
+    def test_the_engine_asked_for(self, pub):
+        project = start_project(pub, '--engine', 'kathara', FIRST_LAB, user=False, extra_env=BOTH_ENGINES)
+        assert recorded_engine(pub, project) == 'kathara'
+
+    def test_the_option_is_for_privileged_callers(self, pub):
+        completed = run_mock(pub, 'start', '--engine', 'kathara', FIRST_LAB, extra_env=BOTH_ENGINES)
+        assert completed.returncode == 1 and b"--engine is not available in user mode" in completed.stderr
+
+    def test_an_engine_the_host_does_not_allow(self, pub):
+        completed = run_mock(pub, 'start', '--engine', 'podman', FIRST_LAB, user=False)
+        assert completed.returncode == 1
+        assert b"this host does not allow the engine podman (it allows: kathara)" in completed.stderr
+        assert not (pub / 'projects').exists() or not list((pub / 'projects').iterdir())
+
+    def test_a_lab_that_restricts_its_engines(self, pub):
+        env = {**BOTH_ENGINES, 'MOCK_LAB_ENGINES': json.dumps({FIRST_LAB: ['kathara']})}
+        assert recorded_engine(pub, start_project(pub, FIRST_LAB, extra_env=env)) == 'kathara'
+        refused = run_mock(pub, 'start', '--engine', 'podman', FIRST_LAB, user=False, extra_env=env)
+        assert refused.returncode == 1
+        assert b"this lab does not accept the engine podman (it accepts: kathara)" in refused.stderr
+
+    def test_a_student_is_only_told_that_the_lab_cannot_start(self, pub):
+        env = {'MOCK_ENGINES': '["podman"]', 'MOCK_LAB_ENGINES': json.dumps({FIRST_LAB: ['kathara']})}
+        as_student = run_mock(pub, 'start', FIRST_LAB, extra_env=env)
+        assert as_student.returncode == 1 and b"this lab cannot be started on this host" in as_student.stderr
+        assert b"kathara" not in as_student.stderr and b"podman" not in as_student.stderr
+        privileged = run_mock(pub, 'start', FIRST_LAB, user=False, extra_env=env)
+        assert b"this lab accepts only kathara; this host allows only podman" in privileged.stderr
+
+    def test_the_lab_list_says_the_engines_of_a_lab(self, pub):
+        env = {'MOCK_LAB_ENGINES': json.dumps({FIRST_LAB: ['kathara'], 'not/a/lab.py': ['podman']})}
+        completed = run_mock(pub, 'list', '--with-titles', extra_env=env)
+        entries = {entry['name']: entry for entry in json.loads(completed.stdout)}
+        assert entries[FIRST_LAB]['engines'] == ['kathara']
+        assert [name for name, entry in entries.items() if 'engines' in entry] == [FIRST_LAB]
+
+    def test_info_json_tells_the_engine_of_a_debug_project_only(self, pub):
+        plain = start_project(pub, FIRST_LAB, extra_env=BOTH_ENGINES)
+        instructor = start_project(pub, '--instructor-mode', '--engine', 'kathara', FIRST_LAB, user=False,
+                                   extra_env=BOTH_ENGINES)
+        debug = start_project(pub, '--debug-web-project', FIRST_LAB, user=False, extra_env=BOTH_ENGINES)
+        assert [info_of(pub, project)['container_engine'] for project in (plain, instructor, debug)] == ['', '', 'podman']

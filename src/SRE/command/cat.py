@@ -90,6 +90,7 @@ def _collect_fields(archive: dict, args) -> dict:
         result['grades'] = {
             params.running_lab_name_keyword: archive.get(params.running_lab_name_keyword, ''),
             params.eval_date_keyword: archive.get(params.eval_date_keyword, None),
+            params.archive_engine_keyword: archive.get(params.archive_engine_keyword),
             params.login_keyword: answers.get(params.login_keyword, ''),
             params.hostname_keyword: answers.get(params.hostname_keyword, ''),
             "grade_list": [dict(e) for e in archive.get('grade_list', [])],

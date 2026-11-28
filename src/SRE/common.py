@@ -453,6 +453,7 @@ class InfoLab:
     user_allowed_states: dict
     debug_project: bool = False
     instructor_mode: bool = False
+    container_engine: str = ''          # the container engine of a debug project; empty for every other project
     allow_save_restore: bool = False
     export_schema_pdf: bool = True
     admin_only_states: list = field(default_factory=list)

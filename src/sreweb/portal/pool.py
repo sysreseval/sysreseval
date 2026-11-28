@@ -22,7 +22,8 @@ from ..agent.usage import (STATUS_CPUS, STATUS_MEM_TOTAL, STATUS_CPU_BUSY, STATU
 from ..config import (HostConfig, Priority, host_config_from_dict, host_entry, check_priority,
                       check_usable_capacity, ConfigError, CAPACITY_PROJECTS, CAPACITY_RESOURCES,
                       DEFAULT_USABLE_CAPACITY, USABLE_CAPACITY_KEY)
-from ..identity import Identity, is_valid_login, running_lab_name_owner, ROLE_INSTRUCTOR, STATUS_PROJECT_NAMES
+from ..identity import (Identity, is_valid_login, running_lab_name_owner, ROLE_INSTRUCTOR, STATUS_PROJECT_NAMES,
+                        STATUS_ENGINES, STATUS_DEFAULT_ENGINE, CONTAINER_ENGINES, LAB_ENGINES_KEY)
 from ..savestore import STATUS_SAVES, STATUS_SAVES_CONFIGURED, STATUS_SAVES_ERROR
 from .costs import (Cost, CostBook, HostLoad, Usage, host_capacity, host_load, lab_key, figure, DEFAULT_MEMORY_MB,
                     DEFAULT_CPU, MAX_NAME)
@@ -219,6 +220,11 @@ class HostStatus:
     # (``sharing.py``) that one is gone; ``None`` = an agent older than the key, which does not
     # know the participants of a shared project either: nothing of it is offered for sharing
     project_names: list | None = None
+    # the container engines the host may run a project with, the default one first, and that
+    # default (``engine_fields``); empty for an agent older than the keys: its engines are not
+    # known, and the host is never left out of a placement for them
+    engines: list = field(default_factory=list)
+    default_engine: str = ''
     hostname: str = ''
     sre_version: str = ''
     error: str = ''
@@ -275,6 +281,29 @@ def gui_user_fields(value) -> list:
         if len(users) >= MAX_GUI_USERS:
             break
     return list(users.values())
+
+
+def engine_names(value) -> list | None:
+    """The container engines of a list a host sent (the engines it allows, those a lab accepts):
+    the names that are engines, each once, in their order; ``None`` when there is no list or
+    no engine in it (nothing is said)."""
+    if not isinstance(value, list):
+        return None
+    names = list(dict.fromkeys(name for name in value if isinstance(name, str) and name in CONTAINER_ENGINES))
+    return names or None
+
+
+def engine_fields(data: dict) -> dict:
+    """The ``engines`` and ``default_engine`` of a status as the portal keeps them: the engines
+    the host allows, the default one first whatever the order sent (the default the agent
+    names when it is one of them, else the first of the list); nothing for an agent that
+    tells none (an older one)."""
+    engines = engine_names(data.get(STATUS_ENGINES))
+    if engines is None:
+        return {'engines': [], 'default_engine': ''}
+    default = data.get(STATUS_DEFAULT_ENGINE)
+    default = default if isinstance(default, str) and default in engines else engines[0]
+    return {'engines': [default] + [name for name in engines if name != default], 'default_engine': default}
 
 
 def project_name_fields(value) -> list | None:
@@ -421,6 +450,7 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       saves_configured=data.get(STATUS_SAVES_CONFIGURED) is True,
                       saves_error=_text(data.get(STATUS_SAVES_ERROR)),
                       project_names=project_name_fields(data.get(STATUS_PROJECT_NAMES)),
+                      **engine_fields(data),
                       **preload_fields(data.get('preload')),
                       **local_drain_fields(data.get('local_drain')))
 
@@ -498,6 +528,9 @@ class Pool:
         #: The lab list of the Open page per role (``labs``), kept labs_cache_ttl seconds, and the
         #: lock making the requests of a role wait for the one fetching it.
         self._labs_cache: dict[tuple, tuple[float, list]] = {}      # (instructor, all labs) -> (when, labs)
+        # the engines of the labs that restrict them (``lab_key`` -> names), from every list
+        # fetched: what the placement of a project looks at, whoever starts it
+        self._lab_engines: dict[str, tuple] = {}
         self._labs_locks: dict[tuple, asyncio.Lock] = {}
         self._config_hosts = {h.name: h for h in hosts}
         self._removed: set = set()      # config hosts removed by hand (``enable`` brings them back)
@@ -1304,8 +1337,37 @@ class Pool:
             return self.memory_room(h.name) != 0
         return st.projects == 0 or load.fits(cost or self.reference_cost())
 
+    def lab_engines(self, lab: str | None) -> tuple | None:
+        """The container engines the lab accepts, as the last list fetched said; ``None`` for a
+        lab that accepts them all, or that no list told about (``sre start`` on the host then
+        decides alone)."""
+        return self._lab_engines.get(lab_key(lab)) if lab else None
+
+    def _note_lab_engines(self, labs: list):
+        """The engines of the lab entries of a list just fetched: a lab that names none accepts
+        them all again."""
+        for entry in labs:
+            if entry.get('kind') == LAB_KIND_DIR or not entry.get('name'):
+                continue
+            engines = entry.get(LAB_ENGINES_KEY)
+            if engines:
+                self._lab_engines[lab_key(entry['name'])] = tuple(engines)
+            else:
+                self._lab_engines.pop(lab_key(entry['name']), None)
+
+    def _engines_fit(self, name: str, accepted: tuple | None, engine: str | None) -> bool:
+        """Whether the host *name* may run a project of a lab that accepts the engines
+        *accepted* (``None``: all), with *engine* when one is asked for.  A host whose agent
+        tells no engine (an older one) always may: ``sre start`` there decides."""
+        allowed = self.status[name].engines
+        if not allowed:
+            return True
+        if engine is not None:
+            return engine in allowed
+        return accepted is None or any(candidate in allowed for candidate in accepted)
+
     def pick(self, identity: Identity | None = None, host: str | None = None, *, lab: str | None = None,
-             need_saves: bool = False) -> tuple:
+             need_saves: bool = False, engine: str | None = None) -> tuple:
         """The host of a new project and its reservation.  Without *host*: the host of a local
         login session of *identity* (``follow_local_sessions``: the workstation the user sits at,
         occupied by them, whatever its load), else, among the hosts up (enabled, reachable, not
@@ -1324,14 +1386,25 @@ class Pool:
         when the identity may use it (403 otherwise), it is available to them (503) and has room
         (503).  The caller releases the reservation when the start is over.  *lab*: the lab of
         the project, whose cost (``costs.CostBook``) the reservation carries.  *need_saves*
-        (the restore of a saved project): only a host whose agent has the saved projects."""
+        (the restore of a saved project): only a host whose agent has the saved projects.
+        *engine* (an instructor naming one on the Open page): only a host that allows that
+        container engine; in every case only a host that allows an engine the lab accepts
+        (``lab_engines``).  The portal never chooses the engine itself: without *engine* the
+        host starts the project with the first of its engines that the lab accepts."""
         instructor = identity is not None and identity.is_instructor
         now = time.monotonic()
         cost = self.costs.cost(lab)
+        accepted = self.lab_engines(lab)
+        if engine is not None and accepted is not None and engine not in accepted:
+            raise PoolError(409, f"this lab does not accept the engine {engine}")
         if host is not None:
             chosen = self.host(host)
             if chosen.instructors_only and not instructor:
                 raise PoolError(403, "instructors only")
+            if not self._engines_fit(host, accepted, engine):
+                if engine is not None:
+                    raise PoolError(409, f"the host {host} does not allow the engine {engine}")
+                raise PoolError(409, f"the host {host} allows no engine this lab accepts")
             if need_saves and not self.status[host].saves:
                 raise PoolError(503, f"the host {host} has no access to the saved projects", retry_after=60)
             if not self._available_to(chosen, identity, self.state_of(host, now))[0]:
@@ -1349,6 +1422,7 @@ class Pool:
             return self._reserve(chosen, PLACEMENT_NAMED, cost)
         candidates = []
         waking = False
+        unfit = False       # a host that would take the project, left out for its engines
         for h in self.hosts.values():
             if h.instructors_only and not instructor:
                 continue
@@ -1358,6 +1432,9 @@ class Pool:
                 continue
             available, placement = self._available_to(h, identity, state)
             if not available or not self._has_room(h, cost):
+                continue
+            if not self._engines_fit(h.name, accepted, engine):
+                unfit = True
                 continue
             st, priority = self.status[h.name], self.runtime[h.name].priority
             fill, load = self._fill(h), st.load1 if st.load1 is not None else 0.0
@@ -1370,6 +1447,12 @@ class Pool:
         if not candidates:
             if waking:
                 raise PoolError(503, "a host is starting, please retry in a moment", retry_after=30)
+            if unfit:
+                # a student is not told about engines: the lab cannot be started now
+                if engine is not None:
+                    raise PoolError(503, f"no host available with the engine {engine}", retry_after=60)
+                raise PoolError(503, "no host available with an engine this lab accepts" if instructor
+                                else "no host available for this lab", retry_after=60)
             raise PoolError(503, "no host available for a new project", retry_after=60)
         candidates.sort(key=lambda c: c[:6])
         return self._reserve(candidates[0][6], candidates[0][7], cost)
@@ -1491,8 +1574,14 @@ class Pool:
             for host in self._labs_hosts(identity):
                 labs = await self._labs_of(host, identity, {'all': '1'} if all_labs else None)
                 if labs is not None:
-                    self._labs_cache[key] = (time.monotonic(), labs)
                     self.costs.declare(labs, time.time())       # the weights the labs declare
+                    self._note_lab_engines(labs)                # the engines they accept
+                    if not identity.is_instructor:
+                        # a student is not told which engine runs a project: the list of an
+                        # instructor alone names the engines of a lab (the Open page)
+                        labs = [{key: value for key, value in entry.items() if key != LAB_ENGINES_KEY}
+                                for entry in labs]
+                    self._labs_cache[key] = (time.monotonic(), labs)
                     return labs
             return []
 
@@ -1510,7 +1599,8 @@ class Pool:
         """``GET /v1/labs`` of one host, normalised (``[{name, title, kind, sort}]``, a bare name
         accepted as a lab, an unknown kind or sort mode replaced by the default, duplicates
         dropped, the order kept); ``None`` when the host does not answer a list.  A lab entry
-        keeps its ``weight`` when the host tells one that is a number (``LAB_WEIGHT_KEY``).  A directory
+        keeps its ``weight`` when the host tells one that is a number (``LAB_WEIGHT_KEY``), and
+        the container engines it accepts when it restricts them (``LAB_ENGINES_KEY``).  A directory
         entry keeps its README (``readme_of``: ``LAB_README_KEY``, shown under the tree of the
         Open page when the directory is opened), and the entry without name, the top of the lab
         directory, is kept for its README only: it is no entry of the tree.  An entry of the
@@ -1551,4 +1641,7 @@ class Pool:
             weight = figure(entry.get(LAB_WEIGHT_KEY)) if kind != LAB_KIND_DIR else None
             if weight is not None:
                 seen[entry['name']][LAB_WEIGHT_KEY] = weight
+            engines = engine_names(entry.get(LAB_ENGINES_KEY)) if kind != LAB_KIND_DIR else None
+            if engines is not None:
+                seen[entry['name']][LAB_ENGINES_KEY] = engines
         return list(seen.values())

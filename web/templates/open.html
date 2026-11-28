@@ -44,7 +44,12 @@
 <label class="instructor-option" id="host-option" hidden>
   {{ _("Host") }}
   <select id="host"><option value="">{{ _("Automatic placement") }}</option></select>
-  <span class="muted">{{ _("(a host reserved for instructors, or the least loaded one)") }}</span>
+  <span class="muted">{{ _("(a host of the pool; by default the least loaded one)") }}</span>
+</label>
+<label class="instructor-option" id="engine-option" hidden>
+  {{ _("Engine") }}
+  <select id="engine"><option value="">{{ _("Automatic") }}</option></select>
+  <span class="muted">{{ _("(the container engine of the project; by default the host chooses)") }}</span>
 </label>
 {% endif %}
 <div id="progress" class="progress-box" hidden></div>

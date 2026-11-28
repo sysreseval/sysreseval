@@ -114,7 +114,9 @@ function card(project) {
   }
   const meta = el('div', {class: 'meta'}, el('div', {}, _('Lab: ') + project.lab_name));
   if (isInstructor) {    // a student's projects are all standard: the line would say nothing
-    meta.append(el('div', {class: 'mode ' + mode}, _('Mode: ') + modeLabel(mode)));
+    // a debug project also says which container engine runs it (no other project does)
+    const engine = mode === 'debug' && project.container_engine ? ` (${project.container_engine})` : '';
+    meta.append(el('div', {class: 'mode ' + mode}, _('Mode: ') + modeLabel(mode) + engine));
   }
   meta.append(el('div', {}, _('Host: ') + project.host),
               el('div', {}, _('Started: ') + formatTimestamp(project.started_at)));

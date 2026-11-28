@@ -493,11 +493,26 @@ def _weight_of(titles: dict, local_name: str):
     return normalized_weight(weights.get(local_name)) if isinstance(weights, dict) else None
 
 
-def _lab_list_entry(name: str, title, kind: str, mode: str, weight=None) -> dict:
+def _engines_of(titles: dict, local_name: str):
+    """The container engines a ``titles.json`` dict says the lab *local_name* accepts (its
+    ``params.titles_engines_key`` option, written by ``sre make-titles`` for the labs that
+    restrict them), as a list; ``None`` without any (every engine), or when the file holds
+    something else than a list of engines there.  For those who place a project (the web
+    portal): ``sre start`` reads the lab itself."""
+    engines = titles.get(params.titles_engines_key)
+    value = engines.get(local_name) if isinstance(engines, dict) else None
+    if not isinstance(value, list) or not value or any(engine not in params.container_engines for engine in value):
+        return None
+    return list(dict.fromkeys(value))
+
+
+def _lab_list_entry(name: str, title, kind: str, mode: str, weight=None, engines=None) -> dict:
     entry = {params.lab_list_name_key: name, params.lab_list_title_key: title,
              params.lab_list_kind_key: kind, params.lab_list_sort_key: mode}
     if weight is not None:
         entry[params.lab_list_weight_key] = weight
+    if engines is not None:
+        entry[params.lab_list_engines_key] = engines
     return entry
 
 
@@ -594,7 +609,8 @@ def get_lab_list_with_titles(include_exam_only_labs=False, with_readmes=False):
                 result.extend(entries_of(os.path.join(dirpath, d), os.path.join(rel, d), mode))
             for name in group_labs:
                 result.append(_lab_list_entry(os.path.join(rel, name), _title_of(titles, name),
-                                              params.lab_list_kind_lab, mode, weight=_weight_of(titles, name)))
+                                              params.lab_list_kind_lab, mode, weight=_weight_of(titles, name),
+                                              engines=_engines_of(titles, name)))
             if subtitle is not None and len(result) > first:
                 result[first][params.lab_list_subtitle_key] = subtitle
         return result

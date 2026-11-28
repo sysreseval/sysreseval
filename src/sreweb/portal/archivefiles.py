@@ -79,6 +79,7 @@ _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 # the keys of an archive (params.*_keyword of SRE, which the portal does not import)
 RUNNING_LAB_NAME = 'running_lab_name'
 EVAL_DATE = 'eval_date'
+CONTAINER_ENGINE = 'container_engine'      # the engine of the evaluated project; missing in an older archive
 LOGIN = 'login'
 HOSTNAME = 'hostname'
 EXAM_JSON = 'exam_json'
@@ -553,6 +554,7 @@ def archive_view(raw: dict, *, max_output: int = MAX_OUTPUT_CHARS, max_outputs: 
         'grades': {
             RUNNING_LAB_NAME: _plain(raw.get(RUNNING_LAB_NAME, '')),
             EVAL_DATE: _plain(raw.get(EVAL_DATE)),
+            CONTAINER_ENGINE: _plain(raw.get(CONTAINER_ENGINE)),
             LOGIN: _plain(answers.get(LOGIN, '')),
             HOSTNAME: _plain(answers.get(HOSTNAME, '')),
             'grade_list': _plain([dict(e) for e in raw.get('grade_list', ()) if isinstance(e, dict)]),

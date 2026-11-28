@@ -606,6 +606,9 @@ msgid "also report the progress as JSON lines on stderr (for the web agent)"
 msgstr ""
 "écrire aussi la progression en lignes JSON sur stderr (pour l'agent web)"
 
+msgid "pull the images for this container engine only (by default for every engine this host allows)"
+msgstr "télécharger les images pour ce moteur de conteneurs seulement (par défaut pour tous les moteurs que cette machine autorise)"
+
 msgid "lab .py file(s) or director(ies) to scan recursively"
 msgstr "fichiers projets sre (.py) ou répertoires à parcourir récursivement"
 
@@ -808,6 +811,12 @@ msgstr ""
 
 msgid "restore the project in instructor mode (privileged only)"
 msgstr "restaurer le projet en mode enseignant (privilégiés uniquement)"
+
+msgid "container engine of the project, among those this host allows and the lab accepts (privileged only; by default the first engine of the host that the lab accepts)"
+msgstr "moteur de conteneurs du projet, parmi ceux que cette machine autorise et que le lab accepte (privilégiés uniquement ; par défaut le premier moteur de la machine que le lab accepte)"
+
+msgid "container engine of the new project, whatever engine made the save file (privileged only; by default the first engine of the host that the lab accepts)"
+msgstr "moteur de conteneurs du nouveau projet, quel que soit le moteur qui a fait le fichier de sauvegarde (privilégiés uniquement ; par défaut le premier moteur de la machine que le lab accepte)"
 
 msgid "Put a running project in instructor mode (privileged only)"
 msgstr "Passer un projet en cours en mode enseignant (privilégiés uniquement)"

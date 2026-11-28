@@ -934,6 +934,12 @@ msgstr "Kennzeichen"
 msgid "Version"
 msgstr "Version"
 
+msgid "The container engines a project may run with on the host, the default one first"
+msgstr "Die Container-Engines, mit denen ein Projekt auf dem Rechner laufen kann, die Standard-Engine zuerst"
+
+msgid "Engines"
+msgstr "Engines"
+
 msgid "Last error"
 msgstr "Letzter Fehler"
 
@@ -991,6 +997,9 @@ msgstr "{n} fehlgeschlagen"
 
 msgid "idle for {n} min"
 msgstr "seit {n} min inaktiv"
+
+msgid "Default engine: {engine}"
+msgstr "Standard-Engine: {engine}"
 
 msgid "instructors"
 msgstr "Lehrkräfte"
@@ -1231,9 +1240,20 @@ msgstr "{device} ({who})"
 msgid "Automatic placement"
 msgstr "Automatische Platzierung"
 
-msgid "(a host reserved for instructors, or the least loaded one)"
-msgstr ""
-"(ein für Lehrkräfte reservierter Rechner oder der am wenigsten ausgelastete)"
+msgid "(a host of the pool; by default the least loaded one)"
+msgstr "(ein Rechner des Pools; standardmäßig der am wenigsten ausgelastete)"
+
+msgid "Engine"
+msgstr "Engine"
+
+msgid "Automatic"
+msgstr "Automatisch"
+
+msgid "(the container engine of the project; by default the host chooses)"
+msgstr "(die Container-Engine des Projekts; standardmäßig wählt der Rechner)"
+
+msgid "reserved for instructors"
+msgstr "für Lehrkräfte reserviert"
 
 # --- presentations: project.html, project.js, present.js ---
 msgid "Present"

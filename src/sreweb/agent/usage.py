@@ -204,8 +204,9 @@ class UsageSampler:
     ``cfg.interval`` seconds by its own task: never from the status handler, which a slow Docker
     daemon would hold longer than the portal waits for it) and what the status tells of it
     (``rows()``, ``cpu_busy``).  *docker_socket*: the socket of the daemon; *podman_slices*: the
-    directory of the slices of the projects of the Podman engine, which is read when it is given
-    (the daemon is then not asked); both ``''`` for an agent that measures nothing (its status
+    directory of the slices of the projects of the Podman engine; one of them, or both on a
+    host that runs projects with both engines (a project is found in one of them: its hash is
+    the same with either engine); both ``''`` for an agent that measures nothing (its status
     still lists its projects, without figures); *clock*: injectable for the tests."""
 
     def __init__(self, registry, cfg: UsageConfig, *, docker_socket: str, podman_slices: str = '',
@@ -254,21 +255,37 @@ class UsageSampler:
                    for rln, project in projects.items()}
         by_lab: dict | None = {}
         where: dict = {}
+        failed: list[str] = []      # the sources that could not be asked, with the reason
+        asked = 0
         if projects:
-            try:
-                if self.podman_slices:
-                    by_lab, where = await asyncio.to_thread(podman_containers, self.podman_slices,
-                                                            list(hash_of.values()))
-                else:
-                    by_lab = await self._list_containers()
-            except (aiohttp.ClientError, asyncio.TimeoutError, OSError, RuntimeError, ValueError) as e:
+            failures = (aiohttp.ClientError, asyncio.TimeoutError, OSError, RuntimeError, ValueError)
+            if self.podman_slices:
+                asked += 1
+                try:
+                    found, where = await asyncio.to_thread(podman_containers, self.podman_slices,
+                                                           list(hash_of.values()))
+                    by_lab.update(found)
+                except failures as e:
+                    failed.append(f"{self.podman_slices}: {e or type(e).__name__}")
+            if self.docker_socket:
+                asked += 1
+                try:
+                    for lab_hash, ids in (await self._list_containers()).items():
+                        by_lab.setdefault(lab_hash, []).extend(ids)
+                except failures as e:
+                    failed.append(f"{self.docker_socket}: {e or type(e).__name__}")
+            if failed:
+                self._warn('; '.join(failed))
+            if len(failed) == asked:    # no source answered (or there is none): nothing is known
                 by_lab = None
-                self._warn(f"{self.podman_slices or self.docker_socket}: {e or type(e).__name__}")
+        # a project whose containers are found nowhere while a source did not answer may have
+        # them there: nothing is told of it (None), the others are measured
         ids_of = {}
         if by_lab is not None:
             for rln, lab_hash in hash_of.items():
-                ids_of[rln] = frozenset(by_lab.get(lab_hash, ())) if isinstance(lab_hash, str) else frozenset()
-        wanted = set().union(*ids_of.values()) if ids_of else set()
+                found = by_lab.get(lab_hash) if isinstance(lab_hash, str) else None
+                ids_of[rln] = None if found is None and failed else frozenset(found or ())
+        wanted = set().union(*(ids for ids in ids_of.values() if ids is not None)) if ids_of else set()
         figures = await asyncio.to_thread(_read_all, self.cfg.cgroup_root, wanted, where)
         self._host_measure(now, figures.pop(None))
         for rln in list(self._tracks):
@@ -283,10 +300,16 @@ class UsageSampler:
         unread = 0
         for rln, ids in ids_of.items():
             track = self._tracks.get(rln)
+            if ids is None:
+                if track is not None:
+                    track.containers = track.mem_mb = track.cpu = None
+                continue
             if track is None or track.ids != ids:
                 track = self._tracks[rln] = _Track(ids=ids, since=now)
             unread += self._project_measure(track, now, [figures[cid] for cid in ids])
-        if projects and wanted and unread == len(wanted):
+        if failed:
+            pass        # said above: the reason stays until every source answers again
+        elif projects and wanted and unread == len(wanted):
             self._warn(f"no cgroup of a container found under {self.cfg.cgroup_root} (cgroup v2 expected)")
         elif projects:
             self._warn('')

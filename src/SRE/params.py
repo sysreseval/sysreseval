@@ -68,8 +68,10 @@ kathara_hint = None          # None: how to get a Kathara with the switch modes,
 kathara_missing_hint = None  # None: what to do on a host whose engine is Kathara and that has no Kathara, by layout
 podman_setup_hint = None     # None: how to prepare a host for the Podman engine, by layout
 vde_switch_hint = None       # None: how to get the switch program of the Podman engine, by layout
-container_engine = "kathara"   # what runs the machines: "kathara" (Docker through Kathara) or "podman" (rootless Podman under sre_user, on a host prepared by `make podman-setup` or by the package sysreseval-podman)
-container_engine_by_host = {}  # host name -> engine, for the hosts that differ from container_engine: {"s17": "podman"}
+container_engine = "kathara"   # the default engine, what runs the machines of a project when nothing else is asked: "kathara" (Docker through Kathara) or "podman" (rootless Podman under sre_user, on a host prepared by `make podman-setup` or by the package sysreseval-podman)
+container_engine_by_host = {}  # host name -> default engine, for the hosts that differ from container_engine: {"s17": "podman"}
+container_engines_allowed = None      # the engines a host may run projects with: ("podman", "kathara"); None: its default engine only.  A lab that does not accept the default engine (its `container_engines`) then runs with another allowed one
+container_engines_allowed_by_host = {}  # host name -> allowed engines, for the hosts that differ from container_engines_allowed: {"s17": ("podman", "kathara")}
 podman_dir = None            # None: sre_pub_dir/podman: configuration and image store of the Podman engine (a local disk, never NFS)
 podman_uid_ranges = 32       # Podman engine: each project runs in a uid range of its own, so this is how many projects a host runs at once (1: they all share one range)
 vde_switch_program = None    # None: main_sre_dir/bin/sre-vde-switch: the switch of the Podman engine for 'switch' and 'managed' networks, built by `make vde-switch` (checkout) or shipped by the package sysreseval-podman (fhs); the vde_switch of Debian ("/usr/bin/vde_switch") loses the frames above 1518 bytes
@@ -431,28 +433,66 @@ default_host_network_edge_relative_length = 1.0
 # True/False = force IPv6 on/off in every machine; Machine(ipv6=...) overrides it per machine.
 default_ipv6 = None
 
-# Container engines (values of `container_engine` and of `container_engine_by_host`)
+# Container engines (values of `container_engine`, `container_engine_by_host`, `container_engines_allowed`
+# and `container_engines_allowed_by_host`, and of the `container_engines` attribute of a lab)
 container_engine_kathara = "kathara"
 container_engine_podman = "podman"
 container_engines = (container_engine_kathara, container_engine_podman)
+lab_engines_attribute = "container_engines"     # the module attribute of a lab: the engines it accepts
 
 
-def host_container_engine(hostname: str | None = None) -> str:
-    """The container engine of this host (of *hostname*): its entry of `container_engine_by_host`,
-    looked up by the name the machine gives itself, then by that name cut at its first dot, else
-    `container_engine`.  ValueError, naming the parameter, when the value is not an engine."""
+def _of_this_host(by_host: dict, hostname: str | None):
+    """`(name, value)` of the entry of *by_host* for this host (for *hostname*): looked up by the
+    name the machine gives itself, then by that name cut at its first dot; `None` without one."""
     if hostname is None:
         hostname = socket.gethostname()
     for name in (hostname, hostname.split('.')[0]):
-        if name in container_engine_by_host:
-            engine, source = container_engine_by_host[name], f"container_engine_by_host[{name!r}]"
-            break
+        if name in by_host:
+            return name, by_host[name]
+    return None
+
+
+def host_container_engine(hostname: str | None = None) -> str:
+    """The default container engine of this host (of *hostname*): its entry of
+    `container_engine_by_host`, looked up by the name the machine gives itself, then by that
+    name cut at its first dot, else `container_engine`.  ValueError, naming the parameter, when
+    the value is not an engine."""
+    entry = _of_this_host(container_engine_by_host, hostname)
+    if entry is not None:
+        engine, source = entry[1], f"container_engine_by_host[{entry[0]!r}]"
     else:
         engine, source = container_engine, "container_engine"
     if engine not in container_engines:
         raise ValueError(f"{source} = {engine!r} in params.py: not a container engine "
                          f"({', '.join(container_engines)})")
     return engine
+
+
+def host_allowed_engines(hostname: str | None = None) -> tuple:
+    """The engines this host (*hostname*) may run projects with, its default engine first, then
+    the others in the order the parameter gives: its entry of `container_engines_allowed_by_host`
+    (looked up like the default engine), else `container_engines_allowed`, else (`None`) the
+    default engine alone.  ValueError, naming the parameter, when the value is not a list of
+    engines or leaves the default engine of the host out."""
+    default = host_container_engine(hostname)
+    entry = _of_this_host(container_engines_allowed_by_host, hostname)
+    if entry is not None:
+        allowed, source = entry[1], f"container_engines_allowed_by_host[{entry[0]!r}]"
+    else:
+        allowed, source = container_engines_allowed, "container_engines_allowed"
+    if allowed is None:
+        return (default,)
+    if isinstance(allowed, str) or not isinstance(allowed, (tuple, list)) or not allowed:
+        raise ValueError(f"{source} = {allowed!r} in params.py: a list of container engines is expected "
+                         f"({', '.join(container_engines)})")
+    for engine in allowed:
+        if engine not in container_engines:
+            raise ValueError(f"{source} = {allowed!r} in params.py: {engine!r} is not a container engine "
+                             f"({', '.join(container_engines)})")
+    if default not in allowed:
+        raise ValueError(f"{source} = {allowed!r} in params.py: the default engine of this host, {default!r}, "
+                         f"is not among them")
+    return (default,) + tuple(engine for engine in dict.fromkeys(allowed) if engine != default)
 
 
 # Switch type of a network (`mode` of a `_network_specs` entry, Kathara collision domain mode):
@@ -581,6 +621,9 @@ titles_subtitle_prefix = "@subtitle"
 # The weights of the labs of the directory, {local name: number}: computed by `sre make-titles`
 # (never written by hand: every run replaces them), see image_weights
 titles_weights_key = "@weights"
+# The engines the labs of a directory accept ({local name: [engine, ...]}, only the labs that
+# restrict them), computed by `sre make-titles` like the weights and never written by hand
+titles_engines_key = "@engines"
 lab_weight_attribute = "lab_weight"  # the module attribute of a lab that sets its weight itself
 lab_weight_decimals = 2             # a stored weight is rounded to this many decimals
 # The keys of the entries of `sre list --with-titles`
@@ -589,6 +632,7 @@ lab_list_title_key = "title"
 lab_list_kind_key = "kind"
 lab_list_sort_key = "sort"          # the titles_sort_* mode the entry is placed among its siblings by
 lab_list_weight_key = "weight"      # the weight of a "lab" entry, when titles.json has one
+lab_list_engines_key = "engines"    # the engines a "lab" entry accepts, when titles.json restricts them
 lab_list_subtitle_key = "subtitle"  # the subtitle shown right before the entry (the first one shown of its group)
 lab_list_kind_dir = "dir"
 lab_list_kind_lab = "lab"
@@ -625,6 +669,7 @@ origin_keyword = "origin"          # origin_local or origin_web
 origin_local = "local"             # the Qt GUI through sre-wrapper, or sre run by root
 origin_web = "web"                 # the web agent (sre-agent), for a browser user
 origin_user_keyword = "user"       # the user who created the project (SRE.username)
+origin_engine_keyword = "engine"   # the container engine of the project; missing in a project created before it was recorded
 # Keys of the document printed by `sre status --json` (the projects also use running_lab_name_keyword,
 # origin_keyword and origin_user_keyword)
 status_sre_version_keyword = "sre_version"
@@ -669,6 +714,7 @@ language_display_names = {'en': 'English', 'fr': 'Français', 'de': 'Deutsch'}
 running_lab_name_keyword = "running_lab_name"
 eval_date_keyword = "eval_date"
 re_eval_date_keyword = "re_eval_date"
+archive_engine_keyword = "container_engine"     # the container engine of the evaluated project; missing in an archive written before it was recorded
 
 sysreseval_answers_updated_at = 'answers_updated_at'
 sysreseval_exam_time_remaining = 'exam_time_remaining'

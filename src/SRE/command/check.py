@@ -7,6 +7,7 @@ from ..params import SRE
 from ..utils import (user_not_allowed, error_quit, generate_default_data, offline_net_scheme,
                      normalized_weight, declared_lab_weight)
 from ..common import TranslatedText
+from ..engine.choice import lab_engines
 from ..informations import resolve_informations, resolve_text, outline
 
 
@@ -170,6 +171,13 @@ def action_check():
         _fail("module import failed:")
         raise
     _ok("module imported")
+    try:
+        engines = lab_engines(module)
+    except ValueError as e:
+        _fail(str(e))
+        error_quit(f"the {params.lab_engines_attribute} attribute of the lab is not a list of container engines")
+    if engines is not None:
+        _ok(f"{params.lab_engines_attribute}: a project of this lab runs with {' or '.join(engines)} only")
 
     # ── Step 2: generate Data ─────────────────────────────────────────
     print(f"\n[ 2/{total_steps} ] Calling Data.generate() …")

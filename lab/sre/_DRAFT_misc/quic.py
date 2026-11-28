@@ -56,6 +56,8 @@ export_kathara_project = False
 eval_interval_without_exam_mode = 180
 eval_before_exit = True
 record_sessions = False
+# nginx loads an eBPF program for QUIC (quic_bpf), which a rootless Podman machine may not do.
+container_engines = ("kathara",)
 
 NEWS = "www.news.tp"
 WWW = "www.quic.tp"

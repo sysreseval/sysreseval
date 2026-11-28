@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from SRE import access, params
-from SRE.engine import EngineError, get_engine
+from SRE.engine import EngineError, engine_names_in_use, get_engine
 from SRE.utils import error_quit
 from SRE.utils_privileges import drop_privileges_temporarily, drop_privileges_permanently
 
@@ -130,6 +130,11 @@ def parse_args():
                               default=None,
                               help=_('read the X11 magic cookie from this X authority file instead of '
                                      '$SRE_XAUTH_COOKIE (privileged only)'))
+    parser_start.add_argument('--engine', metavar='engine', dest='engine', default=None,
+                              choices=params.container_engines,
+                              help=_('container engine of the project, among those this host allows and the lab '
+                                     'accepts (privileged only; by default the first engine of the host that the '
+                                     'lab accepts)'))
 
     parser_stop = subparsers.add_parser('stop', help=_('Stop a running project'))
     parser_stop.add_argument('running_lab', metavar='running_lab', help=_('running lab name'))
@@ -148,6 +153,11 @@ def parse_args():
     parser_restore = subparsers.add_parser('restore', help=_('Restore a saved project as a new running project'))
     parser_restore.add_argument('--instructor-mode', dest='instructor_mode', action='store_true',
                                 help=_('restore the project in instructor mode (privileged only)'))
+    parser_restore.add_argument('--engine', metavar='engine', dest='engine', default=None,
+                                choices=params.container_engines,
+                                help=_('container engine of the new project, whatever engine made the save file '
+                                       '(privileged only; by default the first engine of the host that the lab '
+                                       'accepts)'))
     parser_restore.add_argument('save_file', metavar='save_file',
                                 help=_("save file created by 'sre save' ('-' reads it from stdin; "
                                        "user mode accepts only '-')"))
@@ -234,6 +244,10 @@ def parse_args():
                                 help=_('wait a random delay of 0 to N seconds before pulling'))
     parser_preload.add_argument('--progress', action='store_true',
                                 help=_('also report the progress as JSON lines on stderr (for the web agent)'))
+    parser_preload.add_argument('--engine', metavar='engine', dest='engine', default=None,
+                                choices=params.container_engines,
+                                help=_('pull the images for this container engine only (by default for every '
+                                       'engine this host allows)'))
     parser_preload.add_argument('paths', nargs='+', metavar='file_or_dir',
                                 help=_('lab .py file(s) or director(ies) to scan recursively'))
 
@@ -471,11 +485,13 @@ if access.launched_by_sudo(os.environ, params.sre_exe):
         error_quit(_("must be launched via sre-wrapper"))
 
 if uid == 0:
-    # The engine must see the process as root before the effective uid is lowered below, or it
+    # Each engine this command may ask (those the host allows, those the projects still there
+    # record) must see the process as root before the effective uid is lowered below, or it
     # could never raise it again for a lab with privileged machines.
     try:
-        get_engine().capture_root_privileges()
-    except EngineError as e:  # no engine of that name (container_engine of params.py)
+        for engine_name in engine_names_in_use():
+            get_engine(engine_name).capture_root_privileges()
+    except EngineError as e:  # an engine parameter of params.py that names no engine, an engine not installed
         error_quit(str(e))
 
 # `update` writes the root-owned tree: root stays available to it whatever allow_privileged_machines says

@@ -40,11 +40,12 @@
       <th class="sortable" data-sort="priority" title="{{ _("group:order: the lowest group is used first, then the lowest order") }}">{{ _("Priority") }}</th>
       <th>{{ _("Flags") }}</th>
       <th class="sortable" data-sort="sre_version">{{ _("Version") }}</th>
+      <th class="sortable" data-sort="engines" title="{{ _("The container engines a project may run with on the host, the default one first") }}">{{ _("Engines") }}</th>
       <th>{{ _("Last error") }}</th>
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="17" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="18" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 {% endblock %}
 {% block scripts %}<script type="module" src="{{ base_path }}/static/js/pool.js"></script>{% endblock %}

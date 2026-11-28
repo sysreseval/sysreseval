@@ -919,6 +919,12 @@ msgstr "Indicateurs"
 msgid "Version"
 msgstr "Version"
 
+msgid "The container engines a project may run with on the host, the default one first"
+msgstr "Les moteurs de conteneurs avec lesquels un projet peut tourner sur la machine, celui par défaut en premier"
+
+msgid "Engines"
+msgstr "Moteurs"
+
 msgid "Last error"
 msgstr "Dernière erreur"
 
@@ -972,6 +978,9 @@ msgstr "{n} échec(s)"
 
 msgid "idle for {n} min"
 msgstr "inactive depuis {n} min"
+
+msgid "Default engine: {engine}"
+msgstr "Moteur par défaut : {engine}"
 
 msgid "instructors"
 msgstr "enseignants"
@@ -1208,8 +1217,20 @@ msgstr "{device} ({who})"
 msgid "Automatic placement"
 msgstr "Placement automatique"
 
-msgid "(a host reserved for instructors, or the least loaded one)"
-msgstr "(une machine réservée aux enseignants, ou la moins chargée)"
+msgid "(a host of the pool; by default the least loaded one)"
+msgstr "(une machine du parc ; par défaut la moins chargée)"
+
+msgid "Engine"
+msgstr "Moteur"
+
+msgid "Automatic"
+msgstr "Automatique"
+
+msgid "(the container engine of the project; by default the host chooses)"
+msgstr "(le moteur de conteneurs du projet ; par défaut la machine choisit)"
+
+msgid "reserved for instructors"
+msgstr "réservée aux enseignants"
 
 # --- presentations: project.html, project.js, present.js ---
 

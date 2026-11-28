@@ -31,6 +31,14 @@ Environment variables (all optional but the first):
   MOCK_LAB_WEIGHTS    JSON {lab name: weight}: the "weight" key `list --with-titles` gives the
                       entry of a lab whose titles.json stores one (`sre make-titles`); none by
                       default, and a lab the list does not hold is ignored
+  MOCK_ENGINES        JSON list of the container engines this fake host allows, the default
+                      one first (["kathara"] by default): what `start` and `restore` choose
+                      the engine of a project among, as the real CLI does (`engine/choice.py`);
+                      the engine is recorded in the origin file of the project, and told by
+                      info.json for a debug project only
+  MOCK_LAB_ENGINES    JSON {lab name: [engine, ...]}: the engines a lab accepts (its
+                      `container_engines` attribute), given by `list --with-titles` as the
+                      "engines" key of its entry; a lab not named accepts every engine
   MOCK_LAB_SUBTITLES  JSON {entry name: subtitle} (a text or {language: text}): the "subtitle" key
                       `list --with-titles` gives the first entry of a group of a titles.json in
                       the "manual" mode; the entries of the directory of a named entry are then
@@ -116,6 +124,7 @@ import zstandard as zstd  # noqa: E402
 from SRE import access, params  # noqa: E402
 from SRE.answers import load_answers  # noqa: E402
 from SRE.origin import project_origin, write_origin  # noqa: E402
+from SRE.engine.choice import EngineChoiceError, choose_engine  # noqa: E402
 from SRE.instructor_text import instructor, set_instructor_context  # noqa: E402
 from SRE.common import (GradeElement, GradePart, InfoInterface, InfoLab, InfoMachine, InfoSwitch,  # noqa: E402
                         project_accessible,
@@ -127,6 +136,8 @@ ENV_LAB_LIST = 'MOCK_LAB_LIST'
 ENV_LAB_READMES = 'MOCK_LAB_READMES'
 ENV_LAB_WEIGHTS = 'MOCK_LAB_WEIGHTS'
 ENV_LAB_SUBTITLES = 'MOCK_LAB_SUBTITLES'
+ENV_ENGINES = 'MOCK_ENGINES'
+ENV_LAB_ENGINES = 'MOCK_LAB_ENGINES'
 ENV_FLAVOR_FORM = 'MOCK_FLAVOR_FORM'
 ENV_FLAVOR_REFUSE = 'MOCK_FLAVOR_REFUSE'
 ENV_FLAVOR_PRESETS = 'MOCK_FLAVOR_PRESETS'
@@ -359,6 +370,7 @@ class Mock:
         weights = json.loads(value) if value else {}
         value = self.env.get(ENV_LAB_SUBTITLES)
         subtitles = json.loads(value) if value else {}
+        engines = self.lab_engines()
         tree: dict = {}
         for lab in labs:
             parts = lab.split('/')
@@ -377,6 +389,8 @@ class Mock:
                                "kind": "lab", "sort": "name"})
                 if prefix + name in weights:
                     result[-1]["weight"] = weights[prefix + name]
+                if prefix + name in engines:
+                    result[-1]["engines"] = list(engines[prefix + name])
             return result
 
         def directory(name):
@@ -438,11 +452,31 @@ class Mock:
         if self.user_mode and os.path.exists(os.path.join(params.sre_pub_dir, params.exam_json_name)):
             error_quit("you're not allowed to run this command in exam mode")
 
+    def lab_engines(self) -> dict:
+        """``{lab: (engine, ...)}`` of the labs that restrict their engines (MOCK_LAB_ENGINES)."""
+        value = self.env.get(ENV_LAB_ENGINES)
+        return {lab: tuple(engines) for lab, engines in (json.loads(value) if value else {}).items()}
+
+    def engine_of_new_project(self, lab_cli_arg: str, requested: str | None) -> str:
+        """The engine of a new project of *lab_cli_arg*, chosen as the real CLI does
+        (``start.engine_of_new_project``): *requested* (``--engine``, privileged only), else
+        the first engine of the host (MOCK_ENGINES) that the lab accepts; a student is only
+        told that the lab cannot be started here."""
+        if requested is not None and self.user_mode:
+            error_quit("--engine is not available in user mode")
+        value = self.env.get(ENV_ENGINES)
+        allowed = tuple(json.loads(value)) if value else (params.container_engine_kathara,)
+        try:
+            return choose_engine(requested, allowed, self.lab_engines().get(lab_cli_arg))
+        except EngineChoiceError as e:
+            error_quit("this lab cannot be started on this host" if self.user_mode else str(e))
+
     def create_project(self, lab_cli_arg: str, *, is_path: bool, debug_project: bool, instructor_mode: bool,
-                       flavor=None) -> str:
+                       flavor=None, engine: str | None = None) -> str:
         """The project directory of a new instance of *lab_cli_arg* (layout of
         ``start.create_project_directories``), the progress events, ``info.json``, then the
-        ``project created`` event; returns the running lab name."""
+        ``project created`` event; returns the running lab name.  *engine*: the container
+        engine of the project, recorded in its origin file."""
         lab_name = params.get_lab_name_from_cli_arg(lab_cli_arg, is_path)
         now = datetime.datetime.now()
         running_lab_name = params.get_running_lab_name(lab_name, now, self.username)
@@ -460,7 +494,7 @@ class Mock:
             Path(params.instructor_mode_marker_filename(running_lab_name)).touch(mode=0o600)
         write_origin(params.origin_filename(running_lab_name),
                      project_origin(self.env, by_sudo=access.launched_by_sudo(self.env, params.sre_exe)),
-                     self.username)
+                     self.username, engine=engine)
         os.makedirs(params.files_dir(running_lab_name))
         os.mkdir(params.answers_dir(running_lab_name))
         os.chmod(params.answers_dir(running_lab_name), 0o777)
@@ -488,6 +522,8 @@ class Mock:
                          debug_project=debug_project, instructor_mode=instructor_mode, x11_host=bool(self.env.get(ENV_X11)),
                          eval_interval=int(self.env.get(ENV_EVAL_INTERVAL) or 0),
                          allow_save_restore=not self.env.get(ENV_NO_SAVE_RESTORE))
+        # as the real CLI: info.json tells the engine of a debug project only
+        info.container_engine = (engine or '') if debug_project else ''
         Path(params.info_filename(running_lab_name)).write_text(info.to_json())
         emit({"phase": "project", "status": "created", "running_lab_name": running_lab_name})
         return running_lab_name
@@ -567,6 +603,7 @@ class Mock:
             error_quit("--user and --path options are mutually exclusive")
         if not is_path and args.lab not in self.lab_list(include_exam_only=True):
             error_quit(f"lab '{args.lab}' does not exist")
+        engine = self.engine_of_new_project(args.lab, args.engine)
 
         flavor = None
         if args.set_flavor_name is not None:
@@ -597,7 +634,7 @@ class Mock:
             raise _Quit(params.exit_code_flavor_form_needed)
 
         self.create_project(args.lab, is_path=is_path, debug_project=bool(args.debug_project or args.debug_web_project),
-                            instructor_mode=bool(args.instructor_mode), flavor=flavor)
+                            instructor_mode=bool(args.instructor_mode), flavor=flavor, engine=engine)
 
     def action_eval(self):
         self.not_allowed_in_exam_mode()
@@ -909,9 +946,10 @@ class Mock:
             error_quit(f"lab '{lab_cli_arg}' does not exist")
         if self.env.get(ENV_NO_SAVE_RESTORE):
             error_quit(NO_SAVE_RESTORE_MESSAGE)
+        engine = self.engine_of_new_project(lab_cli_arg, args.engine)
         debug_project = bool(header.get(params.save_meta_debug_project)) and not self.user_mode
         running_lab_name = self.create_project(lab_cli_arg, is_path=is_path, debug_project=debug_project,
-                                               instructor_mode=bool(args.instructor_mode))
+                                               instructor_mode=bool(args.instructor_mode), engine=engine)
         if not self.user_mode:
             print(running_lab_name)
 
@@ -1046,6 +1084,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser_start.add_argument('--debug-web-project', dest='debug_web_project', action='store_true')
     parser_start.add_argument('--instructor-mode', dest='instructor_mode', action='store_true')
     parser_start.add_argument('--xauth-file', metavar='x-authority-file', dest='xauth_file', default=None)
+    parser_start.add_argument('--engine', metavar='engine', dest='engine', default=None,
+                              choices=params.container_engines)
 
     parser_stop = subparsers.add_parser('stop')
     parser_stop.add_argument('running_lab', metavar='running_lab')
@@ -1057,6 +1097,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser_restore = subparsers.add_parser('restore')
     parser_restore.add_argument('--instructor-mode', dest='instructor_mode', action='store_true')
+    parser_restore.add_argument('--engine', metavar='engine', dest='engine', default=None,
+                                choices=params.container_engines)
     parser_restore.add_argument('save_file', metavar='save_file')
 
     subparsers.add_parser('stop-all')

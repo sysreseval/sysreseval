@@ -124,15 +124,22 @@ def _print_summary(plan: upd.InstallPlan, manifest_source: str, params_report: l
     print("\nThis runs 'sre wipe' (every running project is stopped and removed) and replaces the files above.")
 
 
-def _no_project_here() -> str:
-    """Why this host cannot be running any project (a file server that only holds the tree),
-    `''` when it may: what the container engine of the host needs is there."""
-    if params.host_container_engine() == params.container_engine_podman:
+def _engine_not_here(engine_name: str) -> str:
+    """Why the engine *engine_name* cannot be running anything on this host, `''` when what it
+    needs is there."""
+    if engine_name == params.container_engine_podman:
         if not os.path.isdir(params.podman_dir):
             return f"the Podman engine is not set up on this host ({params.podman_dir} is missing)"
     elif not os.path.exists(params.docker_socket_path):
         return f"no Docker daemon on this host ({params.docker_socket_path} is missing)"
     return ''
+
+
+def _no_project_here() -> str:
+    """Why this host cannot be running any project (a file server that only holds the tree),
+    `''` when it may: what one of the container engines the host allows needs is there."""
+    reasons = [_engine_not_here(engine_name) for engine_name in params.host_allowed_engines()]
+    return '; '.join(reasons) if all(reasons) else ''
 
 
 def _run_wipe() -> None:

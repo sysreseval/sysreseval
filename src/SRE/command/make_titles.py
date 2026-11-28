@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .. import params
 from ..common import TranslatedText
+from ..engine.choice import lab_engines
 from ..utils import (_iter_labs, _lab_tree, error_quit, user_not_allowed, generate_default_data,
                      offline_net_scheme, lab_module_as_srelab, normalized_weight, declared_lab_weight,
                      is_subtitle_key, subtitle_of)
@@ -91,6 +92,18 @@ def _weight_of_module(module, lab_path: str, srelab_file: str):
     return None
 
 
+def _engines_of_module(module, srelab_file: str):
+    """The container engines the lab *module* accepts, as a list, when it restricts them
+    (``params.lab_engines_attribute``); ``None`` when it accepts all and, with a warning, when
+    the attribute is not a list of engines (``sre check`` and ``sre start`` refuse that lab)."""
+    try:
+        engines = lab_engines(module)
+    except ValueError as e:
+        print(f"sre make-titles: no engines for {srelab_file}: {e}", file=sys.stderr)
+        return None
+    return None if engines is None else list(engines)
+
+
 def _read_existing(path: str) -> dict:
     """The ``titles.json`` already at *path*, in its order: ``{}`` when there is none, or (with
     a warning) when it is not a JSON object.  A key written more than once is warned about:
@@ -125,13 +138,15 @@ def _read_existing(path: str) -> dict:
     return data
 
 
-def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=(), weights=None) -> dict:
+def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=(), weights=None,
+                  engines=None) -> dict:
     """The new content of the ``titles.json`` of *parent_dir_abs*: the options (the keys starting
     with ``params.titles_reserved_prefix``) first, as they were (an unknown ``@sort`` value is
-    warned about) but for the weights of the labs (``params.titles_weights_key``), which are
-    computed and never written by hand: those of the file are dropped and *weights*
-    (``{local name: weight}`` of the labs found now) take their place, last of the options, when
-    there are some; then the entries already there, in their order (a manual order survives a
+    warned about) but for the weights of the labs (``params.titles_weights_key``) and the
+    engines they accept (``params.titles_engines_key``), which are computed and never written by
+    hand: those of the file are dropped and *weights* (``{local name: weight}`` of the labs
+    found now) then *engines* (``{local name: [engine, ...]}`` of the labs that restrict them)
+    take their place, last of the options, when there are some; then the entries already there, in their order (a manual order survives a
     rerun), when they still name a lab or a sub-directory of the directory, with the title
     *found* now when the lab has one, else as they were (a title written by hand, a lab that
     lost its ``title``, a sub-directory); then the labs *found* that were not listed, by name.
@@ -162,7 +177,7 @@ def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=(), 
 
     merged: dict = {}
     for key, value in existing.items():
-        if is_option(key) and key != params.titles_weights_key:
+        if is_option(key) and key not in _COMPUTED_OPTIONS:
             if key == params.titles_sort_key and value not in params.titles_sort_modes:
                 print(f"sre make-titles: {titles_file}: "
                       f"unknown {key} value {value!r} (one of {', '.join(params.titles_sort_modes)} "
@@ -170,6 +185,8 @@ def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=(), 
             merged[key] = value
     if weights:
         merged[params.titles_weights_key] = dict(weights)
+    if engines:
+        merged[params.titles_engines_key] = dict(engines)
     for key, value in existing.items():
         if is_subtitle_key(key):
             if subtitle_of(key, value) is None:
@@ -198,6 +215,10 @@ def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=(), 
     return {key: merged.get(key) for key in keys[:position] + missing + keys[position:]}
 
 
+# the options `sre make-titles` computes from the labs: those of the file are never kept
+_COMPUTED_OPTIONS = (params.titles_weights_key, params.titles_engines_key)
+
+
 def _write_json_atomic(path: str, data: dict):
     """Write *data* in its order (the languages of a title sorted)."""
     ordered = {key: dict(sorted(value.items())) if isinstance(value, dict) else value
@@ -210,13 +231,13 @@ def _write_json_atomic(path: str, data: dict):
 
 
 def _update_titles_file(target: str, found: dict, parent_dir_abs: str, *, always: bool,
-                        subdirs=(), weights=None) -> bool:
-    """Merge the titles *found*, the *weights* computed (and, with ``--directories``, the
-    sub-directories *subdirs*) into *target* and write it: always, or only when the result has
+                        subdirs=(), weights=None, engines=None) -> bool:
+    """Merge the titles *found*, the *weights* computed, the *engines* the labs accept (and, with
+    ``--directories``, the sub-directories *subdirs*) into *target* and write it: always, or only when the result has
     something or the file already exists (the recursive scan creates no empty file).  The
     sub-directories of *subdirs* left without a title are named on the report line: the titles
     to write by hand."""
-    merged = _merge_titles(_read_existing(target), found, parent_dir_abs, subdirs, weights)
+    merged = _merge_titles(_read_existing(target), found, parent_dir_abs, subdirs, weights, engines)
     if not always and not merged and not os.path.exists(target):
         return False
     _write_json_atomic(target, merged)
@@ -238,9 +259,10 @@ def action_make_titles(directory: str, output_file: str | None, recursive: bool,
 
     # The titles found, per parent directory: every directory holding labs is visited, titled
     # or not, so that its titles.json (its options, its order, its stale entries) is updated.
-    # The weights of the labs go the same way.
+    # The weights of the labs, and the engines of those that restrict them, go the same way.
     grouped: dict[str, dict] = {}
     weights_of: dict[str, dict] = {}
+    engines_of: dict[str, dict] = {}
     for parent_dir_abs, lab_local_name in _iter_labs(
         directory_abs, include_exam_only_labs=True, recursive=recursive
     ):
@@ -254,6 +276,9 @@ def action_make_titles(directory: str, output_file: str | None, recursive: bool,
         weight = _weight_of_module(module, lab_path, srelab_file)
         if weight is not None:
             weights_of.setdefault(parent_dir_abs, {})[lab_local_name] = weight
+        engines = _engines_of_module(module, srelab_file)
+        if engines is not None:
+            engines_of.setdefault(parent_dir_abs, {})[lab_local_name] = engines
 
     # -d: the sub-directories each titles.json names, those of the lab tree (a lab lies below
     # them: what `sre list --with-titles` lists); with -r the directories holding
@@ -276,14 +301,18 @@ def action_make_titles(directory: str, output_file: str | None, recursive: bool,
         weights = {}
         for entries in weights_of.values():
             weights.update(entries)
+        engines = {}
+        for entries in engines_of.values():
+            engines.update(entries)
         _update_titles_file(output_file, found, directory_abs, always=True,
-                            subdirs=subdirs_of.get(directory_abs, ()), weights=weights)
+                            subdirs=subdirs_of.get(directory_abs, ()), weights=weights, engines=engines)
         return
 
     if not recursive:
         target = os.path.join(directory_abs, params.titles_file_name)
         _update_titles_file(target, grouped.get(directory_abs, {}), directory_abs, always=True,
-                            subdirs=subdirs_of.get(directory_abs, ()), weights=weights_of.get(directory_abs))
+                            subdirs=subdirs_of.get(directory_abs, ()), weights=weights_of.get(directory_abs),
+                            engines=engines_of.get(directory_abs))
         return
 
     written = 0
@@ -291,6 +320,7 @@ def action_make_titles(directory: str, output_file: str | None, recursive: bool,
         target = os.path.join(parent_dir_abs, params.titles_file_name)
         written += _update_titles_file(target, found, parent_dir_abs, always=False,
                                        subdirs=subdirs_of.get(parent_dir_abs, ()),
-                                       weights=weights_of.get(parent_dir_abs))
+                                       weights=weights_of.get(parent_dir_abs),
+                                       engines=engines_of.get(parent_dir_abs))
     if not written:
         print(f"no title found under {directory_abs}", file=sys.stderr)

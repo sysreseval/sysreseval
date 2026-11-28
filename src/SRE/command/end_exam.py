@@ -26,11 +26,12 @@ def action_end_exam():
         for running_lab_name, _ in instances
     ]
 
-    with ThreadPoolExecutor() as executor:
-        futures = {
-            executor.submit(do_eval, running_lab_name, False): running_lab_name
-            for running_lab_name in running_lab_names
-        }
-        for future in as_completed(futures):
-            future.result()
-            save_exam_records_for_project(futures[future], force=True)
+    for group in evaluation_groups(running_lab_names):
+        with ThreadPoolExecutor() as executor:
+            futures = {
+                executor.submit(do_eval, running_lab_name, False): running_lab_name
+                for running_lab_name in group
+            }
+            for future in as_completed(futures):
+                future.result()
+                save_exam_records_for_project(futures[future], force=True)

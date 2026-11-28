@@ -6,7 +6,7 @@ import warnings
 from pathlib import Path
 
 from .. import params
-from ..engine import get_engine
+from ..engine import allowed_engine_names, get_engine
 from ..params import SRE
 from ..progress import emit_preload
 from ..utils import user_not_allowed, error_quit
@@ -144,14 +144,29 @@ def _extract_images_from_file(path: Path) -> set[str]:
     return _images_of_tree(tree)
 
 
-def _pull_image(image: str) -> bool:
-    """Pull a single docker image. Return True on success, False on failure."""
-    print(f"  pulling {image} …", flush=True)
-    pulled, output = get_engine().pull_image(image)
+def _pull_image(image: str, engine_name: str | None = None) -> bool:
+    """Pull a single image into the store of the engine *engine_name* (the default engine of
+    the host without a name). Return True on success, False on failure."""
+    where = f" ({engine_name})" if engine_name else ""
+    print(f"  pulling {image}{where} …", flush=True)
+    pulled, output = get_engine(engine_name).pull_image(image)
     if not pulled:
-        print(f"  ERROR pulling {image}:\n{output}", file=sys.stderr)
+        print(f"  ERROR pulling {image}{where}:\n{output}", file=sys.stderr)
         return False
     return True
+
+
+def _engines_to_preload() -> list:
+    """The engines whose store gets the images: the one named with `--engine`, which the host
+    must allow, else every engine the host allows.  `[None]` for a host with one engine and no
+    name given: the default engine, named nowhere in the output."""
+    allowed = allowed_engine_names()
+    asked = getattr(SRE.args, 'engine', None)
+    if asked is not None:
+        if asked not in allowed:
+            error_quit(f"this host does not allow the engine {asked} (it allows: {', '.join(allowed)})")
+        return [asked]
+    return [None] if len(allowed) == 1 else list(allowed)
 
 
 def action_preload_images():
@@ -163,6 +178,7 @@ def action_preload_images():
     random_delay = SRE.args.random_delay
     paths = SRE.args.paths
     progress = SRE.args.progress
+    engines = _engines_to_preload()
 
     py_files = _collect_py_files(paths)
     if not py_files:
@@ -176,8 +192,10 @@ def action_preload_images():
     print(f"Found {len(images)} image(s) across {len(py_files)} file(s):")
     for img in sorted(images):
         print(f"  {img}")
+    # one pull per image and engine: each engine has a store of its own
+    pulls = [(engine_name, image) for engine_name in engines for image in sorted(images)]
     if progress:
-        emit_preload("start", total=len(images))
+        emit_preload("start", total=len(pulls))
 
     if random_delay:
         delay = random.uniform(0, random_delay)
@@ -185,10 +203,10 @@ def action_preload_images():
         time.sleep(delay)
 
     errors = 0
-    for current, image in enumerate(sorted(images), 1):
+    for current, (engine_name, image) in enumerate(pulls, 1):
         if progress:
-            emit_preload("pull", image=image, current=current, total=len(images))
-        if not _pull_image(image):
+            emit_preload("pull", image=image, current=current, total=len(pulls))
+        if not (_pull_image(image) if engine_name is None else _pull_image(image, engine_name)):
             errors += 1
             if progress:
                 emit_preload("error", image=image)

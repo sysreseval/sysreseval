@@ -61,6 +61,9 @@ export_kathara_project = True
 eval_interval_without_exam_mode = 120
 eval_before_exit = True
 record_sessions = False
+# The kernel NFS server needs a machine whose root is root on the host: nfs-kernel-server does
+# not start in a rootless Podman machine.
+container_engines = ("kathara",)
 
 # Interface numbers: srv has eth0 in lan and eth1 in invites.
 TOPOLOGY = {

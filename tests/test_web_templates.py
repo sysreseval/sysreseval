@@ -254,6 +254,7 @@ class TestTemplates:
         assert '<div id="lab-readme" class="lab-readme content" hidden></div>' in html
         assert html.index('id="labs"') < html.index('id="lab-readme"') < html.index('id="start-button"')
         assert 'name="mode"' not in html and 'href="/watch"' not in html and 'id="host"' not in html
+        assert 'id="engine"' not in html and 'ngine' not in html       # a student is told nothing of the engines
         assert 'href="/pool"' not in html
         # a student has nothing of the lab costs: neither button, no note
         assert 'costs-toggle' not in html and 'lab-costs' not in html and 'Lab costs' not in html
@@ -266,6 +267,9 @@ class TestTemplates:
         assert 'href="/watch"' in html
         assert 'id="host"' in html and 'Automatic placement' in html and 'id="host-option" hidden' in html
         assert 'href="/pool"' in html
+        # ... and the Engine select next to it, hidden until the script finds two engines in the pool
+        assert 'id="engine-option" hidden' in html and '<select id="engine"><option value="">Automatic</option>' in html
+        assert html.index('id="host-option"') < html.index('id="engine-option"') < html.index('id="progress"')
         # ... and the two buttons of the lab costs in the toolbar: Lab costs, a toggle not pressed
         # (the columns beside the labs, with the note hidden above the tree), and next to it Costs
         # table… (the dialog of every lab the pool heard of).  The titles of the columns and the
@@ -564,7 +568,11 @@ class TestTemplates:
         # the Priority column (group:order, the lowest is used first), before the flags
         assert html.index('data-sort="uptime"') < html.index('data-sort="priority"') < html.index('data-sort="sre_version"')
         assert 'title="group:order: the lowest group is used first, then the lowest order"' in html
-        assert 'colspan="17"' in html and len(re.findall(r'<th[ >]', html)) == 17
+        assert 'colspan="18"' in html and len(re.findall(r'<th[ >]', html)) == 18
+        # the container engines of each host, after the version of its agent
+        assert (html.index('data-sort="sre_version"') < html.index('data-sort="engines"')
+                < html.index('>Last error</th>'))
+        assert '>Engines</th>' in html
         assert 'Host name: one or several words' in html
         # the costs of the labs are no longer listed here: the Costs table… button of the Open page
         assert 'pool-costs' not in html and 'Lab costs' not in html and html.count('<table') == 1
@@ -1475,6 +1483,49 @@ process.stdout.write(JSON.stringify({
   columns: costColumns().map((column) => [column.title, column.numeric, typeof column.tip === 'string' && column.tip !== '']),
 }));
 """
+
+
+PLACEMENT_RUNNER = """\
+import {enginesOf, acceptedBy, hostFits, engineOffered} from './placement.js';
+
+const input = JSON.parse(process.argv[2]);
+process.stdout.write(JSON.stringify({
+  engines: input.pools.map(enginesOf),
+  accepted: input.labs.map(acceptedBy),
+  fits: input.fits.map(([row, accepted, engine]) => hostFits(row, accepted, engine)),
+  offered: input.offered.map(([engine, row, accepted, rows]) => engineOffered(engine, row, accepted, rows)),
+}));
+"""
+
+
+class TestPlacement:
+    """The pure helpers of placement.js: what the Host and Engine selects of the Open page offer
+    an instructor for the selected lab, by the rule of the placement of the portal
+    (``Pool._engines_fit``); run by the ``js`` runtime, skipped without one."""
+
+    def test_hosts_and_engines_offered(self, tmp_path, js):
+        runner = js_project(tmp_path, PLACEMENT_RUNNER, 'placement.js')
+        kathara, both, untold = {'engines': ['kathara']}, {'engines': ['podman', 'kathara']}, {'name': 'old'}
+        out = json.loads(js.run(tmp_path, runner, json.dumps({
+            'pools': [[kathara, both, untold], [kathara], [untold, {'engines': 'podman'}, None], None],
+            'labs': [{'engines': ['kathara']}, {'engines': []}, {}, {'engines': 'kathara'}, None],
+            'fits': [
+                [both, None, ''], [both, ['kathara'], ''], [both, ['kathara'], 'kathara'], [both, ['kathara'], 'podman'],
+                [kathara, None, 'podman'], [kathara, ['podman'], ''], [kathara, ['podman', 'kathara'], None],
+                [untold, ['podman'], ''], [untold, None, 'podman'], [untold, ['kathara'], 'podman'],
+            ],
+            'offered': [
+                ['podman', None, None, [kathara, both]], ['podman', None, None, [kathara]],
+                ['podman', None, ['kathara'], [kathara, both]], ['kathara', None, ['kathara'], [kathara, both]],
+                ['podman', kathara, None, [kathara, both]], ['podman', both, None, [kathara, both]],
+                ['podman', untold, None, [kathara]], ['kathara', untold, ['podman'], [kathara]],
+            ]})))
+        assert out['engines'] == [['kathara', 'podman'], ['kathara'], [], []]      # each once, in the order met
+        assert out['accepted'] == [['kathara'], None, None, None, None]            # null: every engine
+        assert out['fits'] == [True, True, True, False,
+                               False, False, True,
+                               True, True, False]      # a host that tells no engine is never left out for its own
+        assert out['offered'] == [True, False, False, True, False, True, True, False]
 
 
 class TestLabCosts:

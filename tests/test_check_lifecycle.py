@@ -287,3 +287,35 @@ class TestASavableLabDoesNotWorkOnTheHost:
             action_check()
         assert "save_key must be a non-empty string" in capsys.readouterr().err
 
+
+class TestTheEnginesALabAccepts:
+    """The `container_engines` attribute of a lab: `sre check` says what it means and refuses a
+    value that is not a list of engines (`sre start` would refuse the lab too)."""
+
+    def test_nothing_is_said_of_a_lab_that_accepts_every_engine(self, check_env, capsys):
+        check_env('plain.py', lambda t: t)
+        action_check()
+        assert "container_engines" not in capsys.readouterr().out
+
+    @pytest.mark.parametrize('value, said', [
+        ('("kathara",)', "ok  container_engines: a project of this lab runs with kathara only"),
+        ('["podman", "kathara"]', "ok  container_engines: a project of this lab runs with podman or kathara only"),
+    ])
+    def test_a_lab_that_restricts_them(self, check_env, capsys, value, said):
+        check_env('restricted.py', lambda t: t + f"\ncontainer_engines = {value}\n")
+        action_check()
+        out = capsys.readouterr().out
+        assert said in out and "All checks passed." in out
+
+    @pytest.mark.parametrize('value, said', [
+        ('"kathara"', "container_engines = 'kathara': a list of container engines is expected (kathara, podman)"),
+        ('("docker",)', "container_engines = ('docker',): 'docker' is not a container engine (kathara, podman)"),
+        ('()', "container_engines = (): a list of container engines is expected (kathara, podman)"),
+    ])
+    def test_a_value_that_is_not_a_list_of_engines(self, check_env, capsys, value, said):
+        check_env('bad.py', lambda t: t + f"\ncontainer_engines = {value}\n")
+        with pytest.raises(SystemExit):
+            action_check()
+        captured = capsys.readouterr()
+        assert f"FAIL  {said}" in captured.out
+        assert "the container_engines attribute of the lab is not a list of container engines" in captured.err

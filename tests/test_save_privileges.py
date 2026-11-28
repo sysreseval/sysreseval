@@ -30,6 +30,13 @@ class _FakeNetScheme:
     def has_privileged_machines(self):
         return self._privileged
 
+    the_engine = None       # the engine of the project of a test; the stubbed Kathara one without it
+
+    @property
+    def engine(self):
+        from SRE.engine import get_engine
+        return self.the_engine or get_engine()
+
     def get_lab_from_kathara(self):
         self._on_kathara_query()
         return MagicMock(machines={'m1': MagicMock()})
@@ -103,7 +110,7 @@ class TestSaveWithAnEngineThatNeedsNoRoot:
             save=lambda path, lab_hash, filesystem_diff, temp_dir: (snapshot('engine_save'), open(path, 'wb').close()),
             machine_ids=lambda lab_hash: (snapshot('engine_machine_ids'), MachineIds([(0, 20000001, 65536)],
                                                                                     [(0, 20000001, 65536)]))[1])
-        monkeypatch.setattr(save_cmd, 'get_engine', lambda: engine)
+        monkeypatch.setattr(_FakeNetScheme, 'the_engine', engine)
         opened = save_cmd._open_output
         monkeypatch.setattr(save_cmd, '_open_output', lambda *a: (snapshot('open_output'), opened(*a))[1])
         _run_save(privileged, monkeypatch, snapshot, None)

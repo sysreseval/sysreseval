@@ -235,6 +235,28 @@ class TestLabTree:
         for name in ('c.py', 'd.py', 'e.py', 's4'):                 # not a weight; a directory
             assert params.lab_list_weight_key not in entries[name], name
 
+    def test_engines_of_the_labs(self, tmp_lab_dir):
+        """The "@engines" option of a titles.json (`sre make-titles`) gives the labs that
+        restrict their container engines an `engines` list: the lab entries only, and only
+        those it names with a list of engines."""
+        _touch(tmp_lab_dir, 'a.py', 'b.py', 'c.py', 'd.py', 'e.py', 'f.py', 's4/x.py', 's4/tp/srelab.py')
+        _titles(tmp_lab_dir, '', {"@engines": {"a.py": ["kathara"], "b.py": ["podman", "kathara", "podman"],
+                                               "c.py": "kathara", "d.py": ["lxc"], "e.py": [], "s4": ["kathara"],
+                                               "ghost.py": ["podman"]}, "a.py": "A"})
+        _titles(tmp_lab_dir, 's4', {"@engines": {"tp": ["podman"]}})
+        entries = {e["name"]: e for e in get_lab_list_with_titles()}
+        assert entries['a.py'] == {"name": "a.py", "title": "A", "kind": "lab", "sort": "name", "engines": ["kathara"]}
+        assert entries['b.py']["engines"] == ["podman", "kathara"]
+        assert entries['s4/tp']["engines"] == ["podman"]
+        for name in ('c.py', 'd.py', 'e.py', 'f.py', 's4', 's4/x.py'):    # not a list of engines; no entry; a directory
+            assert params.lab_list_engines_key not in entries[name], name
+
+    @pytest.mark.parametrize('engines', [None, 7, "all", ["kathara"], {"a.py": {"en": ["kathara"]}}])
+    def test_an_engines_option_that_is_not_a_table_is_ignored(self, tmp_lab_dir, engines):
+        _touch(tmp_lab_dir, 'a.py')
+        _titles(tmp_lab_dir, '', {"@engines": engines})
+        assert get_lab_list_with_titles() == [{"name": "a.py", "title": None, "kind": "lab", "sort": "name"}]
+
     def test_no_weight_without_the_option(self, tmp_lab_dir):
         _touch(tmp_lab_dir, 'a.py', 'b.py')
         _titles(tmp_lab_dir, '', {"a.py": "A"})

@@ -57,8 +57,10 @@ class Harness:
                                       'state_dir': str(tmp_path / 'web-agent'), 'occupied_check': 'never',
                                       **cfg_over},   # never: the login sessions of the test host
                                      sre_exe=str(exe), state_dir=str(tmp_path / 'web-agent'))
+        # the engines of the agent are those of its fake sre (MOCK_ENGINES; Kathara alone by default)
         self.agent = Agent(cfg, pub_dir=str(self.pub), projects_dir=str(self.pub / 'projects'), localedirs=[],
-                           hostname='pool1', extra_env=env, archive_dirs=[str(self.pub / 'archives')])
+                           hostname='pool1', extra_env=env, archive_dirs=[str(self.pub / 'archives')],
+                           engines=json.loads(env['MOCK_ENGINES']) if 'MOCK_ENGINES' in env else ['kathara'])
         # never the unit the test process may run in (a CI runner): TestRestart gives its own file
         self.agent.cgroup_file = str(tmp_path / 'no-cgroup')
         self.client = None
@@ -2463,3 +2465,140 @@ class TestLocalDrain:
             drain = LocalDrain(str(missing), True)
         assert 'sre set-drain is refused on this host' in caplog.text
         assert drain.view() == {'asked': False, 'since': None, 'allowed': True, 'default': True}
+
+
+BOTH_ENGINES = {'MOCK_ENGINES': '["podman", "kathara"]'}
+
+
+class TestContainerEngines:
+    """A host may run projects with several container engines: the agent tells the portal
+    which, an instructor may name the one of a project, and nobody else is told the engine of
+    a project."""
+
+    def test_the_status_tells_the_engines_of_the_host(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path / 'one') as h:
+                status = await (await h.client.get('/v1/status', headers={'Authorization': f'Bearer {TOKEN}'})).json()
+                assert status['engines'] == ['kathara'] and status['default_engine'] == 'kathara'
+            async with Harness(tmp_path / 'two', mock_env=BOTH_ENGINES) as h:
+                status = await (await h.client.get('/v1/status', headers={'Authorization': f'Bearer {TOKEN}'})).json()
+                assert status['engines'] == ['podman', 'kathara'] and status['default_engine'] == 'podman'
+        run(go())
+
+    def test_the_engines_of_the_machine_by_default(self, monkeypatch):
+        """The agent of a machine reads the parameters `sre` reads; parameters that name no
+        engine give none (`sre` itself says what is wrong with them)."""
+        from sreweb.agent import app as agent_app
+        monkeypatch.setattr(params, 'container_engine', 'podman')
+        monkeypatch.setattr(params, 'container_engines_allowed', ('kathara', 'podman'))
+        assert agent_app.host_engines() == ('podman', 'kathara')
+        monkeypatch.setattr(params, 'container_engines_allowed', ('kathara',))
+        assert agent_app.host_engines() == ()
+
+    def test_an_instructor_names_the_engine_of_a_project(self, tmp_path):
+        """A privileged start with the instructor as owner, as an instructor-mode start is."""
+        async def go():
+            async with Harness(tmp_path, mock_env=BOTH_ENGINES) as h:
+                rln = await h.started(PROF_NOVIEW, engine='kathara')
+                assert rln.endswith('@@@prof')
+                privileged_call([e for e in h.entries() if 'start' in e['argv']][-1],
+                                ['start', '--engine', 'kathara', '--', 'sre/dhcp.py'], 'prof')
+                record = json.loads((h.pub / 'projects' / rln / '.private' / 'origin.json').read_text())
+                assert record['engine'] == 'kathara'
+                # with the other options of an instructor
+                await h.started(PROF_NOVIEW, engine='podman', debug_project=True)
+                assert [e for e in h.entries() if 'start' in e['argv']][-1]['argv'] == [
+                    'start', '--debug-web-project', '--engine', 'podman', '--', 'sre/dhcp.py']
+        run(go())
+
+    def test_without_an_engine_the_start_is_the_one_of_before(self, tmp_path):
+        """The host chooses: its default engine, and the call of a student is unchanged."""
+        async def go():
+            async with Harness(tmp_path, mock_env=BOTH_ENGINES) as h:
+                rln = await h.started()
+                assert [e for e in h.entries() if 'start' in e['argv']][-1]['argv'] == [
+                    '--user', 'start', '--', 'sre/dhcp.py']
+                record = json.loads((h.pub / 'projects' / rln / '.private' / 'origin.json').read_text())
+                assert record['engine'] == 'podman'
+        run(go())
+
+    def test_refused(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path / 'two', mock_env=BOTH_ENGINES) as h:
+                async def refused(identity, engine):
+                    resp = await h.client.post('/v1/projects', json={'lab': 'sre/dhcp.py', 'engine': engine},
+                                               headers=headers(identity))
+                    return resp.status, (await resp.json()).get('error', '')
+                assert await refused(ALICE, 'kathara') == (403, 'instructors only')
+                assert (await refused(PROF, 'lxc'))[0] == 400
+                assert (await refused(PROF, ['kathara']))[0] == 400
+                assert h.calls() == []
+            async with Harness(tmp_path / 'one') as h:
+                resp = await h.client.post('/v1/projects', json={'lab': 'sre/dhcp.py', 'engine': 'podman'},
+                                           headers=headers(PROF))
+                assert resp.status == 409
+                assert (await resp.json())['error'] == 'this host does not allow the engine podman'
+                assert h.calls() == []
+        run(go())
+
+    def test_a_lab_that_does_not_accept_the_default_engine(self, tmp_path):
+        """The fake sre chooses as the real one: the first engine of the host the lab accepts;
+        and the lab list says which engines the lab accepts."""
+        async def go():
+            env = {**BOTH_ENGINES, 'MOCK_LAB_ENGINES': '{"sre/dhcp.py": ["kathara"]}'}
+            async with Harness(tmp_path, mock_env=env) as h:
+                rln = await h.started()
+                record = json.loads((h.pub / 'projects' / rln / '.private' / 'origin.json').read_text())
+                assert record['engine'] == 'kathara'
+                labs = {lab['name']: lab for lab in await (await h.client.get('/v1/labs', headers=headers())).json()}
+                assert labs['sre/dhcp.py']['engines'] == ['kathara']
+                assert all('engines' not in lab for name, lab in labs.items() if name != 'sre/dhcp.py')
+                # the engine an instructor asks for must be one the lab accepts: said by sre
+                lines, result = await h.start(PROF, engine='podman')
+                assert result['status'] == 'error'
+                assert 'this lab does not accept the engine podman' in json.dumps(lines)
+        run(go())
+
+    def test_a_student_is_not_told_why_a_lab_cannot_start(self, tmp_path):
+        async def go():
+            env = {'MOCK_ENGINES': '["podman"]', 'MOCK_LAB_ENGINES': '{"sre/dhcp.py": ["kathara"]}'}
+            async with Harness(tmp_path, mock_env=env) as h:
+                lines, result = await h.start()
+                assert result['status'] == 'error'
+                text = json.dumps(lines)
+                assert 'this lab cannot be started on this host' in text
+                assert 'kathara' not in text and 'podman' not in text
+        run(go())
+
+    def test_only_a_debug_project_tells_its_engine(self, tmp_path):
+        """What the agent sends about a project comes from info.json, which names the engine
+        of a debug project and of no other."""
+        async def go():
+            async with Harness(tmp_path, mock_env=BOTH_ENGINES) as h:
+                plain = await h.started()
+                chosen = await h.started(PROF_NOVIEW, engine='kathara', instructor_mode=True)
+                debug = await h.started(PROF_NOVIEW, debug_project=True)
+
+                async def view(rln, identity):
+                    return (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(identity))).json())['project']
+                assert (await view(plain, ALICE))['container_engine'] == ''
+                assert (await view(plain, PROF))['container_engine'] == ''
+                assert (await view(chosen, PROF))['container_engine'] == ''
+                assert (await view(debug, PROF))['container_engine'] == 'podman'
+                rows = {row['running_lab_name']: row for row in
+                        await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json()}
+                assert [rows[rln]['container_engine'] for rln in (plain, chosen, debug)] == ['', '', 'podman']
+                mine = await (await h.client.get('/v1/projects', headers=headers())).json()
+                assert [row['container_engine'] for row in mine] == ['']
+        run(go())
+
+    def test_an_info_json_that_names_an_engine_without_being_a_debug_project(self):
+        """Never sent on: the agent checks what it reads."""
+        from sreweb.agent.access import engine_of_info
+        assert engine_of_info({'debug_project': True, 'container_engine': 'podman'}) == 'podman'
+        assert engine_of_info({'debug_project': False, 'container_engine': 'podman'}) == ''
+        assert engine_of_info({'container_engine': 'podman'}) == ''
+        assert engine_of_info({'debug_project': True, 'container_engine': 'lxc'}) == ''
+        assert engine_of_info({'debug_project': True, 'container_engine': ['podman']}) == ''
+        assert engine_of_info({'debug_project': 'yes', 'container_engine': 'podman'}) == ''
+        assert engine_of_info(None) == ''

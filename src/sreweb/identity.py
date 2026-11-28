@@ -41,6 +41,19 @@ HEADER_PARTICIPANT = 'X-SRE-Participant'
 #: knows the participants (an older one refuses them: its projects are not offered for sharing),
 #: and the portal learns from it that a shared project is gone.
 STATUS_PROJECT_NAMES = 'project_names'
+#: The keys of the agent's ``/v1/status`` telling the container engines its host allows, the
+#: default one first, and that default: what the Pool page shows and what the placement of a
+#: project looks at.  An agent that sends none (an older one) is a host whose engines are not
+#: known: it is never left out for its engines.
+STATUS_ENGINES = 'engines'
+STATUS_DEFAULT_ENGINE = 'default_engine'
+#: The container engines (``SRE.params.container_engines``, which the portal does not import;
+#: kept equal by tests/test_web_identity.py).
+CONTAINER_ENGINES = ('kathara', 'podman')
+#: The key of a lab entry of ``GET /v1/labs`` listing the engines the lab accepts (a lab that
+#: says nothing accepts them all), and the field of a start naming the engine of the project.
+LAB_ENGINES_KEY = 'engines'
+START_ENGINE_KEY = 'engine'
 
 #: Same as SRE.access._VALID_USERNAME (checked by tests/test_web_identity.py).
 VALID_LOGIN = re.compile(r'^[a-zA-Z0-9._-]+$')

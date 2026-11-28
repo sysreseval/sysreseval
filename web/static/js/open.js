@@ -2,7 +2,9 @@
 // ones included, while an instructor picks the debug mode: GET /api/labs?all=1), the start of a
 // lab (POST /api/projects, an NDJSON stream of progress events), the Flavor form a lab may ask
 // before starting and, for the instructors, the project mode (standard, instructor mode, debug
-// mode) and the Host select (a host reserved for them, or the automatic placement).
+// mode), the Host select (any host of the pool, or the automatic placement) and the Engine
+// select (the container engine of the project, or the one the host chooses), which only offer
+// what the selected lab can run with (placement.js).
 // Under the tree, the README of the directory being browsed (README.md / README.<lang>.md of
 // the lab directory, rendered by the agent: tree.js), hidden when that directory has none.
 // The Lab costs button of the instructors (not pressed at first, and never remembered) shows
@@ -22,6 +24,7 @@ import {ProgressBox, runCreation, projectUrl, flavorDialog} from './creation.js'
 import {costColumns, costCells, costNote, costRowOf, NOTE_SEPARATOR} from './lab_costs.js';
 import {createCostsDialog} from './lab_costs_dialog.js';
 import {createSharedLabsDialog} from './shared_labs.js';
+import {enginesOf, acceptedBy, hostFits, engineOffered} from './placement.js';
 
 const treeElement = document.getElementById('labs');
 const readmeElement = document.getElementById('lab-readme');
@@ -34,6 +37,9 @@ const costsNoteElement = document.getElementById('lab-costs-note');
 const costsTableButton = document.getElementById('costs-table');
 const sharedButton = document.getElementById('open-shared');    // a student's page, on a site with the shared projects
 const labTitles = new Map();    // lab name -> its title, as the last list gave them (the shared labs dialog)
+// the choices of an instructor: the hosts listed in the Host select (rows of GET /api/pool) and
+// the engines of the labs that restrict them, as the last list gave them
+const placement = {rows: [], labEngines: new Map()};
 
 let selectedLab = null;
 let starting = false;
@@ -112,7 +118,11 @@ async function start(lab, flavorAnswers = null) {
   }
   const hostSelect = document.getElementById('host');
   if (hostSelect && hostSelect.value) {
-    body.host = hostSelect.value;  // an instructor's choice: a host reserved for them
+    body.host = hostSelect.value;  // an instructor's choice: this host, not the automatic placement
+  }
+  const engineSelect = document.getElementById('engine');
+  if (engineSelect && engineSelect.value) {
+    body.engine = engineSelect.value;   // ... and this container engine, not the one the host chooses
   }
   const result = await runCreation(progress, _('Starting…'), 'POST', '/api/projects', {json: body});
   setBusy(false);
@@ -128,9 +138,19 @@ async function start(lab, flavorAnswers = null) {
   }
 }
 
-// The Host select of the instructors (students have none): one option per host reserved for
-// them (instructors_only), with its state and its projects, disabled when it is not up or is
-// full; the label stays hidden when the pool has no such host.
+// Whether a host takes a new project now: up, and not full (its max_projects, or no memory for
+// one more project with [pool] project_memory_mb, or, with [pool] capacity = "resources", no
+// memory or no processor for one more).
+function hostAvailable(row) {
+  const full = row.projects >= row.max_projects || row.memory_room === 0 || row.cpu_room === 0;
+  return row.state === 'up' && !full;
+}
+
+// The Host and Engine selects of the instructors (students have none), both automatic by
+// default.  Host: one option per enabled host of the pool, with its state and its projects (a
+// host reserved for instructors is said so); the label stays hidden for a pool without host.
+// Engine: one option per container engine a host allows; the label stays hidden unless the
+// hosts allow two engines at least (a pool with one engine has nothing to choose).
 async function fillHosts() {
   const select = document.getElementById('host');
   if (!select) {
@@ -142,21 +162,64 @@ async function fillHosts() {
   } catch (e) {
     return;
   }
-  let added = 0;
-  for (const row of Array.isArray(rows) ? rows : []) {
-    if (!row.instructors_only) {
-      continue;
+  placement.rows = (Array.isArray(rows) ? rows : []).filter((row) => row && row.name && row.enabled !== false);
+  for (const row of placement.rows) {
+    const detail = [row.reachable ? `${row.state}, ${row.projects}/${row.max_projects}` : row.state];
+    if (row.instructors_only) {
+      detail.push(_('reserved for instructors'));
     }
-    const detail = row.reachable ? `${row.state}, ${row.projects}/${row.max_projects}` : row.state;
-    // full: its max_projects, or no memory for one more project ([pool] project_memory_mb), or,
-    // with [pool] capacity = "resources", no memory or no processor for one more
-    const full = row.projects >= row.max_projects || row.memory_room === 0 || row.cpu_room === 0;
-    select.append(el('option', {value: row.name, disabled: row.state !== 'up' || full},
-                     `${row.name} (${detail})`));
-    added += 1;
+    select.append(el('option', {value: row.name}, `${row.name} (${detail.join(', ')})`));
   }
-  if (added) {
+  if (placement.rows.length) {
     document.getElementById('host-option').hidden = false;
+  }
+  const engineSelect = document.getElementById('engine');
+  const engines = enginesOf(placement.rows);
+  if (engineSelect && engines.length > 1) {
+    for (const engine of engines) {
+      engineSelect.append(el('option', {value: engine}, engine));
+    }
+    document.getElementById('engine-option').hidden = false;
+  }
+  for (const element of [select, engineSelect]) {
+    if (element) {
+      element.addEventListener('change', updatePlacement);
+    }
+  }
+  updatePlacement();
+}
+
+// Grey what the selected lab cannot run with: an engine the lab does not accept or the chosen
+// host does not allow, a host that is not available or allows none of the engines left.  A
+// choice that became impossible (another lab was selected) goes back to automatic.
+function updatePlacement() {
+  const hostSelect = document.getElementById('host');
+  if (!hostSelect) {
+    return;
+  }
+  const engineSelect = document.getElementById('engine');
+  const accepted = selectedLab ? placement.labEngines.get(selectedLab) || null : null;
+  const rowOf = (name) => placement.rows.find((row) => row.name === name) || null;
+  if (engineSelect) {
+    for (const option of engineSelect.options) {
+      if (option.value) {
+        option.disabled = !engineOffered(option.value, rowOf(hostSelect.value), accepted, placement.rows);
+      }
+    }
+    if (engineSelect.selectedOptions.length && engineSelect.selectedOptions[0].disabled) {
+      engineSelect.value = '';
+    }
+  }
+  const engine = engineSelect ? engineSelect.value : '';
+  for (const option of hostSelect.options) {
+    if (option.value) {
+      const row = rowOf(option.value);
+      option.disabled = !row || !hostAvailable(row) || !hostFits(row, accepted, engine);
+    }
+  }
+  if (hostSelect.selectedOptions.length && hostSelect.selectedOptions[0].disabled) {
+    hostSelect.value = '';
+    updatePlacement();    // the engines of every host are offered again
   }
 }
 
@@ -272,9 +335,14 @@ async function loadLabs() {
     return;   // a newer list is on its way
   }
   labTitles.clear();
+  placement.labEngines.clear();
   for (const lab of labs) {
     if (lab.name && lab.kind !== 'dir') {
       labTitles.set(lab.name, resolveText(lab.title) || '');
+      const accepted = acceptedBy(lab);     // an instructor's list alone names them
+      if (accepted) {
+        placement.labEngines.set(lab.name, accepted);
+      }
     }
   }
   if (selectedLab && !labs.some((lab) => lab.name === selectedLab)) {
@@ -286,6 +354,7 @@ async function loadLabs() {
     clear(treeElement);
     treeElement.append(el('p', {class: 'muted'}, _('No lab is available.')));
     showReadme(null);
+    updatePlacement();
     return;
   }
   buildTree(treeElement, labs, {
@@ -295,13 +364,16 @@ async function loadLabs() {
       selectedLab = name;
       selectedElement.textContent = name;
       startButton.disabled = starting;
+      updatePlacement();
     },
     onOpen: (name) => {
       selectedLab = name;
       selectedElement.textContent = name;
+      updatePlacement();    // before the start: a choice this lab cannot run with is dropped
       start(name);
     },
   });
+  updatePlacement();
   refreshCosts();   // the new tree has no cell
 }
 

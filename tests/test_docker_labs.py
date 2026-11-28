@@ -49,6 +49,7 @@ if os.geteuid() != 0:
     pytest.skip("Docker lab tests must run as root", allow_module_level=True)
 
 from SRE.answers import answers_lock, consume_cheat_file, load_answers, merge_cheat, save_answers  # noqa: E402
+from SRE.origin import recorded_engine  # noqa: E402
 from test_docker_lifecycle import PROJECTS, _lab_hash, _project_dirs, _sre, no_exam  # noqa: E402, F401  (no_exam: a fixture)
 
 # The engine of the host, read when the module is collected (the fixture of conftest.py gives
@@ -188,12 +189,31 @@ def _write_record(record):
             f.write(json.dumps(record, ensure_ascii=False) + '\n')
 
 
+def _docker_leftovers():
+    """``leftovers(lab_hash)`` of Docker for a host whose default engine is Podman and that also
+    allows Kathara (a lab that accepts Kathara alone runs with it there); ``None`` when the host
+    does not allow it, or has neither the Docker SDK nor a daemon that answers."""
+    try:
+        if params.container_engine_kathara not in params.host_allowed_engines():
+            return None
+        import docker
+        client = docker.from_env()
+        client.ping()
+    except Exception:  # noqa: BLE001 - no usable daemon: nothing to ask
+        return None
+    return lambda lab_hash: (
+        [c.name for c in client.containers.list(all=True, filters={'label': [f'lab_hash={lab_hash}']})]
+        + [n.name for n in client.networks.list() if (n.attrs.get('Labels') or {}).get('lab_hash') == lab_hash])
+
+
 @pytest.fixture
 def leftovers(request):
-    """``leftovers(lab_hash)``: what still carries the hash of a project, asked of the engine of
-    the host (skipped without a reachable Docker daemon when the engine is Kathara)."""
+    """``leftovers(lab_hash)``: what still carries the hash of a project, asked of the default
+    engine of the host (skipped without a reachable Docker daemon when that engine is Kathara),
+    and of Docker too on a host whose default engine is Podman and that also allows Kathara."""
     if PODMAN:
-        return _leftovers
+        of_docker = _docker_leftovers()
+        return _leftovers if of_docker is None else (lambda lab_hash: _leftovers(lab_hash) + of_docker(lab_hash))
     client = request.getfixturevalue('docker_client')
     return lambda lab_hash: _containers(client, lab_hash) + _networks(client, lab_hash)
 
@@ -228,6 +248,8 @@ def _from_nothing_to_every_point(leftovers, projects, lab, record):
     running_lab_name, lab_hash, stderr = _start(projects, lab)
     timed('start', since)
     record.update(running_lab_name=running_lab_name, lab_hash=lab_hash)
+    # the engine that runs the project: on a host that allows both, not always the default one
+    record['engine'] = recorded_engine(params.origin_filename(running_lab_name)) or record['engine']
     record['errors']['start'] = _logged_errors(stderr)
 
     # nothing done: nothing earned, element by element (a penalty must not hide points given for nothing)

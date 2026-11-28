@@ -51,7 +51,7 @@ from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_CREAT
 from ..config import (WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, check_priority,
                       check_usable_capacity, ConfigError, USABLE_CAPACITY_KEY)
 from ..identity import (Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY,
-                        is_valid_login)
+                        is_valid_login, CONTAINER_ENGINES, START_ENGINE_KEY)
 
 #: Where the institution's logo of ``[site] logo`` is served.
 SITE_LOGO_PATH = '/site/logo'
@@ -1629,13 +1629,19 @@ class Routes:
         if wanted is not None and not isinstance(wanted, str):
             return json_error(400, "host must be a host name")
         wanted = wanted or None
+        # the container engine of the project, an instructor's choice too ('' = the host chooses)
+        engine = body.get(START_ENGINE_KEY) or None
+        if engine is not None and (not isinstance(engine, str) or engine not in CONTAINER_ENGINES):
+            return json_error(400, "engine must be the name of a container engine")
         logged = request.get(ACCESS_KEY)      # the line of the connection log: the lab, the host, the outcome
         if logged is not None:
             logged.update(lab=str(body['lab'])[:256], instructor=bool(body.get('instructor_mode')),
                           debug=bool(body.get('debug_project')))   # not validated yet
+            if engine is not None:
+                logged.update(engine=engine)
         if (body.get('instructor_mode') or body.get('debug_project')) and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
-        if wanted and identity.role != ROLE_INSTRUCTOR:
+        if (wanted or engine) and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
         # a student in an exam: its labs only, from the pre-start on, one project per lab (two
         # browsers of the student start the same lab); the agent gets the exam object
@@ -1665,10 +1671,12 @@ class Routes:
         started = False
         reservation = None
         try:
-            host, reservation = self.pool.pick(identity, wanted, lab=body['lab'])
+            host, reservation = self.pool.pick(identity, wanted, lab=body['lab'], engine=engine)
             if logged is not None:
                 logged.update(host=host.name, placement=reservation.placement)
             payload = {'lab': body['lab'], 'idle_timeout': self._idle_timeout(identity)}
+            if engine is not None:
+                payload[START_ENGINE_KEY] = engine    # a privileged start on the agent, like the two modes below
             if isinstance(body.get('flavor'), dict):
                 if len(json.dumps(body['flavor']).encode('utf-8')) > MAX_FLAVOR_JSON:
                     return json_error(400, f"the flavor answers are too big (at most {MAX_FLAVOR_JSON} bytes)")

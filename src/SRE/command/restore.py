@@ -12,8 +12,8 @@ import tempfile
 from pathlib import Path
 
 from .save import ensure_save_tmp_dir, get_save_key
-from .start import ProjectSetup, check_grade_class, create_project_directories, finalize_project, \
-    quit_if_no_switch_modes, rollback_project
+from .start import ProjectSetup, check_grade_class, create_project_directories, engine_of_new_project, \
+    finalize_project, quit_if_no_switch_modes, requested_engine, rollback_project
 from .. import params
 from ..engine import get_engine
 from ..files_transfert import deploy_exetests
@@ -28,6 +28,7 @@ from ..utils_privileges import drop_privileges_permanently_if_not_needed, drop_p
 
 
 def action_restore():
+    engine = requested_engine()
     instructor_mode = bool(getattr(SRE.args, 'instructor_mode', False))
     if instructor_mode and in_user_mode():
         error_quit("--instructor-mode is not available in user mode")
@@ -45,14 +46,18 @@ def action_restore():
             error_quit(f"cannot open '{save_file}': {e}")
         finally:
             drop_privileges_temporarily()
-    running_lab_name = do_action_restore(source, register_progress=True, instructor_mode=instructor_mode)
+    running_lab_name = do_action_restore(source, register_progress=True, instructor_mode=instructor_mode,
+                                         engine=engine)
     if not in_user_mode():
         print(running_lab_name)
 
 
-def do_action_restore(source, register_progress: bool = False, instructor_mode: bool = False) -> str:
+def do_action_restore(source, register_progress: bool = False, instructor_mode: bool = False,
+                      engine: str | None = None) -> str:
     """Restore the save file read from the binary stream *source*; return the new running lab name.
-    *instructor_mode* puts the new project in instructor mode (a save file does not carry it)."""
+    *instructor_mode* puts the new project in instructor mode (a save file does not carry it).
+    *engine*: the container engine a privileged caller asks for; without one the new project
+    gets the first engine of the host that its lab accepts, whatever engine made the save."""
     meta, header_json = read_header(source)
 
     lab_cli_arg, is_path = lab_cli_arg_from_lab_name(meta.lab_name)
@@ -66,7 +71,8 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
             start_projet=True, lab_cli_arg=lab_cli_arg, path=None)
     if not getattr(module_rvlab, 'allow_save_restore', False):
         error_quit("save/restore is not allowed for this lab (set allow_save_restore = True in the lab file)")
-    get_engine().require_save_restore()
+    engine = engine_of_new_project(module_rvlab, engine)
+    get_engine(engine).require_save_restore()
     check_grade_class(module_rvlab, current_srelab_file)
 
     save_key = get_save_key(module_rvlab)
@@ -100,7 +106,7 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
             running_lab_name = params.get_running_lab_name(lab_name=lab_name, instance_start_date=now)
         debug_project = bool(meta.debug_project) and not in_user_mode()
 
-        setup = ProjectSetup(running_lab_name=running_lab_name)
+        setup = ProjectSetup(running_lab_name=running_lab_name, engine_name=engine)
         try:
             # answers/ and shared/ stay closed until the saved files are there with their owners:
             # in directories open to everybody, a link planted meanwhile would send the copy, or
@@ -110,10 +116,11 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
             _copy_saved_project_files(tmp, setup)
 
             net_scheme = module_rvlab.NetScheme(data=data, running_lab_name=running_lab_name)
+            net_scheme.engine_name = engine
             setup.net_scheme = net_scheme
             # the ids the users of the new machines will have on the host: the files the saved
             # machines owned go to the same users of the new ones
-            _hand_over_restored_files(setup, saved, get_engine().reserve_machine_ids())
+            _hand_over_restored_files(setup, saved, net_scheme.engine.reserve_machine_ids())
             drop_privileges_permanently_if_not_needed(net_scheme)
 
             lab = net_scheme.get_new_lab_from_scheme()
@@ -121,7 +128,7 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
                 lab.shared_path = setup.shared_dir
 
             if register_progress:
-                register_progress_handlers()
+                register_progress_handlers(net_scheme.engine)
 
             set_sudo_uid_for_username(SRE.username)
             gain_privileges_if_needed(net_scheme)
@@ -129,7 +136,7 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
             # one go: flag the lab as deployed beforehand so that a failure half-way through still
             # undeploys what was created (undeploying a hash with no container is a no-op).
             setup.lab_deployed = True
-            get_engine().restore(os.path.join(tmp, params.save_kathara_name), lab, temp_dir=tmp)
+            net_scheme.engine.restore(os.path.join(tmp, params.save_kathara_name), lab, temp_dir=tmp)
 
             # deploy_exetests: refresh exetests.py in the containers (lib may have changed since the save)
             finalize_project(setup, module_rvlab, net_scheme, lab, data,

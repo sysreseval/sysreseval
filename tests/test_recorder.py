@@ -217,6 +217,8 @@ class TestActionConnectNoRecords:
         net_scheme.get_machine.return_value = machine
         net_scheme.get_machines.return_value = iter([machine])
         net_scheme.get_lab_hash.return_value = 'fakehash'
+        from SRE.engine import get_engine
+        net_scheme.engine = get_engine()        # the engine of the project: the stubbed Kathara one
 
         module_rvlab = SimpleNamespace(record_sessions=True)
 

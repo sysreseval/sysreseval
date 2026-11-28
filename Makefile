@@ -126,8 +126,8 @@ network-plugin:
 	NETWORK_PLUGIN_MODES_ENV="$(NETWORK_PLUGIN_MODES_ENV)" NETWORK_PLUGIN_DIR="$(NETWORK_PLUGIN_DIR)" \
 	FORCE="$(FORCE)" BUILD="$(BUILD)" $(ROOT_DIR)/scripts/network-plugin.sh
 
-# Prepare this host for the Podman engine (container_engine / container_engine_by_host of
-# params.py): subordinate uids of the sre account, its user manager started at boot, the
+# Prepare this host for the Podman engine (container_engine / container_engine_by_host, or
+# container_engines_allowed for a host that keeps Docker beside it, of params.py): subordinate uids of the sre account, its user manager started at boot, the
 # directory of the engine, the user namespace.  As root, once; the recipe is scripts/podman-setup.sh.
 podman-setup:
 	@$(ROOT_DIR)/scripts/podman-setup.sh
@@ -275,8 +275,11 @@ PYTEST = SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) SRE_TEST_JS=$(SRE_TEST_JS) ${ROOT_DIR}
 DOCKER_TESTS = ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_docker_labs.py \
 	${ROOT_DIR}/tests/test_web_accessdb_live.py
 PODMAN_TESTS = ${ROOT_DIR}/tests/test_podman_lifecycle.py
+# a project of each engine at once, on a host that allows both (container_engines_allowed of
+# params.py): run with the tests of either engine, skipped as a whole on a host with one
+BOTH_ENGINES_TESTS = ${ROOT_DIR}/tests/test_both_engines_lifecycle.py
 TESTS_IGNORE = --ignore=${ROOT_DIR}/tests/test_exam_mode.py --ignore=${ROOT_DIR}/tests/test_exam_mode_web.py \
-	$(addprefix --ignore=,$(DOCKER_TESTS) $(PODMAN_TESTS))
+	$(addprefix --ignore=,$(DOCKER_TESTS) $(PODMAN_TESTS) $(BOTH_ENGINES_TESTS))
 tests:
 	$(PYTEST) ${ROOT_DIR}/tests/ $(TESTS_IGNORE)
 
@@ -352,13 +355,13 @@ web-exam-tests:
 # empty to skip it).
 SRE_TEST_MYSQL ?= docker
 docker-tests:
-	$(PYTEST) $(DOCKER_TESTS)
+	$(PYTEST) $(DOCKER_TESTS) $(BOTH_ENGINES_TESTS)
 
-# The same with the Podman engine, on a host that chose it (container_engine or
+# The same with the Podman engine, on a host whose default engine it is (container_engine or
 # container_engine_by_host of params.py, after `make podman-setup`; as root, skipped otherwise):
 # the life of a project checked on Podman itself, then the lab files of lab/sre/ as above.
 podman-tests:
-	$(PYTEST) $(PODMAN_TESTS) ${ROOT_DIR}/tests/test_docker_labs.py
+	$(PYTEST) $(PODMAN_TESTS) $(BOTH_ENGINES_TESTS) ${ROOT_DIR}/tests/test_docker_labs.py
 
 # `make tests` already runs the functional tests; the Docker tests need root and a Docker daemon,
 # the exam tests (the two series) root and debug_mode = True.

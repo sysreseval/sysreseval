@@ -19,7 +19,6 @@ import sys
 import threading
 
 from . import params
-from .engine import get_engine
 
 _VDE_SUCCESS_CODE = 1000  # status of the console: 1000 = success, 1000 + errno = error
 
@@ -65,7 +64,7 @@ class SwitchConsole:
         if adapter is None:
             raise ValueError(f"'{machine_name}' is not a machine of network '{network_name}'")
         if network_name not in self._ports:
-            ports = get_engine().switch_ports(self._net_scheme.get_lab_hash(), network_name)
+            ports = self._net_scheme.engine.switch_ports(self._net_scheme.get_lab_hash(), network_name)
             self._ports[network_name] = {endpoint: number
                                          for number, port in ports.items()
                                          for endpoint in port.get('endpoints', [])}
@@ -94,7 +93,7 @@ class SwitchConsole:
         when the command could not be run.  Never raises.
         """
         try:
-            engine = get_engine()
+            engine = self._net_scheme.engine
             engine.require_switch_console()
             if resolve_ports:
                 command = self.resolve(network_name, command)

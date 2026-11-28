@@ -13,7 +13,7 @@ import re
 
 from SRE import params
 from ..config import client_allowed   # noqa: F401  (re-exported: the peer check of ``allowed_clients``)
-from ..identity import Identity, ROLE_INSTRUCTOR
+from ..identity import Identity, ROLE_INSTRUCTOR, CONTAINER_ENGINES
 
 _RLN = re.compile(params.running_lab_name_match_pattern)
 #: The kinds of a device of the Terminals tab.
@@ -75,6 +75,16 @@ def is_privileged_caller(rln: str, identity: Identity) -> bool:
     counters and answers are untouched by the help they get.  The owner, instructor or not,
     follows the student path."""
     return identity.role == ROLE_INSTRUCTOR and owner_of(rln) != identity.login
+
+
+def engine_of_info(info) -> str:
+    """The container engine an ``info.json`` tells: the one of a debug project, ``''`` for every
+    other project.  ``sre`` writes it for debug projects only (a student is not told which
+    engine runs a project); it is checked again here, so that nothing else reaches a browser."""
+    if not isinstance(info, dict) or info.get('debug_project') is not True:
+        return ''
+    engine = info.get('container_engine')
+    return engine if isinstance(engine, str) and engine in CONTAINER_ENGINES else ''
 
 
 def instructor_view_allowed(info: dict, identity: Identity) -> bool:

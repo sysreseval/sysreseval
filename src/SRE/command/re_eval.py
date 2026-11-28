@@ -131,6 +131,7 @@ def action_re_eval():
         grade._errors = list(archive.get('errors', []))
         grade.auto_eval_count = grade._answers.get(params.auto_eval_count_keyword, 0)
         grade._exam_json = archive.get(params.exam_json_keyword)
+        grade._container_engine = archive.get(params.archive_engine_keyword)    # the engine of the evaluation itself
 
         # Load test results from archive
         cached_tests = archive.get('tests', {})

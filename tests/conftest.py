@@ -37,6 +37,7 @@ def mock_sre_args():
     mock.debug = False
     mock.instructor_mode = False
     mock.debug_web_project = False     # getattr(mock, name, False) would give a truthy child mock
+    mock.engine = None                 # `--engine`: a child mock would be taken for the name of an engine
     mock.update_web = False            # `sre re-eval --update-web` would write under /var/lib/sre
     params.SRE.args = mock
     yield mock
@@ -51,6 +52,8 @@ def kathara_engine_selected(monkeypatch):
     from SRE import params
     monkeypatch.setattr(params, 'container_engine', params.container_engine_kathara)
     monkeypatch.setattr(params, 'container_engine_by_host', {})
+    monkeypatch.setattr(params, 'container_engines_allowed', None)
+    monkeypatch.setattr(params, 'container_engines_allowed_by_host', {})
 
 
 @pytest.fixture(autouse=True)

@@ -431,9 +431,9 @@ class TestOrigin:
                 student = await h.started(ALICE)
                 instructor = await h.started(A.PROF_NOVIEW, instructor_mode=True)      # a privileged call
                 local = start_by_hand(h, lab='s4/tp_ssh', login='bob')
-                assert origin_of(h, student) == {'origin': 'web', 'user': 'alice'}
-                assert origin_of(h, instructor) == {'origin': 'web', 'user': 'prof'}
-                assert origin_of(h, local) == {'origin': 'local', 'user': 'bob'}
+                assert origin_of(h, student) == {'origin': 'web', 'user': 'alice', 'engine': 'kathara'}
+                assert origin_of(h, instructor) == {'origin': 'web', 'user': 'prof', 'engine': 'kathara'}
+                assert origin_of(h, local) == {'origin': 'local', 'user': 'bob', 'engine': 'kathara'}
                 starts = [entry['env'] for entry in h.entries() if 'start' in entry['argv']]
                 assert [env['SRE_ORIGIN'] for env in starts] == ['web', 'web']
         run(go())

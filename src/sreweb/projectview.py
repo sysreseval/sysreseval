@@ -13,7 +13,7 @@ from SRE.form_spec import parse_form_description, chunks_to_json
 from SRE.instructor_text import markdown_to_html
 from SRE.schema_graph import render_schema_svg, render_schema_pdf, parse_order
 
-from .agent.access import visible_machines, instructor_view_allowed, display_available
+from .agent.access import visible_machines, instructor_view_allowed, display_available, engine_of_info
 from .identity import Identity
 
 SCHEMA_SEP_MAX = 9
@@ -110,6 +110,7 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display
         'delay_between_self_grade': info.get('delay_between_self_grade', 0) or 0,
         'debug_project': bool(info.get('debug_project', False)),
         'instructor_mode': bool(info.get('instructor_mode', False)),
+        'container_engine': engine_of_info(info),
         'has_instructor_texts': bool(info.get('instructor_mode', False) or info.get('debug_project', False)),
         'instructor_view': show_instructor,
     }

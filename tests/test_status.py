@@ -1,5 +1,6 @@
 """`sre status` (SRE/command/status.py): the version, the state of sre-agent, the local drain of
-the host, the running projects with their origin and user."""
+the host, the running projects with their origin, their user and their container engine (the
+default engine of the tests is Kathara: what a project without a record is shown with)."""
 import json
 import time
 from pathlib import Path
@@ -16,8 +17,10 @@ CAROL = '20261118100111@@@sre@static_routing.py@@@carol'
 PYTHON = '/opt/sre/venv/bin/python3'
 
 
-def make_project(name: str, origin_value: str | None = None, user: str | None = None, info: bool = True):
-    """A project directory; *origin_value* ``None`` = no origin file (a project older than it)."""
+def make_project(name: str, origin_value: str | None = None, user: str | None = None, info: bool = True,
+                 engine: str | None = None):
+    """A project directory; *origin_value* ``None`` = no origin file (a project older than it);
+    *engine*: the container engine its origin file records (``None``: a project older than that)."""
     directory = Path(params.sre_projects_dir) / name
     (directory / params.private_dir_name).mkdir(parents=True)
     if info:
@@ -25,7 +28,7 @@ def make_project(name: str, origin_value: str | None = None, user: str | None = 
             {'lab_name': params.get_lab_name_from_running_lab_name(name), 'lab_hash': f'hash-{name}'}))
     if origin_value is not None:
         origin.write_origin(params.origin_filename(name), origin_value,
-                            user or params.get_username_from_running_lab_name(name))
+                            user or params.get_username_from_running_lab_name(name), engine=engine)
 
 
 def fake_proc(root: Path, procs: dict) -> str:
@@ -45,23 +48,41 @@ class TestProjectRows:
         make_project(BOB, params.origin_local)
         make_project(ALICE, params.origin_web)
         make_project(CAROL)
-        assert status.project_rows() == [('web', 'alice', ALICE), ('local', 'bob', BOB), ('?', 'carol', CAROL)]
+        assert status.project_rows() == [('web', 'alice', 'kathara', ALICE), ('local', 'bob', 'kathara', BOB),
+                                         ('?', 'carol', 'kathara', CAROL)]
 
     def test_the_user_is_the_one_of_the_file(self, tmp_pub_dir):
         make_project(ALICE, params.origin_web, user='prof')
-        assert status.project_rows() == [('web', 'prof', ALICE)]
+        assert status.project_rows() == [('web', 'prof', 'kathara', ALICE)]
 
     def test_broken_origin_file(self, tmp_pub_dir):
         make_project(ALICE)
         Path(params.origin_filename(ALICE)).write_text('{"origin": "moon"}')
-        assert status.project_rows() == [('?', 'alice', ALICE)]
+        assert status.project_rows() == [('?', 'alice', 'kathara', ALICE)]
+
+    def test_the_engine_of_each_project(self, tmp_pub_dir, monkeypatch):
+        """The engine a project records, else the default engine of the host: what every command
+        asks for that project."""
+        make_project(ALICE, params.origin_web, engine='podman')
+        make_project(BOB, params.origin_local, engine='kathara')
+        make_project(CAROL, params.origin_local)
+        monkeypatch.setattr(params, 'container_engine', 'podman')
+        assert [row[2] for row in status.project_rows()] == ['podman', 'kathara', 'podman']
+
+    def test_an_engine_that_cannot_be_told(self, tmp_pub_dir, monkeypatch):
+        make_project(ALICE, params.origin_web, engine='podman')
+        make_project(CAROL)
+        monkeypatch.setattr(params, 'container_engine', 'lxc')
+        assert status.project_rows() == [('web', 'alice', 'podman', ALICE), ('?', 'carol', '?', CAROL)]
+        assert [project['engine'] for project in status.status_dict([], False, status.project_rows())['projects']] == \
+            ['podman', None]
 
     def test_only_the_running_projects(self, tmp_pub_dir):
         """A directory without info.json (a start in progress or failed) and a stray file are not projects."""
         make_project(ALICE, params.origin_web)
         make_project(BOB, params.origin_local, info=False)
         (Path(params.sre_projects_dir) / 'stray').write_text('')
-        assert status.project_rows() == [('web', 'alice', ALICE)]
+        assert status.project_rows() == [('web', 'alice', 'kathara', ALICE)]
 
     def test_no_projects_directory(self, tmp_pub_dir):
         assert status.project_rows() == []
@@ -118,7 +139,7 @@ class TestAgentLine:
 
 
 class TestStatusDict:
-    ROWS = [('web', 'alice', ALICE), ('local', 'bob', BOB), ('?', 'carol', CAROL)]
+    ROWS = [('web', 'alice', 'podman', ALICE), ('local', 'bob', 'kathara', BOB), ('?', 'carol', 'kathara', CAROL)]
 
     @pytest.fixture(autouse=True)
     def version(self, monkeypatch):
@@ -131,9 +152,12 @@ class TestStatusDict:
             'agent': {'running': True, 'pids': [812], 'configured': True, 'config_file': '/etc/sreweb/agent.toml',
                       'local_drain': None},
             'projects': [
-                {'running_lab_name': ALICE, 'lab_name': 'sre@dhcp.py', 'origin': 'web', 'user': 'alice'},
-                {'running_lab_name': BOB, 'lab_name': 'sre@nftables-filter1.py', 'origin': 'local', 'user': 'bob'},
-                {'running_lab_name': CAROL, 'lab_name': 'sre@static_routing.py', 'origin': None, 'user': 'carol'},
+                {'running_lab_name': ALICE, 'lab_name': 'sre@dhcp.py', 'origin': 'web', 'user': 'alice',
+                 'engine': 'podman'},
+                {'running_lab_name': BOB, 'lab_name': 'sre@nftables-filter1.py', 'origin': 'local', 'user': 'bob',
+                 'engine': 'kathara'},
+                {'running_lab_name': CAROL, 'lab_name': 'sre@static_routing.py', 'origin': None, 'user': 'carol',
+                 'engine': 'kathara'},
             ]}
 
     def test_agent_not_running(self):
@@ -189,24 +213,24 @@ class TestAction:
         return config
 
     def test_output(self, host, capsys):
-        make_project(ALICE, params.origin_web)
-        make_project(BOB, params.origin_local)
+        make_project(ALICE, params.origin_web, engine='podman')
+        make_project(BOB, params.origin_local, engine='kathara')
         make_project(CAROL)
         status.action_status()
         assert capsys.readouterr().out == (
             "sre 0.17.0\n"
             "sre-agent: running (pid 812)\n"
             "running projects: 3\n"
-            "ORIGIN  USER   PROJECT\n"
-            f"web     alice  {ALICE}\n"
-            f"local   bob    {BOB}\n"
-            f"?       carol  {CAROL}\n")
+            "ORIGIN  USER   ENGINE   PROJECT\n"
+            f"web     alice  podman   {ALICE}\n"
+            f"local   bob    kathara  {BOB}\n"
+            f"?       carol  kathara  {CAROL}\n")
 
     def test_columns_follow_the_longest_user(self, host, capsys):
         make_project(ALICE, params.origin_web, user='guest-0123abcd')
         status.action_status()
-        assert capsys.readouterr().out.splitlines()[3:] == ["ORIGIN  USER            PROJECT",
-                                                            f"web     guest-0123abcd  {ALICE}"]
+        assert capsys.readouterr().out.splitlines()[3:] == ["ORIGIN  USER            ENGINE   PROJECT",
+                                                            f"web     guest-0123abcd  kathara  {ALICE}"]
 
     def test_no_project(self, host, capsys, monkeypatch):
         host.unlink()
@@ -228,8 +252,10 @@ class TestAction:
             'agent': {'running': True, 'pids': [812], 'configured': True, 'config_file': str(host),
                       'local_drain': None},
             'projects': [
-                {'running_lab_name': ALICE, 'lab_name': 'sre@dhcp.py', 'origin': 'web', 'user': 'alice'},
-                {'running_lab_name': CAROL, 'lab_name': 'sre@static_routing.py', 'origin': None, 'user': 'carol'},
+                {'running_lab_name': ALICE, 'lab_name': 'sre@dhcp.py', 'origin': 'web', 'user': 'alice',
+                 'engine': 'kathara'},
+                {'running_lab_name': CAROL, 'lab_name': 'sre@static_routing.py', 'origin': None, 'user': 'carol',
+                 'engine': 'kathara'},
             ]}
 
     def test_json_no_project(self, host, capsys, monkeypatch):

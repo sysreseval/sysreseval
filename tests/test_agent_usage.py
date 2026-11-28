@@ -612,17 +612,101 @@ class TestPodmanSampler:
             assert sampler.cpu_busy == pytest.approx(2.0)
         asyncio.run(go())
 
-    def test_the_slices_are_read_and_the_daemon_is_not_asked(self, short_dir):
-        """Both given: the projects of this host are those of Podman."""
+
+
+OTHER = '20261120100001@@@sre@nfs.py@@@bob'
+
+
+def podman_beside_docker(directory):
+    """The Podman of a host that also has Docker: the same cgroup tree, and container ids of
+    its own (each fake numbers its containers from 1; two engines never share a real id)."""
+    podman = FakePodman(directory)
+    podman._serial = 1 << 32
+    return podman
+
+
+def both_sampler(docker, podman, reg, clock=None):
+    """The sampler of a host that runs projects with both engines."""
+    return UsageSampler(reg, UsageConfig(cgroup_root=str(docker.cgroup_root)), docker_socket=docker.socket,
+                        podman_slices=str(podman.slices), clock=clock or Clock())
+
+
+class TestAHostWithBothEngines:
+    """Both sources given: a project is found in one of them (its hash is the same with either
+    engine), and both are read at each measure."""
+
+    def test_each_project_is_measured_where_its_machines_are(self, short_dir):
         async def go():
             async with FakeDocker(short_dir) as docker:
-                docker.add('h1', mem=999 * MIB)
-                podman = FakePodman(short_dir / 'podman')
+                podman = podman_beside_docker(short_dir)
                 podman.add('h1', mem=10 * MIB)
-                sampler = UsageSampler(registry(project()), UsageConfig(cgroup_root=str(podman.cgroup_root)),
-                                       docker_socket=docker.socket, podman_slices=str(podman.slices), clock=Clock())
+                docker.add('h2', mem=30 * MIB)
+                docker.add('h2', mem=30 * MIB)
+                sampler = both_sampler(docker, podman, registry(project(), project(OTHER, lab_hash='h2',
+                                                                                    lab_name='sre@nfs.py')))
+                assert sampler.enabled
                 await sampler.sample()
-                assert row(sampler)['mem_mb'] == 10.0 and docker.requests == []
+                assert (row(sampler)['containers'], row(sampler)['mem_mb']) == (1, 10.0)
+                assert (row(sampler, OTHER)['containers'], row(sampler, OTHER)['mem_mb']) == (2, 60.0)
+                assert len(docker.requests) == 1
+        asyncio.run(go())
+
+    def test_a_project_without_machine_anywhere(self, short_dir):
+        async def go():
+            async with FakeDocker(short_dir) as docker:
+                podman = podman_beside_docker(short_dir)
+                sampler = both_sampler(docker, podman, registry(project()))
+                await sampler.sample()
+                assert (row(sampler)['containers'], row(sampler)['mem_mb']) == (0, None)
+        asyncio.run(go())
+
+    def test_a_daemon_that_does_not_answer_hides_only_what_may_be_its_own(self, short_dir, caplog):
+        """The projects found in the slices of Podman are still measured; of a project found
+        nowhere nothing is told: its machines may be those of the daemon."""
+        async def go():
+            async with FakeDocker(short_dir) as docker:
+                podman = podman_beside_docker(short_dir)
+                podman.add('h1', mem=10 * MIB)
+                docker.add('h2', mem=30 * MIB)
+                sampler = both_sampler(docker, podman, registry(project(), project(OTHER, lab_hash='h2',
+                                                                                    lab_name='sre@nfs.py')))
+                await sampler.sample()
+                assert row(sampler, OTHER)['containers'] == 1
+                docker.status = 500
+                await sampler.sample()
+                assert (row(sampler)['containers'], row(sampler)['mem_mb']) == (1, 10.0)
+                assert (row(sampler, OTHER)['containers'], row(sampler, OTHER)['mem_mb']) == (None, None)
+                assert "usage of the projects not measured" in caplog.text and "500" in caplog.text
+                docker.status = 200
+                await sampler.sample()
+                assert (row(sampler, OTHER)['containers'], row(sampler, OTHER)['mem_mb']) == (1, 30.0)
+        asyncio.run(go())
+
+    def test_the_user_manager_of_podman_does_not_run(self, short_dir):
+        """The other way round: the projects of Docker are measured, the others are not told."""
+        async def go():
+            async with FakeDocker(short_dir) as docker:
+                docker.add('h2', mem=30 * MIB)
+                gone = str(short_dir / 'no-user-manager' / 'srelab.slice')
+                sampler = UsageSampler(registry(project(), project(OTHER, lab_hash='h2', lab_name='sre@nfs.py')),
+                                       UsageConfig(cgroup_root=str(docker.cgroup_root)), docker_socket=docker.socket,
+                                       podman_slices=gone, clock=Clock())
+                await sampler.sample()
+                assert (row(sampler, OTHER)['containers'], row(sampler, OTHER)['mem_mb']) == (1, 30.0)
+                assert (row(sampler)['containers'], row(sampler)['mem_mb']) == (None, None)
+        asyncio.run(go())
+
+    def test_neither_answers(self, short_dir):
+        async def go():
+            async with FakeDocker(short_dir) as docker:
+                docker.add('h2', mem=30 * MIB)
+                docker.status = 500
+                gone = str(short_dir / 'no-user-manager' / 'srelab.slice')
+                sampler = UsageSampler(registry(project(OTHER, lab_hash='h2', lab_name='sre@nfs.py')),
+                                       UsageConfig(cgroup_root=str(docker.cgroup_root)), docker_socket=docker.socket,
+                                       podman_slices=gone, clock=Clock())
+                await sampler.sample()
+                assert (row(sampler, OTHER)['containers'], row(sampler, OTHER)['mem_mb']) == (None, None)
         asyncio.run(go())
 
 
@@ -633,6 +717,8 @@ class TestSources:
     def host(self, monkeypatch):
         monkeypatch.setattr(params, 'container_engine', params.container_engine_kathara)
         monkeypatch.setattr(params, 'container_engine_by_host', {})
+        monkeypatch.setattr(params, 'container_engines_allowed', None)
+        monkeypatch.setattr(params, 'container_engines_allowed_by_host', {})
         monkeypatch.setattr(params, 'docker_socket_path', '/var/run/docker.sock')
         monkeypatch.setattr(params, 'sre_uid', 1100)
 
@@ -659,8 +745,23 @@ class TestSources:
         monkeypatch.setattr(params, 'container_engine', params.container_engine_podman)
         assert agent_app.usage_sources(UsageConfig(docker_socket='/run/d.sock'), None) == {
             'docker_socket': '/run/d.sock', 'podman_slices': ''}
-        assert agent_app.usage_sources(UsageConfig(docker_socket='/run/d.sock', podman_slices='/cg/x.slice'), '/pub') == {
+        assert agent_app.usage_sources(UsageConfig(podman_slices='/cg/x.slice'), None) == {
             'docker_socket': '', 'podman_slices': '/cg/x.slice'}
+        # both named: both read
+        assert agent_app.usage_sources(UsageConfig(docker_socket='/run/d.sock', podman_slices='/cg/x.slice'), '/pub') == {
+            'docker_socket': '/run/d.sock', 'podman_slices': '/cg/x.slice'}
+
+    def test_a_host_that_allows_both_engines(self, monkeypatch):
+        monkeypatch.setattr(params, 'container_engine', params.container_engine_podman)
+        monkeypatch.setattr(params, 'container_engines_allowed', ('podman', 'kathara'))
+        assert agent_app.usage_sources(UsageConfig(cgroup_root='/cg'), None) == {
+            'docker_socket': '/var/run/docker.sock',
+            'podman_slices': '/cg/user.slice/user-1100.slice/user@1100.service/srelab.slice'}
+
+    def test_the_engines_of_the_agent_when_it_is_given_them(self):
+        assert agent_app.usage_sources(UsageConfig(), None, ('kathara', 'podman'))['podman_slices'].endswith('/srelab.slice')
+        assert agent_app.usage_sources(UsageConfig(), None, ('kathara',)) == {
+            'docker_socket': '/var/run/docker.sock', 'podman_slices': ''}
 
     @pytest.mark.parametrize('engine', ['kathara', 'podman'])
     def test_an_agent_that_is_not_the_one_of_the_machine_measures_nothing(self, monkeypatch, engine):

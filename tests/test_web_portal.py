@@ -91,8 +91,10 @@ class Harness:
                                       'state_dir': str(tmp_path / 'web-agent'), 'occupied_check': 'never',
                                       **(agent_over or {})},
                                      sre_exe=str(exe), state_dir='')   # never: the sessions of the test host
+        # the engines of the agent are those of its fake sre (MOCK_ENGINES; Kathara alone by default)
         self.agent = Agent(cfg, pub_dir=str(self.pub), projects_dir=str(self.pub / 'projects'), localedirs=[],
-                           hostname='pool1', extra_env=env, archive_dirs=[str(self.pub / 'archives')])
+                           hostname='pool1', extra_env=env, archive_dirs=[str(self.pub / 'archives')],
+                           engines=json.loads(env['MOCK_ENGINES']) if 'MOCK_ENGINES' in env else ['kathara'])
         # never the unit the test process may run in (a CI runner): a restart needs restart_command here
         self.agent.cgroup_file = str(tmp_path / 'no-cgroup')
         self.web_dir = tmp_path / 'web'
@@ -2098,3 +2100,98 @@ class TestHistory:
                 assert (await h.client.get('/api/history/sessions')).status == 401
         run(go())
 
+
+BOTH_ENGINES = {'MOCK_ENGINES': '["podman", "kathara"]', 'MOCK_LAB_ENGINES': '{"s4/tp_ssh": ["kathara"]}'}
+
+
+class TestContainerEngines:
+    """A host that runs projects with two container engines, and a lab that accepts one of them
+    only: what the Pool and Open pages are given, and the start of an instructor who names the
+    engine of a project."""
+
+    def test_the_pool_rows_and_the_lab_lists(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=PROXY_OVER, mock_env=BOTH_ENGINES) as h:
+                bob, prof = who('bob'), who('alice', 'Alice', '', TEACHERS)
+                await h.portal.pool.refresh()
+                rows = {row['name']: row for row in await (await h.client.get('/api/pool', headers=prof)).json()}
+                assert (rows['a01']['engines'], rows['a01']['default_engine']) == (['podman', 'kathara'], 'podman')
+                # the engines of a lab: for the instructors (the Open page), never for a student
+                labs = {lab['name']: lab for lab in await (await h.client.get('/api/labs', headers=prof)).json()}
+                assert labs['s4/tp_ssh']['engines'] == ['kathara'] and 'engines' not in labs['sre/dhcp.py']
+                labs = await (await h.client.get('/api/labs', headers=bob)).json()
+                assert {lab['name'] for lab in labs} >= {'s4/tp_ssh', 'sre/dhcp.py'}
+                assert all('engines' not in lab for lab in labs)
+        run(go())
+
+    def test_an_instructor_starts_a_project_with_an_engine(self, tmp_path):
+        async def go():
+            over = {**PROXY_OVER, 'limits': {'start_interval': 0}}
+            async with Harness(tmp_path, web_over=over, mock_env=BOTH_ENGINES, host_over={'max_projects': 6}) as h:
+                prof = who('alice', 'Alice', '', TEACHERS)
+                await h.portal.pool.refresh()
+
+                async def start(**body):
+                    resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', **body},
+                                               headers={**prof, **CSRF})
+                    assert resp.status == 200, await resp.text()
+                    result = json.loads((await resp.text()).splitlines()[-1])
+                    assert result['status'] == 'created', result
+                    record = h.pub / 'projects' / result['running_lab_name'] / '.private' / 'origin.json'
+                    return json.loads(record.read_text())['engine']
+                assert await start(engine='kathara') == 'kathara'
+                assert await start(engine='kathara', host='a01') == 'kathara'
+                assert await start(engine='podman', instructor_mode=True) == 'podman'
+                assert await start() == 'podman' and await start(engine='') == 'podman'    # the host chooses
+                # a lab that does not accept the default engine of the host: nobody chooses
+                assert await start(lab='s4/tp_ssh') == 'kathara'
+        run(go())
+
+    def test_refused(self, tmp_path):
+        async def go():
+            over = {**PROXY_OVER, 'limits': {'start_interval': 0}}
+            async with Harness(tmp_path, web_over=over, mock_env=BOTH_ENGINES) as h:
+                bob, prof = who('bob'), who('alice', 'Alice', '', TEACHERS)
+                await h.portal.pool.refresh()
+                await h.client.get('/api/labs', headers=prof)      # the portal learns the engines of the labs
+
+                async def refused(identity, **body):
+                    resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', **body},
+                                               headers={**identity, **CSRF})
+                    return resp.status, (await resp.json())['error']
+                assert await refused(bob, engine='kathara') == (403, 'instructors only')
+                for odd in ('lxc', ['kathara'], 5):
+                    assert await refused(prof, engine=odd) == (400, 'engine must be the name of a container engine')
+                assert await refused(prof, lab='s4/tp_ssh', engine='podman') == (
+                    409, 'this lab does not accept the engine podman')
+                assert await (await h.client.get('/api/projects', headers=prof)).json() == []     # nothing started
+        run(go())
+
+    def test_a_host_that_does_not_allow_the_engine(self, tmp_path):
+        """The only host of the pool has Kathara alone."""
+        async def go():
+            async with Harness(tmp_path, web_over=PROXY_OVER) as h:
+                prof = who('alice', 'Alice', '', TEACHERS)
+                await h.portal.pool.refresh()
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'engine': 'podman'},
+                                           headers={**prof, **CSRF})
+                assert (resp.status, (await resp.json())['error']) == (503, 'no host available with the engine podman')
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'engine': 'podman', 'host': 'a01'},
+                                           headers={**prof, **CSRF})
+                assert (resp.status, (await resp.json())['error']) == (409, 'the host a01 does not allow the engine podman')
+        run(go())
+
+    def test_a_student_is_placed_where_the_lab_can_run_and_told_nothing(self, tmp_path):
+        """The only host allows Podman alone and the lab accepts Kathara alone: no host for the
+        lab, in the words of a pool without host for it."""
+        async def go():
+            env = {'MOCK_ENGINES': '["podman"]', 'MOCK_LAB_ENGINES': '{"sre/dhcp.py": ["kathara"]}'}
+            async with Harness(tmp_path, web_over=PROXY_OVER, mock_env=env) as h:
+                bob = who('bob')
+                await h.portal.pool.refresh()
+                await h.client.get('/api/labs', headers=bob)
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**bob, **CSRF})
+                answer = await resp.json()
+                assert (resp.status, answer['error'], answer['retry_after']) == (503, 'no host available for this lab', 60)
+                assert 'kathara' not in json.dumps(answer) and 'podman' not in json.dumps(answer)
+        run(go())

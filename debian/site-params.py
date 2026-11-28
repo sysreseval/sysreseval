@@ -27,5 +27,7 @@
 # container_engine = "kathara"                # "kathara": Docker through Kathara; "podman": rootless Podman
 #                                             #   containers of the sre user (the package sysreseval-podman)
 # container_engine_by_host = {}               # the hosts that differ, by host name: {"pc12": "podman"}
+# container_engines_allowed = None            # the engines a host may run projects with: ("podman", "kathara"); None: its default engine alone
+# container_engines_allowed_by_host = {}      # the hosts that differ: {"pc12": ("podman", "kathara")}
 # podman_dir = "/var/lib/sre/podman"          # Podman engine: its configuration and its images (a local disk)
 # podman_uid_ranges = 32                      # Podman engine: projects running at once, each in its own uid range

@@ -11,7 +11,8 @@ import sys
 
 from .state import do_action_state
 from .. import access, params
-from ..engine import get_engine
+from ..engine import get_engine, allowed_engine_names
+from ..engine.choice import EngineChoiceError, choose_engine, lab_engines
 from ..origin import project_origin, write_origin
 from ..params import SRE
 from ..progress import register_progress_handlers, emit_project_created
@@ -63,7 +64,29 @@ def _read_xauth_cookie_from_file(path):
     return None
 
 
+def engine_of_new_project(module_rvlab, requested: str | None = None) -> str:
+    """The container engine a project of the lab *module_rvlab* is created with
+    (`engine/choice.py`): the one *requested* by a privileged caller, else the first engine of
+    the host, its default first, that the lab accepts.  Quits when there is none: a privileged
+    caller reads which engines the host allows and the lab accepts, a student only that the lab
+    cannot be started here (nothing names the engine to a student)."""
+    try:
+        return choose_engine(requested, allowed_engine_names(), lab_engines(module_rvlab))
+    except (EngineChoiceError, ValueError) as e:
+        error_quit("this lab cannot be started on this host" if in_user_mode() else str(e))
+
+
+def requested_engine() -> str | None:
+    """The engine named on the command line (`--engine`), which only a privileged caller may
+    give; `None` without one."""
+    engine = getattr(SRE.args, 'engine', None)
+    if engine is not None and in_user_mode():
+        error_quit("--engine is not available in user mode")
+    return engine
+
+
 def action_start():
+    engine = requested_engine()
     if SRE.args.data_version is not None:
         if SRE.args.data is not None:
             error_quit("--data and data_version are mutually exclusive")
@@ -100,16 +123,18 @@ def action_start():
         if SRE.args.user is True:
             error_quit("--user and --path options are mutually exclusive")
         do_action_start(lab_cli_arg=SRE.args.lab, lab_cli_arg_is_path=True, data_file=SRE.args.data,
-                        register_progress=True, instructor_mode=instructor_mode)
+                        register_progress=True, instructor_mode=instructor_mode, engine=engine)
     else:
         do_action_start(lab_cli_arg=SRE.args.lab, lab_cli_arg_is_path=False, data_file=SRE.args.data,
-                        register_progress=True, instructor_mode=instructor_mode)
+                        register_progress=True, instructor_mode=instructor_mode, engine=engine)
 
 
 def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
                     data_file=None, register_progress=False, flavor_name=None,
                     multi_project : bool = False, skip_flavor_form_at_startup: bool = False,
-                    instructor_mode: bool = False):
+                    instructor_mode: bool = False, engine: str | None = None):
+    """*engine*: the container engine a privileged caller asks for (`--engine`); without one
+    the project gets the first engine of the host that its lab accepts."""
     if lab_cli_arg_is_path:
         module_rvlab, lab_name, _, current_srelab_file = set_lab_dir_and_import_module(start_projet=True,
                                                                                        lab_cli_arg=None,
@@ -118,7 +143,8 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
         module_rvlab, lab_name, _, current_srelab_file = set_lab_dir_and_import_module(start_projet=True,
                                                                                        lab_cli_arg=lab_cli_arg,
                                                                                        path=None)
-
+    # before anything is asked or created: a lab no engine of this host can run is refused here
+    engine = engine_of_new_project(module_rvlab, engine)
 
     # --- Flavor handling ---
     flavor = None
@@ -208,7 +234,7 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
     running_lab_name = params.get_running_lab_name(lab_name=lab_name, instance_start_date=now)
     check_grade_class(module_rvlab, current_srelab_file)
 
-    setup = ProjectSetup(running_lab_name=running_lab_name)
+    setup = ProjectSetup(running_lab_name=running_lab_name, engine_name=engine)
     try:
         create_project_directories(setup, module_rvlab, current_srelab_file,
                                    debug_project=bool(getattr(SRE.args, 'debug_project', False)
@@ -216,6 +242,7 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
                                    instructor_mode=instructor_mode)
 
         net_scheme = module_rvlab.NetScheme(data=data, running_lab_name=running_lab_name)
+        net_scheme.engine_name = engine
         setup.net_scheme = net_scheme
         drop_privileges_permanently_if_not_needed(net_scheme)
 
@@ -223,11 +250,11 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
         if setup.shared_dir is not None:
             lab.shared_path = setup.shared_dir
 
-        register_progress_handlers()
+        register_progress_handlers(net_scheme.engine)
 
         set_sudo_uid_for_username(SRE.username)
         gain_privileges_if_needed(net_scheme)
-        get_engine().deploy(lab)
+        net_scheme.engine.deploy(lab)
         setup.lab_deployed = True
 
         finalize_project(setup, module_rvlab, net_scheme, lab, data,
@@ -245,6 +272,7 @@ class ProjectSetup:
     """Bookkeeping of a project being created (by ``sre start`` or ``sre restore``)
     so that :func:`rollback_project` undoes exactly what was done so far."""
     running_lab_name: str
+    engine_name: str | None = None      # the container engine of the project (None: the default one of the host)
     public_lab_dir_created: bool = False
     user_public_dir: str | None = None
     shared_dir: str | None = None
@@ -263,7 +291,8 @@ def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab
                                instructor_mode: bool = False, open_to_the_student: bool = True):
     """Create the on-disk layout of a new project (public/private dirs, answers, files,
     srelab symlink, user public dir, shared dir, debug / instructor-mode markers, the origin
-    file read by ``sre status``).  Fills ``setup`` as it goes.
+    file read by ``sre status``, which also records the engine of the project:
+    ``setup.engine_name``).  Fills ``setup`` as it goes.
 
     *open_to_the_student*: ``answers/`` and ``shared/`` are made writable by everybody, as a
     running project has them.  A restore asks for closed ones (0o700) and opens them itself once
@@ -291,10 +320,11 @@ def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab
         Path(params.debug_project_marker_filename(running_lab_name)).touch(mode=0o600)
     if instructor_mode:
         Path(params.instructor_mode_marker_filename(running_lab_name)).touch(mode=0o600)
-    # local or web (the web agent says so in the environment of the sre it runs), and for whom
+    # local or web (the web agent says so in the environment of the sre it runs), for whom, and
+    # the engine every later command of the project will ask
     write_origin(params.origin_filename(running_lab_name),
                  project_origin(os.environ, by_sudo=access.launched_by_sudo(os.environ, params.sre_exe)),
-                 SRE.username or '')
+                 SRE.username or '', engine=setup.engine_name)
 
     files_dir = params.files_dir(running_lab_name)
     try:
@@ -355,7 +385,7 @@ def quit_if_no_switch_modes(net_scheme, error):
     """A deployment failed and was rolled back: when Kathara's network plugin is the cause and
     the lab has networks that are not hubs, quit with what is missing and how to get it instead
     of Kathara's traceback (the stock plugin only knows hubs).  Returns otherwise."""
-    if net_scheme is None or not get_engine().is_network_plugin_error(error):
+    if net_scheme is None or not net_scheme.engine.is_network_plugin_error(error):
         return
     switches = [net.name for net in net_scheme.get_networks()
                 if net.net_adapters and net.mode != params.network_mode_hub]
@@ -371,11 +401,16 @@ def rollback_project(setup: ProjectSetup, multi_project: bool = False):
     """Undo a failed project creation: undeploy the containers if they were started, then
     remove the user public dir and the project dir while still root (the containers may already
     have left root-owned files in shared/ or the volume dirs) before dropping privileges."""
+    def engine():
+        # asked inside each `try`: an engine that cannot even be loaded must not keep the
+        # directories from being removed
+        return get_engine(setup.engine_name)
+
     if setup.lab_deployed:
         lab_hash = setup.net_scheme.get_lab_hash()
         try:
             gain_privileges_if_needed(setup.net_scheme)
-            get_engine().undeploy(lab_hash)
+            engine().undeploy(lab_hash)
         except Exception:
             pass
         # Kathara's undeploy only sees the containers labelled with the current user: after the
@@ -383,7 +418,7 @@ def rollback_project(setup: ProjectSetup, multi_project: bool = False):
         # would stay running.  Force-remove whatever still carries the lab hash.
         leftover_errors: list[str] = []
         try:
-            remove_lab_leftovers(lab_hash, leftover_errors)
+            remove_lab_leftovers(lab_hash, leftover_errors, engine())
         except Exception as e:
             leftover_errors.append(str(e))
         for error in leftover_errors:
@@ -391,7 +426,7 @@ def rollback_project(setup: ProjectSetup, multi_project: bool = False):
     # Root may be gone for good by now (a lab the engine needs no root for): what the machines
     # left is removed by the engine, which can do it without root when its machines are not root.
     try:
-        get_engine().remove_files_of_machines(
+        engine().remove_files_of_machines(
             [str(path) for path in (setup.user_public_dir,
                                     params.public_lab_dir(setup.running_lab_name) if setup.public_lab_dir_created
                                     else None) if path is not None])

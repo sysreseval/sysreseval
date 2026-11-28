@@ -62,6 +62,14 @@
     "vxlan-evpn.py": 130,
     "wireguard.py": 42
   },
+  "@engines": {
+    "nfs.py": [
+      "kathara"
+    ],
+    "quic.py": [
+      "kathara"
+    ]
+  },
   "@subtitle lan": {
     "en": "Ethernet and local networks",
     "fr": "Ethernet et réseaux locaux"

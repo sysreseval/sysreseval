@@ -84,6 +84,17 @@ class TestParsing:
         result = sre_cli(['start', 'mylab'])
         assert result.args.instructor_mode is False and result.args.debug_web_project is False
 
+    @pytest.mark.parametrize('command', [['start', 'mylab'], ['restore', '-'], ['preload-images', 'labs']])
+    def test_the_engine_option(self, sre_cli, command):
+        result = sre_cli([command[0], '--engine', 'podman', *command[1:]])
+        assert result.code == 0 and result.args.engine == 'podman'
+        assert sre_cli(command).args.engine is None
+
+    def test_an_engine_option_that_names_no_engine(self, sre_cli, capsys):
+        result = sre_cli(['start', '--engine', 'lxc', 'mylab'])
+        assert result.code == 2 and result.events == []
+        assert "invalid choice: 'lxc'" in capsys.readouterr().err
+
     def test_start_option_does_not_imply_a_path(self, sre_cli):
         """Unlike --debug-project, the lab argument stays a lab name."""
         result = sre_cli(['start', '--instructor-mode', 'mylab'])
@@ -473,9 +484,50 @@ class TestEngineErrors:
     def test_an_engine_that_does_not_exist(self, sre_cli, capsys, monkeypatch):
         import SRE.engine as engine_package
 
-        monkeypatch.setattr(engine_package, '_engine', None)
+        monkeypatch.setattr(engine_package, '_engines', {})
         monkeypatch.setattr(params, 'container_engine', 'lxc')
         result = sre_cli(['list'])
         assert result.code == 1 and result.events == []
         assert capsys.readouterr().err == ("sre: container_engine = 'lxc' in params.py: not a container engine "
                                            "(kathara, podman)\n")
+
+
+class TestEveryEngineSeesRootAtEntry:
+    """An engine notes that the process is root before the effective uid is lowered (Kathara
+    could never raise it again otherwise): every engine the command may ask does, those the
+    host allows and those the projects still there record."""
+
+    @pytest.fixture
+    def noted(self, monkeypatch):
+        import SRE.engine as engine_package
+        seen = []
+        monkeypatch.setattr(engine_package, '_engines', {
+            name: SimpleNamespace(capture_root_privileges=lambda name=name: seen.append(name))
+            for name in params.container_engines})
+        return seen
+
+    def test_the_default_engine_of_the_host(self, sre_cli, noted):
+        assert sre_cli(['list']).code == 0 and noted == ['kathara']
+
+    def test_every_engine_the_host_allows(self, sre_cli, noted, monkeypatch):
+        monkeypatch.setattr(params, 'container_engine', 'podman')
+        monkeypatch.setattr(params, 'container_engines_allowed', ('kathara', 'podman'))
+        assert sre_cli(['list']).code == 0 and noted == ['podman', 'kathara']
+
+    def test_the_engine_of_a_project_the_host_no_longer_allows(self, sre_cli, noted, tmp_pub_dir):
+        from SRE import origin
+        project = '20261118091203@@@sre@dhcp.py@@@alice'
+        (tmp_pub_dir / 'projects' / project / params.private_dir_name).mkdir(parents=True)
+        origin.write_origin(params.origin_filename(project), params.origin_local, 'alice', engine='podman')
+        assert sre_cli(['list']).code == 0 and noted == ['kathara', 'podman']
+
+    def test_not_for_a_caller_that_is_not_root(self, sre_cli, noted):
+        sre_cli(['list'], uid=params.sre_uid)
+        assert noted == []
+
+    def test_allowed_engines_that_leave_the_default_out(self, sre_cli, noted, monkeypatch, capsys):
+        monkeypatch.setattr(params, 'container_engines_allowed', ('podman',))
+        result = sre_cli(['list'])
+        assert result.code == 1 and result.events == [] and noted == []
+        assert capsys.readouterr().err == ("sre: container_engines_allowed = ('podman',) in params.py: the default "
+                                           "engine of this host, 'kathara', is not among them\n")

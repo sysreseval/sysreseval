@@ -1,18 +1,20 @@
 """``sre status``: what runs on this machine (privileged only, read-only).
 
 Prints the version of SRE, whether the web agent (``sre-agent``) runs, and every running project
-with its origin and the user who created it::
+with its origin, the user who created it and its container engine::
 
     sre 0.17.0
     sre-agent: running (pid 812)
     local drain: allowed, not asked
     running projects: 2
-    ORIGIN  USER   PROJECT
-    web     alice  20261118091203@@@sre@dhcp.py@@@alice
-    local   bob    20261118091540@@@sre@nftables-filter1.py@@@bob
+    ORIGIN  USER   ENGINE   PROJECT
+    web     alice  podman   20261118091203@@@sre@dhcp.py@@@alice
+    local   bob    kathara  20261118091540@@@sre@nftables-filter1.py@@@bob
 
 The origin and the user come from the origin file of each project (``origin.py``, written by
 ``sre start``); a project created before that file existed shows ``?`` and the user of its name.
+The engine is the one that file records, else the default engine of the host (what every
+command asks for such a project: ``engine_name_of_project()``).
 The projects are those of ``sre stop-all`` run by a privileged caller: the directories holding an
 ``info.json``, in start order.
 
@@ -27,11 +29,12 @@ scripts::
      "agent": {"running": true, "pids": [812], "configured": true, "config_file": "/etc/sreweb/agent.toml",
                "local_drain": {"allowed": true, "asked": false, "asked_at": null}},
      "projects": [{"running_lab_name": "20261118091203@@@sre@dhcp.py@@@alice", "lab_name": "sre@dhcp.py",
-                   "origin": "web", "user": "alice"}]}
+                   "origin": "web", "user": "alice", "engine": "podman"}]}
 
 ``running`` and ``pids`` are ``null`` without ``/proc``; ``local_drain`` is ``null`` when the agent
 of the host says nothing about it (no agent, an older one), ``asked_at`` is in epoch seconds;
-``origin`` is ``null`` where the table shows ``?``.
+``origin`` is ``null`` where the table shows ``?`` (and ``engine`` when the engine parameters of
+``params.py`` name no engine).
 
 The agent has neither a pid file nor a local socket, and its unit name depends on the layout:
 it is looked for in ``/proc`` (:func:`agent_pids`, on the scan of ``procscan.py``).
@@ -41,6 +44,7 @@ import os
 import time
 
 from .. import local_drain, params
+from ..engine import EngineError, engine_name_of_project
 from ..origin import read_origin
 from ..procscan import command_lines, runs_script
 from ..utils import user_not_allowed
@@ -51,7 +55,7 @@ AGENT_SCRIPT = 'sre_agent.py'
 AGENT_MODULE = 'sreweb.agent'
 
 UNKNOWN_ORIGIN = '?'
-_COLUMNS = ('ORIGIN', 'USER', 'PROJECT')
+_COLUMNS = ('ORIGIN', 'USER', 'ENGINE', 'PROJECT')
 
 
 def _is_agent(argv: list[str]) -> bool:
@@ -83,16 +87,25 @@ def agent_line(pids: list[int] | None, configured: bool) -> str:
     return f"sre-agent: {state}"
 
 
-def project_rows() -> list[tuple[str, str, str]]:
-    """``(origin, user, running_lab_name)`` of every running project, in start order."""
+def _engine_of(running_lab_name: str) -> str:
+    try:
+        return engine_name_of_project(running_lab_name)
+    except EngineError:     # no record, and the parameters of the host name no engine
+        return UNKNOWN_ORIGIN
+
+
+def project_rows() -> list[tuple[str, str, str, str]]:
+    """``(origin, user, engine, running_lab_name)`` of every running project, in start order."""
     rows = []
     for running_lab_name, _lab_hash in accessible_projects():
         origin = read_origin(params.origin_filename(running_lab_name))
+        engine = _engine_of(running_lab_name)
         if origin is None:
-            rows.append((UNKNOWN_ORIGIN, params.get_username_from_running_lab_name(running_lab_name),
+            rows.append((UNKNOWN_ORIGIN, params.get_username_from_running_lab_name(running_lab_name), engine,
                          running_lab_name))
         else:
-            rows.append((origin[params.origin_keyword], origin[params.origin_user_keyword], running_lab_name))
+            rows.append((origin[params.origin_keyword], origin[params.origin_user_keyword], engine,
+                         running_lab_name))
     return rows
 
 
@@ -108,7 +121,7 @@ def local_drain_line(drain: dict) -> str:
     return f"local drain: {state}"
 
 
-def status_lines(pids: list[int] | None, configured: bool, rows: list[tuple[str, str, str]],
+def status_lines(pids: list[int] | None, configured: bool, rows: list[tuple[str, str, str, str]],
                  drain: dict | None = None) -> list[str]:
     """*drain*: ``local_drain.summary()``, ``None`` when the agent of the host says nothing about
     the local drains (no line then)."""
@@ -122,7 +135,7 @@ def status_lines(pids: list[int] | None, configured: bool, rows: list[tuple[str,
     return lines
 
 
-def status_dict(pids: list[int] | None, configured: bool, rows: list[tuple[str, str, str]],
+def status_dict(pids: list[int] | None, configured: bool, rows: list[tuple[str, str, str, str]],
                 drain: dict | None = None) -> dict:
     """The document of ``sre status --json``: the inputs of :func:`status_lines`, without the
     display placeholders (``None`` for an unknown origin, without ``/proc``, or for the local
@@ -141,7 +154,8 @@ def status_dict(pids: list[int] | None, configured: bool, rows: list[tuple[str, 
             params.status_lab_name_keyword: params.get_lab_name_from_running_lab_name(running_lab_name),
             params.origin_keyword: None if origin == UNKNOWN_ORIGIN else origin,
             params.origin_user_keyword: user,
-        } for origin, user, running_lab_name in rows],
+            params.origin_engine_keyword: None if engine == UNKNOWN_ORIGIN else engine,
+        } for origin, user, engine, running_lab_name in rows],
     }
 
 

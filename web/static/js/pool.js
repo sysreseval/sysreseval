@@ -7,7 +7,8 @@
 // "resources", where the
 // preload of the Docker images is: queued, preloading 2/5, failed, and saves unusable for a
 // host whose agent.toml has a directory of the saved projects it cannot use), the agent's
-// version and its last error (for a host with unusable saves, what its agent found: a volume
+// version, the container engines the host may run a project with (the default one first, in
+// bold; nothing for an agent that does not tell them) and its last error (for a host with unusable saves, what its agent found: a volume
 // that is not mounted, a marker never created), and the summary of `sre-web-tool status` above
 // the table.  The rows can be
 // sorted by any column and filtered by host name.  The buttons are the commands of the tool (Enable /
@@ -326,6 +327,7 @@ function sortValue(row, key) {
     case 'total_usable_capacity': return usableOf(row);
     case 'uptime': return isNumber(row.uptime) ? row.uptime : -1;
     case 'occupied_by': return (row.occupied_by || []).join(',');
+    case 'engines': return enginesOfRow(row).join(',');
     case 'priority': {      // the group, then the order: one number
       const priority = priorityOf(row);
       return priority.group * (2 * PRIORITY_LIMIT + 2) + priority.order;
@@ -901,6 +903,22 @@ function render() {
   }
 }
 
+// The container engines of a host, the default one first (what `sre start` takes there when
+// nothing else is asked and the lab accepts it); none for an agent that does not tell them.
+function enginesOfRow(row) {
+  return Array.isArray(row.engines) ? row.engines.filter((name) => typeof name === 'string' && name) : [];
+}
+
+function enginesCell(row) {
+  const engines = enginesOfRow(row);
+  if (!engines.length) {
+    return el('td', {class: 'engines'});
+  }
+  const others = engines.slice(1);
+  return el('td', {class: 'engines', title: format(_('Default engine: {engine}'), {engine: engines[0]})},
+            el('strong', {}, engines[0]), others.length ? ', ' + others.join(', ') : '');
+}
+
 function renderRow(row) {
   const nameTitle = [row.hostname, row.url].filter(Boolean).join(' — ');
   const idle = isNumber(row.idle_for) ? format(_('idle for {n} min'), {n: Math.floor(row.idle_for / 60)}) : '';
@@ -920,6 +938,7 @@ function renderRow(row) {
     priorityCell(row),
     el('td', {class: 'flags', title: flagsTitle(row)}, flagsText(row)),
     el('td', {}, row.sre_version || ''),
+    enginesCell(row),
     el('td', {class: 'error', title: errorTitle(row)}, errorText(row)),
     el('td', {class: 'actions'}, ...actions(row)));
 }

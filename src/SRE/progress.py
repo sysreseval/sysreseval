@@ -107,8 +107,9 @@ def emit_preload(status: str, **fields):
     _emit({"phase": "preload", "status": status, **fields})
 
 
-def register_progress_handlers():
-    """The engine reports the image downloads and the start of the machines of the deployments
-    to come to two new handlers, which print the lines above (they read the events as Kathara
-    gives them: the progress of a Docker pull, the machine just deployed)."""
-    get_engine().register_progress_handlers(pull=_PullHandler(), deploy=_DeployHandler())
+def register_progress_handlers(engine=None):
+    """*engine* (the engine of the project being created; the default one of the host without
+    it) reports the image downloads and the start of the machines of the deployments to come to
+    two new handlers, which print the lines above (they read the events as Kathara gives them:
+    the progress of a Docker pull, the machine just deployed)."""
+    (engine or get_engine()).register_progress_handlers(pull=_PullHandler(), deploy=_DeployHandler())

@@ -4,7 +4,6 @@ import shlex
 import shutil
 import sys
 
-from ..engine import get_engine
 from ..utils import error_quit, set_all_variables_for_action, user_not_allowed, in_user_mode, resolve_running_lab_name, \
     should_record_sessions
 from ..utils_privileges import drop_privileges_permanently_if_not_needed, set_sudo_uid_for_username, \
@@ -116,7 +115,7 @@ def action_connect():
         return
 
     gain_privileges_if_needed(net_scheme)
-    engine = get_engine()
+    engine = net_scheme.engine
 
     status = engine.machine_status(net_scheme.get_lab_hash(), device)
     drop_privileges_temporarily()
